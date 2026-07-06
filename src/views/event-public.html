@@ -12,8 +12,20 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="/css/brand.css">
   <style>
-    /* Theme background — fixed full-viewport so it always fills the screen */
-    .event-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+    /* Theme background — fixed full-viewport, slowly drifting across the page */
+    .event-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-size: 200% 150%;
+      animation: bg-drift 24s ease-in-out infinite alternate;
+    }
+    @keyframes bg-drift {
+      0%   { background-position: 0% 30%; }
+      100% { background-position: 100% 55%; }
+    }
+    @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
     .layout { position: relative; z-index: 1; }
 
     /* ── Mobile-first: single column, image on top ── */
