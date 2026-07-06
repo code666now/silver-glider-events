@@ -10,7 +10,8 @@ if (configured) {
     api_secret: process.env.CLOUDINARY_API_SECRET
   });
 } else if (process.env.NODE_ENV === 'production') {
-  throw new Error('Cloudinary env vars are required in production (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)');
+  // Don't crash the whole app — uploads return 503 until the vars are set
+  console.warn('[cloudinary] not configured — cover image uploads disabled (set CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET)');
 }
 
 async function uploadCover(buffer) {
