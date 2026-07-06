@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">Settings</h1>
+    <p class="sg-page-sub">How you appear on your event pages.</p>
+
+    <form id="settings-form" style="max-width:440px">
+      <div class="sg-field">
+        <label for="email">Email</label>
+        <input class="sg-input" id="email" disabled style="opacity:.55">
+      </div>
+      <div class="sg-field">
+        <label for="name">Your name</label>
+        <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez">
+      </div>
+      <div class="sg-field">
+        <label for="org_name">Organization <span style="opacity:.5;text-transform:none;letter-spacing:0">(shown as event host)</span></label>
+        <input class="sg-input" id="org_name" maxlength="100" placeholder="Silver Glider">
+      </div>
+      <div class="sg-field">
+        <label>Plan</label>
+        <span class="sg-badge" id="plan-badge">Free</span>
+      </div>
+      <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="save-btn">Save</button>
+      <button class="sg-btn sg-btn-ghost sg-btn-block" type="button" id="logout-btn" style="margin-top:12px">Sign out</button>
+    </form>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('settings');
+    const $ = id => document.getElementById(id);
+
+    api('/api/auth/me').then(({ organizer }) => {
+      $('email').value = organizer.email;
+      $('name').value = organizer.name || '';
+      $('org_name').value = organizer.org_name || '';
+      $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
+      if (organizer.is_admin) {
+        const nav = document.querySelector('.sg-nav-links');
+        nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a>');
+      }
+    });
+
+    $('settings-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('save-btn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        await api('/api/settings', { method: 'PUT', body: { name: $('name').value, org_name: $('org_name').value } });
+        toast('Saved');
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save';
+      }
+    });
+
+    $('logout-btn').addEventListener('click', async () => {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+  </script>
+</body>
+</html>

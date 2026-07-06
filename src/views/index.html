@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Silver Glider Events — Beautiful event pages in 60 seconds</title>
+  <meta property="og:title" content="Silver Glider Events">
+  <meta property="og:description" content="Beautiful event pages, RSVPs, and reminders. Free.">
+  <link rel="stylesheet" href="/css/brand.css">
+  <style>
+    .landing { max-width: 560px; margin: 0 auto; padding: 12vh 24px 80px; text-align: center; }
+    .logo { width: 64px; height: 64px; margin-bottom: 36px; opacity: .95; }
+    h1 { font-size: clamp(40px, 10vw, 58px); margin-bottom: 18px; letter-spacing: -0.02em; }
+    h1 span { color: var(--sg-accent); }
+    .tagline { color: var(--sg-text-dim); font-size: 17px; line-height: 1.7; margin-bottom: 44px; }
+    .features {
+      display: flex; flex-direction: column; gap: 0; text-align: left;
+      background: var(--sg-card); border: 1px solid var(--sg-border-soft);
+      border-radius: var(--sg-radius-card); padding: 10px 26px; margin: 52px 0 0;
+    }
+    .feature { display: flex; gap: 14px; align-items: baseline; padding: 15px 0; border-bottom: 1px solid var(--sg-border-soft); }
+    .feature:last-child { border-bottom: none; }
+    .feature .tick { color: var(--sg-accent); font-weight: 800; }
+    .feature p { font-size: 14px; color: var(--sg-text-dim); }
+    .feature p strong { color: var(--sg-text); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="landing">
+    <img class="logo" src="/logo.png" alt="Silver Glider">
+    <p class="sg-label" style="margin-bottom:22px">Silver Glider Events</p>
+    <h1>Your event, live in <span>60 seconds</span>.</h1>
+    <p class="tagline">Beautiful event pages, RSVPs, email reminders, and a guest list that runs itself. Free, no passwords, no setup.</p>
+    <a class="sg-btn sg-btn-primary" href="/login" style="font-size:16px;padding:16px 44px">Create your event</a>
+
+    <div class="features">
+      <div class="feature"><span class="tick">—</span><p><strong>A page worth sharing.</strong> Mobile-first, with QR code and link previews built in.</p></div>
+      <div class="feature"><span class="tick">—</span><p><strong>RSVP in 15 seconds.</strong> Guests never create an account.</p></div>
+      <div class="feature"><span class="tick">—</span><p><strong>Reminders handled.</strong> Confirmation, calendar invite, day-before and day-of emails.</p></div>
+      <div class="feature"><span class="tick">—</span><p><strong>Your guest list, yours.</strong> Search, export, duplicate for the next one.</p></div>
+    </div>
+  </main>
+</body>
+</html>

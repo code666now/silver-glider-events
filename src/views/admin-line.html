@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Line — Review — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">The Line</h1>
+    <p class="sg-page-sub">Events submitted for feature on The Line.</p>
+
+    <div style="display:flex;gap:8px;margin-bottom:24px" id="filters">
+      <button class="sg-btn sg-btn-ghost" data-status="pending" style="padding:8px 18px;font-size:13px">Pending</button>
+      <button class="sg-btn sg-btn-ghost" data-status="approved" style="padding:8px 18px;font-size:13px">Approved</button>
+      <button class="sg-btn sg-btn-ghost" data-status="rejected" style="padding:8px 18px;font-size:13px">Rejected</button>
+    </div>
+
+    <div id="list"></div>
+    <p id="empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:40px 0">Nothing here.</p>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    let current = 'pending';
+
+    function fmt(d) {
+      return new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+
+    async function load() {
+      document.querySelectorAll('#filters button').forEach(b => {
+        b.style.borderColor = b.dataset.status === current ? 'var(--sg-accent)' : '';
+        b.style.color = b.dataset.status === current ? 'var(--sg-accent)' : '';
+      });
+      const { submissions } = await api(`/api/admin/line-submissions?status=${current}`);
+      const list = document.getElementById('list');
+      document.getElementById('empty').style.display = submissions.length ? 'none' : 'block';
+      list.innerHTML = submissions.map(s => `
+        <div class="sg-card" style="margin-bottom:14px;padding:20px 22px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+            <div>
+              <h3 style="font-size:18px;margin-bottom:4px"><a href="/e/${s.slug}" target="_blank" style="color:var(--sg-text)">${s.title}</a></h3>
+              <p style="font-size:13px;color:var(--sg-text-dim)">${fmt(s.event_date)} · ${s.venue_name}</p>
+              <p style="font-size:12px;color:var(--sg-text-faint);margin-top:4px">${s.org_name || s.organizer_name || s.organizer_email}</p>
+            </div>
+            ${current === 'pending' ? `
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="sg-btn sg-btn-primary" style="padding:8px 18px;font-size:13px" onclick="act(${s.id},'approve')">Approve</button>
+              <button class="sg-btn sg-btn-ghost" style="padding:8px 18px;font-size:13px" onclick="act(${s.id},'reject')">Reject</button>
+            </div>` : `<span class="sg-badge ${current === 'approved' ? 'sg-badge-accent' : ''}">${current}</span>`}
+          </div>
+        </div>`).join('');
+    }
+
+    async function act(id, action) {
+      await api(`/api/admin/line-submissions/${id}/${action}`, { method: 'POST' });
+      toast(action === 'approve' ? 'Approved' : 'Rejected');
+      load();
+    }
+
+    document.querySelectorAll('#filters button').forEach(b =>
+      b.addEventListener('click', () => { current = b.dataset.status; load(); }));
+
+    load();
+  </script>
+</body>
+</html>
