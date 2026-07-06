@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Event — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .cover-drop {
+      position: relative;
+      border: 1px dashed var(--sg-border);
+      border-radius: var(--sg-radius-card);
+      background: var(--sg-surface);
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+      margin-bottom: 24px;
+    }
+    .cover-drop:hover, .cover-drop.dragover { border-color: var(--sg-accent); }
+    .cover-drop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .cover-drop .hint { color: var(--sg-text-faint); font-size: 13px; text-align: center; padding: 0 20px; z-index: 1; }
+    .cover-drop.has-image .hint { display: none; }
+    .cover-progress {
+      position: absolute; bottom: 0; left: 0; height: 3px;
+      background: var(--sg-accent); width: 0%; transition: width 0.2s ease;
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .vis-toggle { display: flex; gap: 10px; }
+    .vis-toggle button {
+      flex: 1; padding: 12px; border-radius: 999px; font-family: var(--sg-font-body);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      background: var(--sg-surface); color: var(--sg-text-dim); border: 1px solid var(--sg-border);
+    }
+    .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
+  </style>
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title" id="page-title">Create Event</h1>
+    <p class="sg-page-sub">Only four fields are required. You can edit everything later.</p>
+
+    <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
+
+    <form id="event-form">
+      <div class="cover-drop" id="cover-drop">
+        <img id="cover-preview" alt="" style="display:none">
+        <p class="hint">Add a cover image<br><span style="font-size:11px">JPG, PNG, or WebP · up to 5 MB · optional</span></p>
+        <div class="cover-progress" id="cover-progress"></div>
+        <input type="file" id="cover-input" accept="image/*" style="display:none">
+      </div>
+      <input type="hidden" id="cover_image_url">
+
+      <div class="sg-field">
+        <label for="title">Title</label>
+        <input class="sg-input" id="title" maxlength="140" required placeholder="Vinyl Night at The Knockout">
+      </div>
+
+      <div class="sg-field">
+        <label for="description">Description <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea class="sg-textarea" id="description" placeholder="What should people know?"></textarea>
+      </div>
+
+      <div class="row2">
+        <div class="sg-field">
+          <label for="event_date">Date</label>
+          <input class="sg-input" type="date" id="event_date" required>
+        </div>
+        <div class="sg-field">
+          <label for="start_time">Start time</label>
+          <input class="sg-input" type="time" id="start_time" required>
+        </div>
+      </div>
+
+      <div class="sg-field">
+        <label for="venue_name">Venue name</label>
+        <input class="sg-input" id="venue_name" maxlength="140" required placeholder="The Knockout">
+      </div>
+
+      <div class="sg-field">
+        <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="venue_address" placeholder="3223 Mission St, San Francisco">
+      </div>
+
+      <div class="row2">
+        <div class="sg-field">
+          <label for="category">Category</label>
+          <select class="sg-select" id="category">
+            <option value="">Choose…</option>
+            <option>Music</option><option>Art</option><option>Market</option><option>Party</option>
+            <option>Community</option><option>Food & Drink</option><option>Film</option><option>Other</option>
+          </select>
+        </div>
+        <div class="sg-field">
+          <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
+        </div>
+      </div>
+
+      <div class="sg-field">
+        <label>Visibility</label>
+        <div class="vis-toggle">
+          <button type="button" id="vis-public" class="on">Public</button>
+          <button type="button" id="vis-private">Private — link only</button>
+        </div>
+      </div>
+
+      <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>
+    </form>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/event-form.js"></script>
+</body>
+</html>

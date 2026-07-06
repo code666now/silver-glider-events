@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Event — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .stat-row { display: flex; gap: 14px; margin-bottom: 24px; }
+    .stat {
+      flex: 1; background: var(--sg-card); border: 1px solid var(--sg-border-soft);
+      border-radius: 18px; padding: 18px 20px;
+    }
+    .stat strong { font-family: var(--sg-font-display); font-size: 30px; display: block; line-height: 1; }
+    .stat span { font-size: 11px; color: var(--sg-text-faint); text-transform: uppercase; letter-spacing: 0.12em; }
+    .cap-bar { height: 4px; background: var(--sg-surface); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+    .cap-bar div { height: 100%; background: var(--sg-accent); border-radius: 4px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
+    .toolbar .sg-btn { padding: 10px 20px; font-size: 13px; }
+    .qr-box { text-align: center; margin: 0 0 32px; }
+    .qr-box img { width: 150px; height: 150px; border-radius: 14px; background: #fff; padding: 8px; }
+    #search { max-width: 280px; }
+    .hero-banner {
+      border-radius: var(--sg-radius-card); overflow: hidden; margin-bottom: 24px;
+      aspect-ratio: 16/6; background: var(--sg-surface);
+    }
+    .hero-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  </style>
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+
+    <div id="created-note" style="display:none;background:rgba(28,197,190,.1);border:1px solid rgba(28,197,190,.3);border-radius:14px;padding:14px 18px;margin-bottom:24px;font-size:14px">
+      <strong style="color:var(--sg-accent)">Your event is live.</strong> Copy the link below and share it anywhere.
+    </div>
+
+    <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px">
+      <h1 class="sg-page-title" id="title" style="margin:0">…</h1>
+      <span id="status-badge"></span>
+    </div>
+    <p class="sg-page-sub" id="meta"></p>
+
+    <div class="stat-row">
+      <div class="stat">
+        <strong id="stat-count">0</strong>
+        <span>Going</span>
+        <div class="cap-bar" id="cap-bar" style="display:none"><div id="cap-fill"></div></div>
+      </div>
+      <div class="stat">
+        <strong id="stat-days">—</strong>
+        <span id="days-label">Days away</span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="sg-btn sg-btn-primary" id="copy-link">Copy event link</button>
+      <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank">View page</a>
+      <a class="sg-btn sg-btn-ghost" id="edit-link">Edit</a>
+      <button class="sg-btn sg-btn-ghost" id="export-csv">Export CSV</button>
+      <button class="sg-btn sg-btn-ghost" id="duplicate">Duplicate</button>
+      <button class="sg-btn sg-btn-ghost" id="submit-line">Submit to The Line</button>
+      <button class="sg-btn sg-btn-danger" id="cancel-event">Cancel event</button>
+    </div>
+
+    <div class="qr-box">
+      <img id="qr" alt="Event QR code">
+      <p style="font-size:12px;color:var(--sg-text-faint);margin-top:8px">Scan to open the event page</p>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px">
+      <p class="sg-label" style="margin:0">Guest list</p>
+      <input class="sg-input" id="search" placeholder="Search guests…">
+    </div>
+    <div style="overflow-x:auto">
+      <table class="sg-table" id="guests">
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>RSVP'd</th></tr></thead>
+        <tbody id="guest-rows"></tbody>
+      </table>
+    </div>
+    <p id="no-guests" style="display:none;color:var(--sg-text-dim);font-size:14px;padding:24px 0;text-align:center">No RSVPs yet. Share the event link to get the word out.</p>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/manage.js"></script>
+</body>
+</html>

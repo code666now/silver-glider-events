@@ -17,10 +17,16 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Routes
 app.use(require('./routes/auth'));
+app.use(require('./routes/events'));
+app.use(require('./routes/uploads'));
 
 // Organizer pages (each page fetches /api/auth/me and bounces to /login on 401)
 app.get('/login', view('login.html'));
 app.get('/dashboard', view('dashboard.html'));
+app.get('/events', view('events.html'));
+app.get('/events/new', view('event-form.html'));
+app.get('/events/:id/edit', (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
+app.get('/events/:id/manage', view('event-manage.html'));
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

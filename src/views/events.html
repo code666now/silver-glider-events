@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
+      <h1 class="sg-page-title" style="margin:0">Events</h1>
+      <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
+    </div>
+
+    <div id="upcoming-section" style="display:none">
+      <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
+      <div id="upcoming"></div>
+    </div>
+
+    <div id="past-section" style="display:none;margin-top:36px">
+      <p class="sg-label" style="margin-bottom:14px">Past</p>
+      <div id="past"></div>
+    </div>
+
+    <div id="empty" class="sg-empty" style="display:none">
+      <h3>No events yet</h3>
+      <p>Create your first event in under a minute.</p>
+      <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('events');
+
+    function card(ev) {
+      const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
+        { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+      const badges = [
+        ev.status === 'cancelled' ? '<span class="sg-badge sg-badge-danger">Cancelled</span>' : '',
+        ev.status === 'draft' ? '<span class="sg-badge">Draft</span>' : '',
+        ev.visibility === 'private' ? '<span class="sg-badge">Private</span>' : ''
+      ].filter(Boolean).join(' ');
+      return `
+        <a class="sg-event-card" href="/events/${ev.id}/manage">
+          ${ev.cover_image_url
+            ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
+            : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+          <div class="sg-event-meta">
+            <h3>${ev.title}</h3>
+            <p>${dateStr} · ${ev.venue_name}</p>
+            ${badges ? `<p style="margin-top:6px">${badges}</p>` : ''}
+          </div>
+          <div class="sg-event-count">
+            <strong>${ev.rsvp_count}</strong>
+            <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+          </div>
+        </a>`;
+    }
+
+    (async () => {
+      const { events } = await api('/api/events');
+      if (!events.length) {
+        document.getElementById('empty').style.display = 'block';
+        return;
+      }
+      const today = new Date(new Date().toDateString());
+      const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
+      const past = events.filter(e => new Date(e.event_date) < today);
+
+      if (upcoming.length) {
+        document.getElementById('upcoming-section').style.display = 'block';
+        document.getElementById('upcoming').innerHTML = upcoming.map(card).join('');
+      }
+      if (past.length) {
+        document.getElementById('past-section').style.display = 'block';
+        document.getElementById('past').innerHTML = past.map(card).join('');
+      }
+    })();
+  </script>
+</body>
+</html>
