@@ -14,28 +14,54 @@
   <style>
     /* Theme background — fixed full-viewport so it always fills the screen */
     .event-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-    .hero, .wrap { position: relative; z-index: 1; }
+    .layout { position: relative; z-index: 1; }
 
+    /* ── Mobile-first: single column, image on top ── */
     .hero {
       width: 100%;
       max-width: 640px;
       margin: 0 auto;
       aspect-ratio: 4 / 3;
       overflow: hidden;
-      background: var(--sg-surface);
+      position: relative;
     }
+    /* Surface placeholder only for photo heroes; no-image heroes show the theme gradient */
+    .hero:has(img) { background: var(--sg-surface); }
     .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .hero::after {
       content: '';
       position: absolute; inset: 0;
       background: linear-gradient(transparent 45%, var(--sg-bg) 98%);
     }
-    /* No photo: let the page's background theme show through */
-    .hero.no-image { aspect-ratio: auto; height: 96px; background: transparent; }
+    /* No photo: short themed banner strip */
+    .hero.no-image { aspect-ratio: auto; height: 96px; }
     .hero.no-image::after { display: none; }
 
-    .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px 96px; }
-    .hero + .wrap { margin-top: -48px; position: relative; z-index: 1; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 28px 24px 96px; }
+
+    /* ── Desktop: two columns — image left (sticky), details right ── */
+    @media (min-width: 880px) {
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+        gap: 48px;
+        align-items: start;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 56px 40px 96px;
+      }
+      .col-media { position: sticky; top: 44px; }
+      .hero {
+        max-width: none;
+        margin: 0;
+        aspect-ratio: 4 / 5;
+        border-radius: 22px;
+        border: 1px solid var(--sg-border-soft);
+      }
+      .hero::after { display: none; }
+      .hero.no-image { aspect-ratio: 4 / 5; height: auto; }
+      .col-details .wrap { max-width: none; margin: 0 !important; padding: 0; }
+    }
 
     .cat { margin-bottom: 14px; }
     h1.event-title {
@@ -90,8 +116,9 @@
 </head>
 <body>
   <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true"></div>
-  {{HERO}}
-
+  <div class="layout">
+    <div class="col-media">{{HERO}}</div>
+    <div class="col-details">
   <div class="wrap">
     <p class="sg-label cat">{{CATEGORY}}</p>
     <h1 class="event-title">{{TITLE}}</h1>
@@ -158,6 +185,8 @@
       <p>Scan to share</p>
     </div>
   </div>
+    </div><!-- /col-details -->
+  </div><!-- /layout -->
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
   <script src="/js/public-event.js"></script>

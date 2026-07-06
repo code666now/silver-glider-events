@@ -47,8 +47,8 @@ router.get('/e/:slug', async (req, res, next) => {
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
     const theme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
     const heroHtml = event.cover_image_url
-      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image');this.remove()"></div>`
-      : `<div class="hero no-image" id="hero"></div>`;
+      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image','bg-theme','bg-${theme}');this.remove()"></div>`
+      : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`;
 
     const eventJson = {
       slug: event.slug,
