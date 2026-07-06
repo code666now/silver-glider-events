@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+</head>
+<body>
+  <main style="max-width:400px;margin:0 auto;padding:12vh 24px 0">
+    <p class="sg-label" style="margin-bottom:28px">Silver Glider Events</p>
+
+    <div id="form-state">
+      <h1 style="font-size:34px;margin-bottom:10px">Sign in</h1>
+      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:32px">Enter your email and we'll send you a sign-in link. No password needed.</p>
+      <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
+      <form id="login-form">
+        <div class="sg-field">
+          <label for="email">Email</label>
+          <input class="sg-input" type="email" id="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com">
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="submit-btn">Send magic link</button>
+      </form>
+    </div>
+
+    <div id="sent-state" style="display:none">
+      <h1 style="font-size:34px;margin-bottom:10px">Check your email</h1>
+      <p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7">We sent a sign-in link to <strong id="sent-email" style="color:var(--sg-text)"></strong>. It expires in 15 minutes.</p>
+      <p style="color:var(--sg-text-faint);font-size:13px;margin-top:24px">Wrong address? <a href="/login">Try again</a></p>
+    </div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('error') === 'expired') {
+      const err = document.getElementById('error');
+      err.textContent = 'That link expired or was already used. Request a new one.';
+      err.style.display = 'block';
+    }
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      const email = document.getElementById('email').value.trim();
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const res = await fetch('/api/auth/magic-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+        document.getElementById('form-state').style.display = 'none';
+        document.getElementById('sent-email').textContent = email;
+        document.getElementById('sent-state').style.display = 'block';
+      } catch (err) {
+        const el = document.getElementById('error');
+        el.textContent = err.message;
+        el.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send magic link';
+      }
+    });
+  </script>
+</body>
+</html>

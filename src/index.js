@@ -9,8 +9,18 @@ const errorHandler = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3100;
 
+const VIEWS = path.join(__dirname, 'views');
+const view = name => (req, res) => res.sendFile(path.join(VIEWS, name));
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Routes
+app.use(require('./routes/auth'));
+
+// Organizer pages (each page fetches /api/auth/me and bounces to /login on 401)
+app.get('/login', view('login.html'));
+app.get('/dashboard', view('dashboard.html'));
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+  <div class="sg-shell">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title" id="greeting">Welcome</h1>
+    <p class="sg-page-sub" id="sub">Your events at a glance.</p>
+
+    <div id="next-event"></div>
+
+    <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new" style="margin-top:24px">Create Event</a>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('dashboard');
+    (async () => {
+      const { organizer } = await api('/api/auth/me');
+      document.getElementById('greeting').textContent =
+        organizer.name ? `Welcome back, ${organizer.name.split(' ')[0]}` : 'Welcome';
+
+      try {
+        const { events } = await api('/api/events');
+        const upcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= new Date(new Date().toDateString()));
+        const container = document.getElementById('next-event');
+        if (!upcoming.length) {
+          document.getElementById('sub').textContent = 'No upcoming events. Create one in under a minute.';
+          return;
+        }
+        const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
+        const dateStr = new Date(ev.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+        document.getElementById('sub').textContent = 'Your next event.';
+        container.innerHTML = `
+          <a class="sg-event-card" href="/events/${ev.id}/manage">
+            ${ev.cover_image_url
+              ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
+              : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0)}</div>`}
+            <div class="sg-event-meta">
+              <h3>${ev.title}</h3>
+              <p>${dateStr} · ${ev.venue_name}</p>
+            </div>
+            <div class="sg-event-count">
+              <strong>${ev.rsvp_count}</strong>
+              <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+            </div>
+          </a>`;
+      } catch (_) { /* events API not fatal for the shell */ }
+    })();
+  </script>
+</body>
+</html>
