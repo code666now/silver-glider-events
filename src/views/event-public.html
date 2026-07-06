@@ -15,15 +15,15 @@
     /* Theme background — fixed full-viewport, slowly drifting across the page */
     .event-bg {
       position: fixed;
-      inset: 0;
+      inset: -10%;              /* oversized so the drift never reveals an edge */
       z-index: 0;
       pointer-events: none;
-      background-size: 200% 150%;
-      animation: bg-drift 24s ease-in-out infinite alternate;
+      animation: bg-drift 22s ease-in-out infinite alternate;
+      will-change: transform;
     }
     @keyframes bg-drift {
-      0%   { background-position: 0% 30%; }
-      100% { background-position: 100% 55%; }
+      0%   { transform: translate3d(-2.5%, -2%, 0) scale(1.08); }
+      100% { transform: translate3d(2.5%, 2.5%, 0) scale(1.18); }
     }
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
     .layout { position: relative; z-index: 1; }

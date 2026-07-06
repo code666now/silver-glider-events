@@ -115,39 +115,53 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-textarea { resize: vertical; min-height: 110px; }
 
-/* Event background themes — a colored glow at the top fading into near-black.
-   Kept deep/muted so white text stays legible. Shared by the form picker,
-   the swatches, and the public event page. */
+/* Event background themes — colored glows spread across the whole page (top
+   AND bottom) so the drifting animation carries color everywhere. Kept deep so
+   white text stays legible. Shared by the form swatches and the public page. */
 .bg-theme {
   background-color: var(--sg-bg);
   background-repeat: no-repeat;
   background-position: top center;
 }
-.bg-midnight { background-image: radial-gradient(120% 60% at 50% -12%, #1f1f27, transparent 70%); }
+.bg-midnight {
+  background-image:
+    radial-gradient(60% 45% at 20% 2%, #26262f, transparent 62%),
+    radial-gradient(60% 50% at 85% 98%, #202028, transparent 62%);
+}
 .bg-aurora {
   background-image:
-    radial-gradient(90% 55% at 12% -6%, rgba(28,197,190,.55), transparent 60%),
-    radial-gradient(90% 55% at 92% 2%, rgba(255,138,42,.45), transparent 60%);
+    radial-gradient(58% 45% at 10% 4%, rgba(28,197,190,.55), transparent 60%),
+    radial-gradient(58% 45% at 92% 12%, rgba(255,138,42,.5), transparent 60%),
+    radial-gradient(65% 52% at 86% 96%, rgba(28,197,190,.4), transparent 62%),
+    radial-gradient(58% 48% at 12% 90%, rgba(255,138,42,.35), transparent 62%);
 }
 .bg-sunset {
   background-image:
-    radial-gradient(105% 62% at 50% -12%, rgba(255,92,58,.6), transparent 62%),
-    radial-gradient(80% 50% at 82% 8%, rgba(255,193,92,.4), transparent 60%);
+    radial-gradient(60% 46% at 45% 2%, rgba(255,92,58,.6), transparent 62%),
+    radial-gradient(55% 42% at 88% 14%, rgba(255,193,92,.45), transparent 60%),
+    radial-gradient(68% 54% at 18% 98%, rgba(255,92,58,.42), transparent 62%),
+    radial-gradient(55% 46% at 90% 88%, rgba(255,150,90,.35), transparent 62%);
 }
 .bg-ocean {
   background-image:
-    radial-gradient(100% 60% at 28% -10%, rgba(0,140,255,.5), transparent 62%),
-    radial-gradient(90% 55% at 88% 4%, rgba(28,197,190,.5), transparent 60%);
+    radial-gradient(58% 45% at 24% 3%, rgba(0,140,255,.5), transparent 62%),
+    radial-gradient(58% 44% at 90% 12%, rgba(28,197,190,.5), transparent 60%),
+    radial-gradient(68% 54% at 80% 97%, rgba(0,140,255,.4), transparent 62%),
+    radial-gradient(55% 46% at 12% 90%, rgba(28,197,190,.35), transparent 62%);
 }
 .bg-violet {
   background-image:
-    radial-gradient(105% 62% at 50% -12%, rgba(150,80,255,.55), transparent 62%),
-    radial-gradient(80% 50% at 18% 4%, rgba(80,90,255,.4), transparent 60%);
+    radial-gradient(60% 46% at 48% 2%, rgba(150,80,255,.55), transparent 62%),
+    radial-gradient(55% 42% at 14% 12%, rgba(80,90,255,.4), transparent 60%),
+    radial-gradient(68% 54% at 84% 96%, rgba(150,80,255,.42), transparent 62%),
+    radial-gradient(55% 46% at 16% 92%, rgba(80,90,255,.32), transparent 62%);
 }
 .bg-ember {
   background-image:
-    radial-gradient(105% 62% at 50% -12%, rgba(255,64,90,.55), transparent 62%),
-    radial-gradient(80% 50% at 82% 6%, rgba(255,150,40,.4), transparent 60%);
+    radial-gradient(60% 46% at 48% 2%, rgba(255,64,90,.55), transparent 62%),
+    radial-gradient(55% 42% at 86% 12%, rgba(255,150,40,.4), transparent 60%),
+    radial-gradient(68% 54% at 20% 98%, rgba(255,64,90,.4), transparent 62%),
+    radial-gradient(55% 46% at 88% 90%, rgba(255,150,40,.32), transparent 62%);
 }
 
 /* Small swatch version for the form picker (self-contained, not fixed) */
