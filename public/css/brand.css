@@ -1,0 +1,131 @@
+/* Silver Glider Events — brand tokens (from silverglidertickets.com) */
+@import url('https://fonts.googleapis.com/css2?family=Sulphur+Point:wght@400;700&family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  --sg-bg: #0E0E0E;
+  --sg-surface: #131315;
+  --sg-card: #111111;
+  --sg-border: rgba(255, 255, 255, 0.08);
+  --sg-border-soft: rgba(255, 255, 255, 0.05);
+  --sg-accent: #1CC5BE;
+  --sg-accent-press: #0FA39D;
+  --sg-text: #f0f0f0;
+  --sg-text-dim: #999999;
+  --sg-text-faint: #555555;
+  --sg-danger: #e05252;
+  --sg-radius-card: 24px;
+  --sg-radius-input: 12px;
+  --sg-font-display: 'Sulphur Point', -apple-system, sans-serif;
+  --sg-font-body: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --sg-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--sg-bg);
+  color: var(--sg-text);
+  font-family: var(--sg-font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+h1, h2, h3, .sg-display {
+  font-family: var(--sg-font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+a { color: var(--sg-accent); text-decoration: none; }
+
+/* Uppercase micro-label */
+.sg-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  color: var(--sg-text-faint);
+}
+
+/* Pill buttons — one primary CTA per screen */
+.sg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 28px;
+  font-family: var(--sg-font-body);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.sg-btn-primary { background: var(--sg-accent); color: #0a0a0a; }
+.sg-btn-primary:hover { background: var(--sg-accent-press); transform: translateY(-1px); }
+.sg-btn-primary:disabled { background: #2a2a2a; color: #666; cursor: not-allowed; transform: none; }
+.sg-btn-ghost {
+  background: transparent;
+  color: var(--sg-text);
+  border: 1px solid var(--sg-border);
+}
+.sg-btn-ghost:hover { border-color: var(--sg-accent); color: var(--sg-accent); }
+.sg-btn-danger { background: transparent; color: var(--sg-danger); border: 1px solid rgba(224, 82, 82, 0.3); }
+.sg-btn-danger:hover { border-color: var(--sg-danger); }
+.sg-btn-block { display: flex; width: 100%; }
+
+/* Cards */
+.sg-card {
+  background: var(--sg-card);
+  border: 1px solid var(--sg-border-soft);
+  border-radius: var(--sg-radius-card);
+  padding: 28px;
+}
+
+/* Form fields */
+.sg-field { margin-bottom: 20px; }
+.sg-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sg-text-dim);
+  margin-bottom: 8px;
+}
+.sg-input, .sg-select, .sg-textarea {
+  width: 100%;
+  background: var(--sg-surface);
+  border: 1px solid var(--sg-border);
+  border-radius: var(--sg-radius-input);
+  color: var(--sg-text);
+  font-family: var(--sg-font-body);
+  font-size: 16px; /* prevents iOS zoom on focus */
+  padding: 13px 16px;
+  transition: border-color 0.15s ease;
+}
+.sg-input:focus, .sg-select:focus, .sg-textarea:focus {
+  outline: none;
+  border-color: var(--sg-accent);
+}
+.sg-textarea { resize: vertical; min-height: 110px; }
+
+/* Badges */
+.sg-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--sg-border);
+  color: var(--sg-text-dim);
+}
+.sg-badge-accent { color: var(--sg-accent); border-color: rgba(28, 197, 190, 0.35); }
+.sg-badge-danger { color: var(--sg-danger); border-color: rgba(224, 82, 82, 0.35); }

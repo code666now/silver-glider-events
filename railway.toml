@@ -1,0 +1,6 @@
+[build]
+buildCommand = "git rev-parse --short HEAD > .git-sha 2>/dev/null || echo unknown > .git-sha"
+
+[deploy]
+startCommand = "node src/index.js"
+healthcheckPath = "/health"
