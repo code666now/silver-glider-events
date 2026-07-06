@@ -19,6 +19,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(require('./routes/auth'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
+app.use(require('./routes/public'));
 
 // Organizer pages (each page fetches /api/auth/me and bounces to /login on 401)
 app.get('/login', view('login.html'));

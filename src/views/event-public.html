@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}} — Silver Glider Events</title>
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{OG_DESCRIPTION}}">
+  <meta property="og:image" content="{{OG_IMAGE}}">
+  <meta property="og:url" content="{{OG_URL}}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/css/brand.css">
+  <style>
+    .hero {
+      position: relative;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: var(--sg-surface);
+    }
+    .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(transparent 45%, var(--sg-bg) 98%);
+    }
+    .hero.no-image { aspect-ratio: auto; height: 120px; }
+    .hero.no-image::after { display: none; }
+
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px 96px; }
+    .hero + .wrap { margin-top: -48px; position: relative; z-index: 1; }
+
+    .cat { margin-bottom: 14px; }
+    h1.event-title {
+      font-size: clamp(34px, 9vw, 52px);
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+    .when {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--sg-surface);
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 14px;
+    }
+    .when .dot { color: var(--sg-accent); }
+    .venue { margin: 4px 0 28px; }
+    .venue strong { font-size: 16px; display: block; }
+    .venue a { font-size: 13px; font-weight: 600; }
+    .desc { color: var(--sg-text-dim); font-size: 15px; line-height: 1.75; margin-bottom: 36px; }
+
+    .actions { display: flex; gap: 10px; margin-bottom: 44px; }
+    .actions .sg-btn { flex: 1; padding: 12px; font-size: 13px; }
+
+    .rsvp-zone { margin-bottom: 44px; }
+    #rsvp-form-box { display: none; margin-top: 20px; }
+    .check {
+      display: flex; gap: 12px; align-items: flex-start;
+      font-size: 13px; color: var(--sg-text-dim);
+      margin-bottom: 14px; cursor: pointer;
+    }
+    .check input { accent-color: var(--sg-accent); width: 17px; height: 17px; margin-top: 1px; flex-shrink: 0; }
+
+    #success-state, #full-state, #cancelled-state { display: none; text-align: center; padding: 36px 0 8px; }
+    .big-check {
+      width: 64px; height: 64px; border-radius: 50%;
+      background: rgba(28,197,190,0.12); border: 1px solid var(--sg-accent);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px; color: var(--sg-accent); font-size: 28px;
+    }
+
+    .qr-footer { text-align: center; padding-top: 36px; border-top: 1px solid var(--sg-border-soft); }
+    .qr-footer img { width: 108px; height: 108px; border-radius: 12px; background: #fff; padding: 6px; }
+    .qr-footer p { font-size: 11px; color: var(--sg-text-faint); margin-top: 10px; text-transform: uppercase; letter-spacing: 0.15em; }
+    .host { font-size: 13px; color: var(--sg-text-faint); margin-bottom: 30px; }
+    .host strong { color: var(--sg-text-dim); }
+  </style>
+</head>
+<body>
+  <div class="hero" id="hero"><img src="{{COVER_URL}}" alt="" onerror="this.parentElement.classList.add('no-image');this.remove()"></div>
+
+  <div class="wrap">
+    <p class="sg-label cat">{{CATEGORY}}</p>
+    <h1 class="event-title">{{TITLE}}</h1>
+
+    <div class="when"><span>{{DATE_STR}}</span><span class="dot">·</span><span>{{TIME_STR}}</span></div>
+
+    <div class="venue">
+      <strong>{{VENUE_NAME}}</strong>
+      <span style="color:var(--sg-text-dim);font-size:14px">{{VENUE_ADDRESS}}</span><br>
+      <a href="{{MAPS_URL}}" target="_blank" rel="noopener">Open in Maps →</a>
+    </div>
+
+    <p class="desc">{{DESCRIPTION_HTML}}</p>
+    <p class="host">Hosted by <strong>{{ORGANIZER}}</strong></p>
+
+    <div class="rsvp-zone">
+      <div id="cta-state">
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" style="font-size:17px;padding:17px">RSVP — it's free</button>
+      </div>
+
+      <div id="rsvp-form-box">
+        <p id="rsvp-error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:14px"></p>
+        <form id="rsvp-form">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="sg-field"><label>First name</label><input class="sg-input" id="first_name" autocomplete="given-name" required></div>
+            <div class="sg-field"><label>Last name</label><input class="sg-input" id="last_name" autocomplete="family-name" required></div>
+          </div>
+          <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
+          <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
+          <label class="check"><input type="checkbox" id="wants_reminders" checked> Send me reminders for this event</label>
+          <label class="check"><input type="checkbox" id="organizer_optin"> Keep me posted on future events from this organizer</label>
+          <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit" style="margin-top:10px">Confirm RSVP</button>
+        </form>
+      </div>
+
+      <div id="success-state">
+        <div class="big-check">✓</div>
+        <h2 style="font-size:26px;margin-bottom:8px">You're on the list.</h2>
+        <p style="color:var(--sg-text-dim);font-size:14px;margin-bottom:26px" id="success-sub">Confirmation and calendar invite are on the way to your inbox.</p>
+        <div class="actions" style="margin-bottom:0">
+          <a class="sg-btn sg-btn-ghost" id="success-cal" href="#">Add to calendar</a>
+          <button class="sg-btn sg-btn-ghost" id="success-share">Share</button>
+        </div>
+      </div>
+
+      <div id="full-state">
+        <h2 style="font-size:24px;margin-bottom:8px">Event full</h2>
+        <p style="color:var(--sg-text-dim);font-size:14px">This event has reached capacity.</p>
+      </div>
+
+      <div id="cancelled-state">
+        <h2 style="font-size:24px;margin-bottom:8px">Event cancelled</h2>
+        <p style="color:var(--sg-text-dim);font-size:14px">This event is no longer happening.</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="sg-btn sg-btn-ghost" id="share-btn">Share</button>
+      <a class="sg-btn sg-btn-ghost" id="cal-btn" href="#">Add to calendar</a>
+    </div>
+
+    <div class="qr-footer">
+      <img id="qr-img" alt="QR code for this event" loading="lazy">
+      <p>Scan to share</p>
+    </div>
+  </div>
+
+  <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
+  <script src="/js/public-event.js"></script>
+</body>
+</html>

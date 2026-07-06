@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your RSVP — {{TITLE}}</title>
+  <link rel="stylesheet" href="/css/brand.css">
+</head>
+<body>
+  <main style="max-width:440px;margin:0 auto;padding:10vh 24px 0">
+    <p class="sg-label" style="margin-bottom:26px">Silver Glider Events</p>
+
+    <div id="active">
+      <h1 style="font-size:30px;margin-bottom:6px">Hi {{FIRST_NAME}},</h1>
+      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:28px">here's your RSVP.</p>
+
+      <div class="sg-card" style="margin-bottom:24px">
+        <h2 style="font-size:21px;margin-bottom:14px">{{TITLE}}</h2>
+        <p style="font-size:14px;color:var(--sg-text-dim);line-height:1.9">
+          {{DATE_STR}}<br>{{TIME_STR}}<br>{{VENUE_NAME}}
+        </p>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-bottom:28px">
+        <a class="sg-btn sg-btn-ghost" style="flex:1" href="{{EVENT_URL}}">View event</a>
+        <a class="sg-btn sg-btn-ghost" style="flex:1" href="{{ICS_URL}}">Add to calendar</a>
+      </div>
+
+      <button class="sg-btn sg-btn-danger sg-btn-block" id="cancel-btn">Can't make it? Cancel RSVP</button>
+    </div>
+
+    <div id="cancelled" style="display:none;text-align:center;padding-top:8vh">
+      <h1 style="font-size:28px;margin-bottom:10px">RSVP cancelled</h1>
+      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:28px">Your spot has been released. Change of plans again? You can always RSVP once more from the event page.</p>
+      <a class="sg-btn sg-btn-ghost" href="{{EVENT_URL}}">Back to event</a>
+    </div>
+  </main>
+
+  <script>
+    const rsvpStatus = '{{RSVP_STATUS}}';
+    const eventStatus = '{{EVENT_STATUS}}';
+    if (rsvpStatus === 'cancelled') {
+      document.getElementById('active').style.display = 'none';
+      document.getElementById('cancelled').style.display = 'block';
+    }
+    document.getElementById('cancel-btn')?.addEventListener('click', async () => {
+      if (!confirm('Cancel your RSVP?')) return;
+      const res = await fetch('/api/public/rsvps/{{TOKEN}}/cancel', { method: 'POST' });
+      if (res.ok) {
+        document.getElementById('active').style.display = 'none';
+        document.getElementById('cancelled').style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

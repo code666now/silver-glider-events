@@ -6,7 +6,10 @@ const { makePublicSlug, makePrivateSlug } = require('../lib/slug');
 const { rsvpsToCsv } = require('../lib/csv');
 
 const router = express.Router();
-router.use(requireOrganizer);
+// Scope auth to organizer API paths only — this router is mounted at app root,
+// so a bare router.use() would gate the public event pages too.
+router.use('/api/events', requireOrganizer);
+router.use('/api/settings', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 
