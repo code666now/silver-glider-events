@@ -44,6 +44,12 @@ router.get('/e/:slug', async (req, res, next) => {
     const isFull = event.capacity != null && event.rsvp_count >= event.capacity;
     const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
 
+    const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+    const theme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
+    const heroHtml = event.cover_image_url
+      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image');this.remove()"></div>`
+      : `<div class="hero no-image" id="hero"></div>`;
+
     const eventJson = {
       slug: event.slug,
       title: event.title,
@@ -58,7 +64,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))
       .replace(/{{OG_IMAGE}}/g, esc(event.cover_image_url || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
-      .replace(/{{COVER_URL}}/g, esc(event.cover_image_url || ''))
+      .replace(/{{BODY_CLASS}}/g, `bg-${theme}`)
+      .replace(/{{HERO}}/g, heroHtml)
       .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))
       .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
       .replace(/{{VENUE_NAME}}/g, esc(event.venue_name))

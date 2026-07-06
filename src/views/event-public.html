@@ -12,8 +12,11 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="/css/brand.css">
   <style>
+    /* Theme background — fixed full-viewport so it always fills the screen */
+    .event-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+    .hero, .wrap { position: relative; z-index: 1; }
+
     .hero {
-      position: relative;
       width: 100%;
       max-width: 640px;
       margin: 0 auto;
@@ -27,7 +30,8 @@
       position: absolute; inset: 0;
       background: linear-gradient(transparent 45%, var(--sg-bg) 98%);
     }
-    .hero.no-image { aspect-ratio: auto; height: 120px; }
+    /* No photo: let the page's background theme show through */
+    .hero.no-image { aspect-ratio: auto; height: 96px; background: transparent; }
     .hero.no-image::after { display: none; }
 
     .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px 96px; }
@@ -85,7 +89,8 @@
   </style>
 </head>
 <body>
-  <div class="hero" id="hero"><img src="{{COVER_URL}}" alt="" onerror="this.parentElement.classList.add('no-image');this.remove()"></div>
+  <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true"></div>
+  {{HERO}}
 
   <div class="wrap">
     <p class="sg-label cat">{{CATEGORY}}</p>

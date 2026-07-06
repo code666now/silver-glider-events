@@ -13,6 +13,22 @@ function setVisibility(v) {
 $('vis-public').addEventListener('click', () => setVisibility('public'));
 $('vis-private').addEventListener('click', () => setVisibility('private'));
 
+// Background theme picker
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+function setTheme(key) {
+  $('background_theme').value = key;
+  document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => s.classList.toggle('on', s.dataset.theme === key));
+}
+THEMES.forEach(key => {
+  const sw = document.createElement('div');
+  sw.className = 'sg-swatch bg-' + key;
+  sw.dataset.theme = key;
+  sw.title = key.charAt(0).toUpperCase() + key.slice(1);
+  sw.addEventListener('click', () => setTheme(key));
+  $('theme-picker').appendChild(sw);
+});
+setTheme('midnight');
+
 // Cover upload — click or drag/drop
 const drop = $('cover-drop');
 const fileInput = $('cover-input');
@@ -74,7 +90,8 @@ function collect() {
     venue_address: $('venue_address').value.trim(),
     category: $('category').value || null,
     capacity: $('capacity').value || null,
-    visibility
+    visibility,
+    background_theme: $('background_theme').value
   };
 }
 
@@ -94,6 +111,7 @@ if (editId) {
     $('category').value = event.category || '';
     $('capacity').value = event.capacity || '';
     setVisibility(event.visibility);
+    setTheme(event.background_theme || 'midnight');
     if (event.cover_image_url) {
       $('cover_image_url').value = event.cover_image_url;
       const img = $('cover-preview');

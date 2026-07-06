@@ -57,6 +57,12 @@
       <input type="hidden" id="cover_image_url">
 
       <div class="sg-field">
+        <label>Background <span style="opacity:.5;text-transform:none;letter-spacing:0">— shows when there's no cover photo</span></label>
+        <div id="theme-picker" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px"></div>
+        <input type="hidden" id="background_theme" value="midnight">
+      </div>
+
+      <div class="sg-field">
         <label for="title">Title</label>
         <input class="sg-input" id="title" maxlength="140" required placeholder="Vinyl Night at The Knockout">
       </div>

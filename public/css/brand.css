@@ -115,6 +115,57 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-textarea { resize: vertical; min-height: 110px; }
 
+/* Event background themes — a colored glow at the top fading into near-black.
+   Kept deep/muted so white text stays legible. Shared by the form picker,
+   the swatches, and the public event page. */
+.bg-theme {
+  background-color: var(--sg-bg);
+  background-repeat: no-repeat;
+  background-position: top center;
+}
+.bg-midnight { background-image: radial-gradient(120% 60% at 50% -12%, #1f1f27, transparent 70%); }
+.bg-aurora {
+  background-image:
+    radial-gradient(90% 55% at 12% -6%, rgba(28,197,190,.55), transparent 60%),
+    radial-gradient(90% 55% at 92% 2%, rgba(255,138,42,.45), transparent 60%);
+}
+.bg-sunset {
+  background-image:
+    radial-gradient(105% 62% at 50% -12%, rgba(255,92,58,.6), transparent 62%),
+    radial-gradient(80% 50% at 82% 8%, rgba(255,193,92,.4), transparent 60%);
+}
+.bg-ocean {
+  background-image:
+    radial-gradient(100% 60% at 28% -10%, rgba(0,140,255,.5), transparent 62%),
+    radial-gradient(90% 55% at 88% 4%, rgba(28,197,190,.5), transparent 60%);
+}
+.bg-violet {
+  background-image:
+    radial-gradient(105% 62% at 50% -12%, rgba(150,80,255,.55), transparent 62%),
+    radial-gradient(80% 50% at 18% 4%, rgba(80,90,255,.4), transparent 60%);
+}
+.bg-ember {
+  background-image:
+    radial-gradient(105% 62% at 50% -12%, rgba(255,64,90,.55), transparent 62%),
+    radial-gradient(80% 50% at 82% 6%, rgba(255,150,40,.4), transparent 60%);
+}
+
+/* Small swatch version for the form picker (self-contained, not fixed) */
+.sg-swatch {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background-color: var(--sg-bg);
+  background-repeat: no-repeat;
+  background-position: center -6px;
+  background-size: 140% 200%;
+  transition: border-color 0.15s ease, transform 0.1s ease;
+}
+.sg-swatch:hover { transform: translateY(-1px); }
+.sg-swatch.on { border-color: var(--sg-accent); }
+
 /* Badges */
 .sg-badge {
   display: inline-block;

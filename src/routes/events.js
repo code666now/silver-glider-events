@@ -12,6 +12,7 @@ router.use('/api/events', requireOrganizer);
 router.use('/api/settings', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
 
 function validateEventBody(body, { partial = false } = {}) {
   const errors = [];
@@ -28,6 +29,7 @@ function validateEventBody(body, { partial = false } = {}) {
     category:        v => (CATEGORIES.includes(v) ? v : null),
     capacity:        v => (v === '' || v == null ? null : Math.max(1, parseInt(v, 10) || 0) || null),
     visibility:      v => (v === 'private' ? 'private' : 'public'),
+    background_theme: v => (THEMES.includes(v) ? v : 'midnight'),
     status:          v => (['draft', 'published', 'cancelled'].includes(v) ? v : undefined)
   };
   for (const [key, clean] of Object.entries(fields)) {
@@ -76,12 +78,12 @@ router.post('/api/events', async (req, res, next) => {
       try {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
-                               start_time, end_time, venue_name, venue_address, category, capacity, visibility)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                               start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
-           out.category, out.capacity, out.visibility || 'public']
+           out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight']
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
