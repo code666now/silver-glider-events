@@ -45,6 +45,7 @@ app.use(errorHandler);
 migrate()
   .then(() => {
     app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
+    require('./jobs/reminders').startReminderCron();
   })
   .catch(err => {
     console.error('[startup] migration failed:', err.message);
