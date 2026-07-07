@@ -6,6 +6,100 @@
   <title>Home — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .next-card {
+      display: block;
+      overflow: hidden;
+      color: var(--sg-text);
+      background: rgba(17,17,17,.92);
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 28px;
+      box-shadow: var(--sg-shadow);
+      transition: border-color .15s ease, transform .15s ease;
+    }
+    .next-card:hover {
+      border-color: rgba(28,197,190,.42);
+      transform: translateY(-1px);
+    }
+    .next-visual {
+      position: relative;
+      aspect-ratio: 16 / 10;
+      background: var(--sg-surface);
+      overflow: hidden;
+    }
+    .next-visual img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .next-visual.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--sg-text-faint);
+      font-family: var(--sg-font-display);
+      font-size: 56px;
+    }
+    .next-visual::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 46%, rgba(14,14,14,.9) 100%);
+      pointer-events: none;
+    }
+    .next-details {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: end;
+      padding: 20px;
+    }
+    .next-details h2 {
+      font-size: 28px;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .next-details p {
+      color: var(--sg-text-dim);
+      font-size: 14px;
+    }
+    .next-count {
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .next-count strong {
+      display: block;
+      font-family: var(--sg-font-display);
+      font-size: 34px;
+      line-height: 1;
+    }
+    .next-count span {
+      color: var(--sg-text-faint);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .dashboard-stats {
+      color: var(--sg-text-dim);
+      font-size: 14px;
+      text-align: center;
+      margin: 20px 0 14px;
+    }
+    .dashboard-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 520px) {
+      .next-details { padding: 18px; }
+      .next-details h2 { font-size: 24px; }
+      .dashboard-actions { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
 <body>
   <div class="sg-shell">
@@ -14,8 +108,12 @@
     <p class="sg-page-sub" id="sub">Your events at a glance.</p>
 
     <div id="next-event"></div>
+    <p class="dashboard-stats" id="dashboard-stats"></p>
 
-    <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new" style="margin-top:24px">Create Event</a>
+    <div class="dashboard-actions">
+      <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new">Create Event</a>
+      <a class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
@@ -29,26 +127,33 @@
       try {
         const { events } = await api('/api/events');
         const upcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= new Date(new Date().toDateString()));
+        const totalRsvps = events.reduce((sum, item) => sum + Number(item.rsvp_count || 0), 0);
         const container = document.getElementById('next-event');
         if (!upcoming.length) {
           document.getElementById('sub').textContent = 'No upcoming events. Create one in under a minute.';
+          document.getElementById('dashboard-stats').textContent =
+            `${events.length} total event${events.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
           return;
         }
         const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
         const dateStr = new Date(ev.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
         document.getElementById('sub').textContent = 'Your next event.';
+        document.getElementById('dashboard-stats').textContent =
+          `${upcoming.length} upcoming event${upcoming.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
         container.innerHTML = `
-          <a class="sg-event-card" href="/events/${ev.id}/manage">
+          <a class="next-card" href="/events/${ev.id}/manage">
             ${ev.cover_image_url
-              ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
-              : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0)}</div>`}
-            <div class="sg-event-meta">
-              <h3>${ev.title}</h3>
-              <p>${dateStr} · ${ev.venue_name}</p>
-            </div>
-            <div class="sg-event-count">
-              <strong>${ev.rsvp_count}</strong>
-              <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+              ? `<div class="next-visual"><img src="${ev.cover_image_url}" alt=""></div>`
+              : `<div class="next-visual placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+            <div class="next-details">
+              <div>
+                <h2>${ev.title}</h2>
+                <p>${dateStr} · ${ev.venue_name}</p>
+              </div>
+              <div class="next-count">
+                <strong>${ev.rsvp_count}</strong>
+                <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+              </div>
             </div>
           </a>`;
       } catch (_) { /* events API not fatal for the shell */ }
