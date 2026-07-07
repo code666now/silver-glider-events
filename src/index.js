@@ -23,16 +23,27 @@ app.use(require('./routes/photos'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
 
-// Pages (organizer pages fetch /api/auth/me and bounce to /login on 401)
+// Auth guards for app pages (server-side redirect to /login when signed out)
+const requireOrganizer = require('./middleware/requireOrganizer');
+const requireAdmin = require('./middleware/requireAdmin');
+const { parseSession, readSessionCookie } = require('./lib/session');
+
+// Public pages
 app.get('/', view('index.html'));
-app.get('/login', view('login.html'));
-app.get('/dashboard', view('dashboard.html'));
-app.get('/events', view('events.html'));
-app.get('/events/new', view('event-form.html'));
-app.get('/events/:id/edit', (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
-app.get('/events/:id/manage', view('event-manage.html'));
-app.get('/settings', view('settings.html'));
-app.get('/admin/line', view('admin-line.html'));
+// Skip the email screen if there's already a valid session
+app.get('/login', (req, res) => {
+  if (parseSession(readSessionCookie(req))) return res.redirect('/dashboard');
+  res.sendFile(path.join(VIEWS, 'login.html'));
+});
+
+// Protected app pages — logged-out users are redirected to /login before the page loads
+app.get('/dashboard', requireOrganizer, view('dashboard.html'));
+app.get('/events', requireOrganizer, view('events.html'));
+app.get('/events/new', requireOrganizer, view('event-form.html'));
+app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
+app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
+app.get('/settings', requireOrganizer, view('settings.html'));
+app.get('/admin/line', requireAdmin, view('admin-line.html'));
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

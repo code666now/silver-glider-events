@@ -9,11 +9,40 @@ const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// In-memory rate limiter for magic-link requests (per email + per IP).
+// Single-instance / best-effort — resets on deploy, which is fine at this scale.
+const RL_WINDOW_MS = 15 * 60 * 1000;
+const RL_MAX_EMAIL = 5;   // one person shouldn't need many links in 15 min
+const RL_MAX_IP = 20;     // looser, so shared office/NAT IPs don't block each other
+const rlHits = new Map();
+function overLimit(key, max) {
+  const now = Date.now();
+  const recent = (rlHits.get(key) || []).filter(t => now - t < RL_WINDOW_MS);
+  recent.push(now);
+  rlHits.set(key, recent);
+  return recent.length > max;
+}
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.socket.remoteAddress || 'unknown';
+}
+// Occasionally prune stale keys so the map can't grow unbounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, arr] of rlHits) {
+    if (!arr.some(t => now - t < RL_WINDOW_MS)) rlHits.delete(k);
+  }
+}, RL_WINDOW_MS).unref();
+
 // POST /api/auth/magic-link — always responds ok (no email enumeration)
 router.post('/api/auth/magic-link', async (req, res, next) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
+
+    if (overLimit('email:' + email, RL_MAX_EMAIL) || overLimit('ip:' + clientIp(req), RL_MAX_IP)) {
+      return res.status(429).json({ error: 'Too many requests. Please wait a few minutes and try again.' });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     await pool.query(

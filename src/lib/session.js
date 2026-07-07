@@ -16,7 +16,8 @@ function signSession(organizerId) {
   return `${payload}.${hmac(payload)}`;
 }
 
-function verifySession(cookieVal) {
+// Returns { id, exp } for a valid, unexpired session, else null.
+function parseSession(cookieVal) {
   if (!cookieVal) return null;
   const parts = cookieVal.split('.');
   if (parts.length !== 3) return null;
@@ -25,8 +26,16 @@ function verifySession(cookieVal) {
   const expected = hmac(payload);
   if (sig.length !== expected.length ||
       !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-  if (parseInt(exp, 10) < Math.floor(Date.now() / 1000)) return null;
-  return parseInt(id, 10);
+  const expNum = parseInt(exp, 10);
+  const idNum = parseInt(id, 10);
+  if (!Number.isFinite(expNum) || !Number.isFinite(idNum)) return null;
+  if (expNum < Math.floor(Date.now() / 1000)) return null; // expired
+  return { id: idNum, exp: expNum };
+}
+
+function verifySession(cookieVal) {
+  const s = parseSession(cookieVal);
+  return s ? s.id : null;
 }
 
 function readSessionCookie(req) {
@@ -45,4 +54,8 @@ function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
-module.exports = { signSession, verifySession, readSessionCookie, setSessionCookie, clearSessionCookie };
+module.exports = {
+  signSession, verifySession, parseSession,
+  readSessionCookie, setSessionCookie, clearSessionCookie,
+  MAX_AGE_SECONDS
+};
