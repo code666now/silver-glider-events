@@ -31,6 +31,74 @@ function fmtTicketPrice(price) {
   return n === 0 ? 'Paid admission' : `$${n.toFixed(2).replace(/\.00$/, '')}`;
 }
 
+function youtubeId(url) {
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (host === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || '';
+  const isHost = domain => host === domain || host.endsWith(`.${domain}`);
+  if (isHost('youtube.com') || isHost('youtube-nocookie.com')) {
+    if (url.pathname === '/watch') return url.searchParams.get('v') || '';
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (['embed', 'shorts', 'live'].includes(parts[0])) return parts[1] || '';
+  }
+  return '';
+}
+
+function youtubePlaylistId(url) {
+  const list = url.searchParams.get('list') || '';
+  return /^[\w-]{6,}$/.test(list) ? list : '';
+}
+
+function vibeEmbed(urlString) {
+  if (!urlString) return '';
+  let url;
+  try { url = new URL(urlString); } catch (_) { return ''; }
+  if (!['http:', 'https:'].includes(url.protocol)) return '';
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  const isHost = domain => host === domain || host.endsWith(`.${domain}`);
+
+  if (isHost('youtube.com') || isHost('youtube-nocookie.com') || host === 'youtu.be') {
+    const id = youtubeId(url);
+    if (id && /^[\w-]{6,}$/.test(id)) {
+      return `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/${esc(id)}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    }
+    const list = youtubePlaylistId(url);
+    if (list) {
+      return `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/videoseries?list=${esc(list)}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+    }
+  }
+
+  if (isHost('soundcloud.com')) {
+    const src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url.toString())}&color=%231cc5be&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=true`;
+    return `<iframe class="vibe-embed vibe-embed-audio" src="${esc(src)}" title="SoundCloud music preview" loading="lazy" allow="autoplay"></iframe>`;
+  }
+
+  if (isHost('spotify.com')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts[0] && parts[0].startsWith('intl-')) parts.shift();
+    const type = parts[0];
+    const id = parts[1];
+    if (['track', 'album', 'artist', 'playlist'].includes(type) && id && /^[A-Za-z0-9]+$/.test(id)) {
+      const src = `https://open.spotify.com/embed/${type}/${id}`;
+      return `<iframe class="vibe-embed vibe-embed-spotify" src="${esc(src)}" title="Spotify music preview" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+    }
+  }
+
+  if (isHost('bandcamp.com') && url.pathname.startsWith('/EmbeddedPlayer/')) {
+    return `<iframe class="vibe-embed vibe-embed-bandcamp" src="${esc(url.toString())}" title="Bandcamp music preview" loading="lazy"></iframe>`;
+  }
+
+  if (isHost('bandcamp.com') || isHost('soundcloud.com') || isHost('spotify.com')) {
+    return `<a class="sg-btn sg-btn-ghost vibe-listen" href="${esc(url.toString())}" target="_blank" rel="noopener">Listen</a>`;
+  }
+  return '';
+}
+
+function renderVibe(url) {
+  const embed = vibeEmbed(url);
+  if (!embed) return '';
+  return `<section class="vibe-section"><h2>Event Vibe</h2>${embed}</section>`;
+}
+
 async function loadEventBySlug(slug) {
   const { rows } = await pool.query(
     `SELECT e.*,
@@ -55,6 +123,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const ticketHtml = isPaid
       ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP required</em></div>';
+    const vibeHtml = renderVibe(event.event_vibe_url);
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
     const theme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
@@ -92,6 +161,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{MAPS_URL}}/g, esc(`https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`))
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
+      .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{ORGANIZER}}/g, esc(organizerLabel))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, isPaid ? 'RSVP' : "RSVP — it's free")

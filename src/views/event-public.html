@@ -129,6 +129,29 @@
     .ticket-note a { font-weight: 700; white-space: nowrap; }
     .ticket-note em { font-style: normal; color: var(--sg-text-dim); white-space: nowrap; }
     .desc { color: var(--sg-text-dim); font-size: 15px; line-height: 1.75; margin-bottom: 36px; }
+    .vibe-section {
+      margin: -8px 0 34px;
+      padding: 16px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.035);
+    }
+    .vibe-section h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+    .vibe-embed {
+      display: block;
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      background: var(--sg-surface);
+    }
+    .vibe-embed-video { aspect-ratio: 16 / 9; height: auto; }
+    .vibe-embed-audio { height: 166px; }
+    .vibe-embed-spotify { height: 152px; }
+    .vibe-embed-bandcamp { height: 120px; }
+    .vibe-listen { width: 100%; padding: 12px; }
 
     .actions { display: flex; gap: 10px; margin-bottom: 44px; }
     .actions .sg-btn { flex: 1; padding: 12px; font-size: 13px; }
@@ -179,6 +202,7 @@
     {{TICKET_HTML}}
 
     <p class="desc">{{DESCRIPTION_HTML}}</p>
+    {{VIBE_HTML}}
     <p class="host">Hosted by <strong>{{ORGANIZER}}</strong></p>
 
     <div class="rsvp-zone">

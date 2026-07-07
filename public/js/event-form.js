@@ -516,6 +516,7 @@ function collect() {
   return {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
+    event_vibe_url: $('event_vibe_url').value.trim() || null,
     cover_image_url: $('cover_image_url').value || null,
     event_date: $('event_date').value,
     start_time: $('start_time').value,
@@ -547,6 +548,7 @@ if (editId) {
   api(`/api/events/${editId}`).then(({ event }) => {
     $('title').value = event.title;
     $('description').value = event.description || '';
+    $('event_vibe_url').value = event.event_vibe_url || '';
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
     $('venue_name').value = event.venue_name;

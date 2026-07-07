@@ -29,6 +29,27 @@ function cleanTicketUrl(v) {
   }
 }
 
+function cleanVibeUrl(v) {
+  const raw = String(v ?? '').trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const isHost = domain => host === domain || host.endsWith(`.${domain}`);
+    const supported =
+      host === 'youtu.be' ||
+      isHost('youtube.com') ||
+      isHost('youtube-nocookie.com') ||
+      isHost('soundcloud.com') ||
+      isHost('spotify.com') ||
+      isHost('bandcamp.com');
+    return supported ? url.toString().slice(0, 700) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function cleanFloat(v) {
   if (v === '' || v == null) return null;
   const n = Number(v);
@@ -45,6 +66,7 @@ function validateEventBody(body, { partial = false } = {}) {
   const fields = {
     title:           v => String(v).trim().slice(0, 140),
     description:     v => String(v ?? '').trim(),
+    event_vibe_url:  cleanVibeUrl,
     cover_image_url: v => String(v ?? '').trim() || null,
     cover_credit_name: v => (v ? String(v).trim().slice(0, 120) : null),
     cover_credit_link: v => (v ? String(v).trim().slice(0, 300) : null),
@@ -131,8 +153,8 @@ router.post('/api/events', async (req, res, next) => {
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
@@ -140,7 +162,7 @@ router.post('/api/events', async (req, res, next) => {
            out.cover_credit_name || null, out.cover_credit_link || null,
            out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
            out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
-           out.google_place_id || null]
+           out.google_place_id || null, out.event_vibe_url || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
@@ -202,15 +224,15 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                start_time, end_time, timezone, venue_name, venue_address, category,
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
                                background_theme, cover_credit_name, cover_credit_link,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26)
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url, e.event_date,
            e.start_time, e.end_time, e.timezone, e.venue_name, e.venue_address, e.category,
            e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
            e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
            e.venue_city || null, e.venue_state || null, e.venue_latitude, e.venue_longitude,
-           e.google_place_id || null]
+           e.google_place_id || null, e.event_vibe_url || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
