@@ -33,6 +33,21 @@ function renderNav(active) {
     </div>`;
 }
 
+// Inject the moving aurora background behind the page (once).
+function mountAurora() {
+  if (document.querySelector('.sg-aurora')) return;
+  const aurora = document.createElement('div');
+  aurora.className = 'sg-aurora';
+  aurora.setAttribute('aria-hidden', 'true');
+  const veil = document.createElement('div');
+  veil.className = 'sg-aurora-veil';
+  veil.setAttribute('aria-hidden', 'true');
+  document.body.prepend(veil);
+  document.body.prepend(aurora);
+}
+if (document.readyState !== 'loading') mountAurora();
+else document.addEventListener('DOMContentLoaded', mountAurora);
+
 let _toastTimer;
 function toast(msg) {
   let el = document.querySelector('.sg-toast');

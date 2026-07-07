@@ -180,6 +180,36 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-swatch:hover { transform: translateY(-1px); }
 .sg-swatch.on { border-color: var(--sg-accent); }
 
+/* Moving aurora background for the organizer app pages (dashboard, events,
+   forms, settings, login). Sits behind content via negative z-index so no
+   layout needs to opt in. Public event pages use their own picked theme. */
+.sg-aurora {
+  position: fixed;
+  inset: -12%;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(48% 40% at 12% 6%, rgba(255,138,42,.30), transparent 60%),
+    radial-gradient(48% 40% at 90% 8%, rgba(28,197,190,.22), transparent 60%),
+    radial-gradient(55% 46% at 86% 95%, rgba(255,138,42,.22), transparent 62%),
+    radial-gradient(50% 42% at 14% 94%, rgba(28,197,190,.18), transparent 62%);
+  animation: sg-aurora-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+/* Darken toward the content so text stays legible over the color */
+.sg-aurora-veil {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(130% 90% at 50% 22%, transparent 0%, rgba(14,14,14,.5) 72%, rgba(14,14,14,.82) 100%);
+}
+@keyframes sg-aurora-drift {
+  from { transform: translate3d(-2.5%, -2%, 0) scale(1.06); }
+  to   { transform: translate3d(2.5%, 2.5%, 0) scale(1.16); }
+}
+@media (prefers-reduced-motion: reduce) { .sg-aurora { animation: none; } }
+
 /* Badges */
 .sg-badge {
   display: inline-block;
