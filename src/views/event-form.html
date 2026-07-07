@@ -53,6 +53,7 @@
     .image-modal.open { display: flex; }
     .image-modal-card {
       width: min(920px, 100%);
+      height: min(820px, calc(100vh - 36px));
       max-height: min(820px, calc(100vh - 36px));
       overflow: hidden;
       display: flex;
@@ -83,8 +84,11 @@
       cursor: pointer;
     }
     .image-modal-body {
+      flex: 1;
+      min-height: 0;
       padding: 18px 22px 22px;
-      overflow: auto;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .picker-upload {
       position: relative;
@@ -214,6 +218,7 @@
     @media (max-width: 640px) {
       .image-modal { padding: 0; align-items: stretch; }
       .image-modal-card {
+        height: 100dvh;
         max-height: none;
         min-height: 100vh;
         border-radius: 0;

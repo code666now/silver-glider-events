@@ -60,6 +60,7 @@ let currentPhotoPage = 0;
 let currentPhotoTotalPages = 1;
 let photoLoading = false;
 let photoObserver;
+let photoScrollBound = false;
 
 // User-facing labels stay friendly; hidden queries are tuned for event-page
 // backgrounds and flyer-style cover imagery.
@@ -217,11 +218,20 @@ function updateLoadMore() {
 }
 
 function setupPhotoInfiniteScroll() {
-  if (photoObserver || !('IntersectionObserver' in window)) return;
-  photoObserver = new IntersectionObserver(entries => {
-    if (entries.some(entry => entry.isIntersecting)) loadMorePhotos();
-  }, { root: document.querySelector('.image-modal-body'), rootMargin: '260px 0px' });
-  photoObserver.observe($('photo-load-more'));
+  const scroller = document.querySelector('.image-modal-body');
+  if (!photoObserver && 'IntersectionObserver' in window) {
+    photoObserver = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) loadMorePhotos();
+    }, { root: scroller, rootMargin: '360px 0px' });
+    photoObserver.observe($('photo-load-more'));
+  }
+  if (!photoScrollBound && scroller) {
+    photoScrollBound = true;
+    scroller.addEventListener('scroll', () => {
+      const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (remaining < 700) loadMorePhotos();
+    }, { passive: true });
+  }
 }
 
 async function searchPhotos(q, { category = null, page = 1, append = false } = {}) {
