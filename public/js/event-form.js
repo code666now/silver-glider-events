@@ -55,20 +55,22 @@ let activeImageCategory = '⭐ Featured';
 let lastPhotos = [];
 let searchTimer;
 
+// User-facing labels stay friendly; hidden queries are tuned for event-page
+// backgrounds and flyer-style cover imagery.
 const IMAGE_CATEGORIES = [
-  ['⭐ Featured', 'event nightlife concert crowd'],
-  ['🎸 Live Music', 'live music concert stage'],
-  ['🎧 DJ Party', 'dj party nightclub dance'],
-  ['🤘 Rock Show', 'rock concert guitar stage'],
-  ['⚡ Punk Show', 'punk concert band'],
-  ['🌈 Pop Concert', 'pop concert colorful stage'],
-  ['🏠 House Party', 'house party friends'],
-  ['🎵 Listening Party', 'vinyl record listening party'],
-  ['👗 Fashion Show', 'fashion runway show'],
-  ['🎙️ Open Mic', 'open mic stage microphone'],
-  ['🎭 Comedy', 'comedy club microphone'],
-  ['🎨 Art Show', 'art gallery exhibition'],
-  ['🧪 Experimental', 'experimental performance art']
+  { label: '⭐ Featured', query: 'event flyer background concert crowd neon lights' },
+  { label: '🎸 Live Music', query: 'live concert stage lights crowd atmospheric' },
+  { label: '🎧 DJ Party', query: 'nightclub dj booth dance floor neon lights' },
+  { label: '🤘 Rock Show', query: 'dark rock concert stage guitar crowd high contrast' },
+  { label: '⚡ Punk Show', query: 'underground concert stage gritty crowd dramatic lights' },
+  { label: '🌈 Pop Concert', query: 'colorful concert stage lights crowd vibrant' },
+  { label: '🏠 House Party', query: 'house party friends warm lights candid' },
+  { label: '🎵 Listening Party', query: 'vinyl records turntable moody room warm light' },
+  { label: '👗 Fashion Show', query: 'runway fashion show dramatic lights audience' },
+  { label: '🎙️ Open Mic', query: 'microphone stage spotlight intimate venue' },
+  { label: '🎭 Comedy', query: 'comedy club microphone stage spotlight dark' },
+  { label: '🎨 Art Show', query: 'gallery opening exhibition people modern art' },
+  { label: '🧪 Experimental', query: 'abstract performance art stage lights atmospheric' }
 ];
 
 function setCover(url, creditName, creditLink) {
@@ -175,7 +177,7 @@ api('/api/photos/enabled').then(({ enabled }) => {
 function renderImageCategories() {
   const wrap = $('image-categories');
   wrap.innerHTML = '';
-  IMAGE_CATEGORIES.forEach(([label]) => {
+  IMAGE_CATEGORIES.forEach(({ label }) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'picker-cat';
@@ -236,11 +238,11 @@ function renderPhotoGrid(results) {
 }
 
 function loadCategory(label) {
-  const item = IMAGE_CATEGORIES.find(([name]) => name === label) || IMAGE_CATEGORIES[0];
-  activeImageCategory = item[0];
+  const item = IMAGE_CATEGORIES.find(category => category.label === label) || IMAGE_CATEGORIES[0];
+  activeImageCategory = item.label;
   markActiveCategory();
   $('unsplash-q').value = '';
-  searchPhotos(item[1], { category: item[0] });
+  searchPhotos(item.query, { category: item.label });
 }
 
 async function runSearch() {
