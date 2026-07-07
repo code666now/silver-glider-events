@@ -104,25 +104,25 @@ async function loadFollowers() {
     if (announcedAt && announcedCount > 0) {
       btn.style.display = '';
       btn.disabled = true;
-      btn.textContent = `Announced to ${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'}`;
+      btn.textContent = `${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'} invited`;
       return;
     }
     if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
     btn.style.display = '';
     btn.dataset.count = count;
-    btn.textContent = `Email my ${count} ${count === 1 ? 'follower' : 'followers'}`;
+    btn.textContent = `Invite ${count} ${count === 1 ? 'follower' : 'followers'}`;
   } catch (_) {}
 }
 
 $('announce').addEventListener('click', async () => {
   const count = $('announce').dataset.count || 'your';
-  if (!confirm(`Send an announcement email about this event to ${count} followers? This can only be done once.`)) return;
+  if (!confirm(`Send this event to ${count} ${count === '1' ? 'follower' : 'followers'} who asked to hear about future events? This can only be done once.`)) return;
   $('announce').disabled = true;
   $('announce').textContent = 'Sending…';
   try {
     const { sent } = await api(`/api/events/${eventId}/announce`, { method: 'POST' });
-    toast(`Announcement sent to ${sent} ${sent === 1 ? 'follower' : 'followers'}`);
-    $('announce').textContent = `Announced to ${sent} ${sent === 1 ? 'follower' : 'followers'}`;
+    toast(`${sent} ${sent === 1 ? 'follower' : 'followers'} invited`);
+    $('announce').textContent = `${sent} ${sent === 1 ? 'follower' : 'followers'} invited`;
   } catch (err) {
     toast(err.message);
     $('announce').disabled = false;
