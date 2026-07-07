@@ -47,11 +47,15 @@
       align-items: center;
       justify-content: center;
       padding: 18px;
+      --picker-bg-a: #0f403f;
+      --picker-bg-b: #2b2450;
+      --picker-bg-c: #6c4a1c;
       background: rgba(0,0,0,0.72);
       backdrop-filter: blur(10px);
     }
     .image-modal.open { display: flex; }
     .image-modal-card {
+      position: relative;
       width: min(920px, 100%);
       height: min(820px, calc(100vh - 36px));
       max-height: min(820px, calc(100vh - 36px));
@@ -62,6 +66,75 @@
       border: 1px solid var(--sg-border);
       border-radius: 22px;
       box-shadow: var(--sg-shadow);
+    }
+    .image-modal-card::before,
+    .image-modal-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .image-modal-card::before {
+      z-index: 0;
+      opacity: .78;
+      background:
+        radial-gradient(circle at 18% 20%, color-mix(in srgb, var(--picker-bg-a) 88%, transparent) 0 18%, transparent 42%),
+        radial-gradient(circle at 82% 22%, color-mix(in srgb, var(--picker-bg-b) 82%, transparent) 0 17%, transparent 40%),
+        radial-gradient(circle at 54% 92%, color-mix(in srgb, var(--picker-bg-c) 78%, transparent) 0 20%, transparent 46%),
+        linear-gradient(135deg, #09090b 0%, #121216 55%, #070708 100%);
+      background-size: 135% 135%, 145% 145%, 150% 150%, 100% 100%;
+      filter: saturate(.82) brightness(.82);
+      transform: scale(1.04);
+      transition: opacity .42s ease, filter .42s ease, background .42s ease;
+      animation: picker-bg-drift 15s ease-in-out infinite alternate;
+    }
+    .image-modal-card::after {
+      z-index: 1;
+      background:
+        linear-gradient(180deg, rgba(8,8,10,.78), rgba(8,8,10,.9)),
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,.08), transparent 42%);
+    }
+    .image-modal-card > * {
+      position: relative;
+      z-index: 2;
+    }
+    .image-modal.picker-bg-film .image-modal-card::after,
+    .image-modal.picker-bg-textures .image-modal-card::after,
+    .image-modal.picker-bg-nostalgia .image-modal-card::after {
+      background:
+        linear-gradient(180deg, rgba(8,8,10,.77), rgba(8,8,10,.9)),
+        repeating-radial-gradient(circle at 18% 12%, rgba(255,255,255,.04) 0 1px, transparent 1px 5px);
+      animation: picker-grain-drift 7s steps(4, end) infinite;
+    }
+    .image-modal.picker-bg-patterns .image-modal-card::after,
+    .image-modal.picker-bg-urban .image-modal-card::after {
+      background:
+        linear-gradient(180deg, rgba(8,8,10,.8), rgba(8,8,10,.92)),
+        repeating-linear-gradient(90deg, rgba(28,197,190,.08) 0 1px, transparent 1px 54px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 54px);
+      animation: picker-grid-drift 18s linear infinite;
+    }
+    .image-modal.picker-bg-photo .image-modal-card::before {
+      opacity: .86;
+      filter: saturate(.74) brightness(.76);
+    }
+    .image-modal.picker-bg-updating .image-modal-card::before {
+      opacity: .48;
+    }
+    @keyframes picker-bg-drift {
+      0% { background-position: 0% 10%, 100% 6%, 48% 100%, 0 0; }
+      50% { background-position: 34% 30%, 70% 28%, 60% 78%, 0 0; }
+      100% { background-position: 12% 54%, 88% 44%, 42% 66%, 0 0; }
+    }
+    @keyframes picker-grain-drift {
+      0%, 100% { transform: translate3d(0,0,0); }
+      25% { transform: translate3d(-1%,1%,0); }
+      50% { transform: translate3d(1%,-1%,0); }
+      75% { transform: translate3d(-.5%,-.5%,0); }
+    }
+    @keyframes picker-grid-drift {
+      from { background-position: 0 0, 0 0, 0 0; }
+      to { background-position: 0 0, 54px 0, 0 54px; }
     }
     .image-modal-head {
       display: flex;
@@ -90,12 +163,18 @@
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
     }
+    .image-modal-head,
+    .image-modal-body,
+    .image-modal-foot {
+      background: rgba(16,16,18,.42);
+      backdrop-filter: blur(18px);
+    }
     .picker-upload {
       position: relative;
       min-height: 96px;
       border: 1px dashed rgba(28,197,190,0.35);
       border-radius: 16px;
-      background: rgba(28,197,190,0.06);
+      background: rgba(15,26,27,0.72);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -115,6 +194,10 @@
       gap: 10px;
       margin-bottom: 14px;
     }
+    .picker-search .sg-input {
+      background: rgba(13,13,15,.7);
+      border-color: rgba(255,255,255,.13);
+    }
     .picker-search .sg-btn { padding: 0 20px; }
     .picker-cats {
       display: flex;
@@ -131,7 +214,7 @@
     .picker-cat {
       border: 1px solid var(--sg-border);
       border-radius: 999px;
-      background: var(--sg-surface);
+      background: rgba(19,19,22,.7);
       color: var(--sg-text-dim);
       padding: 9px 13px;
       font-family: var(--sg-font-body);
@@ -166,7 +249,7 @@
       border: 1px solid var(--sg-border-soft);
       border-radius: 14px;
       overflow: hidden;
-      background: var(--sg-surface);
+      background: rgba(19,19,22,.74);
       aspect-ratio: 4 / 3;
       cursor: pointer;
     }
@@ -207,7 +290,7 @@
       margin-top: 14px;
       border: 1px solid var(--sg-border);
       border-radius: 999px;
-      background: var(--sg-surface);
+      background: rgba(19,19,22,.72);
       color: var(--sg-text-dim);
       padding: 12px 18px;
       font-family: var(--sg-font-body);
@@ -224,6 +307,18 @@
       gap: 10px;
       padding: 14px 22px 20px;
       border-top: 1px solid var(--sg-border-soft);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .image-modal-card::before,
+      .image-modal-card::after,
+      .picker-cats {
+        animation: none !important;
+        scroll-behavior: auto;
+      }
+      .picker-cat,
+      .picker-photo img {
+        transition: none;
+      }
     }
     @media (max-width: 640px) {
       .image-modal { padding: 0; align-items: stretch; }

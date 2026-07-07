@@ -61,23 +61,121 @@ let currentPhotoTotalPages = 1;
 let photoLoading = false;
 let photoScrollBound = false;
 let lastPhotoLoadAt = 0;
+const IMAGE_BG_CLASSES = [];
+let pickerBgTimer;
 
 // User-facing visual themes stay simple; hidden queries are tuned for
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
-  { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background' },
-  { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows' },
-  { label: '🌿 Nature', query: 'forest mountains plants sky natural light background' },
-  { label: '✨ Abstract', query: 'abstract gradients shapes soft color background' },
-  { label: '🎨 Textures', query: 'concrete paper grain fabric texture background' },
-  { label: '📐 Patterns', query: 'geometric repeating patterns graphic design background' },
-  { label: '🌈 Colorful', query: 'vibrant colors neon rainbow bright abstract background' },
-  { label: '🌙 Dark', query: 'black shadows low light dark moody background' },
-  { label: '☀️ Summer', query: 'sunshine beach warm colors golden light background' },
-  { label: '📼 Nostalgia', query: 'vintage retro analog 90s nostalgic background' },
-  { label: '🏙️ Urban', query: 'city architecture streets nightlife urban lights' },
-  { label: '🖤 Minimal', query: 'clean simple negative space minimal background' }
+  { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background', bgClass: 'picker-bg-featured', colors: ['#155b5a', '#30255f', '#75511f'] },
+  { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows', bgClass: 'picker-bg-film', colors: ['#243142', '#4b3345', '#8a5f31'] },
+  { label: '🌿 Nature', query: 'forest mountains plants sky natural light background', bgClass: 'picker-bg-nature', colors: ['#164c3a', '#17495b', '#546629'] },
+  { label: '✨ Abstract', query: 'abstract gradients shapes soft color background', bgClass: 'picker-bg-abstract', colors: ['#2b3c7b', '#6e3277', '#167577'] },
+  { label: '🎨 Textures', query: 'concrete paper grain fabric texture background', bgClass: 'picker-bg-textures', colors: ['#4a443e', '#272c35', '#5a4930'] },
+  { label: '📐 Patterns', query: 'geometric repeating patterns graphic design background', bgClass: 'picker-bg-patterns', colors: ['#153f47', '#352d63', '#5d5d5f'] },
+  { label: '🌈 Colorful', query: 'vibrant colors neon rainbow bright abstract background', bgClass: 'picker-bg-colorful', colors: ['#196b72', '#6a3574', '#7c4f1c'] },
+  { label: '🌙 Dark', query: 'black shadows low light dark moody background', bgClass: 'picker-bg-dark', colors: ['#0c1625', '#21152f', '#331c32'] },
+  { label: '☀️ Summer', query: 'sunshine beach warm colors golden light background', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
+  { label: '📼 Nostalgia', query: 'vintage retro analog 90s nostalgic background', bgClass: 'picker-bg-nostalgia', colors: ['#5b3c57', '#765132', '#244c5d'] },
+  { label: '🏙️ Urban', query: 'city architecture streets nightlife urban lights', bgClass: 'picker-bg-urban', colors: ['#142b42', '#3a345e', '#6c4d21'] },
+  { label: '🖤 Minimal', query: 'clean simple negative space minimal background', bgClass: 'picker-bg-minimal', colors: ['#1f2428', '#333236', '#0f3f42'] }
 ];
+IMAGE_CATEGORIES.forEach(category => IMAGE_BG_CLASSES.push(category.bgClass));
+
+function applyPickerBackground(item, className = item.bgClass) {
+  if (!imageModal || !item) return;
+  const update = () => {
+    imageModal.classList.remove(...IMAGE_BG_CLASSES, 'picker-bg-photo');
+    imageModal.classList.add(className);
+    const [a, b, c] = item.colors;
+    imageModal.style.setProperty('--picker-bg-a', a);
+    imageModal.style.setProperty('--picker-bg-b', b);
+    imageModal.style.setProperty('--picker-bg-c', c || a);
+    window.clearTimeout(pickerBgTimer);
+    pickerBgTimer = window.setTimeout(() => imageModal.classList.remove('picker-bg-updating'), 420);
+  };
+  if (imageModal.classList.contains('open')) {
+    imageModal.classList.add('picker-bg-updating');
+    window.requestAnimationFrame(update);
+  } else {
+    update();
+    imageModal.classList.remove('picker-bg-updating');
+  }
+}
+
+function softenRgb({ r, g, b }) {
+  const darken = 0.56;
+  const desaturate = 0.34;
+  const avg = (r + g + b) / 3;
+  return {
+    r: Math.round((avg * desaturate + r * (1 - desaturate)) * darken),
+    g: Math.round((avg * desaturate + g * (1 - desaturate)) * darken),
+    b: Math.round((avg * desaturate + b * (1 - desaturate)) * darken)
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return '#' + [r, g, b].map(value => value.toString(16).padStart(2, '0')).join('');
+}
+
+function loadImageForPalette(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+async function extractImagePalette(url) {
+  const img = await loadImageForPalette(url);
+  const canvas = document.createElement('canvas');
+  const size = 36;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data;
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += 16) {
+    const alpha = data[i + 3];
+    if (alpha < 128) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    if (luminance < 0.08 || luminance > 0.93) continue;
+    const key = [r, g, b].map(value => Math.round(value / 32) * 32).join(',');
+    const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0 };
+    bucket.r += r;
+    bucket.g += g;
+    bucket.b += b;
+    bucket.count += 1;
+    buckets.set(key, bucket);
+  }
+  const swatches = [...buckets.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+    .map(bucket => softenRgb({
+      r: Math.round(bucket.r / bucket.count),
+      g: Math.round(bucket.g / bucket.count),
+      b: Math.round(bucket.b / bucket.count)
+    }))
+    .map(rgbToHex);
+  if (swatches.length < 2) throw new Error('Not enough image color data');
+  return swatches;
+}
+
+async function applySelectedImagePalette(url) {
+  try {
+    const colors = await extractImagePalette(url);
+    applyPickerBackground({ colors: [colors[0], colors[1], colors[2] || colors[0]] }, 'picker-bg-photo');
+  } catch (_) {
+    const fallback = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
+    applyPickerBackground(fallback);
+  }
+}
 
 function setCover(url, creditName, creditLink) {
   $('cover_image_url').value = url || '';
@@ -102,6 +200,8 @@ function openImageModal() {
   imageModal.classList.add('open');
   imageModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  const theme = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
+  applyPickerBackground(theme);
   if (photosEnabled) loadCategory('⭐ Featured');
 }
 
@@ -159,6 +259,7 @@ function uploadCover(file) {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
       setCover(data.url); // own upload → no credit
+      applySelectedImagePalette(data.url);
       closeImageModal();
     } catch (err) {
       showError(err.message);
@@ -289,6 +390,7 @@ function loadMorePhotos() {
 function loadCategory(label) {
   const item = IMAGE_CATEGORIES.find(category => category.label === label) || IMAGE_CATEGORIES[0];
   activeImageCategory = item.label;
+  applyPickerBackground(item);
   markActiveCategory();
   $('unsplash-q').value = '';
   searchPhotos(item.query, { category: item.label });
@@ -315,6 +417,7 @@ $('unsplash-q').addEventListener('input', e => {
 
 function pickPhoto(photo) {
   setCover(photo.full, photo.credit_name, photo.credit_link);
+  applySelectedImagePalette(photo.thumb || photo.full);
   closeImageModal();
   // Required by Unsplash: register the download when a photo is chosen
   api('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
