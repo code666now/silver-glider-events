@@ -13,7 +13,10 @@ async function search(query, page = 1) {
   });
   if (!res.ok) throw new Error(`Unsplash search failed (${res.status})`);
   const data = await res.json();
-  return (data.results || []).map(p => ({
+  return {
+    page,
+    totalPages: data.total_pages || 1,
+    results: (data.results || []).map(p => ({
     id: p.id,
     thumb: p.urls.small,
     // regular is ~1080px wide — good for a cover; hotlinked per guidelines
@@ -21,7 +24,8 @@ async function search(query, page = 1) {
     download_location: p.links.download_location,
     credit_name: p.user.name,
     credit_link: `${p.user.links.html}?${UTM}`
-  }));
+    }))
+  };
 }
 
 // Required by Unsplash when a user actually selects a photo

@@ -188,6 +188,22 @@
       text-align: center;
       background: rgba(255,255,255,0.03);
     }
+    .picker-more {
+      width: 100%;
+      margin-top: 14px;
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      background: var(--sg-surface);
+      color: var(--sg-text-dim);
+      padding: 12px 18px;
+      font-family: var(--sg-font-body);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .picker-more:hover { border-color: var(--sg-accent); color: var(--sg-accent); }
+    .picker-more[hidden] { display: none; }
+    .picker-more:disabled { cursor: default; opacity: .65; }
     .image-modal-foot {
       display: flex;
       justify-content: flex-end;
@@ -262,6 +278,7 @@
               <div class="picker-cats" id="image-categories"></div>
               <p class="picker-status" id="unsplash-status"></p>
               <div class="picker-grid" id="unsplash-results"></div>
+              <button type="button" class="picker-more" id="photo-load-more" hidden>Load more photos</button>
               <p style="font-size:11px;color:var(--sg-text-faint);margin-top:12px">Photos via Unsplash. The photographer is credited on your event page.</p>
             </div>
           </div>

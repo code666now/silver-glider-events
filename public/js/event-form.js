@@ -54,6 +54,12 @@ let photosEnabled = false;
 let activeImageCategory = '⭐ Featured';
 let lastPhotos = [];
 let searchTimer;
+let currentPhotoQuery = '';
+let currentPhotoCategory = '';
+let currentPhotoPage = 0;
+let currentPhotoTotalPages = 1;
+let photoLoading = false;
+let photoObserver;
 
 // User-facing labels stay friendly; hidden queries are tuned for event-page
 // backgrounds and flyer-style cover imagery.
@@ -187,6 +193,7 @@ function renderImageCategories() {
     wrap.appendChild(chip);
   });
   markActiveCategory();
+  setupPhotoInfiniteScroll();
 }
 
 function markActiveCategory() {
@@ -201,26 +208,52 @@ function markSelectedPhoto(url) {
   });
 }
 
-async function searchPhotos(q, { category = null } = {}) {
+function updateLoadMore() {
+  const btn = $('photo-load-more');
+  const hasMore = currentPhotoPage < currentPhotoTotalPages;
+  btn.hidden = !hasMore || !currentPhotoQuery;
+  btn.disabled = photoLoading;
+  btn.textContent = photoLoading ? 'Loading...' : 'Load more photos';
+}
+
+function setupPhotoInfiniteScroll() {
+  if (photoObserver || !('IntersectionObserver' in window)) return;
+  photoObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) loadMorePhotos();
+  }, { root: document.querySelector('.image-modal-body'), rootMargin: '260px 0px' });
+  photoObserver.observe($('photo-load-more'));
+}
+
+async function searchPhotos(q, { category = null, page = 1, append = false } = {}) {
+  if (photoLoading) return;
+  photoLoading = true;
+  currentPhotoQuery = q;
+  currentPhotoCategory = category || '';
+  currentPhotoPage = page;
   const status = $('unsplash-status');
   const grid = $('unsplash-results');
-  status.textContent = 'Loading images...';
-  grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">Loading images...</div>';
+  status.textContent = append ? 'Loading more images...' : 'Loading images...';
+  updateLoadMore();
+  if (!append) grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">Loading images...</div>';
   try {
-    const { results } = await api(`/api/photos/search?q=${encodeURIComponent(q)}`);
-    lastPhotos = results;
-    status.textContent = results.length ? (category || '') : '';
-    renderPhotoGrid(results);
+    const { results, totalPages } = await api(`/api/photos/search?q=${encodeURIComponent(q)}&page=${page}`);
+    currentPhotoTotalPages = totalPages || 1;
+    lastPhotos = append ? lastPhotos.concat(results) : results;
+    status.textContent = lastPhotos.length ? (currentPhotoCategory || '') : '';
+    renderPhotoGrid(results, { append });
   } catch (err) {
-    grid.innerHTML = '';
+    if (!append) grid.innerHTML = '';
     status.textContent = err.message;
+  } finally {
+    photoLoading = false;
+    updateLoadMore();
   }
 }
 
-function renderPhotoGrid(results) {
+function renderPhotoGrid(results, { append = false } = {}) {
   const grid = $('unsplash-results');
-  grid.innerHTML = '';
-  if (!results.length) {
+  if (!append) grid.innerHTML = '';
+  if (!results.length && !append) {
     grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">No photos found. Try another search.</div>';
     return;
   }
@@ -235,6 +268,15 @@ function renderPhotoGrid(results) {
     grid.appendChild(cell);
   });
   markSelectedPhoto($('cover_image_url').value);
+}
+
+function loadMorePhotos() {
+  if (photoLoading || !currentPhotoQuery || currentPhotoPage >= currentPhotoTotalPages) return;
+  searchPhotos(currentPhotoQuery, {
+    category: currentPhotoCategory,
+    page: currentPhotoPage + 1,
+    append: true
+  });
 }
 
 function loadCategory(label) {
@@ -254,6 +296,7 @@ async function runSearch() {
 }
 $('unsplash-go').addEventListener('click', runSearch);
 $('unsplash-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
+$('photo-load-more').addEventListener('click', loadMorePhotos);
 $('unsplash-q').addEventListener('input', e => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
@@ -265,7 +308,7 @@ $('unsplash-q').addEventListener('input', e => {
 
 function pickPhoto(photo) {
   setCover(photo.full, photo.credit_name, photo.credit_link);
-  $('unsplash-panel').style.display = 'none';
+  closeImageModal();
   // Required by Unsplash: register the download when a photo is chosen
   api('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
 }
