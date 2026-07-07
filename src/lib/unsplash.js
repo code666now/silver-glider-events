@@ -11,7 +11,15 @@ async function search(query, page = 1) {
   const res = await fetch(url, {
     headers: { Authorization: `Client-ID ${ACCESS_KEY}`, 'Accept-Version': 'v1' }
   });
-  if (!res.ok) throw new Error(`Unsplash search failed (${res.status})`);
+  if (!res.ok) {
+    const err = new Error(
+      res.status === 403 || res.status === 429
+        ? 'Photo search is temporarily limited. Upload a photo or try again in a bit.'
+        : `Unsplash search failed (${res.status})`
+    );
+    err.status = res.status === 403 || res.status === 429 ? 429 : 502;
+    throw err;
+  }
   const data = await res.json();
   return {
     page,

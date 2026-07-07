@@ -246,6 +246,7 @@ async function searchPhotos(q, { category = null, page = 1, append = false } = {
     renderPhotoGrid(results, { append });
   } catch (err) {
     if (!append) grid.innerHTML = '';
+    currentPhotoTotalPages = currentPhotoPage;
     status.textContent = err.message;
   } finally {
     photoLoading = false;
