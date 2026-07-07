@@ -21,6 +21,8 @@ function validateEventBody(body, { partial = false } = {}) {
     title:           v => String(v).trim().slice(0, 140),
     description:     v => String(v ?? '').trim(),
     cover_image_url: v => String(v ?? '').trim() || null,
+    cover_credit_name: v => (v ? String(v).trim().slice(0, 120) : null),
+    cover_credit_link: v => (v ? String(v).trim().slice(0, 300) : null),
     event_date:      v => String(v).trim(),
     start_time:      v => String(v).trim(),
     end_time:        v => (v ? String(v).trim() : null),
@@ -78,12 +80,14 @@ router.post('/api/events', async (req, res, next) => {
       try {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
-                               start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                               start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
+                               cover_credit_name, cover_credit_link)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
-           out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight']
+           out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight',
+           out.cover_credit_name || null, out.cover_credit_link || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {

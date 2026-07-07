@@ -50,6 +50,11 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image','bg-theme','bg-${theme}');this.remove()"></div>`
       : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`;
 
+    // Unsplash attribution (only when a credited photo is the cover)
+    const creditHtml = (event.cover_image_url && event.cover_credit_name)
+      ? `<p class="photo-credit">Photo by <a href="${esc(event.cover_credit_link || '#')}" target="_blank" rel="noopener">${esc(event.cover_credit_name)}</a> on <a href="https://unsplash.com/?utm_source=silver_glider_events&utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></p>`
+      : '';
+
     const eventJson = {
       slug: event.slug,
       title: event.title,
@@ -66,6 +71,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
       .replace(/{{BODY_CLASS}}/g, `bg-${theme}`)
       .replace(/{{HERO}}/g, heroHtml)
+      .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
       .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))
       .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
       .replace(/{{VENUE_NAME}}/g, esc(event.venue_name))

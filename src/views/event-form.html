@@ -54,7 +54,26 @@
         <div class="cover-progress" id="cover-progress"></div>
         <input type="file" id="cover-input" accept="image/*" style="display:none">
       </div>
+
+      <div id="cover-actions" style="display:flex;gap:8px;margin:-12px 0 22px">
+        <button type="button" class="sg-btn sg-btn-ghost" id="btn-upload" style="flex:1;padding:9px;font-size:13px">Upload a photo</button>
+        <button type="button" class="sg-btn sg-btn-ghost" id="btn-search" style="flex:1;padding:9px;font-size:13px;display:none">Search free photos</button>
+        <button type="button" class="sg-btn sg-btn-ghost" id="btn-clear-cover" style="flex:0;padding:9px 14px;font-size:13px;display:none">Remove</button>
+      </div>
+
+      <div id="unsplash-panel" style="display:none;margin:-8px 0 22px">
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input class="sg-input" id="unsplash-q" placeholder="Search photos — rooftop, gallery, DJ…" style="flex:1">
+          <button type="button" class="sg-btn sg-btn-primary" id="unsplash-go" style="padding:0 20px;font-size:14px">Search</button>
+        </div>
+        <p id="unsplash-status" style="font-size:12px;color:var(--sg-text-faint);margin-bottom:10px"></p>
+        <div id="unsplash-results" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
+        <p style="font-size:11px;color:var(--sg-text-faint);margin-top:10px">Photos via Unsplash. The photographer is credited on your event page.</p>
+      </div>
+
       <input type="hidden" id="cover_image_url">
+      <input type="hidden" id="cover_credit_name">
+      <input type="hidden" id="cover_credit_link">
 
       <div class="sg-field">
         <label>Background <span style="opacity:.5;text-transform:none;letter-spacing:0">— shows when there's no cover photo</span></label>

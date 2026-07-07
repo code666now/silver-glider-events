@@ -124,12 +124,15 @@
     .qr-footer p { font-size: 11px; color: var(--sg-text-faint); margin-top: 10px; text-transform: uppercase; letter-spacing: 0.15em; }
     .host { font-size: 13px; color: var(--sg-text-faint); margin-bottom: 30px; }
     .host strong { color: var(--sg-text-dim); }
+    .photo-credit { font-size: 11px; color: var(--sg-text-faint); margin-top: 8px; text-align: center; }
+    .photo-credit a { color: var(--sg-text-dim); text-decoration: underline; }
+    @media (min-width: 880px) { .photo-credit { text-align: left; } }
   </style>
 </head>
 <body>
   <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true"></div>
   <div class="layout">
-    <div class="col-media">{{HERO}}</div>
+    <div class="col-media">{{HERO}}{{PHOTO_CREDIT}}</div>
     <div class="col-details">
   <div class="wrap">
     <p class="sg-label cat">{{CATEGORY}}</p>

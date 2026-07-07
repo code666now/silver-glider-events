@@ -29,10 +29,30 @@ THEMES.forEach(key => {
 });
 setTheme('midnight');
 
-// Cover upload — click or drag/drop
+// ── Cover image: upload, Unsplash search, or none ──
 const drop = $('cover-drop');
 const fileInput = $('cover-input');
+
+function setCover(url, creditName, creditLink) {
+  $('cover_image_url').value = url || '';
+  $('cover_credit_name').value = creditName || '';
+  $('cover_credit_link').value = creditLink || '';
+  const img = $('cover-preview');
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    drop.classList.add('has-image');
+    $('btn-clear-cover').style.display = '';
+  } else {
+    img.style.display = 'none';
+    drop.classList.remove('has-image');
+    $('btn-clear-cover').style.display = 'none';
+  }
+}
+
 drop.addEventListener('click', () => fileInput.click());
+$('btn-upload').addEventListener('click', () => fileInput.click());
+$('btn-clear-cover').addEventListener('click', () => { setCover(''); });
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
 drop.addEventListener('drop', e => {
@@ -59,17 +79,57 @@ function uploadCover(file) {
     try {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
-      $('cover_image_url').value = data.url;
-      const img = $('cover-preview');
-      img.src = data.url;
-      img.style.display = 'block';
-      drop.classList.add('has-image');
+      setCover(data.url); // own upload → no credit
+      $('unsplash-panel').style.display = 'none';
     } catch (err) {
       showError(err.message);
     }
   };
   xhr.onerror = () => { progress.style.width = '0%'; showError('Upload failed'); };
   xhr.send(form);
+}
+
+// Unsplash search — only shown if the server has an access key configured
+$('btn-search').addEventListener('click', () => {
+  const p = $('unsplash-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') $('unsplash-q').focus();
+});
+api('/api/photos/enabled').then(({ enabled }) => {
+  if (enabled) $('btn-search').style.display = '';
+}).catch(() => {});
+
+async function runSearch() {
+  const q = $('unsplash-q').value.trim();
+  if (!q) return;
+  const status = $('unsplash-status');
+  const grid = $('unsplash-results');
+  status.textContent = 'Searching…';
+  grid.innerHTML = '';
+  try {
+    const { results } = await api(`/api/photos/search?q=${encodeURIComponent(q)}`);
+    status.textContent = results.length ? '' : 'No photos found. Try another word.';
+    results.forEach(photo => {
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.style.cssText = 'padding:0;border:1px solid var(--sg-border);border-radius:10px;overflow:hidden;cursor:pointer;aspect-ratio:1;background:var(--sg-surface)';
+      cell.title = `Photo by ${photo.credit_name}`;
+      cell.innerHTML = `<img src="${photo.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">`;
+      cell.addEventListener('click', () => pickPhoto(photo));
+      grid.appendChild(cell);
+    });
+  } catch (err) {
+    status.textContent = err.message;
+  }
+}
+$('unsplash-go').addEventListener('click', runSearch);
+$('unsplash-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
+
+function pickPhoto(photo) {
+  setCover(photo.full, photo.credit_name, photo.credit_link);
+  $('unsplash-panel').style.display = 'none';
+  // Required by Unsplash: register the download when a photo is chosen
+  api('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
 }
 
 function showError(msg) {
@@ -91,7 +151,9 @@ function collect() {
     category: $('category').value || null,
     capacity: $('capacity').value || null,
     visibility,
-    background_theme: $('background_theme').value
+    background_theme: $('background_theme').value,
+    cover_credit_name: $('cover_credit_name').value || null,
+    cover_credit_link: $('cover_credit_link').value || null
   };
 }
 
@@ -113,11 +175,7 @@ if (editId) {
     setVisibility(event.visibility);
     setTheme(event.background_theme || 'midnight');
     if (event.cover_image_url) {
-      $('cover_image_url').value = event.cover_image_url;
-      const img = $('cover-preview');
-      img.src = event.cover_image_url;
-      img.style.display = 'block';
-      drop.classList.add('has-image');
+      setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link);
     }
   }).catch(err => showError(err.message));
 }
