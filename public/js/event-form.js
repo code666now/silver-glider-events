@@ -48,6 +48,28 @@ setTheme('midnight');
 // ── Cover image: upload, Unsplash search, or none ──
 const drop = $('cover-drop');
 const fileInput = $('cover-input');
+const imageModal = $('image-modal');
+const pickerUpload = $('picker-upload');
+let photosEnabled = false;
+let activeImageCategory = '⭐ Featured';
+let lastPhotos = [];
+let searchTimer;
+
+const IMAGE_CATEGORIES = [
+  ['⭐ Featured', 'event nightlife concert crowd'],
+  ['🎸 Live Music', 'live music concert stage'],
+  ['🎧 DJ Party', 'dj party nightclub dance'],
+  ['🤘 Rock Show', 'rock concert guitar stage'],
+  ['⚡ Punk Show', 'punk concert band'],
+  ['🌈 Pop Concert', 'pop concert colorful stage'],
+  ['🏠 House Party', 'house party friends'],
+  ['🎵 Listening Party', 'vinyl record listening party'],
+  ['👗 Fashion Show', 'fashion runway show'],
+  ['🎙️ Open Mic', 'open mic stage microphone'],
+  ['🎭 Comedy', 'comedy club microphone'],
+  ['🎨 Art Show', 'art gallery exhibition'],
+  ['🧪 Experimental', 'experimental performance art']
+];
 
 function setCover(url, creditName, creditLink) {
   $('cover_image_url').value = url || '';
@@ -59,23 +81,56 @@ function setCover(url, creditName, creditLink) {
     img.style.display = 'block';
     drop.classList.add('has-image');
     $('btn-clear-cover').style.display = '';
+    markSelectedPhoto(url);
   } else {
     img.style.display = 'none';
     drop.classList.remove('has-image');
     $('btn-clear-cover').style.display = 'none';
+    markSelectedPhoto('');
   }
 }
 
-drop.addEventListener('click', () => fileInput.click());
-$('btn-upload').addEventListener('click', () => fileInput.click());
-$('btn-clear-cover').addEventListener('click', () => { setCover(''); });
-drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
-drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-drop.addEventListener('drop', e => {
-  e.preventDefault();
-  drop.classList.remove('dragover');
-  if (e.dataTransfer.files[0]) uploadCover(e.dataTransfer.files[0]);
+function openImageModal() {
+  imageModal.classList.add('open');
+  imageModal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  if (photosEnabled && !lastPhotos.length) loadCategory('⭐ Featured');
+}
+
+function closeImageModal() {
+  imageModal.classList.remove('open');
+  imageModal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+
+drop.addEventListener('click', openImageModal);
+$('btn-upload').addEventListener('click', openImageModal);
+$('image-modal-close').addEventListener('click', closeImageModal);
+$('image-modal-done').addEventListener('click', closeImageModal);
+imageModal.addEventListener('click', e => { if (e.target === imageModal) closeImageModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && imageModal.classList.contains('open')) closeImageModal();
 });
+pickerUpload.addEventListener('click', () => fileInput.click());
+$('btn-clear-cover').addEventListener('click', () => { setCover(''); });
+function handleImageDragover(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add('dragover');
+}
+function handleImageDragleave(e) {
+  e.currentTarget.classList.remove('dragover');
+}
+function handleImageDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) uploadCover(e.dataTransfer.files[0]);
+}
+drop.addEventListener('dragover', handleImageDragover);
+drop.addEventListener('dragleave', handleImageDragleave);
+drop.addEventListener('drop', handleImageDrop);
+pickerUpload.addEventListener('dragover', handleImageDragover);
+pickerUpload.addEventListener('dragleave', handleImageDragleave);
+pickerUpload.addEventListener('drop', handleImageDrop);
 fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) uploadCover(fileInput.files[0]);
 });
@@ -96,7 +151,7 @@ function uploadCover(file) {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
       setCover(data.url); // own upload → no credit
-      $('unsplash-panel').style.display = 'none';
+      closeImageModal();
     } catch (err) {
       showError(err.message);
     }
@@ -106,40 +161,105 @@ function uploadCover(file) {
 }
 
 // Unsplash search — only shown if the server has an access key configured
-$('btn-search').addEventListener('click', () => {
-  const p = $('unsplash-panel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
-  if (p.style.display === 'block') $('unsplash-q').focus();
-});
+$('btn-search').addEventListener('click', openImageModal);
 api('/api/photos/enabled').then(({ enabled }) => {
-  if (enabled) $('btn-search').style.display = '';
+  photosEnabled = enabled;
+  if (enabled) {
+    $('btn-search').style.display = '';
+    renderImageCategories();
+  } else {
+    $('unsplash-panel').innerHTML = '<div class="picker-empty">Free photo search is not set up yet.</div>';
+  }
 }).catch(() => {});
 
-async function runSearch() {
-  const q = $('unsplash-q').value.trim();
-  if (!q) return;
+function renderImageCategories() {
+  const wrap = $('image-categories');
+  wrap.innerHTML = '';
+  IMAGE_CATEGORIES.forEach(([label]) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'picker-cat';
+    chip.textContent = label;
+    chip.dataset.category = label;
+    chip.addEventListener('click', () => loadCategory(label));
+    wrap.appendChild(chip);
+  });
+  markActiveCategory();
+}
+
+function markActiveCategory() {
+  document.querySelectorAll('.picker-cat').forEach(chip => {
+    chip.classList.toggle('on', chip.dataset.category === activeImageCategory);
+  });
+}
+
+function markSelectedPhoto(url) {
+  document.querySelectorAll('.picker-photo').forEach(cell => {
+    cell.classList.toggle('selected', !!url && cell.dataset.full === url);
+  });
+}
+
+async function searchPhotos(q, { category = null } = {}) {
   const status = $('unsplash-status');
   const grid = $('unsplash-results');
-  status.textContent = 'Searching…';
-  grid.innerHTML = '';
+  status.textContent = 'Loading images...';
+  grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">Loading images...</div>';
   try {
     const { results } = await api(`/api/photos/search?q=${encodeURIComponent(q)}`);
-    status.textContent = results.length ? '' : 'No photos found. Try another word.';
-    results.forEach(photo => {
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.style.cssText = 'padding:0;border:1px solid var(--sg-border);border-radius:10px;overflow:hidden;cursor:pointer;aspect-ratio:1;background:var(--sg-surface)';
-      cell.title = `Photo by ${photo.credit_name}`;
-      cell.innerHTML = `<img src="${photo.thumb}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">`;
-      cell.addEventListener('click', () => pickPhoto(photo));
-      grid.appendChild(cell);
-    });
+    lastPhotos = results;
+    status.textContent = results.length ? (category || '') : '';
+    renderPhotoGrid(results);
   } catch (err) {
+    grid.innerHTML = '';
     status.textContent = err.message;
   }
 }
+
+function renderPhotoGrid(results) {
+  const grid = $('unsplash-results');
+  grid.innerHTML = '';
+  if (!results.length) {
+    grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">No photos found. Try another search.</div>';
+    return;
+  }
+  results.forEach(photo => {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'picker-photo';
+    cell.dataset.full = photo.full;
+    cell.title = `Photo by ${photo.credit_name}`;
+    cell.innerHTML = `<img src="${photo.thumb}" alt="">`;
+    cell.addEventListener('click', () => pickPhoto(photo));
+    grid.appendChild(cell);
+  });
+  markSelectedPhoto($('cover_image_url').value);
+}
+
+function loadCategory(label) {
+  const item = IMAGE_CATEGORIES.find(([name]) => name === label) || IMAGE_CATEGORIES[0];
+  activeImageCategory = item[0];
+  markActiveCategory();
+  $('unsplash-q').value = '';
+  searchPhotos(item[1], { category: item[0] });
+}
+
+async function runSearch() {
+  const q = $('unsplash-q').value.trim();
+  if (!q) return loadCategory(activeImageCategory);
+  activeImageCategory = '';
+  markActiveCategory();
+  searchPhotos(q);
+}
 $('unsplash-go').addEventListener('click', runSearch);
 $('unsplash-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
+$('unsplash-q').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const q = e.target.value.trim();
+    if (q) runSearch();
+    else loadCategory(activeImageCategory || '⭐ Featured');
+  }, 350);
+});
 
 function pickPhoto(photo) {
   setCover(photo.full, photo.credit_name, photo.credit_link);

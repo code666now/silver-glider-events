@@ -39,6 +39,187 @@
     .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
     .admission-fields { display: none; }
     .admission-fields.show { display: grid; }
+    .image-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(10px);
+    }
+    .image-modal.open { display: flex; }
+    .image-modal-card {
+      width: min(920px, 100%);
+      max-height: min(820px, calc(100vh - 36px));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: #101012;
+      border: 1px solid var(--sg-border);
+      border-radius: 22px;
+      box-shadow: var(--sg-shadow);
+    }
+    .image-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 22px 14px;
+      border-bottom: 1px solid var(--sg-border-soft);
+    }
+    .image-modal-head h2 { font-size: 24px; }
+    .image-modal-close {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1px solid var(--sg-border);
+      background: var(--sg-surface);
+      color: var(--sg-text);
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .image-modal-body {
+      padding: 18px 22px 22px;
+      overflow: auto;
+    }
+    .picker-upload {
+      position: relative;
+      min-height: 96px;
+      border: 1px dashed rgba(28,197,190,0.35);
+      border-radius: 16px;
+      background: rgba(28,197,190,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .picker-upload:hover, .picker-upload.dragover {
+      border-color: var(--sg-accent);
+      background: rgba(28,197,190,0.1);
+    }
+    .picker-upload strong { display: block; color: var(--sg-text); font-size: 15px; }
+    .picker-upload span { color: var(--sg-text-faint); font-size: 12px; }
+    .picker-search {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .picker-search .sg-btn { padding: 0 20px; }
+    .picker-cats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .picker-cat {
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      background: var(--sg-surface);
+      color: var(--sg-text-dim);
+      padding: 9px 13px;
+      font-family: var(--sg-font-body);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .picker-cat.on {
+      color: var(--sg-accent);
+      border-color: rgba(28,197,190,0.65);
+      background: rgba(28,197,190,0.11);
+    }
+    .picker-status {
+      min-height: 20px;
+      color: var(--sg-text-faint);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .picker-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .picker-photo {
+      position: relative;
+      padding: 0;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--sg-surface);
+      aspect-ratio: 4 / 3;
+      cursor: pointer;
+    }
+    .picker-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    .picker-photo:hover img { transform: scale(1.035); }
+    .picker-photo.selected {
+      border-color: var(--sg-accent);
+      box-shadow: 0 0 0 2px rgba(28,197,190,0.26);
+    }
+    .picker-photo.selected::after {
+      content: 'Selected';
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--sg-accent);
+      color: #071010;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .picker-empty {
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 16px;
+      padding: 34px 18px;
+      color: var(--sg-text-dim);
+      text-align: center;
+      background: rgba(255,255,255,0.03);
+    }
+    .image-modal-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px 20px;
+      border-top: 1px solid var(--sg-border-soft);
+    }
+    @media (max-width: 640px) {
+      .image-modal { padding: 0; align-items: stretch; }
+      .image-modal-card {
+        max-height: none;
+        min-height: 100vh;
+        border-radius: 0;
+      }
+      .image-modal-head { padding: 16px; }
+      .image-modal-body { padding: 16px; }
+      .picker-search { flex-direction: column; }
+      .picker-search .sg-btn { padding: 13px 18px; }
+      .picker-cats {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        margin-left: -16px;
+        margin-right: -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+      .picker-cat { padding: 11px 14px; }
+      .picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+      .picker-photo { border-radius: 16px; }
+      .image-modal-foot { padding: 14px 16px 18px; }
+    }
   </style>
 </head>
 <body>
@@ -58,19 +239,36 @@
       </div>
 
       <div id="cover-actions" style="display:flex;gap:8px;margin:-12px 0 22px">
-        <button type="button" class="sg-btn sg-btn-ghost" id="btn-upload" style="flex:1;padding:9px;font-size:13px">Upload a photo</button>
-        <button type="button" class="sg-btn sg-btn-ghost" id="btn-search" style="flex:1;padding:9px;font-size:13px;display:none">Search free photos</button>
+        <button type="button" class="sg-btn sg-btn-ghost" id="btn-upload" style="flex:1;padding:9px;font-size:13px">Choose image</button>
+        <button type="button" class="sg-btn sg-btn-ghost" id="btn-search" style="flex:1;padding:9px;font-size:13px;display:none">Browse free photos</button>
         <button type="button" class="sg-btn sg-btn-ghost" id="btn-clear-cover" style="flex:0;padding:9px 14px;font-size:13px;display:none">Remove</button>
       </div>
 
-      <div id="unsplash-panel" style="display:none;margin:-8px 0 22px">
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input class="sg-input" id="unsplash-q" placeholder="Search photos — rooftop, gallery, DJ…" style="flex:1">
-          <button type="button" class="sg-btn sg-btn-primary" id="unsplash-go" style="padding:0 20px;font-size:14px">Search</button>
+      <div class="image-modal" id="image-modal" aria-hidden="true">
+        <div class="image-modal-card" role="dialog" aria-modal="true" aria-labelledby="image-modal-title">
+          <div class="image-modal-head">
+            <h2 id="image-modal-title">Choose event image</h2>
+            <button type="button" class="image-modal-close" id="image-modal-close" aria-label="Close image picker">×</button>
+          </div>
+          <div class="image-modal-body">
+            <div class="picker-upload" id="picker-upload">
+              <p><strong>Upload a photo</strong><span>JPG, PNG, or WebP · up to 5 MB</span></p>
+            </div>
+            <div id="unsplash-panel">
+              <div class="picker-search">
+                <input class="sg-input" id="unsplash-q" placeholder="Search free photos">
+                <button type="button" class="sg-btn sg-btn-primary" id="unsplash-go">Search</button>
+              </div>
+              <div class="picker-cats" id="image-categories"></div>
+              <p class="picker-status" id="unsplash-status"></p>
+              <div class="picker-grid" id="unsplash-results"></div>
+              <p style="font-size:11px;color:var(--sg-text-faint);margin-top:12px">Photos via Unsplash. The photographer is credited on your event page.</p>
+            </div>
+          </div>
+          <div class="image-modal-foot">
+            <button type="button" class="sg-btn sg-btn-ghost" id="image-modal-done">Done</button>
+          </div>
         </div>
-        <p id="unsplash-status" style="font-size:12px;color:var(--sg-text-faint);margin-bottom:10px"></p>
-        <div id="unsplash-results" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
-        <p style="font-size:11px;color:var(--sg-text-faint);margin-top:10px">Photos via Unsplash. The photographer is credited on your event page.</p>
       </div>
 
       <input type="hidden" id="cover_image_url">
