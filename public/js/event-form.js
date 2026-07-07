@@ -20,7 +20,7 @@ function setAdmission(v) {
   $('admission-paid').classList.toggle('on', admissionType === 'paid');
   $('ticket-fields').classList.toggle('show', admissionType === 'paid');
   $('ticket_price').required = admissionType === 'paid';
-  $('ticket_url').required = admissionType === 'paid';
+  $('ticket_url').required = false;
   if (admissionType === 'free_rsvp') {
     $('ticket_price').value = '';
     $('ticket_url').value = '';

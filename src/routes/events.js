@@ -71,7 +71,7 @@ function validateEventBody(body, { partial = false } = {}) {
   }
   if (paid) {
     if (out.ticket_price == null || out.ticket_price <= 0) errors.push('Enter a ticket price');
-    if (!out.ticket_url) errors.push('Enter a valid ticket link');
+    if (body.ticket_url && !out.ticket_url) errors.push('Enter a valid ticket link');
   }
   if (out.status !== undefined && out.status === undefined) delete out.status;
   return { out, errors };

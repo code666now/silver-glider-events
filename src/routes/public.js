@@ -53,7 +53,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
     const isPaid = event.admission_type === 'paid';
     const ticketHtml = isPaid
-      ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : ''}</div>`
+      ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '';
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
