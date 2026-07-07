@@ -97,13 +97,17 @@ async function sendMagicLink({ to, link }) {
 
 async function sendRsvpConfirmation({ to, event, rsvp, icsContent }) {
   const manageUrl = `${process.env.APP_URL}/r/${rsvp.manage_token}`;
+  const name = rsvp.first_name ? `Hi ${rsvp.first_name}, ` : '';
+  const reminderLine = rsvp.wants_reminders
+    ? 'and will receive one reminder the day before the event.'
+    : 'and will not receive reminder emails for this event.';
   return send({
     to,
     subject: `You're on the list — ${event.title}`,
     html: layout({
       kicker: 'RSVP confirmed',
       headline: "You're on the list.",
-      sub: event.title,
+      sub: `${name}you have RSVP'd to ${event.title} ${reminderLine}`,
       bodyHtml: eventCard(event),
       cta: 'View event',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
