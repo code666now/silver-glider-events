@@ -7,6 +7,7 @@ const pool = require('../config/db');
 const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
+const { verifyOptout } = require('../lib/followers');
 
 const router = express.Router();
 
@@ -243,6 +244,33 @@ router.get('/r/:token', async (req, res, next) => {
     res.send(html);
   } catch (err) { next(err); }
 });
+
+// GET /unsubscribe?token= — remove an email from an organizer's follower list
+router.get('/unsubscribe', async (req, res, next) => {
+  try {
+    const data = verifyOptout(req.query.token);
+    if (!data) {
+      return res.status(400).send(unsubscribePage('That unsubscribe link is invalid or expired.', false));
+    }
+    await pool.query(
+      `INSERT INTO follower_optouts (organizer_id, email)
+       SELECT $1, $2
+       WHERE NOT EXISTS (SELECT 1 FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=LOWER($2))`,
+      [data.organizerId, data.email]
+    );
+    res.send(unsubscribePage("You're unsubscribed. You won't get future-event emails from this organizer.", true));
+  } catch (err) { next(err); }
+});
+
+function unsubscribePage(message, ok) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unsubscribe — Silver Glider Events</title><link rel="stylesheet" href="/css/brand.css"></head>
+<body><main style="max-width:420px;margin:0 auto;padding:18vh 24px;text-align:center">
+<p class="sg-label" style="margin-bottom:20px">Silver Glider Events</p>
+<h1 style="font-size:28px;margin-bottom:12px">${ok ? 'Unsubscribed' : 'Link problem'}</h1>
+<p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7">${message}</p>
+</main></body></html>`;
+}
 
 // POST /api/public/rsvps/:token/cancel
 router.post('/api/public/rsvps/:token/cancel', async (req, res, next) => {

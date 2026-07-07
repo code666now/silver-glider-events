@@ -4,6 +4,8 @@ const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { makePublicSlug, makePrivateSlug } = require('../lib/slug');
 const { rsvpsToCsv } = require('../lib/csv');
+const { sendEventAnnouncement } = require('../lib/mailer');
+const { signOptout } = require('../lib/followers');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -241,6 +243,84 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
       [req.params.id, req.organizer.id]
     );
     res.json({ submission: rows[0] || null });
+  } catch (err) { next(err); }
+});
+
+// GET /api/events/:id/followers — how many opted-in followers would get an announcement
+router.get('/api/events/:id/followers', async (req, res, next) => {
+  try {
+    const { rows: ev } = await pool.query(
+      'SELECT announced_at, announced_count, visibility, status FROM events WHERE id=$1 AND organizer_id=$2',
+      [req.params.id, req.organizer.id]
+    );
+    if (!ev.length) return res.status(404).json({ error: 'Event not found' });
+
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM (
+         SELECT LOWER(r.email) AS email
+           FROM rsvps r JOIN events e ON e.id = r.event_id
+          WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
+            AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
+            AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM rsvps WHERE event_id = $2 AND status = 'confirmed')
+          GROUP BY LOWER(r.email)
+       ) f`,
+      [req.organizer.id, req.params.id]
+    );
+    res.json({
+      count: rows[0].count,
+      announcedAt: ev[0].announced_at,
+      announcedCount: ev[0].announced_count,
+      canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' && !ev[0].announced_at
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/announce — email the organizer's opted-in followers (one-shot)
+router.post('/api/events/:id/announce', async (req, res, next) => {
+  try {
+    const { rows: ev } = await pool.query(
+      'SELECT * FROM events WHERE id=$1 AND organizer_id=$2', [req.params.id, req.organizer.id]
+    );
+    if (!ev.length) return res.status(404).json({ error: 'Event not found' });
+    const event = ev[0];
+
+    if (event.status !== 'published') return res.status(400).json({ error: 'Publish the event before announcing it' });
+    if (event.visibility !== 'public') return res.status(400).json({ error: 'Only public events can be announced to followers' });
+    if (event.announced_at) return res.status(409).json({ error: 'This event was already announced' });
+
+    const { rows: recipients } = await pool.query(
+      `SELECT LOWER(r.email) AS email, MIN(r.first_name) AS first_name
+         FROM rsvps r JOIN events e ON e.id = r.event_id
+        WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
+          AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
+          AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM rsvps WHERE event_id = $2 AND status = 'confirmed')
+        GROUP BY LOWER(r.email)`,
+      [req.organizer.id, req.params.id]
+    );
+
+    const organizerLabel = req.organizer.org_name || req.organizer.name || 'Silver Glider Events';
+    let sent = 0;
+    for (const r of recipients) {
+      const unsubscribeUrl = `${process.env.APP_URL}/unsubscribe?token=${signOptout(req.organizer.id, r.email)}`;
+      try {
+        await sendEventAnnouncement({ to: r.email, event, organizerLabel, replyTo: req.organizer.email, unsubscribeUrl });
+        sent++;
+        await pool.query(
+          `INSERT INTO message_log (event_id, recipient, message_type, channel, status, sent_at)
+           VALUES ($1,$2,'announcement','email','sent',NOW())`,
+          [event.id, r.email]
+        );
+      } catch (err) {
+        await pool.query(
+          `INSERT INTO message_log (event_id, recipient, message_type, channel, status, error)
+           VALUES ($1,$2,'announcement','email','failed',$3)`,
+          [event.id, r.email, err.message]
+        ).catch(() => {});
+      }
+    }
+
+    await pool.query('UPDATE events SET announced_at=NOW(), announced_count=$2 WHERE id=$1', [event.id, sent]);
+    res.json({ sent, total: recipients.length });
   } catch (err) { next(err); }
 });
 

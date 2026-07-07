@@ -97,6 +97,39 @@ $('duplicate').addEventListener('click', async () => {
   window.location.href = `/events/${event.id}/edit`;
 });
 
+async function loadFollowers() {
+  try {
+    const { count, announcedAt, announcedCount, canAnnounce } = await api(`/api/events/${eventId}/followers`);
+    const btn = $('announce');
+    if (announcedAt) {
+      btn.style.display = '';
+      btn.disabled = true;
+      btn.textContent = `Announced to ${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'}`;
+      return;
+    }
+    if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
+    btn.style.display = '';
+    btn.dataset.count = count;
+    btn.textContent = `Email my ${count} ${count === 1 ? 'follower' : 'followers'}`;
+  } catch (_) {}
+}
+
+$('announce').addEventListener('click', async () => {
+  const count = $('announce').dataset.count || 'your';
+  if (!confirm(`Send an announcement email about this event to ${count} followers? This can only be done once.`)) return;
+  $('announce').disabled = true;
+  $('announce').textContent = 'Sending…';
+  try {
+    const { sent } = await api(`/api/events/${eventId}/announce`, { method: 'POST' });
+    toast(`Announcement sent to ${sent} ${sent === 1 ? 'follower' : 'followers'}`);
+    $('announce').textContent = `Announced to ${sent} ${sent === 1 ? 'follower' : 'followers'}`;
+  } catch (err) {
+    toast(err.message);
+    $('announce').disabled = false;
+    loadFollowers();
+  }
+});
+
 $('submit-line').addEventListener('click', async () => {
   await api(`/api/events/${eventId}/submit-to-line`, { method: 'POST' });
   toast('Submitted to The Line');
@@ -116,4 +149,4 @@ $('search').addEventListener('input', e => {
   searchTimer = setTimeout(() => loadGuests(e.target.value.trim()), 250);
 });
 
-loadEvent().then(() => { loadGuests(); loadLineStatus(); });
+loadEvent().then(() => { loadGuests(); loadLineStatus(); loadFollowers(); });

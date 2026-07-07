@@ -56,12 +56,14 @@ function formatTime(t) {
   return `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-async function send({ to, subject, html, attachments }) {
+async function send({ to, subject, html, attachments, replyTo }) {
   if (!resend) {
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
     return { dev: true };
   }
-  const result = await resend.emails.send({ from: FROM, to, subject, html, attachments });
+  const payload = { from: FROM, to, subject, html, attachments };
+  if (replyTo) payload.replyTo = replyTo;
+  const result = await resend.emails.send(payload);
   if (result.error) throw new Error(result.error.message || 'Resend send failed');
   return result.data;
 }
@@ -137,4 +139,25 @@ async function sendDayOfReminder({ to, event, rsvp }) {
   });
 }
 
-module.exports = { sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder, formatTime };
+// Organizer-triggered announcement to opted-in followers.
+async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsubscribeUrl }) {
+  return send({
+    to,
+    replyTo,
+    subject: `${organizerLabel} just announced: ${event.title}`,
+    html: layout({
+      kicker: 'New event',
+      headline: event.title,
+      sub: `${organizerLabel} has a new event coming up.`,
+      bodyHtml: eventCard(event),
+      cta: 'View & RSVP',
+      ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You're receiving this because you asked ${organizerLabel} to keep you posted about future events.<br><a href="${unsubscribeUrl}" style="color:#777;text-decoration:underline">Unsubscribe from this organizer</a></p>`
+    })
+  });
+}
+
+module.exports = {
+  sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
+  sendEventAnnouncement, formatTime
+};
