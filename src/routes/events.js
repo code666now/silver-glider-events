@@ -15,6 +15,18 @@ router.use('/api/settings', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+const ADMISSION_TYPES = ['free_rsvp', 'paid'];
+
+function cleanTicketUrl(v) {
+  const raw = String(v ?? '').trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString().slice(0, 500) : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 function validateEventBody(body, { partial = false } = {}) {
   const errors = [];
@@ -34,6 +46,9 @@ function validateEventBody(body, { partial = false } = {}) {
     capacity:        v => (v === '' || v == null ? null : Math.max(1, parseInt(v, 10) || 0) || null),
     visibility:      v => (v === 'private' ? 'private' : 'public'),
     background_theme: v => (THEMES.includes(v) ? v : 'midnight'),
+    admission_type:  v => (ADMISSION_TYPES.includes(v) ? v : 'free_rsvp'),
+    ticket_price:    v => (v === '' || v == null ? null : Math.round((Number(v) || 0) * 100) / 100),
+    ticket_url:      cleanTicketUrl,
     status:          v => (['draft', 'published', 'cancelled'].includes(v) ? v : undefined)
   };
   for (const [key, clean] of Object.entries(fields)) {
@@ -48,6 +63,15 @@ function validateEventBody(body, { partial = false } = {}) {
   } else {
     if (out.event_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(out.event_date || '')) errors.push('Invalid date');
     if (out.start_time !== undefined && !/^\d{2}:\d{2}/.test(out.start_time || '')) errors.push('Invalid start time');
+  }
+  const paid = out.admission_type === 'paid' || (partial && body.admission_type === undefined && (out.ticket_price != null || out.ticket_url));
+  if (out.admission_type === 'free_rsvp') {
+    out.ticket_price = null;
+    out.ticket_url = null;
+  }
+  if (paid) {
+    if (out.ticket_price == null || out.ticket_price <= 0) errors.push('Enter a ticket price');
+    if (!out.ticket_url) errors.push('Enter a valid ticket link');
   }
   if (out.status !== undefined && out.status === undefined) delete out.status;
   return { out, errors };
@@ -83,13 +107,14 @@ router.post('/api/events', async (req, res, next) => {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
-                               cover_credit_name, cover_credit_link)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                               cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
            out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight',
-           out.cover_credit_name || null, out.cover_credit_link || null]
+           out.cover_credit_name || null, out.cover_credit_link || null,
+           out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
@@ -149,12 +174,14 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, timezone, venue_name, venue_address, category,
-                               capacity, visibility, status, duplicated_from_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15)
+                               capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
+                               background_theme, cover_credit_name, cover_credit_link)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url, e.event_date,
            e.start_time, e.end_time, e.timezone, e.venue_name, e.venue_address, e.category,
-           e.capacity, e.visibility, e.id]
+           e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
+           e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {

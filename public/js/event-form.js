@@ -2,6 +2,7 @@ renderNav('events');
 
 const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
+let admissionType = 'free_rsvp';
 
 const $ = id => document.getElementById(id);
 
@@ -12,6 +13,21 @@ function setVisibility(v) {
 }
 $('vis-public').addEventListener('click', () => setVisibility('public'));
 $('vis-private').addEventListener('click', () => setVisibility('private'));
+
+function setAdmission(v) {
+  admissionType = v === 'paid' ? 'paid' : 'free_rsvp';
+  $('admission-free').classList.toggle('on', admissionType === 'free_rsvp');
+  $('admission-paid').classList.toggle('on', admissionType === 'paid');
+  $('ticket-fields').classList.toggle('show', admissionType === 'paid');
+  $('ticket_price').required = admissionType === 'paid';
+  $('ticket_url').required = admissionType === 'paid';
+  if (admissionType === 'free_rsvp') {
+    $('ticket_price').value = '';
+    $('ticket_url').value = '';
+  }
+}
+$('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
+$('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
 // Background theme picker
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
@@ -152,6 +168,9 @@ function collect() {
     capacity: $('capacity').value || null,
     visibility,
     background_theme: $('background_theme').value,
+    admission_type: admissionType,
+    ticket_price: admissionType === 'paid' ? ($('ticket_price').value || null) : null,
+    ticket_url: admissionType === 'paid' ? ($('ticket_url').value.trim() || null) : null,
     cover_credit_name: $('cover_credit_name').value || null,
     cover_credit_link: $('cover_credit_link').value || null
   };
@@ -174,6 +193,9 @@ if (editId) {
     $('capacity').value = event.capacity || '';
     setVisibility(event.visibility);
     setTheme(event.background_theme || 'midnight');
+    setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
+    $('ticket_price').value = event.ticket_price || '';
+    $('ticket_url').value = event.ticket_url || '';
     if (event.cover_image_url) {
       setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link);
     }

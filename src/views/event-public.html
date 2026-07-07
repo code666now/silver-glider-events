@@ -97,6 +97,21 @@
     .venue { margin: 4px 0 28px; }
     .venue strong { font-size: 16px; display: block; }
     .venue a { font-size: 13px; font-weight: 600; }
+    .ticket-note {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: -10px 0 28px;
+      font-size: 13px;
+      color: var(--sg-text-dim);
+    }
+    .ticket-note span { color: var(--sg-text); font-weight: 700; }
+    .ticket-note a { font-weight: 700; white-space: nowrap; }
     .desc { color: var(--sg-text-dim); font-size: 15px; line-height: 1.75; margin-bottom: 36px; }
 
     .actions { display: flex; gap: 10px; margin-bottom: 44px; }
@@ -145,13 +160,14 @@
       <span style="color:var(--sg-text-dim);font-size:14px">{{VENUE_ADDRESS}}</span><br>
       <a href="{{MAPS_URL}}" target="_blank" rel="noopener">Open in Maps →</a>
     </div>
+    {{TICKET_HTML}}
 
     <p class="desc">{{DESCRIPTION_HTML}}</p>
     <p class="host">Hosted by <strong>{{ORGANIZER}}</strong></p>
 
     <div class="rsvp-zone">
       <div id="cta-state">
-        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" style="font-size:17px;padding:17px">RSVP — it's free</button>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" style="font-size:17px;padding:17px">{{RSVP_CTA}}</button>
       </div>
 
       <div id="rsvp-form-box">

@@ -37,6 +37,8 @@
       background: var(--sg-surface); color: var(--sg-text-dim); border: 1px solid var(--sg-border);
     }
     .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
+    .admission-fields { display: none; }
+    .admission-fields.show { display: grid; }
   </style>
 </head>
 <body>
@@ -124,6 +126,25 @@
         <div class="sg-field">
           <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
           <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
+        </div>
+      </div>
+
+      <div class="sg-field">
+        <label>Admission</label>
+        <div class="vis-toggle">
+          <button type="button" id="admission-free" class="on">Free RSVP</button>
+          <button type="button" id="admission-paid">Paid elsewhere</button>
+        </div>
+      </div>
+
+      <div class="row2 admission-fields" id="ticket-fields">
+        <div class="sg-field">
+          <label for="ticket_price">Ticket price</label>
+          <input class="sg-input" type="number" id="ticket_price" min="0.01" step="0.01" placeholder="15">
+        </div>
+        <div class="sg-field">
+          <label for="ticket_url">Ticket link</label>
+          <input class="sg-input" type="url" id="ticket_url" placeholder="https://...">
         </div>
       </div>
 

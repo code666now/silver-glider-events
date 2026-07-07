@@ -24,6 +24,13 @@ function fmtDate(d) {
     { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
+function fmtTicketPrice(price) {
+  if (price == null) return 'Paid admission';
+  const n = Number(price);
+  if (!Number.isFinite(n)) return 'Paid admission';
+  return n === 0 ? 'Paid admission' : `$${n.toFixed(2).replace(/\.00$/, '')}`;
+}
+
 async function loadEventBySlug(slug) {
   const { rows } = await pool.query(
     `SELECT e.*,
@@ -44,6 +51,10 @@ router.get('/e/:slug', async (req, res, next) => {
 
     const isFull = event.capacity != null && event.rsvp_count >= event.capacity;
     const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
+    const isPaid = event.admission_type === 'paid';
+    const ticketHtml = isPaid
+      ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : ''}</div>`
+      : '';
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
     const theme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
@@ -78,9 +89,11 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{VENUE_NAME}}/g, esc(event.venue_name))
       .replace(/{{VENUE_ADDRESS}}/g, esc(event.venue_address || ''))
       .replace(/{{MAPS_URL}}/g, esc(`https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`))
+      .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{ORGANIZER}}/g, esc(organizerLabel))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
+      .replace(/{{RSVP_CTA}}/g, isPaid ? 'RSVP' : "RSVP — it's free")
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);
