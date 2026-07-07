@@ -39,6 +39,34 @@
     .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
     .admission-fields { display: none; }
     .admission-fields.show { display: grid; }
+    .places-status {
+      margin-top: 7px;
+      color: var(--sg-text-faint);
+      font-size: 11px;
+      min-height: 14px;
+    }
+    .pac-container {
+      background: #141416;
+      border: 1px solid var(--sg-border);
+      border-radius: 14px;
+      box-shadow: var(--sg-shadow);
+      color: var(--sg-text);
+      font-family: var(--sg-font-body);
+      overflow: hidden;
+      z-index: 2000;
+    }
+    .pac-item {
+      border-top: 1px solid var(--sg-border-soft);
+      color: var(--sg-text-dim);
+      cursor: pointer;
+      padding: 9px 12px;
+    }
+    .pac-item:hover,
+    .pac-item-selected {
+      background: rgba(28,197,190,.1);
+    }
+    .pac-item-query { color: var(--sg-text); }
+    .pac-matched { color: var(--sg-accent); }
     .image-modal {
       position: fixed;
       inset: 0;
@@ -430,12 +458,18 @@
       <div class="sg-field">
         <label for="venue_name">Venue name</label>
         <input class="sg-input" id="venue_name" maxlength="140" required placeholder="The Knockout">
+        <p class="places-status" id="places-status"></p>
       </div>
 
       <div class="sg-field">
         <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
         <input class="sg-input" id="venue_address" placeholder="3223 Mission St, San Francisco">
       </div>
+      <input type="hidden" id="venue_city">
+      <input type="hidden" id="venue_state">
+      <input type="hidden" id="venue_latitude">
+      <input type="hidden" id="venue_longitude">
+      <input type="hidden" id="google_place_id">
 
       <div class="row2">
         <div class="sg-field">

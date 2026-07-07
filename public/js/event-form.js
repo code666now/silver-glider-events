@@ -45,6 +45,88 @@ THEMES.forEach(key => {
 });
 setTheme('midnight');
 
+// ── Venue autocomplete: optional Google Places helper, manual flow remains intact ──
+const placeFields = ['venue_city', 'venue_state', 'venue_latitude', 'venue_longitude', 'google_place_id'];
+let applyingPlace = false;
+let placesLoader;
+
+function setPlacesStatus(message) {
+  const el = $('places-status');
+  if (el) el.textContent = message || '';
+}
+
+function clearPlaceMeta() {
+  placeFields.forEach(id => { $(id).value = ''; });
+}
+
+function placeComponent(place, types, name = 'long_name') {
+  const component = (place.address_components || []).find(part => types.some(type => part.types.includes(type)));
+  return component ? component[name] : '';
+}
+
+function applySelectedPlace(place) {
+  if (!place) return;
+  applyingPlace = true;
+  const venueName = place.name || $('venue_name').value.trim();
+  const address = place.formatted_address || '';
+  $('venue_name').value = venueName;
+  if (address) $('venue_address').value = address;
+  $('venue_city').value =
+    placeComponent(place, ['locality']) ||
+    placeComponent(place, ['postal_town']) ||
+    placeComponent(place, ['administrative_area_level_2']);
+  $('venue_state').value = placeComponent(place, ['administrative_area_level_1'], 'short_name');
+  $('google_place_id').value = place.place_id || '';
+  const location = place.geometry && place.geometry.location;
+  $('venue_latitude').value = location ? String(location.lat()) : '';
+  $('venue_longitude').value = location ? String(location.lng()) : '';
+  setPlacesStatus('');
+  window.setTimeout(() => { applyingPlace = false; }, 0);
+}
+
+function loadGooglePlaces(apiKey) {
+  if (window.google && window.google.maps && window.google.maps.places) return Promise.resolve();
+  if (placesLoader) return placesLoader;
+  placesLoader = new Promise((resolve, reject) => {
+    window.__sgeInitPlaces = () => resolve();
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=__sgeInitPlaces`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return placesLoader;
+}
+
+async function initVenueAutocomplete() {
+  try {
+    setPlacesStatus('Loading venue suggestions...');
+    const { enabled, apiKey } = await api('/api/places/config');
+    if (!enabled || !apiKey) {
+      setPlacesStatus('');
+      return;
+    }
+    await loadGooglePlaces(apiKey);
+    const autocomplete = new google.maps.places.Autocomplete($('venue_name'), {
+      fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id'],
+      types: ['establishment']
+    });
+    autocomplete.addListener('place_changed', () => applySelectedPlace(autocomplete.getPlace()));
+    setPlacesStatus('');
+  } catch (_) {
+    setPlacesStatus('Venue suggestions unavailable. You can enter the venue manually.');
+  }
+}
+
+$('venue_name').addEventListener('input', () => {
+  if (!applyingPlace) clearPlaceMeta();
+});
+$('venue_address').addEventListener('input', () => {
+  if (!applyingPlace) clearPlaceMeta();
+});
+initVenueAutocomplete();
+
 // ── Cover image: upload, Unsplash search, or none ──
 const drop = $('cover-drop');
 const fileInput = $('cover-input');
@@ -439,6 +521,11 @@ function collect() {
     start_time: $('start_time').value,
     venue_name: $('venue_name').value.trim(),
     venue_address: $('venue_address').value.trim(),
+    venue_city: $('venue_city').value || null,
+    venue_state: $('venue_state').value || null,
+    venue_latitude: $('venue_latitude').value || null,
+    venue_longitude: $('venue_longitude').value || null,
+    google_place_id: $('google_place_id').value || null,
     category: $('category').value || null,
     capacity: $('capacity').value || null,
     visibility,
@@ -464,6 +551,11 @@ if (editId) {
     $('start_time').value = String(event.start_time).slice(0, 5);
     $('venue_name').value = event.venue_name;
     $('venue_address').value = event.venue_address || '';
+    $('venue_city').value = event.venue_city || '';
+    $('venue_state').value = event.venue_state || '';
+    $('venue_latitude').value = event.venue_latitude || '';
+    $('venue_longitude').value = event.venue_longitude || '';
+    $('google_place_id').value = event.google_place_id || '';
     $('category').value = event.category || '';
     $('capacity').value = event.capacity || '';
     setVisibility(event.visibility);

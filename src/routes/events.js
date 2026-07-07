@@ -12,6 +12,7 @@ const router = express.Router();
 // so a bare router.use() would gate the public event pages too.
 router.use('/api/events', requireOrganizer);
 router.use('/api/settings', requireOrganizer);
+router.use('/api/places', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
@@ -28,6 +29,16 @@ function cleanTicketUrl(v) {
   }
 }
 
+function cleanFloat(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function placesApiKey() {
+  return (process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_BROWSER_KEY || '').trim();
+}
+
 function validateEventBody(body, { partial = false } = {}) {
   const errors = [];
   const out = {};
@@ -42,6 +53,11 @@ function validateEventBody(body, { partial = false } = {}) {
     end_time:        v => (v ? String(v).trim() : null),
     venue_name:      v => String(v).trim().slice(0, 140),
     venue_address:   v => String(v ?? '').trim() || null,
+    venue_city:      v => String(v ?? '').trim().slice(0, 120) || null,
+    venue_state:     v => String(v ?? '').trim().slice(0, 80) || null,
+    venue_latitude:  cleanFloat,
+    venue_longitude: cleanFloat,
+    google_place_id: v => String(v ?? '').trim().slice(0, 180) || null,
     category:        v => (CATEGORIES.includes(v) ? v : null),
     capacity:        v => (v === '' || v == null ? null : Math.max(1, parseInt(v, 10) || 0) || null),
     visibility:      v => (v === 'private' ? 'private' : 'public'),
@@ -77,6 +93,13 @@ function validateEventBody(body, { partial = false } = {}) {
   return { out, errors };
 }
 
+// GET /api/places/config — browser key for Google Places Autocomplete.
+// This must be a Google browser key restricted by HTTP referrer in Google Cloud.
+router.get('/api/places/config', (req, res) => {
+  const apiKey = placesApiKey();
+  res.json(apiKey ? { enabled: true, apiKey } : { enabled: false });
+});
+
 // GET /api/events — mine, with confirmed RSVP counts
 router.get('/api/events', async (req, res, next) => {
   try {
@@ -107,14 +130,17 @@ router.post('/api/events', async (req, res, next) => {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
-                               cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                               cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
            out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight',
            out.cover_credit_name || null, out.cover_credit_link || null,
-           out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null]
+           out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
+           out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
+           out.google_place_id || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
@@ -175,13 +201,16 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, timezone, venue_name, venue_address, category,
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
-                               background_theme, cover_credit_name, cover_credit_link)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21)
+                               background_theme, cover_credit_name, cover_credit_link,
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url, e.event_date,
            e.start_time, e.end_time, e.timezone, e.venue_name, e.venue_address, e.category,
            e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
-           e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null]
+           e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
+           e.venue_city || null, e.venue_state || null, e.venue_latitude, e.venue_longitude,
+           e.google_place_id || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
