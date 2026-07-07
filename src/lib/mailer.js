@@ -3,6 +3,10 @@ const { Resend } = require('resend');
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
 
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // Shared dark layout. Emails use a system font stack — webfonts are unreliable in clients.
 function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
   return `
@@ -13,11 +17,11 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;padding:40px 20px">
     <tr><td>
       <p style="font-size:11px;letter-spacing:.25em;color:#555;margin:0 0 32px;text-transform:uppercase;font-weight:700">Silver Glider Events</p>
-      ${kicker ? `<p style="font-size:13px;font-weight:600;color:#1CC5BE;letter-spacing:.06em;text-transform:uppercase;margin:0 0 14px">${kicker}</p>` : ''}
-      <h1 style="font-size:30px;font-weight:800;margin:0 0 8px;color:#f0f0f0;letter-spacing:-.02em;line-height:1.15">${headline}</h1>
-      ${sub ? `<p style="color:#999;font-size:15px;margin:0 0 28px">${sub}</p>` : '<div style="height:20px"></div>'}
+      ${kicker ? `<p style="font-size:12px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px">${esc(kicker)}</p>` : ''}
+      <h1 style="font-size:34px;font-weight:800;margin:0 0 10px;color:#f0f0f0;letter-spacing:-.02em;line-height:1.08">${esc(headline)}</h1>
+      ${sub ? `<p style="color:#999;font-size:15px;line-height:1.7;margin:0 0 28px">${esc(sub)}</p>` : '<div style="height:20px"></div>'}
       ${bodyHtml || ''}
-      ${cta ? `<a href="${ctaUrl}" style="display:block;background:#1CC5BE;color:#0a0a0a;text-align:center;padding:16px;border-radius:999px;text-decoration:none;font-weight:700;font-size:16px;margin:28px 0 24px">${cta}</a>` : ''}
+      ${cta ? `<a href="${esc(ctaUrl)}" style="display:block;background:#1CC5BE;color:#0a0a0a;text-align:center;padding:16px;border-radius:999px;text-decoration:none;font-weight:800;font-size:16px;margin:28px 0 24px">${esc(cta)}</a>` : ''}
       ${footerHtml || ''}
       <p style="color:#444;font-size:12px;text-align:center;margin-top:36px">Silver Glider Events</p>
     </td></tr>
@@ -32,21 +36,24 @@ function eventCard(event) {
   const timeStr = formatTime(event.start_time);
   const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`;
   return `
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:16px;padding:22px;margin-bottom:8px">
-        <tr><td style="padding:8px 0;border-bottom:1px solid #1a1a1a">
-          <span style="color:#555;font-size:13px">Date</span>
-          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:600">${dateStr}</span>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 10px">
+        <tr><td style="padding:0 0 14px">
+          <p style="color:#f0f0f0;font-size:18px;font-weight:800;line-height:1.25;margin:0">${esc(event.title)}</p>
         </td></tr>
-        <tr><td style="padding:8px 0;border-bottom:1px solid #1a1a1a">
-          <span style="color:#555;font-size:13px">Time</span>
-          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:600">${timeStr}</span>
+        <tr><td style="padding:10px 0;border-top:1px solid #1a1a1a">
+          <span style="color:#777;font-size:13px">Date</span>
+          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(dateStr)}</span>
         </td></tr>
-        <tr><td style="padding:8px 0">
-          <span style="color:#555;font-size:13px">Venue</span>
-          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:600">${event.venue_name}</span>
+        <tr><td style="padding:10px 0;border-top:1px solid #1a1a1a">
+          <span style="color:#777;font-size:13px">Time</span>
+          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(timeStr)}</span>
+        </td></tr>
+        <tr><td style="padding:10px 0 0;border-top:1px solid #1a1a1a">
+          <span style="color:#777;font-size:13px">Venue</span>
+          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(event.venue_name)}</span>
         </td></tr>
       </table>
-      <p style="margin:0 0 4px;text-align:right"><a href="${mapsUrl}" style="color:#1CC5BE;font-size:13px;text-decoration:none;font-weight:600">Open in Maps →</a></p>`;
+      <p style="margin:0 0 4px;text-align:right"><a href="${esc(mapsUrl)}" style="color:#1CC5BE;font-size:13px;text-decoration:none;font-weight:700">Open in Maps →</a></p>`;
 }
 
 function formatTime(t) {
@@ -77,11 +84,12 @@ async function sendMagicLink({ to, link }) {
     to,
     subject: 'Your sign-in link — Silver Glider Events',
     html: layout({
+      kicker: 'Magic link',
       headline: 'Sign in',
       sub: 'Tap the button below to sign in to Silver Glider Events. The link expires in 15 minutes.',
       cta: 'Sign in',
       ctaUrl: link,
-      footerHtml: `<p style="color:#555;font-size:12px;line-height:1.7;margin:0">If the button doesn't work, paste this link into your browser:<br><a href="${link}" style="color:#1CC5BE;word-break:break-all">${link}</a></p>
+      footerHtml: `<p style="color:#555;font-size:12px;line-height:1.7;margin:0">If the button doesn't work, paste this link into your browser:<br><a href="${esc(link)}" style="color:#1CC5BE;word-break:break-all">${esc(link)}</a></p>
       <p style="color:#555;font-size:12px;margin-top:14px">Didn't request this? You can safely ignore this email.</p>`
     })
   });
@@ -99,7 +107,7 @@ async function sendRsvpConfirmation({ to, event, rsvp, icsContent }) {
       bodyHtml: eventCard(event),
       cta: 'View event',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0">A calendar invite is attached. Can't make it? <a href="${manageUrl}" style="color:#1CC5BE">Manage your RSVP</a>.</p>`
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">A calendar invite is attached.<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE">Manage your RSVP</a>.</p>`
     }),
     attachments: icsContent
       ? [{ filename: 'event.ics', content: Buffer.from(icsContent).toString('base64') }]
@@ -119,7 +127,7 @@ async function sendDayBeforeReminder({ to, event, rsvp }) {
       bodyHtml: eventCard(event),
       cta: 'View event',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0">Can't make it? <a href="${manageUrl}" style="color:#1CC5BE">Cancel your RSVP</a> so someone else can go.</p>`
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0">Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE">Cancel your RSVP</a> so someone else can go.</p>`
     })
   });
 }
@@ -152,7 +160,7 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
       bodyHtml: eventCard(event),
       cta: 'View & RSVP',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You're receiving this because you asked ${organizerLabel} to keep you posted about future events.<br><a href="${unsubscribeUrl}" style="color:#777;text-decoration:underline">Unsubscribe from this organizer</a></p>`
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You're receiving this because you asked ${esc(organizerLabel)} to keep you posted about future events.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from this organizer</a></p>`
     })
   });
 }

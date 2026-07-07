@@ -339,16 +339,16 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
            FROM rsvps r JOIN events e ON e.id = r.event_id
           WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
             AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
-            AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM rsvps WHERE event_id = $2 AND status = 'confirmed')
           GROUP BY LOWER(r.email)
        ) f`,
-      [req.organizer.id, req.params.id]
+      [req.organizer.id]
     );
+    const didSendAnnouncement = ev[0].announced_at && ev[0].announced_count > 0;
     res.json({
       count: rows[0].count,
       announcedAt: ev[0].announced_at,
       announcedCount: ev[0].announced_count,
-      canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' && !ev[0].announced_at
+      canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' && !didSendAnnouncement
     });
   } catch (err) { next(err); }
 });
@@ -364,16 +364,15 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
 
     if (event.status !== 'published') return res.status(400).json({ error: 'Publish the event before announcing it' });
     if (event.visibility !== 'public') return res.status(400).json({ error: 'Only public events can be announced to followers' });
-    if (event.announced_at) return res.status(409).json({ error: 'This event was already announced' });
+    if (event.announced_at && event.announced_count > 0) return res.status(409).json({ error: 'This event was already announced' });
 
     const { rows: recipients } = await pool.query(
       `SELECT LOWER(r.email) AS email, MIN(r.first_name) AS first_name
-         FROM rsvps r JOIN events e ON e.id = r.event_id
-        WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
+        FROM rsvps r JOIN events e ON e.id = r.event_id
+       WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
           AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
-          AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM rsvps WHERE event_id = $2 AND status = 'confirmed')
         GROUP BY LOWER(r.email)`,
-      [req.organizer.id, req.params.id]
+      [req.organizer.id]
     );
 
     const organizerLabel = req.organizer.org_name || req.organizer.name || 'Silver Glider Events';

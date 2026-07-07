@@ -101,7 +101,7 @@ async function loadFollowers() {
   try {
     const { count, announcedAt, announcedCount, canAnnounce } = await api(`/api/events/${eventId}/followers`);
     const btn = $('announce');
-    if (announcedAt) {
+    if (announcedAt && announcedCount > 0) {
       btn.style.display = '';
       btn.disabled = true;
       btn.textContent = `Announced to ${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'}`;
