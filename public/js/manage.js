@@ -61,9 +61,9 @@ async function loadLineStatus() {
     if (!submission) return;
     const btn = $('submit-line');
     btn.disabled = true;
-    btn.textContent = submission.status === 'approved' ? 'Featured on The Line'
-      : submission.status === 'rejected' ? 'The Line: not selected'
-      : 'Submitted to The Line';
+    btn.textContent = submission.status === 'approved' ? 'Featured by Silver Glider'
+      : submission.status === 'rejected' ? 'Not selected for feature'
+      : 'Submitted for feature';
     if (submission.status === 'approved') { btn.style.color = 'var(--sg-accent)'; btn.style.borderColor = 'var(--sg-accent)'; }
   } catch (_) {}
 }
@@ -132,7 +132,7 @@ $('announce').addEventListener('click', async () => {
 
 $('submit-line').addEventListener('click', async () => {
   await api(`/api/events/${eventId}/submit-to-line`, { method: 'POST' });
-  toast('Submitted to The Line');
+  toast('Submitted for feature');
   loadLineStatus();
 });
 
