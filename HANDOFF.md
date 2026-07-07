@@ -73,7 +73,7 @@ git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-even
 Then verify: `curl https://silver-glider-events-production.up.railway.app/health` — the `sha` in the response should match `git rev-parse --short HEAD`. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
 
 ## 9. What's built (V1 complete)
-Magic-link login + persistent sessions · organizer dashboard · event creation with cover upload / Unsplash search / gradient themes · beautiful mobile-first public event pages (two-column on desktop) · RSVP with capacity limits · email confirmation + calendar invite · day-before & day-of email reminders · guest list, search, CSV export, duplicate, cancel · QR codes · share buttons · "Submit to The Line" + admin review · animated backgrounds throughout.
+Magic-link login + persistent sessions · organizer dashboard · event creation with cover upload / Unsplash search / gradient themes · beautiful mobile-first public event pages (two-column on desktop) · RSVP with capacity limits · email confirmation + calendar invite · day-before & day-of email reminders · guest list, search, CSV export, duplicate, cancel · QR codes · share buttons · **follower announcements** (organizer-triggered "Email my followers" to guests who opted in, with unsubscribe) · "Submit to The Line" + admin review · animated backgrounds throughout.
 
 ## 10. Open items / things to know
 - **Email branding:** emails currently come from `@rockandrollschedule.com` because the free Resend plan allows one verified domain. To send from a Silver Glider address, verify a Silver Glider domain in Resend (needs a paid plan or a second Resend account) — then it's a one-variable change (`RESEND_FROM`).
