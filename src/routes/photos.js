@@ -9,7 +9,7 @@ router.get('/api/photos/search', requireOrganizer, async (req, res, next) => {
   try {
     if (!unsplash.enabled) return res.status(503).json({ error: 'Photo search is not set up' });
     const q = String(req.query.q || '').trim();
-    const page = Math.min(50, Math.max(1, parseInt(req.query.page, 10) || 1));
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     if (!q) return res.json({ results: [] });
     const data = await unsplash.search(q, page);
     res.json(data);
