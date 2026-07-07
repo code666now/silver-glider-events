@@ -73,7 +73,8 @@ router.get('/e/:slug', async (req, res, next) => {
       status: event.status,
       isFull,
       capacity: event.capacity,
-      organizerLabel
+      organizerLabel,
+      coverImageUrl: event.cover_image_url || null
     };
 
     const html = publicTemplate

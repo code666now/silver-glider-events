@@ -18,8 +18,20 @@
       inset: -10%;              /* oversized so the drift never reveals an edge */
       z-index: 0;
       pointer-events: none;
+      --event-bg-a: rgba(28,197,190,.44);
+      --event-bg-b: rgba(0,140,255,.34);
+      --event-bg-c: rgba(150,80,255,.24);
       animation: bg-drift 22s ease-in-out infinite alternate;
+      transition: background-image .45s ease, filter .45s ease, opacity .45s ease;
       will-change: transform;
+    }
+    .event-bg.image-palette {
+      background-image:
+        radial-gradient(58% 46% at 20% 2%, var(--event-bg-a), transparent 64%),
+        radial-gradient(58% 46% at 90% 12%, var(--event-bg-b), transparent 62%),
+        radial-gradient(70% 56% at 82% 98%, var(--event-bg-c), transparent 66%),
+        radial-gradient(58% 48% at 10% 92%, var(--event-bg-a), transparent 66%);
+      filter: saturate(.78) brightness(.82);
     }
     @keyframes bg-drift {
       0%   { transform: translate3d(-2.5%, -2%, 0) scale(1.08); }
