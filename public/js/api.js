@@ -27,10 +27,35 @@ function renderNav(active) {
   el.className = 'sg-nav';
   el.innerHTML = `
     <a class="sg-nav-brand" href="/dashboard">Silver Glider <span>Events</span></a>
+    <button class="sg-nav-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
     <div class="sg-nav-links">
       ${links.map(([key, href, label]) =>
         `<a href="${href}" class="${key === active ? 'active' : ''}">${label}</a>`).join('')}
     </div>`;
+
+  const toggle = el.querySelector('.sg-nav-toggle');
+  const closeMenu = () => {
+    el.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open menu');
+  };
+
+  toggle.addEventListener('click', () => {
+    const isOpen = el.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+  });
+  el.querySelector('.sg-nav-links').addEventListener('click', e => {
+    if (e.target.closest('a')) closeMenu();
+  });
+  document.addEventListener('click', e => {
+    if (!el.contains(e.target)) closeMenu();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeMenu();
+  });
 }
 
 // Inject the moving aurora background behind the page (once).

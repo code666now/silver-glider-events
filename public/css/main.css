@@ -31,6 +31,28 @@
 }
 .sg-nav-links a:hover { color: var(--sg-text); }
 .sg-nav-links a.active { color: var(--sg-accent); }
+.sg-nav-toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid var(--sg-border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.03);
+  color: var(--sg-text);
+  cursor: pointer;
+}
+.sg-nav-toggle span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform .18s ease, opacity .18s ease;
+}
 
 .sg-page-title { font-size: 34px; margin-bottom: 6px; }
 .sg-page-sub { color: var(--sg-text-dim); font-size: 15px; margin-bottom: 32px; }
@@ -121,6 +143,54 @@
 .sg-empty p { font-size: 14px; margin-bottom: 24px; }
 
 @media (max-width: 520px) {
-  .sg-nav-links { gap: 18px; }
+  .sg-nav {
+    position: relative;
+    gap: 14px;
+    margin-bottom: 30px;
+  }
+  .sg-nav-brand {
+    font-size: clamp(17px, 6vw, 19px);
+  }
+  .sg-nav-toggle { display: flex; }
+  .sg-nav-links {
+    position: absolute;
+    top: calc(100% - 10px);
+    right: 0;
+    display: grid;
+    gap: 4px;
+    min-width: 170px;
+    padding: 10px;
+    border: 1px solid var(--sg-border);
+    border-radius: 16px;
+    background: rgba(17,17,17,.96);
+    box-shadow: var(--sg-shadow);
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease;
+    z-index: 30;
+  }
+  .sg-nav.open .sg-nav-links {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .sg-nav-links a {
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .sg-nav-links a.active {
+    background: rgba(28,197,190,.1);
+  }
+  .sg-nav.open .sg-nav-toggle span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+  .sg-nav.open .sg-nav-toggle span:nth-child(2) {
+    opacity: 0;
+  }
+  .sg-nav.open .sg-nav-toggle span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
   .sg-page-title { font-size: 28px; }
 }
