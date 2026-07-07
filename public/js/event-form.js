@@ -62,22 +62,21 @@ let photoLoading = false;
 let photoScrollBound = false;
 let lastPhotoLoadAt = 0;
 
-// User-facing labels stay friendly; hidden queries are tuned for event-page
-// backgrounds and flyer-style cover imagery.
+// User-facing visual themes stay simple; hidden queries are tuned for
+// inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
-  { label: '⭐ Featured', query: 'event flyer background concert crowd neon lights' },
-  { label: '🎸 Live Music', query: 'live concert stage lights crowd atmospheric' },
-  { label: '🎧 DJ Party', query: 'nightclub dj booth dance floor neon lights' },
-  { label: '🤘 Rock Show', query: 'dark rock concert stage guitar crowd high contrast' },
-  { label: '⚡ Punk Show', query: 'underground concert stage gritty crowd dramatic lights' },
-  { label: '🌈 Pop Concert', query: 'colorful concert stage lights crowd vibrant' },
-  { label: '🏠 House Party', query: 'house party friends warm lights candid' },
-  { label: '🎵 Listening Party', query: 'vinyl records turntable moody room warm light' },
-  { label: '👗 Fashion Show', query: 'runway fashion show dramatic lights audience' },
-  { label: '🎙️ Open Mic', query: 'microphone stage spotlight intimate venue' },
-  { label: '🎭 Comedy', query: 'comedy club microphone stage spotlight dark' },
-  { label: '🎨 Art Show', query: 'gallery opening exhibition people modern art' },
-  { label: '🧪 Experimental', query: 'abstract performance art stage lights atmospheric' }
+  { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background' },
+  { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows' },
+  { label: '🌿 Nature', query: 'forest mountains plants sky natural light background' },
+  { label: '✨ Abstract', query: 'abstract gradients shapes soft color background' },
+  { label: '🎨 Textures', query: 'concrete paper grain fabric texture background' },
+  { label: '📐 Patterns', query: 'geometric repeating patterns graphic design background' },
+  { label: '🌈 Colorful', query: 'vibrant colors neon rainbow bright abstract background' },
+  { label: '🌙 Dark', query: 'black shadows low light dark moody background' },
+  { label: '☀️ Summer', query: 'sunshine beach warm colors golden light background' },
+  { label: '📼 Nostalgia', query: 'vintage retro analog 90s nostalgic background' },
+  { label: '🏙️ Urban', query: 'city architecture streets nightlife urban lights' },
+  { label: '🖤 Minimal', query: 'clean simple negative space minimal background' }
 ];
 
 function setCover(url, creditName, creditLink) {
@@ -103,7 +102,7 @@ function openImageModal() {
   imageModal.classList.add('open');
   imageModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-  if (photosEnabled && !lastPhotos.length) loadCategory('⭐ Featured');
+  if (photosEnabled) loadCategory('⭐ Featured');
 }
 
 function closeImageModal() {

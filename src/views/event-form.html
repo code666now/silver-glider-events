@@ -118,10 +118,16 @@
     .picker-search .sg-btn { padding: 0 20px; }
     .picker-cats {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 8px;
       margin-bottom: 16px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      padding-bottom: 3px;
+      scroll-behavior: smooth;
     }
+    .picker-cats::-webkit-scrollbar { display: none; }
     .picker-cat {
       border: 1px solid var(--sg-border);
       border-radius: 999px;
@@ -133,11 +139,15 @@
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+      flex: 0 0 auto;
+      transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
     }
+    .picker-cat:hover { transform: translateY(-1px); border-color: rgba(28,197,190,0.38); color: var(--sg-text); }
     .picker-cat.on {
       color: var(--sg-accent);
       border-color: rgba(28,197,190,0.65);
       background: rgba(28,197,190,0.11);
+      box-shadow: 0 0 0 1px rgba(28,197,190,0.08) inset;
     }
     .picker-status {
       min-height: 20px;
@@ -228,8 +238,6 @@
       .picker-search { flex-direction: column; }
       .picker-search .sg-btn { padding: 13px 18px; }
       .picker-cats {
-        flex-wrap: nowrap;
-        overflow-x: auto;
         padding-bottom: 4px;
         margin-left: -16px;
         margin-right: -16px;
