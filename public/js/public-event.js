@@ -99,7 +99,7 @@ else if (EVENT.isFull) show('full-state');
 
 $('rsvp-cta').addEventListener('click', () => {
   show('rsvp-form-box');
-  $('first_name').focus();
+  $('full_name').focus();
 });
 
 $('rsvp-form').addEventListener('submit', async e => {
@@ -112,8 +112,7 @@ $('rsvp-form').addEventListener('submit', async e => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        first_name: $('first_name').value.trim(),
-        last_name: $('last_name').value.trim(),
+        full_name: $('full_name').value.trim(),
         email: $('email').value.trim(),
         phone: $('phone').value.trim() || null,
         wants_reminders: $('wants_reminders').checked,

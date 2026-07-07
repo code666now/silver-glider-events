@@ -189,10 +189,7 @@
       <div id="rsvp-form-box">
         <p id="rsvp-error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:14px"></p>
         <form id="rsvp-form">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="sg-field"><label>First name</label><input class="sg-input" id="first_name" autocomplete="given-name" required></div>
-            <div class="sg-field"><label>Last name</label><input class="sg-input" id="last_name" autocomplete="family-name" required></div>
-          </div>
+          <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
           <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
           <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
           <label class="check"><input type="checkbox" id="wants_reminders" checked> Send me reminders for this event</label>

@@ -115,14 +115,18 @@ function render404() {
 router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
   const client = await pool.connect();
   try {
-    const firstName = String(req.body.first_name || '').trim().slice(0, 80);
-    const lastName = String(req.body.last_name || '').trim().slice(0, 80);
+    const fullName = String(req.body.full_name || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+    const legacyFirstName = String(req.body.first_name || '').trim().slice(0, 80);
+    const legacyLastName = String(req.body.last_name || '').trim().slice(0, 80);
+    const nameParts = fullName.split(' ').filter(Boolean);
+    const firstName = (fullName ? nameParts.shift() : legacyFirstName).slice(0, 80);
+    const lastName = (fullName ? nameParts.join(' ') : legacyLastName).slice(0, 80);
     const email = String(req.body.email || '').trim().toLowerCase();
     const phone = String(req.body.phone || '').trim().slice(0, 30) || null;
     const wantsReminders = req.body.wants_reminders !== false;
     const organizerOptin = req.body.organizer_optin === true;
 
-    if (!firstName || !lastName) return res.status(400).json({ error: 'Enter your first and last name' });
+    if (!firstName) return res.status(400).json({ error: 'Enter your name' });
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
 
     await client.query('BEGIN');
