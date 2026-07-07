@@ -264,6 +264,8 @@ function setCover(url, creditName, creditLink) {
   $('cover_credit_name').value = creditName || '';
   $('cover_credit_link').value = creditLink || '';
   const img = $('cover-preview');
+  const fallbackBackground = $('fallback-background-field');
+  if (fallbackBackground) fallbackBackground.style.display = url ? 'none' : '';
   if (url) {
     img.src = url;
     img.style.display = 'block';
