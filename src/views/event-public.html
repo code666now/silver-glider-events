@@ -12,30 +12,33 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="/css/brand.css">
   <style>
-    /* Theme background — fixed full-viewport, slowly drifting across the page */
+    /* Theme background — fixed full-viewport color swipes behind the page */
     .event-bg {
       position: fixed;
-      inset: -10%;              /* oversized so the drift never reveals an edge */
+      inset: -24%;              /* oversized so the faster swipes never reveal an edge */
       z-index: 0;
       pointer-events: none;
       --event-bg-a: rgba(28,197,190,.44);
       --event-bg-b: rgba(0,140,255,.34);
       --event-bg-c: rgba(150,80,255,.24);
-      animation: bg-drift 22s ease-in-out infinite alternate;
-      transition: background-image .45s ease, filter .45s ease, opacity .45s ease;
-      will-change: transform;
+      animation: bg-drift 8s cubic-bezier(.55,0,.25,1) infinite alternate;
+      transition: background-image .32s ease, filter .32s ease, opacity .32s ease;
+      will-change: transform, filter;
     }
     .event-bg.image-palette {
       background-image:
-        radial-gradient(58% 46% at 20% 2%, var(--event-bg-a), transparent 64%),
-        radial-gradient(58% 46% at 90% 12%, var(--event-bg-b), transparent 62%),
-        radial-gradient(70% 56% at 82% 98%, var(--event-bg-c), transparent 66%),
-        radial-gradient(58% 48% at 10% 92%, var(--event-bg-a), transparent 66%);
-      filter: saturate(.78) brightness(.82);
+        radial-gradient(62% 56% at 5% 4%, var(--event-bg-a), transparent 62%),
+        radial-gradient(70% 62% at 108% 18%, var(--event-bg-b), transparent 60%),
+        radial-gradient(78% 66% at 82% 116%, var(--event-bg-c), transparent 64%),
+        linear-gradient(115deg, transparent 0 22%, var(--event-bg-b) 38%, transparent 56% 100%),
+        linear-gradient(25deg, transparent 0 35%, var(--event-bg-a) 48%, transparent 66% 100%);
+      filter: saturate(1.08) brightness(.88);
     }
     @keyframes bg-drift {
-      0%   { transform: translate3d(-2.5%, -2%, 0) scale(1.08); }
-      100% { transform: translate3d(2.5%, 2.5%, 0) scale(1.18); }
+      0%   { transform: translate3d(-8%, -5%, 0) rotate(-4deg) scale(1.08); }
+      33%  { transform: translate3d(6%, -2%, 0) rotate(3deg) scale(1.2); }
+      66%  { transform: translate3d(-3%, 7%, 0) rotate(-2deg) scale(1.16); }
+      100% { transform: translate3d(9%, 8%, 0) rotate(5deg) scale(1.24); }
     }
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
     .layout { position: relative; z-index: 1; }

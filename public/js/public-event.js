@@ -7,8 +7,8 @@ $('success-cal').href = icsUrl;
 $('qr-img').src = `/e/${EVENT.slug}/qr.png`;
 
 function softenRgb({ r, g, b }) {
-  const darken = 0.58;
-  const desaturate = 0.3;
+  const darken = 0.66;
+  const desaturate = 0.18;
   const avg = (r + g + b) / 3;
   return {
     r: Math.round((avg * desaturate + r * (1 - desaturate)) * darken),
@@ -75,9 +75,9 @@ async function applyCoverPalette() {
     const colors = await extractCoverPalette(EVENT.coverImageUrl);
     const bg = document.querySelector('.event-bg');
     if (!bg) return;
-    bg.style.setProperty('--event-bg-a', rgba(colors[0], .6));
-    bg.style.setProperty('--event-bg-b', rgba(colors[1], .48));
-    bg.style.setProperty('--event-bg-c', rgba(colors[2] || colors[0], .34));
+    bg.style.setProperty('--event-bg-a', rgba(colors[0], .82));
+    bg.style.setProperty('--event-bg-b', rgba(colors[1], .68));
+    bg.style.setProperty('--event-bg-c', rgba(colors[2] || colors[0], .52));
     bg.classList.add('image-palette');
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
