@@ -3,6 +3,7 @@ renderNav('events');
 const eventId = location.pathname.split('/')[2];
 const $ = id => document.getElementById(id);
 let eventData = null;
+const LINE_NUMBER = '(844) 261-6758';
 
 if (new URLSearchParams(location.search).get('created')) {
   $('created-note').style.display = 'block';
@@ -51,20 +52,46 @@ async function loadEvent() {
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
-    $('submit-line').style.display = 'none';
+    $('line-card').style.display = 'none';
   }
+}
+
+function setLineCard({ title, copy, button, disabled, selected }) {
+  $('line-title').textContent = title;
+  $('line-copy').textContent = copy;
+  $('submit-line').textContent = button;
+  $('submit-line').disabled = !!disabled;
+  $('submit-line').style.color = selected ? 'var(--sg-accent)' : '';
+  $('submit-line').style.borderColor = selected ? 'var(--sg-accent)' : '';
 }
 
 async function loadLineStatus() {
   try {
     const { submission } = await api(`/api/events/${eventId}/line-status`);
     if (!submission) return;
-    const btn = $('submit-line');
-    btn.disabled = true;
-    btn.textContent = submission.status === 'approved' ? 'Featured by Silver Glider'
-      : submission.status === 'rejected' ? 'Not selected for feature'
-      : 'Submitted for feature';
-    if (submission.status === 'approved') { btn.style.color = 'var(--sg-accent)'; btn.style.borderColor = 'var(--sg-accent)'; }
+    if (submission.status === 'approved') {
+      setLineCard({
+        title: 'You were selected',
+        copy: `Your event is in this week's picks. Call The Line: ${LINE_NUMBER}`,
+        button: 'You were selected',
+        disabled: true,
+        selected: true
+      });
+    } else if (submission.status === 'rejected') {
+      setLineCard({
+        title: 'Not selected this week',
+        copy: 'You can keep sharing your event link directly.',
+        button: 'Not selected this week',
+        disabled: true
+      });
+    } else {
+      setLineCard({
+        title: 'Submitted to The Line',
+        copy: "We'll review it for this week's picks.",
+        button: 'Submitted to The Line',
+        disabled: true
+      });
+    }
   } catch (_) {}
 }
 
@@ -131,8 +158,9 @@ $('announce').addEventListener('click', async () => {
 });
 
 $('submit-line').addEventListener('click', async () => {
+  if (!confirm('Submit this event to The Line for a chance to be selected this week?')) return;
   await api(`/api/events/${eventId}/submit-to-line`, { method: 'POST' });
-  toast('Submitted for feature');
+  toast('Submitted to The Line');
   loadLineStatus();
 });
 

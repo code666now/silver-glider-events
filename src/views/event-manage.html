@@ -18,6 +18,16 @@
     .cap-bar div { height: 100%; background: var(--sg-accent); border-radius: 4px; }
     .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
     .toolbar .sg-btn { padding: 10px 20px; font-size: 13px; }
+    .line-card {
+      background: rgba(17,17,17,.78);
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 20px;
+      padding: 18px;
+      margin: -12px 0 32px;
+    }
+    .line-card h2 { font-size: 22px; margin-bottom: 8px; }
+    .line-card p { color: var(--sg-text-dim); font-size: 13px; line-height: 1.65; margin-bottom: 14px; }
+    .line-card .sg-btn { padding: 10px 20px; font-size: 13px; }
     .qr-box { text-align: center; margin: 0 0 32px; }
     .qr-box img { width: 150px; height: 150px; border-radius: 14px; background: #fff; padding: 8px; }
     #search { max-width: 280px; }
@@ -62,9 +72,14 @@
       <button class="sg-btn sg-btn-ghost" id="export-csv">Export CSV</button>
       <button class="sg-btn sg-btn-ghost" id="duplicate">Duplicate</button>
       <button class="sg-btn sg-btn-ghost" id="announce" style="display:none">Email my followers</button>
-      <button class="sg-btn sg-btn-ghost" id="submit-line">Submit to be featured</button>
       <button class="sg-btn sg-btn-danger" id="cancel-event">Cancel event</button>
     </div>
+
+    <section class="line-card" id="line-card">
+      <h2 id="line-title">The Line</h2>
+      <p id="line-copy">Submit for a chance to be selected. We pick standout events and add them to Silver Glider's phone line for people to call.</p>
+      <button class="sg-btn sg-btn-ghost" id="submit-line">Submit to The Line</button>
+    </section>
 
     <div class="qr-box">
       <img id="qr" alt="Event QR code">
