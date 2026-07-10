@@ -256,6 +256,17 @@ router.post('/api/events/:id/cancel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// DELETE /api/events/:id — permanently remove an event (cascades to its RSVPs + logs)
+router.delete('/api/events/:id', async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM events WHERE id=$1 AND organizer_id=$2', [req.params.id, req.organizer.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Event not found' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // GET /api/events/:id/rsvps?search=
 router.get('/api/events/:id/rsvps', async (req, res, next) => {
   try {

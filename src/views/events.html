@@ -6,6 +6,39 @@
   <title>My Events — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
+  <style>
+    /* Swipe-to-delete rows */
+    .swipe-row {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--sg-radius-card);
+      margin-bottom: 14px;
+    }
+    .swipe-row .sg-event-card {
+      margin-bottom: 0;
+      position: relative;
+      z-index: 1;
+      transition: transform .22s cubic-bezier(.2,.8,.2,1);
+      touch-action: pan-y;            /* let vertical scroll through, capture horizontal drag */
+      -webkit-user-select: none; user-select: none;
+    }
+    .swipe-row.dragging .sg-event-card { transition: none; }
+    .swipe-row.open .sg-event-card { transform: translateX(-104px); }
+    .swipe-action {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 104px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--sg-danger);
+    }
+    .swipe-del-btn {
+      background: none; border: none; color: #fff;
+      font-family: var(--sg-font-body); font-weight: 700; font-size: 14px;
+      width: 100%; height: 100%; cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <div class="sg-shell">
@@ -35,6 +68,98 @@
   <script src="/js/api.js"></script>
   <script>
     renderNav('events');
+
+    // Wrap a card in a swipe-to-delete row
+    function swipeWrap(ev, inner) {
+      const t = (ev.title || '').replace(/"/g, '&quot;');
+      return `<div class="swipe-row" data-id="${ev.id}" data-title="${t}">
+        <div class="swipe-action"><button class="swipe-del-btn" type="button">Delete</button></div>
+        ${inner}
+      </div>`;
+    }
+
+    // ── Swipe gesture (Pointer Events: touch swipe + mouse drag) ──
+    const OPEN_PX = 104, THRESHOLD = 52;
+    let row = null, startX = 0, startY = 0, horizontal = false, tracking = false, justSwiped = false;
+
+    function closeAll(except) {
+      document.querySelectorAll('.swipe-row.open').forEach(r => { if (r !== except) r.classList.remove('open'); });
+    }
+    function cardEl(r) { return r.querySelector('.sg-event-card'); }
+
+    document.addEventListener('pointerdown', e => {
+      const r = e.target.closest('.swipe-row');
+      if (!r) { closeAll(null); return; }
+      row = r; startX = e.clientX; startY = e.clientY; tracking = true; horizontal = false;
+    });
+    document.addEventListener('pointermove', e => {
+      if (!tracking || !row) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!horizontal) {
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { horizontal = true; row.classList.add('dragging'); closeAll(row); }
+        else if (Math.abs(dy) > 10) { tracking = false; return; }   // vertical scroll — let it go
+      }
+      if (horizontal) {
+        const base = row.classList.contains('open') ? -OPEN_PX : 0;
+        const tx = Math.max(-OPEN_PX, Math.min(0, base + dx));
+        cardEl(row).style.transform = `translateX(${tx}px)`;
+      }
+    });
+    document.addEventListener('pointerup', () => {
+      if (!row) return;
+      const el = cardEl(row);
+      row.classList.remove('dragging');
+      const m = /translateX\((-?\d+(?:\.\d+)?)px\)/.exec(el.style.transform || '');
+      const tx = m ? parseFloat(m[1]) : (row.classList.contains('open') ? -OPEN_PX : 0);
+      el.style.transform = '';
+      row.classList.toggle('open', tx < -THRESHOLD);
+      if (horizontal) { justSwiped = true; setTimeout(() => { justSwiped = false; }, 350); }
+      row = null; tracking = false; horizontal = false;
+    });
+
+    // Intercept clicks: delete button, swallow the click that ends a swipe, close an open row
+    document.addEventListener('click', e => {
+      const del = e.target.closest('.swipe-del-btn');
+      if (del) { e.preventDefault(); handleDelete(del.closest('.swipe-row')); return; }
+      if (justSwiped) { e.preventDefault(); e.stopPropagation(); return; }
+      const c = e.target.closest('.sg-event-card');
+      if (c) {
+        const r = c.closest('.swipe-row');
+        if (r && r.classList.contains('open')) { e.preventDefault(); r.classList.remove('open'); }
+      }
+    }, true);
+
+    async function handleDelete(r) {
+      if (!r) return;
+      const id = r.dataset.id;
+      const title = r.dataset.title || 'this event';
+      if (!confirm(`Delete "${title}"? This removes the event and its guest list. This can't be undone.`)) {
+        r.classList.remove('open');
+        return;
+      }
+      try {
+        await api(`/api/events/${id}`, { method: 'DELETE' });
+        r.style.height = r.offsetHeight + 'px';
+        r.style.transition = 'height .2s ease, opacity .2s ease, margin .2s ease';
+        requestAnimationFrame(() => { r.style.height = '0'; r.style.opacity = '0'; r.style.marginBottom = '0'; });
+        setTimeout(() => { r.remove(); checkEmpty(); }, 210);
+        toast('Event deleted');
+      } catch (err) {
+        toast(err.message);
+        r.classList.remove('open');
+      }
+    }
+
+    function checkEmpty() {
+      const up = document.getElementById('upcoming');
+      const pa = document.getElementById('past');
+      if (up && !up.children.length) document.getElementById('upcoming-section').style.display = 'none';
+      if (pa && !pa.children.length) document.getElementById('past-section').style.display = 'none';
+      if ((!up || !up.children.length) && (!pa || !pa.children.length)) {
+        const empty = document.getElementById('empty');
+        if (empty) empty.style.display = 'block';
+      }
+    }
 
     function card(ev) {
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
@@ -73,11 +198,11 @@
 
       if (upcoming.length) {
         document.getElementById('upcoming-section').style.display = 'block';
-        document.getElementById('upcoming').innerHTML = upcoming.map(card).join('');
+        document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
       }
       if (past.length) {
         document.getElementById('past-section').style.display = 'block';
-        document.getElementById('past').innerHTML = past.map(card).join('');
+        document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
       }
     })();
   </script>
