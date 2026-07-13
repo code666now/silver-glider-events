@@ -164,6 +164,16 @@ $('submit-line').addEventListener('click', async () => {
   loadLineStatus();
 });
 
+$('delete-event').addEventListener('click', async () => {
+  const name = eventData ? `"${eventData.title}"` : 'this event';
+  if (!confirm(`Delete ${name} permanently? This removes the event AND its entire guest list. This can't be undone.`)) return;
+  if (!confirm('Last check — are you sure? Guest emails and RSVPs will be gone forever.')) return;
+  try {
+    await api(`/api/events/${eventId}`, { method: 'DELETE' });
+    window.location.href = '/events';
+  } catch (err) { toast(err.message); }
+});
+
 $('cancel-event').addEventListener('click', async () => {
   if (!confirm('Cancel this event? The public page will show it as cancelled.')) return;
   await api(`/api/events/${eventId}/cancel`, { method: 'POST' });

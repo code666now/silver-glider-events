@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
   <style>
-    /* Swipe-to-delete rows */
+    /* Swipe-to-archive rows */
     .swipe-row {
       position: relative;
       overflow: hidden;
@@ -31,12 +31,32 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--sg-danger);
+      background: rgba(28, 197, 190, 0.18);
+      border: 1px solid rgba(28, 197, 190, 0.35);
+      border-radius: var(--sg-radius-card);
     }
-    .swipe-del-btn {
-      background: none; border: none; color: #fff;
+    .swipe-arch-btn {
+      background: none; border: none; color: var(--sg-accent);
       font-family: var(--sg-font-body); font-weight: 700; font-size: 14px;
       width: 100%; height: 100%; cursor: pointer;
+    }
+
+    /* Collapsible section headers */
+    .section-toggle {
+      display: flex; align-items: center; gap: 8px;
+      background: none; border: none; cursor: pointer; padding: 0;
+      margin-bottom: 14px;
+    }
+    .section-toggle .chev { color: var(--sg-accent); font-size: 12px; transition: transform .15s ease; display: inline-block; }
+    .section-toggle.open .chev { transform: rotate(90deg); }
+
+    .archive-hint { color: var(--sg-text-faint); font-size: 12px; margin: 6px 0 0; }
+
+    /* Toast with an action button */
+    .sg-toast .toast-action {
+      background: none; border: none; color: var(--sg-accent);
+      font-family: var(--sg-font-body); font-weight: 800; font-size: 14px;
+      margin-left: 14px; cursor: pointer; text-transform: uppercase; letter-spacing: .06em;
     }
   </style>
 </head>
@@ -54,8 +74,18 @@
     </div>
 
     <div id="past-section" style="display:none;margin-top:36px">
-      <p class="sg-label" style="margin-bottom:14px">Past</p>
-      <div id="past"></div>
+      <button class="section-toggle" id="past-toggle" type="button">
+        <span class="chev">▶</span><span class="sg-label" id="past-label">Past</span>
+      </button>
+      <div id="past" style="display:none"></div>
+    </div>
+
+    <div id="archived-section" style="display:none;margin-top:36px">
+      <button class="section-toggle" id="archived-toggle" type="button">
+        <span class="chev">▶</span><span class="sg-label" id="archived-label">Archived</span>
+      </button>
+      <div id="archived" style="display:none"></div>
+      <p class="archive-hint" id="archive-hint" style="display:none">Archiving hides an event from your list. Guest lists and RSVPs are always kept.</p>
     </div>
 
     <div id="empty" class="sg-empty" style="display:none">
@@ -69,11 +99,11 @@
   <script>
     renderNav('events');
 
-    // Wrap a card in a swipe-to-delete row
+    // Wrap a card in a swipe-to-archive row
     function swipeWrap(ev, inner) {
       const t = (ev.title || '').replace(/"/g, '&quot;');
       return `<div class="swipe-row" data-id="${ev.id}" data-title="${t}">
-        <div class="swipe-action"><button class="swipe-del-btn" type="button">Delete</button></div>
+        <div class="swipe-action"><button class="swipe-arch-btn" type="button">Archive</button></div>
         ${inner}
       </div>`;
     }
@@ -117,10 +147,12 @@
       row = null; tracking = false; horizontal = false;
     });
 
-    // Intercept clicks: delete button, swallow the click that ends a swipe, close an open row
+    // Intercept clicks: archive/restore buttons, swallow the click that ends a swipe, close an open row
     document.addEventListener('click', e => {
-      const del = e.target.closest('.swipe-del-btn');
-      if (del) { e.preventDefault(); handleDelete(del.closest('.swipe-row')); return; }
+      const arch = e.target.closest('.swipe-arch-btn');
+      if (arch) { e.preventDefault(); handleArchive(arch.closest('.swipe-row')); return; }
+      const restore = e.target.closest('.restore-btn');
+      if (restore) { e.preventDefault(); handleRestore(restore.dataset.id); return; }
       if (justSwiped) { e.preventDefault(); e.stopPropagation(); return; }
       const c = e.target.closest('.sg-event-card');
       if (c) {
@@ -129,35 +161,64 @@
       }
     }, true);
 
-    async function handleDelete(r) {
+    // Toast with an inline action (Undo)
+    let _toastActionTimer;
+    function toastWithAction(msg, actionLabel, fn) {
+      let el = document.querySelector('.sg-toast');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'sg-toast';
+        document.body.appendChild(el);
+      }
+      el.innerHTML = '';
+      el.append(msg);
+      const btn = document.createElement('button');
+      btn.className = 'toast-action';
+      btn.textContent = actionLabel;
+      btn.addEventListener('click', () => { el.classList.remove('show'); fn(); });
+      el.appendChild(btn);
+      requestAnimationFrame(() => el.classList.add('show'));
+      clearTimeout(_toastActionTimer);
+      _toastActionTimer = setTimeout(() => el.classList.remove('show'), 6000);
+    }
+
+    // Archive is reversible — no confirm; offer Undo instead
+    async function handleArchive(r) {
       if (!r) return;
       const id = r.dataset.id;
-      const title = r.dataset.title || 'this event';
-      if (!confirm(`Delete "${title}"? This removes the event and its guest list. This can't be undone.`)) {
-        r.classList.remove('open');
-        return;
-      }
       try {
-        await api(`/api/events/${id}`, { method: 'DELETE' });
+        await api(`/api/events/${id}/archive`, { method: 'POST' });
         r.style.height = r.offsetHeight + 'px';
         r.style.transition = 'height .2s ease, opacity .2s ease, margin .2s ease';
         requestAnimationFrame(() => { r.style.height = '0'; r.style.opacity = '0'; r.style.marginBottom = '0'; });
-        setTimeout(() => { r.remove(); checkEmpty(); }, 210);
-        toast('Event deleted');
+        setTimeout(() => { r.remove(); refreshSections(); }, 210);
+        toastWithAction('Event archived', 'Undo', async () => {
+          try { await api(`/api/events/${id}/unarchive`, { method: 'POST' }); load(); }
+          catch (err) { toast(err.message); }
+        });
       } catch (err) {
         toast(err.message);
         r.classList.remove('open');
       }
     }
 
-    function checkEmpty() {
+    async function handleRestore(id) {
+      try {
+        await api(`/api/events/${id}/unarchive`, { method: 'POST' });
+        toast('Event restored');
+        load();
+      } catch (err) { toast(err.message); }
+    }
+
+    function refreshSections() {
       const up = document.getElementById('upcoming');
       const pa = document.getElementById('past');
-      if (up && !up.children.length) document.getElementById('upcoming-section').style.display = 'none';
-      if (pa && !pa.children.length) document.getElementById('past-section').style.display = 'none';
-      if ((!up || !up.children.length) && (!pa || !pa.children.length)) {
-        const empty = document.getElementById('empty');
-        if (empty) empty.style.display = 'block';
+      if (!up.children.length) document.getElementById('upcoming-section').style.display = 'none';
+      if (!pa.children.length) document.getElementById('past-section').style.display = 'none';
+      else document.getElementById('past-label').textContent = `Past (${pa.children.length})`;
+      const archivedVisible = document.getElementById('archived-section').style.display !== 'none';
+      if (!up.children.length && !pa.children.length && !archivedVisible) {
+        document.getElementById('empty').style.display = 'block';
       }
     }
 
@@ -186,25 +247,60 @@
         </a>`;
     }
 
-    (async () => {
-      const { events } = await api('/api/events');
-      if (!events.length) {
-        document.getElementById('empty').style.display = 'block';
-        return;
-      }
+    function archivedCard(ev) {
+      const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
+        { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+      return `
+        <div class="sg-event-card" style="opacity:.75">
+          ${ev.cover_image_url
+            ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
+            : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+          <div class="sg-event-meta">
+            <h3>${ev.title}</h3>
+            <p>${dateStr} · ${ev.rsvp_count} RSVP${ev.rsvp_count === 1 ? '' : 's'} kept</p>
+          </div>
+          <button class="sg-btn sg-btn-ghost restore-btn" data-id="${ev.id}" style="padding:8px 18px;font-size:13px;flex-shrink:0">Restore</button>
+        </div>`;
+    }
+
+    function wireToggle(btnId, panelId) {
+      const btn = document.getElementById(btnId);
+      btn.addEventListener('click', () => {
+        const panel = document.getElementById(panelId);
+        const open = panel.style.display !== 'none';
+        panel.style.display = open ? 'none' : 'block';
+        btn.classList.toggle('open', !open);
+        if (panelId === 'archived') document.getElementById('archive-hint').style.display = open ? 'none' : 'block';
+      });
+    }
+    wireToggle('past-toggle', 'past');
+    wireToggle('archived-toggle', 'archived');
+
+    async function load() {
+      const [{ events }, { events: archived }] = await Promise.all([
+        api('/api/events'),
+        api('/api/events?archived=1')
+      ]);
+
       const today = new Date(new Date().toDateString());
       const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
       const past = events.filter(e => new Date(e.event_date) < today);
 
-      if (upcoming.length) {
-        document.getElementById('upcoming-section').style.display = 'block';
-        document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
-      }
-      if (past.length) {
-        document.getElementById('past-section').style.display = 'block';
-        document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
-      }
-    })();
+      document.getElementById('empty').style.display =
+        (!events.length && !archived.length) ? 'block' : 'none';
+
+      document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
+      document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
+
+      document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
+      document.getElementById('past-label').textContent = `Past (${past.length})`;
+      document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
+
+      document.getElementById('archived-section').style.display = archived.length ? 'block' : 'none';
+      document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
+      document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
+    }
+    load();
   </script>
 </body>
 </html>

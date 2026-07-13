@@ -122,9 +122,11 @@ router.get('/api/places/config', (req, res) => {
   res.json(apiKey ? { enabled: true, apiKey } : { enabled: false });
 });
 
-// GET /api/events — mine, with confirmed RSVP counts
+// GET /api/events — mine, with confirmed RSVP counts.
+// Excludes archived by default; ?archived=1 returns only archived.
 router.get('/api/events', async (req, res, next) => {
   try {
+    const archivedOnly = req.query.archived === '1';
     const { rows } = await pool.query(
       `SELECT e.*,
               COALESCE(r.cnt, 0)::int AS rsvp_count
@@ -133,10 +135,35 @@ router.get('/api/events', async (req, res, next) => {
            SELECT event_id, COUNT(*) AS cnt FROM rsvps WHERE status='confirmed' GROUP BY event_id
          ) r ON r.event_id = e.id
         WHERE e.organizer_id=$1
+          AND e.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
         ORDER BY e.event_date DESC, e.id DESC`,
       [req.organizer.id]
     );
     res.json({ events: rows });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/archive — hide from the list; keeps all guest data
+router.post('/api/events/:id/archive', async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query(
+      'UPDATE events SET archived_at=NOW() WHERE id=$1 AND organizer_id=$2 AND archived_at IS NULL',
+      [req.params.id, req.organizer.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Event not found' });
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/unarchive — restore to the list
+router.post('/api/events/:id/unarchive', async (req, res, next) => {
+  try {
+    const { rowCount } = await pool.query(
+      'UPDATE events SET archived_at=NULL WHERE id=$1 AND organizer_id=$2 AND archived_at IS NOT NULL',
+      [req.params.id, req.organizer.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Event not found' });
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
