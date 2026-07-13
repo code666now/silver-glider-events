@@ -16,7 +16,7 @@ Silver Glider Events is a free tool for creating beautiful event pages, collecti
    - A **cover photo** — upload your own, **search free photos** (Unsplash), or pick one of **6 gradient background themes**.
    - Description, address, category, capacity, and public/private.
 5. **Publish.** You get a shareable link, a QR code, and a page that works great on phones.
-6. Manage the event: see the **RSVP count and guest list**, search guests, **export CSV**, **duplicate** the event, or **cancel** it.
+6. Manage the event: see the **RSVP count and guest list**, search guests, **export CSV**, **duplicate** the event, or **cancel** it. To declutter the list, **swipe an event left to Archive** (reversible — guest data always kept); permanent delete lives at the bottom of the manage page behind a double confirm.
 7. **Submit to The Line** to request a feature in the Silver Glider SMS/marketing channel (an admin reviews it).
 
 **You stay logged in for 30 days** on your device (and it auto-extends while you're active), so you won't need a new email every time.
