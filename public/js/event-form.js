@@ -29,17 +29,19 @@ function setAdmission(v) {
 $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
-// Background theme picker
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+// Background picker — gradients + generative effects
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember', 'static', 'vhs'];
+const EFFECTS = ['static', 'vhs'];
+const THEME_LABELS = { static: 'TV static', vhs: 'VHS' };
 function setTheme(key) {
   $('background_theme').value = key;
   document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => s.classList.toggle('on', s.dataset.theme === key));
 }
 THEMES.forEach(key => {
   const sw = document.createElement('div');
-  sw.className = 'sg-swatch bg-' + key;
+  sw.className = 'sg-swatch ' + (EFFECTS.includes(key) ? 'fx-' : 'bg-') + key;
   sw.dataset.theme = key;
-  sw.title = key.charAt(0).toUpperCase() + key.slice(1);
+  sw.title = THEME_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1));
   sw.addEventListener('click', () => setTheme(key));
   $('theme-picker').appendChild(sw);
 });

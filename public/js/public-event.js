@@ -70,6 +70,7 @@ async function extractCoverPalette(url) {
 }
 
 async function applyCoverPalette() {
+  if (EVENT.bgEffect) return;   // an explicit effect overrides image-derived colors
   if (!EVENT.coverImageUrl) return;
   try {
     const colors = await extractCoverPalette(EVENT.coverImageUrl);
@@ -85,6 +86,38 @@ async function applyCoverPalette() {
 }
 
 applyCoverPalette();
+
+// TV static — a small canvas of noise, scaled up (chunky/retro) and redrawn ~15fps.
+// VHS is pure CSS (no JS). Both respect reduced-motion.
+function mountStaticEffect() {
+  if (EVENT.bgEffect !== 'static') return;
+  const host = document.querySelector('.event-bg');
+  if (!host) return;
+  const canvas = document.createElement('canvas');
+  canvas.className = 'fx-static-canvas';
+  canvas.width = 220; canvas.height = 140;   // small; CSS stretches it
+  host.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function draw() {
+    const img = ctx.createImageData(w, h), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.random() * 255 | 0;
+      d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  draw();
+  if (!reduce) {
+    let last = 0;
+    (function loop(t) {
+      if (t - last > 66) { draw(); last = t; }
+      requestAnimationFrame(loop);
+    })(0);
+  }
+}
+mountStaticEffect();
 
 function show(stateId) {
   ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']

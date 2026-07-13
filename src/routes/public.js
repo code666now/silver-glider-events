@@ -126,10 +126,18 @@ router.get('/e/:slug', async (req, res, next) => {
     const vibeHtml = renderVibe(event.event_vibe_url);
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-    const theme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
+    const EFFECTS = ['static', 'vhs'];
+    const chosen = event.background_theme;
+    const isEffect = EFFECTS.includes(chosen);
+    const theme = (THEMES.includes(chosen) || isEffect) ? chosen : 'midnight';
+    const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
+    // Effects sit behind everything and need a darkening veil for legibility
+    const fxVeil = isEffect ? '<div class="fx-veil" aria-hidden="true"></div>' : '';
     const heroHtml = event.cover_image_url
-      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image','bg-theme','bg-${theme}');this.remove()"></div>`
-      : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`;
+      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
+      : (isEffect
+          ? `<div class="hero no-image" id="hero"></div>`
+          : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`);
 
     // Unsplash attribution (only when a credited photo is the cover)
     const creditHtml = (event.cover_image_url && event.cover_credit_name)
@@ -143,7 +151,8 @@ router.get('/e/:slug', async (req, res, next) => {
       isFull,
       capacity: event.capacity,
       organizerLabel,
-      coverImageUrl: event.cover_image_url || null
+      coverImageUrl: event.cover_image_url || null,
+      bgEffect: isEffect ? theme : null
     };
 
     const html = publicTemplate
@@ -151,7 +160,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))
       .replace(/{{OG_IMAGE}}/g, esc(event.cover_image_url || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
-      .replace(/{{BODY_CLASS}}/g, `bg-${theme}`)
+      .replace(/{{BODY_CLASS}}/g, bgClass)
+      .replace(/{{FX_VEIL}}/g, fxVeil)
       .replace(/{{HERO}}/g, heroHtml)
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
       .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))

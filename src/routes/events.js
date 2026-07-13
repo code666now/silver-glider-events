@@ -15,7 +15,7 @@ router.use('/api/settings', requireOrganizer);
 router.use('/api/places', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember', 'static', 'vhs'];
 const ADMISSION_TYPES = ['free_rsvp', 'paid'];
 
 function cleanTicketUrl(v) {
