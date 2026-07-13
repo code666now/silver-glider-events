@@ -308,7 +308,8 @@ router.get('/e/:slug/qr.png', async (req, res, next) => {
     if (!event) return res.status(404).send('Not found');
     const png = await QRCode.toBuffer(`${process.env.APP_URL}/e/${event.slug}`, {
       width: 600, margin: 2,
-      color: { dark: '#0E0E0E', light: '#FFFFFF' }
+      // Brand teal modules on near-black — high contrast so it still scans reliably
+      color: { dark: '#1CC5BE', light: '#0E0E0E' }
     });
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=3600');
