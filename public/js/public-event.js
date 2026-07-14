@@ -126,8 +126,14 @@ function mountVideoEffect() {
   const video = document.querySelector('.fx-video-media');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
   const saveData = navigator.connection && navigator.connection.saveData;
-  if (!video || motionPreference.matches || saveData) return;
+  if (!video) return;
   video.muted = true;
+  video.defaultMuted = true;
+  if (motionPreference.matches || saveData) {
+    video.pause();
+    video.removeAttribute('autoplay');
+    return;
+  }
   video.addEventListener('playing', () => video.classList.add('is-playing'), { once: true });
   const syncPlayback = () => {
     if (document.hidden || motionPreference.matches) video.pause();
