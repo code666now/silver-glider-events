@@ -24,6 +24,20 @@ const organizerProfileReady = api('/api/auth/me')
   .then(({ organizer }) => applyOrganizerProfile(organizer))
   .catch(() => {});
 
+document.querySelectorAll('[data-picker-target]').forEach(button => {
+  button.addEventListener('click', () => {
+    const input = $(button.dataset.pickerTarget);
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    try {
+      if (typeof input.showPicker === 'function') input.showPicker();
+      else input.click();
+    } catch (_) {
+      input.focus();
+    }
+  });
+});
+
 function setVisibility(v) {
   visibility = v;
   $('vis-public').classList.toggle('on', v === 'public');

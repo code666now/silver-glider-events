@@ -197,6 +197,16 @@
       background: rgba(16,16,18,.42);
       backdrop-filter: blur(18px);
     }
+    .native-picker-wrap { position: relative; }
+    .native-picker-wrap .sg-input { padding-right: 52px; }
+    .native-picker-trigger {
+      position: absolute; top: 0; right: 0; bottom: 0; width: 56px;
+      border: 0; border-radius: 0 var(--sg-radius-input) var(--sg-radius-input) 0;
+      background: transparent; color: transparent; cursor: pointer;
+    }
+    .native-picker-trigger:focus-visible {
+      outline: 2px solid var(--sg-accent); outline-offset: -3px;
+    }
     .picker-upload {
       position: relative;
       min-height: 96px;
@@ -464,11 +474,17 @@
       <div class="row2">
         <div class="sg-field">
           <label for="event_date">Date</label>
-          <input class="sg-input" type="date" id="event_date" required>
+          <div class="native-picker-wrap">
+            <input class="sg-input" type="date" id="event_date" required>
+            <button class="native-picker-trigger" type="button" data-picker-target="event_date" aria-label="Open date picker">Open date picker</button>
+          </div>
         </div>
         <div class="sg-field">
           <label for="start_time">Start time</label>
-          <input class="sg-input" type="time" id="start_time" required>
+          <div class="native-picker-wrap">
+            <input class="sg-input" type="time" id="start_time" required>
+            <button class="native-picker-trigger" type="button" data-picker-target="start_time" aria-label="Open time picker">Open time picker</button>
+          </div>
         </div>
       </div>
 
