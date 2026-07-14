@@ -5,7 +5,7 @@
 ## 1. What it is
 Silver Glider Events is a free tool for creating beautiful event pages, collecting RSVPs, and sending reminders — think Partiful/Eventbrite but simpler. It is **Version 1** of a bigger platform; paid ticketing is planned for later, and the data model is already built to support it without a rebuild.
 
-- **Live site:** https://silver-glider-events-production.up.railway.app
+- **Live site:** https://silvergliderevents.com (custom domain; the Railway URL https://silver-glider-events-production.up.railway.app still serves the same app)
 - **Not a ticketing platform (yet).** V1 is free RSVPs only. No Stripe, no paid tickets.
 
 ## 2. How to use it (organizer)
@@ -13,7 +13,7 @@ Silver Glider Events is a free tool for creating beautiful event pages, collecti
 2. You get a **magic-link** email ("sign-in link"). Click it — no password.
 3. You're taken to your **Dashboard**. From there: **Create Event**.
 4. Fill in title, date, time, venue (only these four are required). Optionally add:
-   - A **cover photo** — upload your own, **search free photos** (Unsplash), or pick a **background**: 6 gradient themes or 2 motion effects (**TV static**, **VHS**). Effects are free, animate behind the whole page, and respect reduced-motion.
+   - A **cover photo** — upload your own, **search free photos** (Unsplash), or pick a **background**: 6 gradient themes or 2 effects (**TV static**, **Kraft paper** — a real crumpled paper-bag texture). Effects are free, sit behind the whole page, and respect reduced-motion.
    - Description, address, category, capacity, and public/private.
 5. **Publish.** You get a shareable link, a QR code, and a page that works great on phones.
 6. Manage the event: see the **RSVP count and guest list**, search guests, **export CSV**, **duplicate** the event, or **cancel** it. To declutter the list, **swipe an event left to Archive** (reversible — guest data always kept); permanent delete lives at the bottom of the manage page behind a double confirm.
@@ -55,7 +55,7 @@ Silver Glider Events is a free tool for creating beautiful event pages, collecti
 ```
 DATABASE_URL          – Postgres (Railway reference)
 SESSION_SECRET        – signs login cookies
-APP_URL               – https://silver-glider-events-production.up.railway.app
+APP_URL               – https://silvergliderevents.com (base for email/QR/calendar links)
 NODE_ENV=production
 RESEND_API_KEY        – email sending
 RESEND_FROM           – Silver Glider Events <events@rockandrollschedule.com>
@@ -73,9 +73,9 @@ git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-even
 Then verify: `curl https://silver-glider-events-production.up.railway.app/health` — the `sha` in the response should match `git rev-parse --short HEAD`. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
 
 ## 9. What's built (V1 complete)
-Magic-link login + persistent sessions · organizer dashboard · event creation with cover upload / Unsplash search / gradient themes / **motion effects (TV static, VHS)** · beautiful mobile-first public event pages (two-column on desktop) · RSVP with capacity limits · email confirmation + calendar invite · day-before & day-of email reminders · guest list, search, CSV export, duplicate, cancel · **swipe-to-archive on the events list** (reversible; permanent delete behind a double confirm on the manage page) · QR codes · share buttons · **follower announcements** (organizer-triggered "Email my followers" to guests who opted in, with unsubscribe) · "Submit to The Line" + admin review · animated backgrounds throughout.
+Magic-link login + persistent sessions · organizer dashboard · event creation with cover upload / Unsplash search / gradient themes / **background effects (TV static, kraft paper)** · beautiful mobile-first public event pages (two-column on desktop) · RSVP with capacity limits · email confirmation + calendar invite · day-before & day-of email reminders · guest list, search, CSV export, duplicate, cancel · **swipe-to-archive on the events list** (reversible; permanent delete behind a double confirm on the manage page) · QR codes · share buttons · **follower announcements** (organizer-triggered "Email my followers" to guests who opted in, with unsubscribe) · "Submit to The Line" + admin review · animated backgrounds throughout.
 
-**Background system (developer note):** `events.background_theme` holds one key — a gradient (`midnight`, `aurora`, `sunset`, `ocean`, `violet`, `ember`) or an effect (`static`, `vhs`). Whitelisted in `src/routes/events.js` and `src/routes/public.js`. Gradients use the `.bg-theme .bg-<key>` classes (+ an image-derived palette when there's a cover, applied client-side in `public-event.js`). Effects render via `.event-bg.fx-<key>` (VHS is pure CSS; TV static is a canvas mounted in `public-event.js`), bypass the palette, and add a darkening `.fx-veil`. Adding a future video effect (e.g. `disco`) = one more key + a `<video>` branch, no schema change.
+**Background system (developer note):** `events.background_theme` holds one key — a gradient (`midnight`, `aurora`, `sunset`, `ocean`, `violet`, `ember`) or an effect (`static`, `paper`). Whitelisted in `src/routes/events.js` and `src/routes/public.js`. Gradients use the `.bg-theme .bg-<key>` classes (+ an image-derived palette when there's a cover, applied client-side in `public-event.js`). Effects render via `.event-bg.fx-<key>` and bypass the palette: **kraft paper** is a Cloudinary photo (`sg-events/textures/kraft-paper`) with a baked-in dark overlay; **TV static** is a canvas mounted in `public-event.js`. Both add a darkening `.fx-veil` (paper uses the lighter `.fx-veil-soft`). Adding a future video effect (e.g. `disco`) = one more key + a `<video>` branch, no schema change.
 
 ## 10. Open items / things to know
 - **Email branding:** emails currently come from `@rockandrollschedule.com` because the free Resend plan allows one verified domain. To send from a Silver Glider address, verify a Silver Glider domain in Resend (needs a paid plan or a second Resend account) — then it's a one-variable change (`RESEND_FROM`).
