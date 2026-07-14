@@ -21,6 +21,8 @@
     .more-menu { position: relative; }
     .more-menu summary { list-style: none; }
     .more-menu summary::-webkit-details-marker { display: none; }
+    .menu-chevron { color: var(--sg-text-dim); font-size: 12px; transition: transform .15s ease; }
+    .more-menu[open] .menu-chevron { transform: rotate(180deg); }
     .more-menu-panel {
       position: absolute; right: 0; top: calc(100% + 8px); z-index: 10;
       width: 210px; padding: 8px;
@@ -34,6 +36,7 @@
     }
     .more-menu-panel button:hover { background: rgba(255,255,255,.055); }
     .more-menu-panel .danger { color: var(--sg-danger); }
+    .more-menu-divider { height: 1px; margin: 6px 4px; background: var(--sg-border); }
     .share-qr { margin: 0 0 28px; }
     .share-qr summary {
       display: inline-flex; align-items: center; gap: 7px; list-style: none;
@@ -115,9 +118,10 @@
       <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank">View page</a>
       <a class="sg-btn sg-btn-ghost" id="edit-link">Edit</a>
       <details class="more-menu" id="more-menu">
-        <summary class="sg-btn sg-btn-ghost" aria-label="More event actions">More ···</summary>
+        <summary class="sg-btn sg-btn-ghost">Event actions <span class="menu-chevron" aria-hidden="true">▾</span></summary>
         <div class="more-menu-panel">
           <button id="duplicate">Duplicate event</button>
+          <div class="more-menu-divider" role="separator"></div>
           <button class="danger" id="cancel-event">Cancel event</button>
         </div>
       </details>
