@@ -73,13 +73,14 @@ Production may contain promoted events, so the MVP workflow is **local first, pr
    Local cover uploads automatically go to `sg-events-dev/covers`; production covers remain in `sg-events/covers`.
 3. Verify `/health` and the specific organizer/guest flows affected by the change.
 4. Commit and push only after local testing passes.
-5. Deploy to production from `~/silver-glider-events`:
+5. Before deploying, explicitly report whether the release affects existing live event pages, shared Cloudinary assets, guest lists/RSVPs, outgoing emails/reminders, or only new/local behavior. Replacing an asset at an existing Cloudinary URL affects every live event using it.
+6. Deploy to production from `~/silver-glider-events`:
 
 ```
 git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-events
 ```
 
-6. Verify `curl https://silver-glider-events-production.up.railway.app/health` — the `sha` in the response should match `git rev-parse --short HEAD` — then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
+7. Verify `curl https://silver-glider-events-production.up.railway.app/health` — the `sha` in the response should match `git rev-parse --short HEAD` — then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
 
 ## 9. What's built (V1 complete)
 Magic-link login + persistent sessions · organizer dashboard · event creation with cover upload / **curated Unsplash photo picker** (Summer default, mixed Silver Glider Picks, category browsing, custom search, infinite scroll) / gradient themes / **background effects (TV static, kraft paper, Disco video, Fog video)** · beautiful mobile-first public event pages (two-column on desktop) · RSVP with capacity limits · email confirmation + calendar invite · day-before & day-of email reminders · guest list, search, CSV export, duplicate, cancel · **swipe-to-archive on the events list** (reversible; permanent delete behind a double confirm on the manage page) · QR codes · share buttons · **follower announcements** (organizer-triggered "Email my followers" to guests who opted in, with unsubscribe) · "Submit to The Line" + admin review · animated backgrounds throughout.

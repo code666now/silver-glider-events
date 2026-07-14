@@ -41,8 +41,9 @@ Production is live and may have promoted events. Use this release sequence for e
 2. Keep local `REMINDERS_ENABLED=false`; never point local development at Railway Postgres.
 3. Verify `/health` plus the specific organizer and guest flows affected by the change.
 4. Commit and push only after local verification.
-5. Deploy to Railway only when the change is ready for live users.
-6. Confirm production `/health` returns the deployed commit SHA and perform a non-destructive smoke test.
+5. Before deploying, report the live-impact check: whether the change affects existing event pages, shared Cloudinary assets, guest lists/RSVPs, outgoing emails/reminders, or only new/local behavior. Call out shared-asset replacements explicitly because they update every live event using that asset.
+6. Deploy to Railway only when the change is ready for live users.
+7. Confirm production `/health` returns the deployed commit SHA and perform a non-destructive smoke test.
 
 ```
 git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-events
