@@ -34,6 +34,15 @@ You are continuing work on **Silver Glider Events**, a Node.js/Express app for f
 - Brand tokens are in `public/css/brand.css` (dark theme, teal `#1CC5BE`, Sulphur Point + Montserrat).
 
 ## Deploy (Railway)
+Production is live and may have promoted events. Use this release sequence for every change:
+
+1. Develop and test locally at `http://localhost:3100` using the local `sge_dev` database.
+2. Keep local `REMINDERS_ENABLED=false`; never point local development at Railway Postgres.
+3. Verify `/health` plus the specific organizer and guest flows affected by the change.
+4. Commit and push only after local verification.
+5. Deploy to Railway only when the change is ready for live users.
+6. Confirm production `/health` returns the deployed commit SHA and perform a non-destructive smoke test.
+
 ```
 git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-events
 ```
