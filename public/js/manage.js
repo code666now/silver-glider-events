@@ -108,6 +108,7 @@ async function loadGuests(search = '') {
     </tr>`).join('');
   $('no-guests').style.display = active.length ? 'none' : 'block';
   $('guests').style.display = active.length ? 'table' : 'none';
+  $('export-csv').disabled = active.length === 0;
 }
 
 $('copy-link').addEventListener('click', async () => {
@@ -179,6 +180,11 @@ $('cancel-event').addEventListener('click', async () => {
   await api(`/api/events/${eventId}/cancel`, { method: 'POST' });
   toast('Event cancelled');
   loadEvent();
+});
+
+document.addEventListener('click', event => {
+  const menu = $('more-menu');
+  if (menu.open && !menu.contains(event.target)) menu.removeAttribute('open');
 });
 
 let searchTimer;
