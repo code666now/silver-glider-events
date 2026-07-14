@@ -164,7 +164,7 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
       bodyHtml: eventCard(event),
       cta: 'View & RSVP',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You're receiving this because you asked ${esc(organizerLabel)} to keep you posted about future events.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from this organizer</a></p>`
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You're receiving this because you asked ${esc(organizerLabel)} to keep you posted about future events.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from this host</a></p>`
     })
   });
 }

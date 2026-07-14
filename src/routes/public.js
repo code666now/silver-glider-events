@@ -446,7 +446,7 @@ router.get('/unsubscribe', async (req, res, next) => {
        WHERE NOT EXISTS (SELECT 1 FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=LOWER($2))`,
       [data.organizerId, data.email]
     );
-    res.send(unsubscribePage("You're unsubscribed. You won't get future-event emails from this organizer.", true));
+    res.send(unsubscribePage("You're unsubscribed. You won't get future-event emails from this host.", true));
   } catch (err) { next(err); }
 });
 
