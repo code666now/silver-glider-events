@@ -42,8 +42,8 @@
     }
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
 
-    /* ── Motion effects (TV static, VHS) — replace the gradient entirely ── */
-    .event-bg.fx-static, .event-bg.fx-vhs {
+    /* ── Backgrounds effects (TV static, kraft paper) — replace the gradient ── */
+    .event-bg.fx-static, .event-bg.fx-paper {
       animation: none;
       background-image: none;
       filter: none;
@@ -53,24 +53,25 @@
       position: absolute; inset: 0; width: 100%; height: 100%;
       opacity: .4; image-rendering: pixelated;
     }
-    .event-bg.fx-vhs { background: linear-gradient(90deg, #0d2b2b, #0e0e0e 72%); }
-    .event-bg.fx-vhs::before {
-      content: ''; position: absolute; inset: 0;
-      background: repeating-linear-gradient(0deg, rgba(255,255,255,.06) 0 1px, transparent 1px 3px);
-      animation: vhs-roll 5s linear infinite;
+    /* Kraft paper — real crumpled-bag photo, darkened so white text stays legible */
+    .event-bg.fx-paper {
+      background-color: #14100c;
+      background-image:
+        linear-gradient(rgba(18,13,9,.74), rgba(18,13,9,.74)),
+        url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_2400/sg-events/textures/kraft-paper.jpg");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
     }
-    .event-bg.fx-vhs::after {
-      content: ''; position: absolute; inset: 0;
-      background: linear-gradient(90deg, rgba(255,0,80,.10), transparent 30%, rgba(0,200,255,.08));
-      mix-blend-mode: screen;
-    }
-    @keyframes vhs-roll { from { background-position: 0 0; } to { background-position: 0 6px; } }
-    @media (prefers-reduced-motion: reduce) { .event-bg.fx-vhs::before { animation: none; } }
 
     /* Darkening veil so text stays legible over an effect */
     .fx-veil {
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background: radial-gradient(120% 100% at 50% 30%, rgba(14,14,14,.42), rgba(14,14,14,.7));
+    }
+    /* Paper is already dark & legible — only a soft vignette for depth */
+    .fx-veil.fx-veil-soft {
+      background: radial-gradient(130% 100% at 50% 34%, transparent 0%, rgba(14,14,14,.34) 88%);
     }
 
     .layout { position: relative; z-index: 1; }

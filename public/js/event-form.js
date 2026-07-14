@@ -30,9 +30,9 @@ $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
 // Background picker — gradients + generative effects
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember', 'static', 'vhs'];
-const EFFECTS = ['static', 'vhs'];
-const THEME_LABELS = { static: 'TV static', vhs: 'VHS' };
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember', 'static', 'paper'];
+const EFFECTS = ['static', 'paper'];
+const THEME_LABELS = { static: 'TV static', paper: 'Kraft paper' };
 function setTheme(key) {
   $('background_theme').value = key;
   document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => s.classList.toggle('on', s.dataset.theme === key));

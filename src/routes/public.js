@@ -126,13 +126,15 @@ router.get('/e/:slug', async (req, res, next) => {
     const vibeHtml = renderVibe(event.event_vibe_url);
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-    const EFFECTS = ['static', 'vhs'];
+    const EFFECTS = ['static', 'paper'];
     const chosen = event.background_theme;
     const isEffect = EFFECTS.includes(chosen);
     const theme = (THEMES.includes(chosen) || isEffect) ? chosen : 'midnight';
     const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
     // Effects sit behind everything and need a darkening veil for legibility
-    const fxVeil = isEffect ? '<div class="fx-veil" aria-hidden="true"></div>' : '';
+    const fxVeil = isEffect
+      ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}" aria-hidden="true"></div>`
+      : '';
     const heroHtml = event.cover_image_url
       ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
       : (isEffect

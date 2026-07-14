@@ -180,19 +180,19 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-swatch:hover { transform: translateY(-1px); }
 .sg-swatch.on { border-color: var(--sg-accent); }
 
-/* Effect swatches (generative — TV static, VHS) */
+/* Effect swatches (generative — TV static, kraft paper) */
 .sg-swatch.fx-static {
   background-color: #0e0e0e;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
   background-size: cover;
 }
-.sg-swatch.fx-vhs {
-  position: relative; overflow: hidden;
-  background: linear-gradient(90deg, #0d2b2b, #0e0e0e 72%);
-}
-.sg-swatch.fx-vhs::after {
-  content: ''; position: absolute; inset: 0;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.12) 0 1px, transparent 1px 3px);
+.sg-swatch.fx-paper {
+  background-color: #14100c;
+  background-image:
+    linear-gradient(rgba(18,13,9,.28), rgba(18,13,9,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_200/sg-events/textures/kraft-paper.jpg");
+  background-size: cover;
+  background-position: center;
 }
 
 /* Moving aurora background for the organizer app pages (dashboard, events,
