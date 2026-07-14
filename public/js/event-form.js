@@ -135,7 +135,7 @@ const fileInput = $('cover-input');
 const imageModal = $('image-modal');
 const pickerUpload = $('picker-upload');
 let photosEnabled = false;
-let activeImageCategory = '⭐ Featured';
+let activeImageCategory = '☀️ Summer';
 let lastPhotos = [];
 let searchTimer;
 let currentPhotoQuery = '';
@@ -151,6 +151,7 @@ let pickerBgTimer;
 // User-facing visual themes stay simple; hidden queries are tuned for
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
+  { label: '☀️ Summer', query: 'pool party beach party summer party friends swimming pool colorful floats cocktails nightlife', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
   { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background', bgClass: 'picker-bg-featured', colors: ['#155b5a', '#30255f', '#75511f'] },
   { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows', bgClass: 'picker-bg-film', colors: ['#243142', '#4b3345', '#8a5f31'] },
   { label: '🌿 Nature', query: 'forest mountains plants sky natural light background', bgClass: 'picker-bg-nature', colors: ['#164c3a', '#17495b', '#546629'] },
@@ -159,7 +160,6 @@ const IMAGE_CATEGORIES = [
   { label: '📐 Patterns', query: 'geometric repeating patterns graphic design background', bgClass: 'picker-bg-patterns', colors: ['#153f47', '#352d63', '#5d5d5f'] },
   { label: '🌈 Colorful', query: 'vibrant colors neon rainbow bright abstract background', bgClass: 'picker-bg-colorful', colors: ['#196b72', '#6a3574', '#7c4f1c'] },
   { label: '🌙 Dark', query: 'black shadows low light dark moody background', bgClass: 'picker-bg-dark', colors: ['#0c1625', '#21152f', '#331c32'] },
-  { label: '☀️ Summer', query: 'sunshine beach warm colors golden light background', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
   { label: '📼 Nostalgia', query: 'vintage retro analog 90s nostalgic background', bgClass: 'picker-bg-nostalgia', colors: ['#5b3c57', '#765132', '#244c5d'] },
   { label: '🏙️ Urban', query: 'city architecture streets nightlife urban lights', bgClass: 'picker-bg-urban', colors: ['#142b42', '#3a345e', '#6c4d21'] },
   { label: '🖤 Minimal', query: 'clean simple negative space minimal background', bgClass: 'picker-bg-minimal', colors: ['#1f2428', '#333236', '#0f3f42'] }
