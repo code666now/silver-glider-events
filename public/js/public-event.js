@@ -88,7 +88,6 @@ async function applyCoverPalette() {
 applyCoverPalette();
 
 // TV static — a small canvas of noise, scaled up (chunky/retro) and redrawn ~15fps.
-// VHS is pure CSS (no JS). Both respect reduced-motion.
 function mountStaticEffect() {
   if (EVENT.bgEffect !== 'static') return;
   const host = document.querySelector('.event-bg');
@@ -118,6 +117,27 @@ function mountStaticEffect() {
   }
 }
 mountStaticEffect();
+
+// Cloudinary video effects start only when motion is allowed. The host keeps a
+// poster frame underneath if autoplay is blocked, the video fails, or the user
+// has requested reduced motion.
+function mountVideoEffect() {
+  if (!['disco', 'fog'].includes(EVENT.bgEffect)) return;
+  const video = document.querySelector('.fx-video-media');
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  const saveData = navigator.connection && navigator.connection.saveData;
+  if (!video || motionPreference.matches || saveData) return;
+  video.muted = true;
+  video.addEventListener('playing', () => video.classList.add('is-playing'), { once: true });
+  const syncPlayback = () => {
+    if (document.hidden || motionPreference.matches) video.pause();
+    else video.play().catch(() => {});
+  };
+  document.addEventListener('visibilitychange', syncPlayback);
+  motionPreference.addEventListener?.('change', syncPlayback);
+  syncPlayback();
+}
+mountVideoEffect();
 
 function show(stateId) {
   ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']

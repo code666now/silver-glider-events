@@ -180,7 +180,7 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-swatch:hover { transform: translateY(-1px); }
 .sg-swatch.on { border-color: var(--sg-accent); }
 
-/* Effect swatches (generative — TV static, kraft paper) */
+/* Effect swatches — generative, texture, and video-loop posters */
 .sg-swatch.fx-static {
   background-color: #0e0e0e;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
@@ -191,6 +191,22 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-image:
     linear-gradient(rgba(18,13,9,.28), rgba(18,13,9,.28)),
     url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_200/sg-events/textures/kraft-paper.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-disco {
+  background-color: #170d2d;
+  background-image:
+    linear-gradient(rgba(12,7,24,.2), rgba(12,7,24,.38)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/disco.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-fog {
+  background-color: #151421;
+  background-image:
+    linear-gradient(rgba(10,9,18,.1), rgba(10,9,18,.32)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/fog.jpg");
   background-size: cover;
   background-position: center;
 }

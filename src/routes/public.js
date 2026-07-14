@@ -126,11 +126,19 @@ router.get('/e/:slug', async (req, res, next) => {
     const vibeHtml = renderVibe(event.event_vibe_url);
 
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-    const EFFECTS = ['static', 'paper'];
+    const EFFECTS = ['static', 'paper', 'disco', 'fog'];
+    const VIDEO_EFFECTS = {
+      disco: 'sg-events/effects/disco',
+      fog: 'sg-events/effects/fog'
+    };
     const chosen = event.background_theme;
     const isEffect = EFFECTS.includes(chosen);
     const theme = (THEMES.includes(chosen) || isEffect) ? chosen : 'midnight';
     const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
+    const videoPublicId = VIDEO_EFFECTS[theme];
+    const fxMedia = videoPublicId
+      ? `<video class="fx-video-media" muted loop playsinline preload="metadata" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_auto,q_auto,w_1920,c_limit/${videoPublicId}.mp4"></video>`
+      : '';
     // Effects sit behind everything and need a darkening veil for legibility
     const fxVeil = isEffect
       ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}" aria-hidden="true"></div>`
@@ -163,6 +171,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{OG_IMAGE}}/g, esc(event.cover_image_url || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
       .replace(/{{BODY_CLASS}}/g, bgClass)
+      .replace(/{{FX_MEDIA}}/g, fxMedia)
       .replace(/{{FX_VEIL}}/g, fxVeil)
       .replace(/{{HERO}}/g, heroHtml)
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)

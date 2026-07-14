@@ -42,8 +42,8 @@
     }
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
 
-    /* ── Backgrounds effects (TV static, kraft paper) — replace the gradient ── */
-    .event-bg.fx-static, .event-bg.fx-paper {
+    /* ── Background effects — replace the gradient ── */
+    .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-disco, .event-bg.fx-fog {
       animation: none;
       background-image: none;
       filter: none;
@@ -63,6 +63,25 @@
       background-position: center;
       background-repeat: no-repeat;
     }
+    /* Video loops retain their first frame as a no-motion/autoplay fallback. */
+    .event-bg.fx-disco, .event-bg.fx-fog {
+      background-color: #100d18;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    .event-bg.fx-disco {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/disco.jpg");
+    }
+    .event-bg.fx-fog {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/fog.jpg");
+    }
+    .fx-video-media {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; opacity: 0; transition: opacity .45s ease;
+    }
+    .fx-video-media.is-playing { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) { .fx-video-media { display: none; } }
 
     /* Darkening veil so text stays legible over an effect */
     .fx-veil {
@@ -218,7 +237,7 @@
   </style>
 </head>
 <body>
-  <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true"></div>
+  <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true">{{FX_MEDIA}}</div>
   {{FX_VEIL}}
   <div class="layout">
     <div class="col-media">{{HERO}}{{PHOTO_CREDIT}}</div>
