@@ -70,6 +70,7 @@ Production may contain promoted events, so the MVP workflow is **local first, pr
 
 1. Run and test the change locally at `http://localhost:3100` against `postgresql://localhost:5432/sge_dev`.
 2. Keep `NODE_ENV=development` and `REMINDERS_ENABLED=false` locally. Never use the Railway production database for development or test data.
+   Local cover uploads automatically go to `sg-events-dev/covers`; production covers remain in `sg-events/covers`.
 3. Verify `/health` and the specific organizer/guest flows affected by the change.
 4. Commit and push only after local testing passes.
 5. Deploy to production from `~/silver-glider-events`:

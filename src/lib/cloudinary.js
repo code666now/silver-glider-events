@@ -2,6 +2,8 @@ const cloudinary = require('cloudinary').v2;
 const { Readable } = require('stream');
 
 const configured = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+const coverFolder = process.env.CLOUDINARY_COVER_FOLDER ||
+  (process.env.NODE_ENV === 'production' ? 'sg-events/covers' : 'sg-events-dev/covers');
 
 if (configured) {
   cloudinary.config({
@@ -19,7 +21,7 @@ async function uploadCover(buffer) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: 'sg-events/covers',
+        folder: coverFolder,
         transformation: [{ width: 1600, height: 900, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
       },
       (error, result) => { if (error) reject(error); else resolve(result); }

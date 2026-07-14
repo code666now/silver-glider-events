@@ -17,6 +17,7 @@ You are continuing work on **Silver Glider Events**, a Node.js/Express app for f
   - No `UNSPLASH_ACCESS_KEY` → the "Search free photos" button hides itself.
 - `SESSION_SECRET` is required (any long random string locally).
 - **Production DB/services live on Railway.** Do not run migrations, tests, or scripts against them.
+- Local cover uploads automatically use `sg-events-dev/covers`; production uses `sg-events/covers`.
 
 ## Architecture (what to know before editing)
 - **No build step, no framework.** Express serves static HTML from `src/views/` and browser JS/CSS from `public/`. Pages are server-rendered by string-replacing `{{PLACEHOLDER}}` tokens (see `src/routes/public.js` for the event page).
