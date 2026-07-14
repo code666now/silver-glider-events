@@ -430,7 +430,12 @@
 
       <div class="sg-field" id="fallback-background-field">
         <label>Background <span style="opacity:.5;text-transform:none;letter-spacing:0">— color or moving effect behind your page</span></label>
-        <div id="theme-picker" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
+        <div id="theme-picker">
+          <p class="theme-group-name">Gradients</p>
+          <div class="theme-swatch-grid" id="gradient-picker"></div>
+          <p class="theme-group-name">Effects</p>
+          <div class="theme-swatch-grid" id="effect-picker"></div>
+        </div>
         <p class="theme-selected-name" id="theme-selected-name" aria-live="polite">Selected: Midnight</p>
         <input type="hidden" id="background_theme" value="midnight">
       </div>

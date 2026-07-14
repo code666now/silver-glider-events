@@ -30,8 +30,9 @@ $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
 // Background picker — gradients + generative/photo/video effects
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog'];
-const EFFECTS = ['static', 'paper', 'disco', 'fog'];
+const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
+const EFFECTS = ['disco', 'fog', 'paper', 'static'];
+const THEMES = [...GRADIENTS, ...EFFECTS];
 const THEME_LABELS = {
   midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
   static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog'
@@ -57,7 +58,7 @@ THEMES.forEach(key => {
   name.textContent = THEME_LABELS[key];
   sw.appendChild(name);
   sw.addEventListener('click', () => setTheme(key));
-  $('theme-picker').appendChild(sw);
+  $(EFFECTS.includes(key) ? 'effect-picker' : 'gradient-picker').appendChild(sw);
 });
 setTheme('midnight');
 

@@ -203,6 +203,20 @@ a { color: var(--sg-accent); text-decoration: none; }
   color: var(--sg-text-dim);
   font-size: 12px;
 }
+.theme-group-name {
+  margin: 0 0 7px 2px;
+  color: var(--sg-text-faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.theme-group-name:not(:first-child) { margin-top: 12px; }
+.theme-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
 
 /* Effect swatches — generative, texture, and video-loop posters */
 .sg-swatch.fx-static {
