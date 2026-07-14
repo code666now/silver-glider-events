@@ -32,16 +32,30 @@ $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 // Background picker — gradients + generative/photo/video effects
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog'];
 const EFFECTS = ['static', 'paper', 'disco', 'fog'];
-const THEME_LABELS = { static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog' };
+const THEME_LABELS = {
+  midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
+  static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog'
+};
 function setTheme(key) {
   $('background_theme').value = key;
-  document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => s.classList.toggle('on', s.dataset.theme === key));
+  document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => {
+    const selected = s.dataset.theme === key;
+    s.classList.toggle('on', selected);
+    s.setAttribute('aria-pressed', String(selected));
+  });
+  $('theme-selected-name').textContent = `Selected: ${THEME_LABELS[key] || key}`;
 }
 THEMES.forEach(key => {
-  const sw = document.createElement('div');
+  const sw = document.createElement('button');
+  sw.type = 'button';
   sw.className = 'sg-swatch ' + (EFFECTS.includes(key) ? 'fx-' : 'bg-') + key;
   sw.dataset.theme = key;
-  sw.title = THEME_LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1));
+  sw.title = THEME_LABELS[key];
+  sw.setAttribute('aria-label', `Use ${THEME_LABELS[key]} background`);
+  const name = document.createElement('span');
+  name.className = 'sg-swatch-name';
+  name.textContent = THEME_LABELS[key];
+  sw.appendChild(name);
   sw.addEventListener('click', () => setTheme(key));
   $('theme-picker').appendChild(sw);
 });
