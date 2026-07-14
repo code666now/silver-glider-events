@@ -13,6 +13,7 @@ const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const publicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public.html'), 'utf8');
+const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
 const rsvpManageTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'rsvp-manage.html'), 'utf8');
 
 function esc(s) {
@@ -103,13 +104,80 @@ async function loadEventBySlug(slug) {
   const { rows } = await pool.query(
     `SELECT e.*,
             COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
-            o.org_name, o.name AS organizer_name
+            o.org_name, o.name AS organizer_name, o.public_slug AS organizer_public_slug, o.logo_url AS organizer_logo_url
        FROM events e JOIN organizers o ON o.id = e.organizer_id
       WHERE e.slug=$1 AND e.status <> 'draft'`,
     [slug]
   );
   return rows[0] || null;
 }
+
+function eventCardVisual(event) {
+  if (event.cover_image_url) {
+    return `<img src="${esc(event.cover_image_url)}" alt="" loading="lazy">`;
+  }
+  const posters = {
+    paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/textures/kraft-paper.jpg',
+    disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/disco.jpg',
+    fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/fog.jpg'
+  };
+  if (posters[event.background_theme]) {
+    return `<img src="${posters[event.background_theme]}" alt="" loading="lazy">`;
+  }
+  const themes = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+  const theme = themes.includes(event.background_theme) ? event.background_theme : 'midnight';
+  return `<div class="host-event-placeholder bg-${theme}" aria-hidden="true"></div>`;
+}
+
+function renderHostEventCard(event) {
+  const time = formatTime(event.start_time);
+  return `<a class="host-event-card" href="/e/${encodeURIComponent(event.slug)}">
+    <div class="host-event-art">${eventCardVisual(event)}</div>
+    <div class="host-event-copy">
+      <p>${esc(fmtDate(event.event_date))} · ${esc(time)}</p>
+      <h2>${esc(event.title)}</h2>
+      <span>${esc(event.venue_name)}${event.venue_city ? ` · ${esc(event.venue_city)}` : ''}</span>
+    </div>
+  </a>`;
+}
+
+// GET /h/:slug — one public home for an organizer's upcoming events
+router.get('/h/:slug', async (req, res, next) => {
+  try {
+    const { rows: hosts } = await pool.query(
+      `SELECT id, org_name, public_slug, logo_url
+         FROM organizers
+        WHERE LOWER(public_slug)=LOWER($1) AND org_name IS NOT NULL`,
+      [req.params.slug]
+    );
+    const host = hosts[0];
+    if (!host) return res.status(404).send(render404());
+
+    const { rows: events } = await pool.query(
+      `SELECT slug, title, cover_image_url, event_date, start_time, venue_name, venue_city, background_theme
+         FROM events
+        WHERE organizer_id=$1
+          AND status='published'
+          AND visibility='public'
+          AND event_date >= CURRENT_DATE
+        ORDER BY event_date ASC, start_time ASC, id ASC`,
+      [host.id]
+    );
+    const cardsHtml = events.length
+      ? events.map(renderHostEventCard).join('')
+      : '<div class="host-empty"><h2>No upcoming events yet.</h2><p>Check back soon for the next one.</p></div>';
+    const logoHtml = host.logo_url
+      ? `<img class="host-logo" src="${esc(host.logo_url)}" alt="${esc(host.org_name)} logo">`
+      : '';
+
+    res.send(hostTemplate
+      .replace(/{{HOST_NAME}}/g, esc(host.org_name))
+      .replace(/{{HOST_LOGO}}/g, logoHtml)
+      .replace(/{{EVENT_CARDS}}/g, cardsHtml)
+      .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/h/${host.public_slug}`))
+      .replace(/{{OG_IMAGE}}/g, esc(host.logo_url || `${process.env.APP_URL}/logo.png`)));
+  } catch (err) { next(err); }
+});
 
 // GET /e/:slug — server-rendered so OG tags work for link previews
 router.get('/e/:slug', async (req, res, next) => {
@@ -119,6 +187,14 @@ router.get('/e/:slug', async (req, res, next) => {
 
     const isFull = event.capacity != null && event.rsvp_count >= event.capacity;
     const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
+    const presenterHtml = event.org_name
+      ? `<div class="host-attribution">
+          ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
+          <p><span>Presented by</span>${event.organizer_public_slug
+            ? `<a href="/h/${encodeURIComponent(event.organizer_public_slug)}">${esc(event.org_name)} <b aria-hidden="true">→</b></a>`
+            : `<strong>${esc(event.org_name)}</strong>`}</p>
+        </div>`
+      : '';
     const isPaid = event.admission_type === 'paid';
     const ticketHtml = isPaid
       ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
@@ -185,7 +261,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
-      .replace(/{{ORGANIZER}}/g, esc(organizerLabel))
+      .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, isPaid ? 'RSVP' : "RSVP — it's free")
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));

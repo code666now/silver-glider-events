@@ -13,7 +13,7 @@
     <h1 class="sg-page-title">Settings</h1>
     <p class="sg-page-sub">How you appear on your event pages.</p>
 
-    <form id="settings-form" style="max-width:440px">
+    <form id="settings-form" style="max-width:520px">
       <div class="sg-field">
         <label for="email">Email</label>
         <input class="sg-input" id="email" disabled style="opacity:.55">
@@ -23,8 +23,24 @@
         <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez">
       </div>
       <div class="sg-field">
-        <label for="org_name">Organization <span style="opacity:.5;text-transform:none;letter-spacing:0">(shown as event host)</span></label>
-        <input class="sg-input" id="org_name" maxlength="100" placeholder="Silver Glider">
+        <label for="org_name">Public host name <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking">
+        <p style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">Shown as “Presented by” on your events. Adding one creates a public page for your upcoming events.</p>
+      </div>
+      <div class="sg-field" id="host-logo-field" style="display:none">
+        <label>Host logo <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div id="logo-preview-wrap" style="display:none;width:64px;height:64px;border-radius:16px;background:var(--sg-surface);border:1px solid var(--sg-border);overflow:hidden;flex:0 0 auto">
+            <img id="logo-preview" alt="Host logo" style="width:100%;height:100%;object-fit:contain">
+          </div>
+          <button class="sg-btn sg-btn-ghost" type="button" id="logo-btn" style="padding:10px 18px;font-size:13px">Upload logo</button>
+          <input type="file" id="logo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        </div>
+        <p id="logo-status" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px"></p>
+      </div>
+      <div class="sg-field" id="host-link-field" style="display:none">
+        <label>Your public host page</label>
+        <a id="host-link" class="sg-btn sg-btn-ghost" target="_blank" rel="noopener" style="padding:10px 18px;font-size:13px">View host page →</a>
       </div>
       <div class="sg-field">
         <label>Plan</label>
@@ -40,11 +56,24 @@
     renderNav('settings');
     const $ = id => document.getElementById(id);
 
+    function renderHostProfile(organizer) {
+      const hasProfile = !!organizer.public_slug;
+      $('host-logo-field').style.display = hasProfile ? 'block' : 'none';
+      $('host-link-field').style.display = hasProfile ? 'block' : 'none';
+      if (hasProfile) $('host-link').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
+      if (organizer.logo_url) {
+        $('logo-preview').src = organizer.logo_url;
+        $('logo-preview-wrap').style.display = 'block';
+        $('logo-btn').textContent = 'Replace logo';
+      }
+    }
+
     api('/api/auth/me').then(({ organizer }) => {
       $('email').value = organizer.email;
       $('name').value = organizer.name || '';
       $('org_name').value = organizer.org_name || '';
       $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
+      renderHostProfile(organizer);
       if (organizer.is_admin) {
         const nav = document.querySelector('.sg-nav-links');
         nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a>');
@@ -56,12 +85,35 @@
       const btn = $('save-btn');
       btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        await api('/api/settings', { method: 'PUT', body: { name: $('name').value, org_name: $('org_name').value } });
+        const { organizer } = await api('/api/settings', { method: 'PUT', body: { name: $('name').value, org_name: $('org_name').value } });
+        renderHostProfile(organizer);
         toast('Saved');
       } catch (err) {
         toast(err.message);
       } finally {
         btn.disabled = false; btn.textContent = 'Save';
+      }
+    });
+
+    $('logo-btn').addEventListener('click', () => $('logo-input').click());
+    $('logo-input').addEventListener('change', async () => {
+      const file = $('logo-input').files[0];
+      if (!file) return;
+      const form = new FormData();
+      form.append('image', file);
+      $('logo-btn').disabled = true;
+      $('logo-status').textContent = 'Uploading…';
+      try {
+        const response = await fetch('/api/uploads/host-logo', { method: 'POST', body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Upload failed');
+        renderHostProfile(data.organizer);
+        $('logo-status').textContent = 'Logo saved.';
+      } catch (err) {
+        $('logo-status').textContent = err.message;
+      } finally {
+        $('logo-btn').disabled = false;
+        $('logo-input').value = '';
       }
     });
 

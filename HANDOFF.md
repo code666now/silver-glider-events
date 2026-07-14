@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** July 13, 2026
+**Last updated:** July 14, 2026
 
 ## 1. What it is
 Silver Glider Events is a free tool for creating beautiful event pages, collecting RSVPs, and sending reminders — think Partiful/Eventbrite but simpler. It is **Version 1** of a bigger platform; paid ticketing is planned for later, and the data model is already built to support it without a rebuild.
@@ -34,7 +34,7 @@ Silver Glider Events is a free tool for creating beautiful event pages, collecti
 |---|---|---|
 | **Railway** | Hosting + database | Project: `silver-glider-events` (its own project + Postgres, separate from the ticketing app) |
 | **Resend** | Sending emails | Sends as **"Silver Glider Events" from events@rockandrollschedule.com** (free plan allows 1 domain, shared with Rock & Roll Schedule) |
-| **Cloudinary** | Storing cover photos, textures, and video effects | Cloud `dhvavjgnw`; folders `sg-events/covers`, `sg-events/textures`, and `sg-events/effects` |
+| **Cloudinary** | Storing cover photos, host logos, textures, and video effects | Cloud `dhvavjgnw`; production folders `sg-events/covers`, `sg-events/hosts`, `sg-events/textures`, and `sg-events/effects`; local uploads use `sg-events-dev/covers` and `sg-events-dev/hosts` |
 | **Unsplash** | Free photo search in the form | Photographer is auto-credited on the event page; searches use a bounded 30-minute in-memory cache to reduce repeat API calls |
 
 ## 5. Login & security (plain English)
@@ -90,6 +90,7 @@ Magic-link login + persistent sessions · organizer dashboard · event creation 
 **Background system (developer note):** `events.background_theme` holds one key — an MVP gradient (`midnight`, `aurora`, `sunset`, `ocean`) or an effect (`static`, `paper`, `disco`, `fog`). `violet` and `ember` are no longer offered or accepted for new saves, but `src/routes/public.js` retains legacy rendering support for already-published events. Gradients use the `.bg-theme .bg-<key>` classes (+ an image-derived palette when there's a cover, applied client-side in `public-event.js`). Effects render via `.event-bg.fx-<key>` and bypass the palette: **kraft paper** is a Cloudinary photo (`sg-events/textures/kraft-paper`) with a baked-in dark overlay; **TV static** is a canvas mounted in `public-event.js`; **Disco** and **Fog** are Cloudinary video assets (`sg-events/effects/disco`, sourced from Pexels file `6982940-uhd_2880_2160_25fps.mp4`; and `sg-events/effects/fog`, sourced from the faster vertical Pexels file `16011289_1080_1920_30fps.mp4`) delivered as progressive H.264 MP4s with automatic eco quality and a 1280px width limit for mobile reliability. Video effects use native `autoplay`, `muted`, `loop`, and inline-playback attributes for mobile Safari, with JavaScript retries on load and the first touch when autoplay is blocked; they pause when the tab is hidden and stay on the static poster when autoplay fails, data-saving mode is enabled, or `prefers-reduced-motion` is enabled. All effects add a darkening `.fx-veil` (paper uses the lighter `.fx-veil-soft`). Adding another video effect requires a new whitelisted key, Cloudinary asset mapping, picker swatch, and fallback poster; no schema change.
 
 ## 10. Open items / things to know
+- **Public host profiles are implemented locally but not deployed yet (July 14):** the create-event form has an optional **Presented by** field. The first value creates one reusable organizer identity and a stable `/h/<slug>` page; future event forms prefill it. Public event attribution links to that page and can show an optional logo managed in Settings. The host page lists only upcoming, published, public events and reuses each event's cover/background visual. Draft, private, cancelled, and past events are excluded. `organizers.public_slug` and `organizers.logo_url` are added by migration `009_public_host_profiles.sql`; logos upload to `sg-events-dev/hosts` locally and `sg-events/hosts` in production. The local demo is currently available on port `3102`; production remains unchanged pending visual approval.
 - **Email branding:** emails currently come from `@rockandrollschedule.com` because the free Resend plan allows one verified domain. To send from a Silver Glider address, verify a Silver Glider domain in Resend (needs a paid plan or a second Resend account) — then it's a one-variable change (`RESEND_FROM`).
 - **The Line integration is manual for now:** approving a submission flags it; actual cross-promotion is done by hand.
 - **Admin access:** The Line review is gated by an `is_admin` flag on the organizer row (set directly in the database).
@@ -97,4 +98,4 @@ Magic-link login + persistent sessions · organizer dashboard · event creation 
 - **No automated tests yet.**
 
 ## 11. Future (planned, not in V1)
-Paid ticketing (Stripe, QR tickets) · organizer profiles & analytics (Pro tier) · SMS reminders (credit-based) · public event discovery page. The event data model already reserves an `admission_type` field (`free_rsvp` now; `paid`, `donation`, `door`, `vip` reserved) so paid ticketing can be layered on without rebuilding events.
+Paid ticketing (Stripe, QR tickets) · richer organizer profiles (bio, socials, multiple brands/cohosts) & analytics (Pro tier) · SMS reminders (credit-based) · public event discovery page. The event data model already reserves an `admission_type` field (`free_rsvp` now; `paid`, `donation`, `door`, `vip` reserved) so paid ticketing can be layered on without rebuilding events.

@@ -6,6 +6,24 @@ let admissionType = 'free_rsvp';
 
 const $ = id => document.getElementById(id);
 
+function applyOrganizerProfile(organizer) {
+  const input = $('presenter_name');
+  const help = $('presenter-help');
+  input.value = organizer.org_name || '';
+
+  if (organizer.public_slug) {
+    input.readOnly = true;
+    help.innerHTML = `Used across your events · <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View host page</a> · <a href="/settings">Manage in Settings</a>`;
+  } else if (editId) {
+    input.readOnly = true;
+    help.innerHTML = 'Host identity is shared across events. <a href="/settings">Set it up in Settings</a>.';
+  }
+}
+
+const organizerProfileReady = api('/api/auth/me')
+  .then(({ organizer }) => applyOrganizerProfile(organizer))
+  .catch(() => {});
+
 function setVisibility(v) {
   visibility = v;
   $('vis-public').classList.toggle('on', v === 'public');
@@ -570,7 +588,7 @@ function showError(msg) {
 }
 
 function collect() {
-  return {
+  const body = {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
     event_vibe_url: $('event_vibe_url').value.trim() || null,
@@ -594,6 +612,8 @@ function collect() {
     cover_credit_name: $('cover_credit_name').value || null,
     cover_credit_link: $('cover_credit_link').value || null
   };
+  if (!editId) body.presenter_name = $('presenter_name').value.trim() || null;
+  return body;
 }
 
 // Edit mode — prefill
@@ -634,6 +654,7 @@ $('event-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = editId ? 'Saving…' : 'Publishing…';
   try {
+    await organizerProfileReady;
     const body = collect();
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })

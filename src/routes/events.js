@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { makePublicSlug, makePrivateSlug } = require('../lib/slug');
+const { cleanHostName, ensureHostProfile } = require('../lib/host-profile');
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
@@ -172,6 +173,11 @@ router.post('/api/events', async (req, res, next) => {
   try {
     const { out, errors } = validateEventBody(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
+
+    const presenterName = cleanHostName(req.body.presenter_name);
+    if (!req.organizer.public_slug && presenterName) {
+      await ensureHostProfile(req.organizer.id, presenterName);
+    }
 
     for (let attempt = 0; attempt < 3; attempt++) {
       const slug = out.visibility === 'private' ? makePrivateSlug() : makePublicSlug(out.title);
@@ -443,12 +449,19 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
 router.put('/api/settings', async (req, res, next) => {
   try {
     const name = String(req.body.name ?? '').trim().slice(0, 100) || null;
-    const orgName = String(req.body.org_name ?? '').trim().slice(0, 100) || null;
+    const orgName = cleanHostName(req.body.org_name);
+    if (req.organizer.public_slug && !orgName) {
+      return res.status(400).json({ error: 'A public host page needs a host name' });
+    }
     const { rows } = await pool.query(
-      'UPDATE organizers SET name=$2, org_name=$3 WHERE id=$1 RETURNING id, email, name, org_name, plan, is_admin',
+      `UPDATE organizers SET name=$2, org_name=$3 WHERE id=$1
+       RETURNING id, email, name, org_name, public_slug, logo_url, plan, is_admin, created_at`,
       [req.organizer.id, name, orgName]
     );
-    res.json({ organizer: rows[0] });
+    const organizer = orgName && !rows[0].public_slug
+      ? await ensureHostProfile(req.organizer.id, orgName)
+      : rows[0];
+    res.json({ organizer });
   } catch (err) { next(err); }
 });
 

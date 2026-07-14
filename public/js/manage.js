@@ -7,6 +7,10 @@ const LINE_NUMBER = '(844) 261-6758';
 
 if (new URLSearchParams(location.search).get('created')) {
   $('created-note').style.display = 'block';
+  api('/api/auth/me').then(({ organizer }) => {
+    if (!organizer.public_slug) return;
+    $('created-host-note').innerHTML = ` Your host page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings">add a logo</a>.`;
+  }).catch(() => {});
 }
 
 function eventUrl() {
