@@ -151,7 +151,7 @@ let pickerBgTimer;
 // User-facing visual themes stay simple; hidden queries are tuned for
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
-  { label: '☀️ Summer', query: 'pool party beach party summer party friends swimming pool colorful floats cocktails nightlife', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
+  { label: '☀️ Summer', query: 'pool party', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
   { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background', bgClass: 'picker-bg-featured', colors: ['#155b5a', '#30255f', '#75511f'] },
   { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows', bgClass: 'picker-bg-film', colors: ['#243142', '#4b3345', '#8a5f31'] },
   { label: '🌿 Nature', query: 'forest mountains plants sky natural light background', bgClass: 'picker-bg-nature', colors: ['#164c3a', '#17495b', '#546629'] },
