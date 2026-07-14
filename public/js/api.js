@@ -8,7 +8,8 @@ async function api(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined
   });
   if (res.status === 401) {
-    window.location.href = '/login';
+    const returnTo = `${location.pathname}${location.search}`;
+    window.location.href = `/login?next=${encodeURIComponent(returnTo)}`;
     throw new Error('Not signed in');
   }
   const data = await res.json().catch(() => ({}));
@@ -86,3 +87,121 @@ function toast(msg) {
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
 }
+
+function mountFeedbackBubble() {
+  if (document.getElementById('feedback-bubble')) return;
+  const draftKey = 'sge_feedback_draft';
+  const root = document.createElement('div');
+  root.id = 'feedback-widget';
+  root.innerHTML = `
+    <button class="feedback-bubble" id="feedback-bubble" type="button">Feedback</button>
+    <div class="feedback-modal" id="feedback-modal" aria-hidden="true">
+      <div class="feedback-modal-card" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+        <div class="feedback-modal-head">
+          <div><h2 id="feedback-title">Send feedback</h2><p>Found a bug or have an idea? Let us know.</p></div>
+          <button class="feedback-modal-close" id="feedback-close" type="button" aria-label="Close feedback form">×</button>
+        </div>
+        <form id="feedback-form">
+          <div class="sg-field">
+            <label for="feedback-type">Type</label>
+            <select class="sg-select" id="feedback-type" required>
+              <option value="bug">Bug</option>
+              <option value="suggestion">Suggestion</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="sg-field">
+            <label for="feedback-message">Message</label>
+            <textarea class="sg-textarea" id="feedback-message" maxlength="4000" required placeholder="What happened, or what would make this better?"></textarea>
+          </div>
+          <p class="feedback-form-error" id="feedback-error"></p>
+          <button class="sg-btn sg-btn-primary sg-btn-block" id="feedback-submit" type="submit">Submit feedback</button>
+        </form>
+      </div>
+    </div>`;
+  document.body.appendChild(root);
+
+  const modal = document.getElementById('feedback-modal');
+  const type = document.getElementById('feedback-type');
+  const message = document.getElementById('feedback-message');
+  const error = document.getElementById('feedback-error');
+  const submit = document.getElementById('feedback-submit');
+  let restoredDraft = false;
+
+  function currentPath() { return `${location.pathname}${location.search}`; }
+  function currentEventId() {
+    const pathMatch = location.pathname.match(/^\/events\/(\d+)(?:\/|$)/);
+    if (pathMatch) return Number(pathMatch[1]);
+    if (location.pathname === '/events/new') {
+      const id = Number(new URLSearchParams(location.search).get('id'));
+      return Number.isInteger(id) && id > 0 ? id : null;
+    }
+    return null;
+  }
+  function openFeedback() {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => message.focus(), 0);
+  }
+  function closeFeedback() {
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    if (restoredDraft) {
+      localStorage.removeItem(draftKey);
+      restoredDraft = false;
+    }
+    document.getElementById('feedback-bubble').focus();
+  }
+
+  document.getElementById('feedback-bubble').addEventListener('click', openFeedback);
+  document.getElementById('feedback-close').addEventListener('click', closeFeedback);
+  modal.addEventListener('click', e => { if (e.target === modal) closeFeedback(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modal.classList.contains('open')) closeFeedback();
+  });
+
+  document.getElementById('feedback-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    error.style.display = 'none';
+    const body = {
+      type: type.value,
+      message: message.value.trim(),
+      page_url: location.href,
+      route: location.pathname,
+      event_id: currentEventId()
+    };
+    localStorage.setItem(draftKey, JSON.stringify({ ...body, returnTo: currentPath() }));
+    submit.disabled = true;
+    submit.textContent = 'Submitting…';
+    try {
+      await api('/api/feedback', { method: 'POST', body });
+      localStorage.removeItem(draftKey);
+      restoredDraft = false;
+      message.value = '';
+      type.value = 'bug';
+      closeFeedback();
+      toast('Feedback sent. Thank you.');
+    } catch (err) {
+      error.textContent = err.message;
+      error.style.display = 'block';
+    } finally {
+      submit.disabled = false;
+      submit.textContent = 'Submit feedback';
+    }
+  });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(draftKey) || 'null');
+    if (saved && saved.returnTo === currentPath()) {
+      type.value = ['bug', 'suggestion', 'other'].includes(saved.type) ? saved.type : 'bug';
+      message.value = String(saved.message || '').slice(0, 4000);
+      restoredDraft = true;
+      openFeedback();
+    }
+  } catch (_) {
+    localStorage.removeItem(draftKey);
+  }
+}
+
+if (document.readyState !== 'loading') mountFeedbackBubble();
+else document.addEventListener('DOMContentLoaded', mountFeedbackBubble);

@@ -34,6 +34,8 @@
 
   <script>
     const params = new URLSearchParams(location.search);
+    const requestedNext = params.get('next') || '';
+    const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
     if (params.get('error') === 'expired') {
       const err = document.getElementById('error');
       err.textContent = 'That link expired or was already used. Request a new one.';
@@ -49,7 +51,7 @@
         const res = await fetch('/api/auth/magic-link', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
+          body: JSON.stringify({ email, next })
         });
         if (!res.ok) throw new Error((await res.json()).error || 'Failed');
         document.getElementById('form-state').style.display = 'none';

@@ -9,6 +9,11 @@ const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function safeNext(value) {
+  const next = String(value || '').trim();
+  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+}
+
 // In-memory rate limiter for magic-link requests (per email + per IP).
 // Single-instance / best-effort — resets on deploy, which is fine at this scale.
 const RL_WINDOW_MS = 15 * 60 * 1000;
@@ -45,11 +50,12 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
+    const nextPath = safeNext(req.body.next);
     await pool.query(
       `INSERT INTO magic_link_tokens (token, email, expires_at) VALUES ($1, $2, NOW() + INTERVAL '15 minutes')`,
       [token, email]
     );
-    const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+    const link = `${process.env.APP_URL}/auth/verify?token=${token}${nextPath ? `&next=${encodeURIComponent(nextPath)}` : ''}`;
     await sendMagicLink({ to: email, link });
     await pool.query(
       `INSERT INTO message_log (recipient, message_type, channel, status, sent_at) VALUES ($1, 'magic_link', 'email', 'sent', NOW())`,
@@ -86,7 +92,7 @@ router.get('/auth/verify', async (req, res, next) => {
     }
 
     setSessionCookie(res, organizer.id);
-    res.redirect('/dashboard');
+    res.redirect(safeNext(req.query.next) || '/dashboard');
   } catch (err) {
     next(err);
   }

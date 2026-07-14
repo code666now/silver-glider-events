@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feedback — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .feedback-filters { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px; }
+    .feedback-list-head,.feedback-admin-row {
+      display:grid;grid-template-columns:80px minmax(170px,2fr) 100px minmax(130px,1fr) minmax(110px,1fr) minmax(110px,1fr) 100px;
+      gap:14px;align-items:center;
+    }
+    .feedback-list-head { padding:0 16px 9px;color:var(--sg-text-faint);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
+    .feedback-admin-row {
+      width:100%;padding:15px 16px;margin-bottom:8px;border:1px solid var(--sg-border-soft);
+      border-radius:16px;background:rgba(17,17,17,.78);color:var(--sg-text);text-align:left;cursor:pointer;
+    }
+    .feedback-admin-row:hover { border-color:rgba(28,197,190,.38); }
+    .feedback-type { color:var(--sg-accent);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em; }
+    .feedback-preview { min-width:0; }
+    .feedback-preview strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px; }
+    .feedback-preview span,.feedback-host span,.feedback-event,.feedback-route { display:block;color:var(--sg-text-faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .feedback-host strong { display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .feedback-status { width:max-content;padding:5px 9px;border:1px solid var(--sg-border);border-radius:999px;color:var(--sg-text-dim);font-size:10px;font-weight:800;text-transform:uppercase; }
+    .feedback-status.new { color:var(--sg-accent);border-color:rgba(28,197,190,.35); }
+    .feedback-status.resolved { color:#79c98a;border-color:rgba(121,201,138,.3); }
+    .feedback-date { color:var(--sg-text-dim);font-size:11px; }
+    .admin-detail-modal { align-items:center;justify-content:center; }
+    .admin-detail-card { width:min(100%,620px);max-height:min(86vh,760px);overflow:auto; }
+    .detail-message { white-space:pre-wrap;padding:16px;border:1px solid var(--sg-border-soft);border-radius:14px;background:var(--sg-surface);font-size:14px;line-height:1.7;margin-bottom:18px; }
+    .detail-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px; }
+    .detail-cell { padding:12px;border:1px solid var(--sg-border-soft);border-radius:12px;min-width:0; }
+    .detail-cell label { display:block;color:var(--sg-text-faint);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px; }
+    .detail-cell p,.detail-cell a { display:block;color:var(--sg-text-dim);font-size:12px;overflow-wrap:anywhere; }
+    .detail-actions { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px; }
+    .detail-actions .sg-btn { padding:9px 15px;font-size:11px; }
+    @media(max-width:720px) {
+      .feedback-list-head { display:none; }
+      .feedback-admin-row { grid-template-columns:1fr auto;gap:7px 12px; }
+      .feedback-preview,.feedback-host { grid-column:1/-1; }
+      .feedback-event,.feedback-route { grid-column:1; }
+      .feedback-date { grid-column:2;text-align:right; }
+      .detail-grid { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-shell" style="max-width:980px">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">Feedback</h1>
+    <p class="sg-page-sub">Bug reports and product feedback from signed-in hosts.</p>
+    <div class="admin-section-nav" aria-label="Admin sections">
+      <a href="/admin/line">The Line</a>
+      <a class="active" href="/admin/feedback">Feedback</a>
+    </div>
+
+    <div class="feedback-filters">
+      <select class="sg-select" id="type-filter" aria-label="Filter by type">
+        <option value="">All types</option><option value="bug">Bugs</option><option value="suggestion">Suggestions</option><option value="other">Other</option>
+      </select>
+      <select class="sg-select" id="status-filter" aria-label="Filter by status">
+        <option value="">All statuses</option><option value="new">New</option><option value="reviewing">Reviewing</option><option value="resolved">Resolved</option>
+      </select>
+    </div>
+
+    <div class="feedback-list-head"><span>Type</span><span>Message</span><span>Status</span><span>Host</span><span>Event</span><span>Page</span><span>Date</span></div>
+    <div id="feedback-list"></div>
+    <p id="feedback-empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:48px 0">No feedback matches these filters.</p>
+  </div>
+
+  <div class="feedback-modal admin-detail-modal" id="feedback-detail-modal" aria-hidden="true">
+    <div class="feedback-modal-card admin-detail-card" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="feedback-modal-head">
+        <div><h2 id="detail-title">Feedback details</h2><p id="detail-kicker"></p></div>
+        <button class="feedback-modal-close" id="detail-close" type="button" aria-label="Close feedback details">×</button>
+      </div>
+      <div class="sg-field">
+        <label for="detail-status">Status</label>
+        <select class="sg-select" id="detail-status"><option value="new">New</option><option value="reviewing">Reviewing</option><option value="resolved">Resolved</option></select>
+      </div>
+      <div class="detail-message" id="detail-message"></div>
+      <div class="detail-actions" id="detail-actions"></div>
+      <div class="detail-grid" id="detail-grid"></div>
+      <div class="detail-cell"><label>Browser / user agent</label><p id="detail-user-agent"></p></div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    const detailModal = document.getElementById('feedback-detail-modal');
+    let selectedId = null;
+
+    function esc(value) {
+      return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function formatDate(value, includeTime = false) {
+      return new Date(value).toLocaleString('en-US', includeTime
+        ? { month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit' }
+        : { month:'short',day:'numeric',year:'numeric' });
+    }
+    function hostName(item) { return item.org_name || item.current_user_name || item.user_name || item.user_email; }
+    function statusLabel(value) { return value === 'reviewing' ? 'Reviewing' : value === 'resolved' ? 'Resolved' : 'New'; }
+
+    async function loadFeedback() {
+      const params = new URLSearchParams();
+      if (document.getElementById('type-filter').value) params.set('type', document.getElementById('type-filter').value);
+      if (document.getElementById('status-filter').value) params.set('status', document.getElementById('status-filter').value);
+      const { feedback } = await api(`/api/admin/feedback${params.toString() ? `?${params}` : ''}`);
+      const list = document.getElementById('feedback-list');
+      document.getElementById('feedback-empty').style.display = feedback.length ? 'none' : 'block';
+      list.innerHTML = feedback.map(item => `
+        <button class="feedback-admin-row" type="button" data-id="${item.id}">
+          <span class="feedback-type">${esc(item.type)}</span>
+          <span class="feedback-preview"><strong>${esc(item.message_preview)}</strong></span>
+          <span class="feedback-status ${esc(item.status)}">${statusLabel(item.status)}</span>
+          <span class="feedback-host"><strong>${esc(hostName(item))}</strong><span>${esc(item.user_email)}</span></span>
+          <span class="feedback-event">${esc(item.event_title || '—')}</span>
+          <span class="feedback-route">${esc(item.route)}</span>
+          <span class="feedback-date">${formatDate(item.created_at)}</span>
+        </button>`).join('');
+      list.querySelectorAll('[data-id]').forEach(row => row.addEventListener('click', () => openDetail(row.dataset.id)));
+    }
+
+    async function openDetail(id) {
+      const { feedback } = await api(`/api/admin/feedback/${id}`);
+      selectedId = feedback.id;
+      document.getElementById('detail-kicker').textContent = `${feedback.type.toUpperCase()} · #${feedback.id} · ${formatDate(feedback.created_at, true)}`;
+      document.getElementById('detail-status').value = feedback.status;
+      document.getElementById('detail-message').textContent = feedback.message;
+      document.getElementById('detail-user-agent').textContent = feedback.user_agent || 'Not available';
+      const actions = [];
+      if (feedback.event_slug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/e/${encodeURIComponent(feedback.event_slug)}" target="_blank" rel="noopener">Open event</a>`);
+      if (feedback.public_slug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/h/${encodeURIComponent(feedback.public_slug)}" target="_blank" rel="noopener">Open host page</a>`);
+      actions.push(`<a class="sg-btn sg-btn-ghost" href="${esc(feedback.page_url)}" target="_blank" rel="noopener">Open reported page</a>`);
+      actions.push('<button class="sg-btn sg-btn-ghost" id="copy-page-url" type="button">Copy page URL</button>');
+      document.getElementById('detail-actions').innerHTML = actions.join('');
+      document.getElementById('copy-page-url').addEventListener('click', async () => {
+        await navigator.clipboard.writeText(feedback.page_url);
+        toast('Page URL copied');
+      });
+      const cells = [
+        ['Host / user', hostName(feedback)], ['Email', feedback.user_email],
+        ['Related event', feedback.event_title || 'None'], ['Route', feedback.route],
+        ['Page URL', feedback.page_url], ['Submitted', formatDate(feedback.created_at, true)],
+        ['Last updated', formatDate(feedback.updated_at, true)], ['Authenticated user ID', feedback.submitted_by_organizer_id || 'None'],
+        ['Host / organizer ID', feedback.organizer_id || 'None']
+      ];
+      document.getElementById('detail-grid').innerHTML = cells.map(([label,value]) => `<div class="detail-cell"><label>${esc(label)}</label><p>${esc(value)}</p></div>`).join('');
+      detailModal.classList.add('open');
+      detailModal.setAttribute('aria-hidden','false');
+    }
+
+    function closeDetail() {
+      detailModal.classList.remove('open');
+      detailModal.setAttribute('aria-hidden','true');
+      selectedId = null;
+    }
+    document.getElementById('detail-close').addEventListener('click', closeDetail);
+    detailModal.addEventListener('click', e => { if (e.target === detailModal) closeDetail(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && detailModal.classList.contains('open')) closeDetail(); });
+    document.getElementById('detail-status').addEventListener('change', async e => {
+      if (!selectedId) return;
+      await api(`/api/admin/feedback/${selectedId}`, { method:'PATCH', body:{ status:e.target.value } });
+      toast('Status updated');
+      loadFeedback();
+    });
+    document.getElementById('type-filter').addEventListener('change', loadFeedback);
+    document.getElementById('status-filter').addEventListener('change', loadFeedback);
+    loadFeedback();
+  </script>
+</body>
+</html>
