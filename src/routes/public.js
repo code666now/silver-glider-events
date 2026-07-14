@@ -137,7 +137,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
     const videoPublicId = VIDEO_EFFECTS[theme];
     const fxMedia = videoPublicId
-      ? `<video class="fx-video-media" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_auto,q_auto,w_1920,c_limit/${videoPublicId}.mp4"></video>`
+      ? `<video class="fx-video-media" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"></video>`
       : '';
     // Effects sit behind everything and need a darkening veil for legibility
     const fxVeil = isEffect

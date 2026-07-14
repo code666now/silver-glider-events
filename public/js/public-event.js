@@ -134,10 +134,28 @@ function mountVideoEffect() {
     video.removeAttribute('autoplay');
     return;
   }
-  video.addEventListener('playing', () => video.classList.add('is-playing'), { once: true });
+  const reveal = () => video.classList.add('is-playing');
+  video.addEventListener('playing', reveal);
+  video.addEventListener('loadeddata', () => { if (!video.paused) reveal(); });
+  if (!video.paused && video.readyState >= 2) reveal();
+
+  let interactionRetryArmed = false;
+  const retryAfterInteraction = () => {
+    video.play().then(reveal).catch(() => {});
+    document.removeEventListener('touchstart', retryAfterInteraction);
+    document.removeEventListener('pointerdown', retryAfterInteraction);
+    interactionRetryArmed = false;
+  };
+  const armInteractionRetry = () => {
+    if (interactionRetryArmed) return;
+    interactionRetryArmed = true;
+    document.addEventListener('touchstart', retryAfterInteraction, { once: true, passive: true });
+    document.addEventListener('pointerdown', retryAfterInteraction, { once: true, passive: true });
+  };
+  const attemptPlay = () => video.play().then(reveal).catch(armInteractionRetry);
   const syncPlayback = () => {
     if (document.hidden || motionPreference.matches) video.pause();
-    else video.play().catch(() => {});
+    else attemptPlay();
   };
   document.addEventListener('visibilitychange', syncPlayback);
   motionPreference.addEventListener?.('change', syncPlayback);
