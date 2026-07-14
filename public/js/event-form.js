@@ -139,6 +139,7 @@ let activeImageCategory = '☀️ Summer';
 let lastPhotos = [];
 let searchTimer;
 let currentPhotoQuery = '';
+let currentPhotoQueries = [];
 let currentPhotoCategory = '';
 let currentPhotoPage = 0;
 let currentPhotoTotalPages = 1;
@@ -152,7 +153,18 @@ let pickerBgTimer;
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
   { label: '☀️ Summer', query: 'pool party', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
-  { label: '⭐ Featured', query: 'concert nightlife festival live event atmospheric background', bgClass: 'picker-bg-featured', colors: ['#155b5a', '#30255f', '#75511f'] },
+  {
+    label: '⭐ Silver Glider Picks',
+    query: 'nightlife live music crowd neon',
+    queries: [
+      'nightlife live music crowd neon',
+      'pool party friends colorful summer',
+      'fashion art gallery creative event',
+      'urban rooftop dinner party'
+    ],
+    bgClass: 'picker-bg-featured',
+    colors: ['#155b5a', '#30255f', '#75511f']
+  },
   { label: '🎞️ Film', query: 'cinematic film moody lighting grain dramatic shadows', bgClass: 'picker-bg-film', colors: ['#243142', '#4b3345', '#8a5f31'] },
   { label: '🌿 Nature', query: 'forest mountains plants sky natural light background', bgClass: 'picker-bg-nature', colors: ['#164c3a', '#17495b', '#546629'] },
   { label: '✨ Abstract', query: 'abstract gradients shapes soft color background', bgClass: 'picker-bg-abstract', colors: ['#2b3c7b', '#6e3277', '#167577'] },
@@ -288,7 +300,7 @@ function openImageModal() {
   document.body.style.overflow = 'hidden';
   const theme = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
   applyPickerBackground(theme);
-  if (photosEnabled) loadCategory('⭐ Featured');
+  if (photosEnabled) loadCategory(activeImageCategory || '☀️ Summer');
 }
 
 function closeImageModal() {
@@ -414,10 +426,28 @@ function setupPhotoInfiniteScroll() {
   }
 }
 
-async function searchPhotos(q, { category = null, page = 1, append = false } = {}) {
+function interleavePhotoResults(groups, existing = []) {
+  const mixed = [];
+  const seen = new Set(existing.map(photo => photo.id || photo.full));
+  const longest = Math.max(0, ...groups.map(group => group.length));
+  for (let index = 0; index < longest; index += 1) {
+    groups.forEach(group => {
+      const photo = group[index];
+      const key = photo && (photo.id || photo.full);
+      if (photo && !seen.has(key)) {
+        seen.add(key);
+        mixed.push(photo);
+      }
+    });
+  }
+  return mixed;
+}
+
+async function searchPhotos(q, { category = null, queries = null, page = 1, append = false } = {}) {
   if (photoLoading) return;
   photoLoading = true;
   currentPhotoQuery = q;
+  currentPhotoQueries = Array.isArray(queries) && queries.length ? queries : [q];
   currentPhotoCategory = category || '';
   currentPhotoPage = page;
   const status = $('unsplash-status');
@@ -426,8 +456,15 @@ async function searchPhotos(q, { category = null, page = 1, append = false } = {
   updateLoadMore();
   if (!append) grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">Loading images...</div>';
   try {
-    const { results, totalPages } = await api(`/api/photos/search?q=${encodeURIComponent(q)}&page=${page}`);
-    currentPhotoTotalPages = totalPages || 1;
+    const perPage = Math.ceil(24 / currentPhotoQueries.length);
+    const responses = await Promise.all(currentPhotoQueries.map(query => (
+      api(`/api/photos/search?q=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`)
+    )));
+    const results = interleavePhotoResults(
+      responses.map(response => response.results || []),
+      append ? lastPhotos : []
+    );
+    currentPhotoTotalPages = Math.min(...responses.map(response => response.totalPages || 1));
     lastPhotos = append ? lastPhotos.concat(results) : results;
     status.textContent = lastPhotos.length ? (currentPhotoCategory || '') : '';
     renderPhotoGrid(results, { append });
@@ -468,6 +505,7 @@ function loadMorePhotos() {
   lastPhotoLoadAt = now;
   searchPhotos(currentPhotoQuery, {
     category: currentPhotoCategory,
+    queries: currentPhotoQueries,
     page: currentPhotoPage + 1,
     append: true
   });
@@ -479,7 +517,7 @@ function loadCategory(label) {
   applyPickerBackground(item);
   markActiveCategory();
   $('unsplash-q').value = '';
-  searchPhotos(item.query, { category: item.label });
+  searchPhotos(item.query, { category: item.label, queries: item.queries });
 }
 
 async function runSearch() {
@@ -497,7 +535,7 @@ $('unsplash-q').addEventListener('input', e => {
   searchTimer = setTimeout(() => {
     const q = e.target.value.trim();
     if (q) runSearch();
-    else loadCategory(activeImageCategory || '⭐ Featured');
+    else loadCategory(activeImageCategory || '☀️ Summer');
   }, 350);
 });
 

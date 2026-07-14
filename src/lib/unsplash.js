@@ -4,10 +4,16 @@
 const ACCESS_KEY = (process.env.UNSPLASH_ACCESS_KEY || '').trim();
 const UTM = 'utm_source=silver_glider_events&utm_medium=referral';
 const enabled = !!ACCESS_KEY;
+const SEARCH_CACHE_TTL = 30 * 60 * 1000;
+const searchCache = new Map();
 
-async function search(query, page = 1) {
+async function search(query, page = 1, perPage = 24) {
+  const cacheKey = `${query}:${page}:${perPage}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < SEARCH_CACHE_TTL) return cached.data;
+
   const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}`
-    + `&per_page=24&page=${page}&content_filter=high`;
+    + `&per_page=${perPage}&page=${page}&content_filter=high`;
   const res = await fetch(url, {
     headers: { Authorization: `Client-ID ${ACCESS_KEY}`, 'Accept-Version': 'v1' }
   });
@@ -21,7 +27,7 @@ async function search(query, page = 1) {
     throw err;
   }
   const data = await res.json();
-  return {
+  const result = {
     page,
     totalPages: data.total_pages || 1,
     results: (data.results || []).map(p => ({
@@ -34,6 +40,9 @@ async function search(query, page = 1) {
     credit_link: `${p.user.links.html}?${UTM}`
     }))
   };
+  if (searchCache.size >= 200) searchCache.delete(searchCache.keys().next().value);
+  searchCache.set(cacheKey, { createdAt: Date.now(), data: result });
+  return result;
 }
 
 // Required by Unsplash when a user actually selects a photo
