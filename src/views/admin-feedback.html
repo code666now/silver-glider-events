@@ -9,8 +9,8 @@
   <style>
     .feedback-filters { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px; }
     .feedback-list-head,.feedback-admin-row {
-      display:grid;grid-template-columns:80px minmax(170px,2fr) 100px minmax(130px,1fr) minmax(110px,1fr) minmax(110px,1fr) 100px;
-      gap:14px;align-items:center;
+      display:grid;grid-template-columns:64px minmax(150px,2fr) 88px minmax(120px,1fr) minmax(90px,1fr) minmax(90px,1fr) 86px 60px;
+      gap:10px;align-items:center;
     }
     .feedback-list-head { padding:0 16px 9px;color:var(--sg-text-faint);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
     .feedback-admin-row {
@@ -27,6 +27,11 @@
     .feedback-status.new { color:var(--sg-accent);border-color:rgba(28,197,190,.35); }
     .feedback-status.resolved { color:#79c98a;border-color:rgba(121,201,138,.3); }
     .feedback-date { color:var(--sg-text-dim);font-size:11px; }
+    .feedback-delete {
+      justify-self:end;padding:6px 10px;border:1px solid rgba(239,83,80,.3);border-radius:999px;
+      background:transparent;color:rgba(239,83,80,.78);font:700 10px var(--sg-font-body);cursor:pointer;
+    }
+    .feedback-delete:hover,.feedback-delete:focus-visible { color:#ff7370;border-color:rgba(239,83,80,.72);background:rgba(239,83,80,.08); }
     .admin-detail-modal { align-items:center;justify-content:center; }
     .admin-detail-card { width:min(100%,620px);max-height:min(86vh,760px);overflow:auto; }
     .detail-message { white-space:pre-wrap;padding:16px;border:1px solid var(--sg-border-soft);border-radius:14px;background:var(--sg-surface);font-size:14px;line-height:1.7;margin-bottom:18px; }
@@ -39,9 +44,11 @@
     @media(max-width:720px) {
       .feedback-list-head { display:none; }
       .feedback-admin-row { grid-template-columns:1fr auto;gap:7px 12px; }
+      .feedback-type { grid-column:1;grid-row:1; }
+      .feedback-delete { grid-column:2;grid-row:1 / span 2;align-self:center; }
+      .feedback-status { grid-column:1;grid-row:2; }
       .feedback-preview,.feedback-host { grid-column:1/-1; }
-      .feedback-event,.feedback-route { grid-column:1; }
-      .feedback-date { grid-column:2;text-align:right; }
+      .feedback-event,.feedback-route,.feedback-date { grid-column:1/-1;text-align:left; }
       .detail-grid { grid-template-columns:1fr; }
     }
   </style>
@@ -65,7 +72,7 @@
       </select>
     </div>
 
-    <div class="feedback-list-head"><span>Type</span><span>Message</span><span>Status</span><span>Host</span><span>Event</span><span>Page</span><span>Date</span></div>
+    <div class="feedback-list-head"><span>Type</span><span>Message</span><span>Status</span><span>Host</span><span>Event</span><span>Page</span><span>Date</span><span></span></div>
     <div id="feedback-list"></div>
     <p id="feedback-empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:48px 0">No feedback matches these filters.</p>
   </div>
@@ -112,7 +119,7 @@
       const list = document.getElementById('feedback-list');
       document.getElementById('feedback-empty').style.display = feedback.length ? 'none' : 'block';
       list.innerHTML = feedback.map(item => `
-        <button class="feedback-admin-row" type="button" data-id="${item.id}">
+        <div class="feedback-admin-row" data-id="${item.id}" role="button" tabindex="0" aria-label="Open feedback ${item.id}">
           <span class="feedback-type">${esc(item.type)}</span>
           <span class="feedback-preview"><strong>${esc(item.message_preview)}</strong></span>
           <span class="feedback-status ${esc(item.status)}">${statusLabel(item.status)}</span>
@@ -120,8 +127,31 @@
           <span class="feedback-event">${esc(item.event_title || '—')}</span>
           <span class="feedback-route">${esc(item.route)}</span>
           <span class="feedback-date">${formatDate(item.created_at)}</span>
-        </button>`).join('');
-      list.querySelectorAll('[data-id]').forEach(row => row.addEventListener('click', () => openDetail(row.dataset.id)));
+          <button class="feedback-delete" type="button" data-delete-id="${item.id}" aria-label="Delete feedback ${item.id}">Delete</button>
+        </div>`).join('');
+      list.querySelectorAll('.feedback-admin-row').forEach(row => {
+        row.addEventListener('click', e => { if (!e.target.closest('.feedback-delete')) openDetail(row.dataset.id); });
+        row.addEventListener('keydown', e => {
+          if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.feedback-delete')) {
+            e.preventDefault();
+            openDetail(row.dataset.id);
+          }
+        });
+      });
+      list.querySelectorAll('.feedback-delete').forEach(button => button.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('Delete this feedback permanently? This cannot be undone.')) return;
+        button.disabled = true;
+        try {
+          await api(`/api/admin/feedback/${button.dataset.deleteId}`, { method:'DELETE' });
+          if (String(selectedId) === button.dataset.deleteId) closeDetail();
+          toast('Feedback deleted');
+          await loadFeedback();
+        } catch (err) {
+          button.disabled = false;
+          toast(err.message);
+        }
+      }));
     }
 
     async function openDetail(id) {

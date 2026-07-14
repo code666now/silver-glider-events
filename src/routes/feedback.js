@@ -123,4 +123,17 @@ router.patch('/api/admin/feedback/:id', requireAdmin, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+router.delete('/api/admin/feedback/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'Feedback not found' });
+    const { rows } = await pool.query(
+      'DELETE FROM feedback_submissions WHERE id=$1 RETURNING id',
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Feedback not found' });
+    res.json({ deleted: true, id: rows[0].id });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
