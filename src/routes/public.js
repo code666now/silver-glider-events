@@ -125,6 +125,8 @@ router.get('/e/:slug', async (req, res, next) => {
       : '<div class="ticket-note"><span>Free</span><em>RSVP required</em></div>';
     const vibeHtml = renderVibe(event.event_vibe_url);
 
+    // Violet and ember are legacy-only: hidden from the MVP picker, but still
+    // rendered for already-published events that selected them.
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
     const EFFECTS = ['static', 'paper', 'disco', 'fog'];
     const VIDEO_EFFECTS = {

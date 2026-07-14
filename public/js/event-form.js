@@ -30,7 +30,7 @@ $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
 // Background picker — gradients + generative/photo/video effects
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember', 'static', 'paper', 'disco', 'fog'];
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog'];
 const EFFECTS = ['static', 'paper', 'disco', 'fog'];
 const THEME_LABELS = { static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog' };
 function setTheme(key) {
@@ -603,7 +603,7 @@ if (editId) {
     $('category').value = event.category || '';
     $('capacity').value = event.capacity || '';
     setVisibility(event.visibility);
-    setTheme(event.background_theme || 'midnight');
+    setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
