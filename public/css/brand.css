@@ -41,6 +41,26 @@ h1, h2, h3, .sg-display {
 
 a { color: var(--sg-accent); text-decoration: none; }
 
+/* Quiet brand social link used only in the home and dashboard footers. */
+.sg-social-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 52px;
+  padding-top: 24px;
+  border-top: 1px solid var(--sg-border-soft);
+}
+.sg-social-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--sg-text-dim);
+  transition: color .15s ease;
+}
+.sg-social-link:hover { color: var(--sg-text); }
+.sg-social-link svg { width: 25px; height: 25px; flex: 0 0 auto; }
+
 /* Uppercase micro-label */
 .sg-label {
   font-size: 11px;
