@@ -21,6 +21,7 @@ app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
+app.use(require('./routes/invites'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
 

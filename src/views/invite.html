@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{{PAGE_TITLE}}</title>
+  <meta name="description" content="{{META_DESCRIPTION}}">
+  <link rel="stylesheet" href="/css/brand.css">
+  <style>
+    body { min-height:100svh;background:#0e0e0e;overflow-x:hidden; }
+    .invite-bg {
+      position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+      background:#100d18 url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/fog.jpg") center/cover no-repeat;
+    }
+    .invite-bg video {
+      width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .5s ease;
+    }
+    .invite-bg video.is-playing { opacity:1; }
+    .invite-veil {
+      position:fixed;inset:0;z-index:1;pointer-events:none;
+      background:
+        radial-gradient(90% 70% at 50% 25%, rgba(12,12,16,.18), rgba(12,12,16,.52)),
+        linear-gradient(180deg, rgba(8,8,11,.14), rgba(8,8,11,.56));
+    }
+    .invite-page {
+      position:relative;z-index:2;min-height:100svh;display:flex;align-items:center;
+      padding:48px 22px;
+    }
+    .invite-card {
+      width:min(100%,820px);margin:auto;padding:clamp(30px,6vw,64px);
+      border:0;background:transparent;box-shadow:none;
+    }
+    .invite-brand { display:flex;align-items:center;gap:13px;margin-bottom:44px; }
+    .invite-brand img { width:38px;height:38px;object-fit:contain; }
+    .invite-brand span {
+      color:var(--sg-text-dim);font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;
+    }
+    .invite-eyebrow {
+      margin-bottom:18px;color:var(--sg-accent);font-size:11px;font-weight:800;
+      letter-spacing:.17em;text-transform:uppercase;
+    }
+    h1 { max-width:720px;margin-bottom:28px;font-size:clamp(38px,7vw,64px);letter-spacing:-.025em; }
+    .invite-copy { max-width:690px; }
+    .invite-copy p { margin-bottom:18px;color:#b7b7bb;font-size:15px;line-height:1.8; }
+    .invite-copy .sf-note { color:var(--sg-text);font-weight:600; }
+    .invite-pilot {
+      margin-top:34px;padding-top:30px;border-top:1px solid rgba(255,255,255,.09);
+    }
+    .invite-pilot h2 { margin-bottom:13px;font-size:clamp(23px,4vw,31px);line-height:1.25; }
+    .invite-pilot p { color:#aaaab0;font-size:14px;line-height:1.75; }
+    .invite-actions { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:28px; }
+    .invite-actions .sg-btn { min-height:54px;padding:13px 20px;font-size:13px; }
+    .invite-interest {
+      background:rgba(255,255,255,.025);color:var(--sg-text);
+      border:1px solid rgba(255,255,255,.14);
+    }
+    .invite-interest:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.55); }
+    .invite-response {
+      margin-top:18px;padding:17px 19px;border:1px solid rgba(28,197,190,.26);
+      border-radius:16px;background:rgba(28,197,190,.07);color:#c7d9d8;font-size:13px;line-height:1.65;
+    }
+    .invite-response[hidden] { display:none; }
+    .invite-footer {
+      margin-top:42px;color:#707077;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    }
+    @media (max-width:620px) {
+      .invite-page { padding:18px 12px;align-items:flex-start; }
+      .invite-card { padding:30px 24px; }
+      .invite-brand { margin-bottom:34px; }
+      .invite-actions { grid-template-columns:1fr; }
+      .invite-footer { line-height:1.7; }
+    }
+    @media (prefers-reduced-motion:reduce) { .invite-bg video { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="invite-bg" aria-hidden="true">
+    <video id="invite-fog" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/sg-events/effects/fog.jpg" tabindex="-1">
+      <source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/sg-events/effects/fog.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="invite-veil" aria-hidden="true"></div>
+
+  <main class="invite-page">
+    <article class="invite-card">
+      <div class="invite-brand">
+        <img src="/logo.png" alt="">
+        <span>Silver Glider Events</span>
+      </div>
+
+      <p class="invite-eyebrow">{{PRIVATE_LABEL}} · {{AGENCY}}</p>
+      <h1>{{HEADLINE}}</h1>
+
+      <div class="invite-copy">
+        <p>{{INTRO}}</p>
+        <p class="sf-note">{{SF_NOTE}}</p>
+        <p>{{CONTEXT}}</p>
+        <p>{{INVITATION}}</p>
+      </div>
+
+      <section class="invite-pilot">
+        <h2>{{QUESTION}}</h2>
+        <p>{{PILOT}}</p>
+        <div class="invite-actions">
+          <a class="sg-btn sg-btn-primary" href="/login?next=%2Fevents%2Fnew">{{PRIMARY_CTA}}</a>
+          <button class="sg-btn invite-interest" id="spanish-interest" type="button" aria-expanded="false" aria-controls="interest-response" data-success-label="{{SUCCESS_CTA}}">{{SECONDARY_CTA}}</button>
+        </div>
+        <p class="invite-response" id="interest-response" tabindex="-1" hidden>{{RESPONSE}}</p>
+      </section>
+
+      <footer class="invite-footer">{{FOOTER}}</footer>
+    </article>
+  </main>
+
+  <script src="/js/invite.js"></script>
+</body>
+</html>
