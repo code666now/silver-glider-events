@@ -50,7 +50,7 @@ const INVITES = {
     metaDescription: 'Una invitación privada para probar Silver Glider Events.',
     privateLabel: 'Invitación privada',
     agency: 'MMMargarita Talent Agency',
-    headline: 'MMMargarita, ayúdennos a crear una forma más sencilla de lanzar eventos.',
+    headline: 'MMMargarita, ayúdanos a crear una forma más sencilla de lanzar eventos.',
     intro: 'Silver Glider Events permite crear páginas de eventos atractivas, recibir confirmaciones de asistencia, comunicarse con los invitados y gestionar la lista de asistentes, todo desde un solo enlace.',
     context: 'Por el trabajo de MMMargarita con talento, promotores y audiencias, creemos que su equipo puede aportar una perspectiva especialmente valiosa a la plataforma.',
     invitation: 'Nos encantaría que la probaran con un evento real o próximo y nos dijeran qué la haría verdaderamente útil para su trabajo.',
