@@ -23,10 +23,12 @@ if (video && !motionPreference.matches && !saveData) {
 
 const interestButton = document.getElementById('spanish-interest');
 const response = document.getElementById('interest-response');
-interestButton.addEventListener('click', () => {
-  response.hidden = false;
-  interestButton.setAttribute('aria-expanded', 'true');
-  interestButton.textContent = interestButton.dataset.successLabel;
-  interestButton.disabled = true;
-  response.focus();
-});
+if (interestButton && response) {
+  interestButton.addEventListener('click', () => {
+    response.hidden = false;
+    interestButton.setAttribute('aria-expanded', 'true');
+    interestButton.textContent = interestButton.dataset.successLabel;
+    interestButton.disabled = true;
+    response.focus();
+  });
+}

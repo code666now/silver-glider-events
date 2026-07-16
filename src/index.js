@@ -11,6 +11,10 @@ const PORT = process.env.PORT || 3100;
 
 const VIEWS = path.join(__dirname, 'views');
 const view = name => (req, res) => res.sendFile(path.join(VIEWS, name));
+const safeNext = value => {
+  const next = String(value || '').trim();
+  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+};
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -34,19 +38,36 @@ const { parseSession, readSessionCookie } = require('./lib/session');
 app.get('/', view('index.html'));
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
-  if (parseSession(readSessionCookie(req))) return res.redirect('/dashboard');
+  if (parseSession(readSessionCookie(req))) return res.redirect(safeNext(req.query.next) || '/dashboard');
   res.sendFile(path.join(VIEWS, 'login.html'));
 });
 
 // Protected app pages — logged-out users are redirected to /login before the page loads
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
-app.get('/events/new', requireOrganizer, view('event-form.html'));
+app.get('/events/new', requireOrganizer, async (req, res, next) => {
+  const invitationToken = String(req.query.invite || '').trim();
+  if (!invitationToken) return res.sendFile(path.join(VIEWS, 'event-form.html'));
+  try {
+    if (/^[a-z0-9-]{12,220}$/.test(invitationToken)) {
+      await pool.query(
+        `UPDATE host_invitations
+            SET joined_organizer_id=COALESCE(joined_organizer_id,$2),
+                joined_at=COALESCE(joined_at,NOW()),updated_at=NOW()
+          WHERE token=$1 AND revoked_at IS NULL
+            AND (joined_organizer_id IS NULL OR joined_organizer_id=$2)`,
+        [invitationToken, req.organizer.id]
+      );
+    }
+    res.redirect('/events/new');
+  } catch (err) { next(err); }
+});
 app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
 app.get('/settings', requireOrganizer, view('settings.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
+app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

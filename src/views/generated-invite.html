@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Private invitation for {{HOST_NAME}} — Silver Glider Events</title>
+  <meta name="description" content="A personal invitation to try Silver Glider Events.">
+  <link rel="stylesheet" href="/css/brand.css">
+  <style>
+    body { min-height:100svh;background:#0e0e0e;overflow-x:hidden; }
+    .invite-bg {
+      position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+      background:#100d18 url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/fog.jpg") center/cover no-repeat;
+    }
+    .invite-bg video { width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .5s ease; }
+    .invite-bg video.is-playing { opacity:1; }
+    .invite-veil {
+      position:fixed;inset:0;z-index:1;pointer-events:none;
+      background:
+        radial-gradient(90% 70% at 50% 25%,rgba(12,12,16,.18),rgba(12,12,16,.52)),
+        linear-gradient(180deg,rgba(8,8,11,.14),rgba(8,8,11,.56));
+    }
+    .invite-page {
+      position:relative;z-index:2;min-height:100svh;display:flex;align-items:center;padding:48px 22px;
+    }
+    .invite-card { width:min(100%,820px);margin:auto;padding:clamp(30px,6vw,64px); }
+    .invite-brand { display:flex;align-items:center;gap:13px;margin-bottom:46px; }
+    .invite-brand img { width:38px;height:38px;object-fit:contain; }
+    .invite-brand span {
+      color:var(--sg-text-dim);font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;
+    }
+    .invite-eyebrow {
+      margin-bottom:18px;color:var(--sg-accent);font-size:11px;font-weight:800;
+      letter-spacing:.17em;text-transform:uppercase;
+    }
+    h1 {
+      max-width:760px;margin-bottom:30px;font-size:clamp(40px,7vw,66px);line-height:1.08;letter-spacing:-.025em;
+      overflow-wrap:break-word;
+    }
+    .invite-copy { max-width:690px; }
+    .invite-copy p { margin-bottom:18px;color:#b7b7bb;font-size:15px;line-height:1.8; }
+    .invite-copy .sf-note { color:var(--sg-text);font-weight:600; }
+    .selection {
+      max-width:690px;margin:30px 0;padding:22px 24px;border-left:2px solid var(--sg-accent);
+      background:rgba(8,8,12,.2);
+    }
+    .selection span {
+      display:block;margin-bottom:9px;color:var(--sg-accent);font-size:10px;font-weight:800;
+      letter-spacing:.15em;text-transform:uppercase;
+    }
+    .selection p { color:#e3e3e5;font-size:18px;line-height:1.55;white-space:pre-line; }
+    .invite-action { max-width:690px;margin-top:32px; }
+    .invite-action .sg-btn { min-height:56px;padding:14px 24px;font-size:14px; }
+    .invite-footer {
+      margin-top:38px;color:#77777f;font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+    }
+    @media(max-width:620px) {
+      .invite-page { padding:18px 12px;align-items:flex-start; }
+      .invite-card { padding:30px 24px; }
+      .invite-brand { margin-bottom:34px; }
+      .selection { padding:18px 19px; }
+      .invite-action .sg-btn { width:100%; }
+      .invite-footer { line-height:1.7; }
+    }
+    @media(prefers-reduced-motion:reduce) { .invite-bg video { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="invite-bg" aria-hidden="true">
+    <video id="invite-fog" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/sg-events/effects/fog.jpg" tabindex="-1">
+      <source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/sg-events/effects/fog.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="invite-veil" aria-hidden="true"></div>
+
+  <main class="invite-page">
+    <article class="invite-card">
+      <div class="invite-brand">
+        <img src="/logo.png" alt="">
+        <span>Silver Glider Events</span>
+      </div>
+
+      <p class="invite-eyebrow">Personally selected · {{HOST_NAME}}</p>
+      <h1>{{HOST_NAME}}, we’d like you to help shape a better way to launch events.</h1>
+
+      <div class="invite-copy">
+        <p>We’re inviting a small group of independent hosts and creative event organizers to try Silver Glider Events.</p>
+      </div>
+
+      <div class="selection">
+        <span>Why we invited you</span>
+        <p>{{PERSONAL_NOTE}}</p>
+      </div>
+
+      <div class="invite-copy">
+        <p>Create a real or test event, explore the platform, and tell us what would make it genuinely useful for your work.</p>
+        <p class="sf-note">We’re based in San Francisco, California, with roots in the creative events community.</p>
+      </div>
+
+      <div class="invite-action">
+        <a class="sg-btn sg-btn-primary" href="{{CTA_URL}}">Create your first event</a>
+      </div>
+      <footer class="invite-footer">Personally selected · Free to try · No commitment</footer>
+    </article>
+  </main>
+
+  <script src="/js/invite.js"></script>
+</body>
+</html>

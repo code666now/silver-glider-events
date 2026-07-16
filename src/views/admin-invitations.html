@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitations — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .invite-admin-grid { display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:28px;align-items:start; }
+    .invite-form-card { position:sticky;top:22px;padding:24px; }
+    .invite-form-card h2 { font-size:23px;margin-bottom:7px; }
+    .invite-form-card > p { margin-bottom:24px;color:var(--sg-text-dim);font-size:13px;line-height:1.6; }
+    .created-panel { display:none;margin-top:18px;padding:18px;border:1px solid rgba(28,197,190,.28);border-radius:16px;background:rgba(28,197,190,.055); }
+    .created-panel.open { display:block; }
+    .created-panel strong { display:block;margin-bottom:5px;font-size:14px; }
+    .created-panel p { margin-bottom:13px;color:var(--sg-text-dim);font-size:12px;overflow-wrap:anywhere; }
+    .created-actions,.invite-row-actions { display:flex;flex-wrap:wrap;gap:8px; }
+    .created-actions .sg-btn,.invite-row-actions .sg-btn { padding:8px 14px;font-size:11px; }
+    .invite-list-head { display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px; }
+    .invite-list-head h2 { font-size:23px;margin-bottom:4px; }
+    .invite-list-head p { color:var(--sg-text-dim);font-size:12px; }
+    .invite-count { color:var(--sg-text-faint);font-size:11px;white-space:nowrap; }
+    .invite-admin-row { margin-bottom:12px;padding:20px;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(17,17,17,.78); }
+    .invite-row-head { display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:12px; }
+    .invite-row-head h3 { margin-bottom:4px;font-size:18px;overflow-wrap:anywhere; }
+    .invite-row-date { color:var(--sg-text-faint);font-size:10px; }
+    .invite-status { flex:0 0 auto;padding:6px 10px;border:1px solid var(--sg-border);border-radius:999px;color:var(--sg-text-dim);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em; }
+    .invite-status.joined { color:#79c98a;border-color:rgba(121,201,138,.35); }
+    .invite-status.revoked { color:#e57373;border-color:rgba(229,115,115,.35); }
+    .invite-note { margin-bottom:13px;color:#b8b8bd;font-size:13px;line-height:1.65;white-space:pre-line; }
+    .invite-path { margin-bottom:14px;color:var(--sg-text-faint);font-size:11px;overflow-wrap:anywhere; }
+    .invite-joined { margin:-5px 0 14px;color:#79c98a;font-size:11px; }
+    .invite-empty { display:none;padding:48px 12px;text-align:center;color:var(--sg-text-dim); }
+    @media(max-width:840px) {
+      .invite-admin-grid { grid-template-columns:1fr; }
+      .invite-form-card { position:static; }
+    }
+    @media(max-width:560px) {
+      .invite-row-head { flex-direction:column;gap:9px; }
+      .invite-status { align-self:flex-start; }
+      .invite-form-card,.invite-admin-row { padding:18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-shell" style="max-width:1080px">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">Invitations</h1>
+    <p class="sg-page-sub">Create private, personalized invitations for selected US hosts.</p>
+    <div class="admin-section-nav" aria-label="Admin sections">
+      <a href="/admin/line">The Line</a>
+      <a href="/admin/feedback">Feedback</a>
+      <a class="active" href="/admin/invitations">Invitations</a>
+    </div>
+
+    <div class="invite-admin-grid">
+      <section class="sg-card invite-form-card">
+        <h2>Create an invitation</h2>
+        <p>The host name and personal reason appear automatically on their private Fog invitation page.</p>
+        <form id="invite-form">
+          <div class="sg-field">
+            <label for="host-name">Host or organization name</label>
+            <input class="sg-input" id="host-name" maxlength="160" required placeholder="Heat Wave Booking">
+          </div>
+          <div class="sg-field">
+            <label for="personal-note">Why you selected them</label>
+            <textarea class="sg-textarea" id="personal-note" minlength="8" maxlength="500" required placeholder="We selected you because of the community you’ve built around independent music."></textarea>
+            <p style="margin-top:7px;color:var(--sg-text-faint);font-size:11px;line-height:1.5">Keep this to one sincere sentence. It is what makes the invitation feel personal.</p>
+          </div>
+          <button class="sg-btn sg-btn-primary sg-btn-block" id="create-invite" type="submit">Create invitation</button>
+        </form>
+        <div class="created-panel" id="created-panel" aria-live="polite">
+          <strong>Invitation ready</strong>
+          <p id="created-url"></p>
+          <div class="created-actions">
+            <button class="sg-btn sg-btn-primary" id="created-copy" type="button">Copy link</button>
+            <a class="sg-btn sg-btn-ghost" id="created-open" target="_blank" rel="noopener">Preview</a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="invite-list-head">
+          <div><h2>Generated invitations</h2><p>Private links stay active until you revoke them.</p></div>
+          <span class="invite-count" id="invite-count"></span>
+        </div>
+        <div id="invite-list"></div>
+        <p class="invite-empty" id="invite-empty">No invitations yet. Create your first one.</p>
+      </section>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    const form = document.getElementById('invite-form');
+    const hostName = document.getElementById('host-name');
+    const personalNote = document.getElementById('personal-note');
+    const createButton = document.getElementById('create-invite');
+    let createdPath = '';
+
+    function esc(value) {
+      return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function fullUrl(path) { return `${location.origin}${path}`; }
+    function formatDate(value) { return new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+    function status(item) {
+      if (item.revoked_at) return ['Revoked','revoked'];
+      if (item.joined_organizer_id) return ['Joined','joined'];
+      return ['Not joined',''];
+    }
+    async function copyText(value) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly','');
+      textarea.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      if (!copied) throw new Error('Copy failed');
+    }
+    async function copyPath(path) {
+      try {
+        await copyText(fullUrl(path));
+        toast('Invitation link copied');
+      } catch (_) {
+        toast('Could not copy. Open the preview and copy its address.');
+      }
+    }
+
+    async function loadInvitations() {
+      const { invitations } = await api('/api/admin/invitations');
+      const list = document.getElementById('invite-list');
+      document.getElementById('invite-count').textContent = `${invitations.length} ${invitations.length === 1 ? 'invitation' : 'invitations'}`;
+      document.getElementById('invite-empty').style.display = invitations.length ? 'none' : 'block';
+      list.innerHTML = invitations.map(item => {
+        const [label, cls] = status(item);
+        const joinedBy = item.joined_org_name || item.joined_name || item.joined_email;
+        return `<article class="invite-admin-row">
+          <div class="invite-row-head">
+            <div><h3>${esc(item.host_name)}</h3><span class="invite-row-date">Created ${formatDate(item.created_at)}</span></div>
+            <span class="invite-status ${cls}">${label}</span>
+          </div>
+          <p class="invite-note">${esc(item.personal_note)}</p>
+          ${joinedBy ? `<p class="invite-joined">Joined by ${esc(joinedBy)}</p>` : ''}
+          <p class="invite-path">${esc(fullUrl(item.path))}</p>
+          <div class="invite-row-actions">
+            ${item.revoked_at ? '' : `<a class="sg-btn sg-btn-ghost" href="${esc(item.path)}" target="_blank" rel="noopener">Preview</a><button class="sg-btn sg-btn-ghost" type="button" data-copy="${esc(item.path)}">Copy link</button>`}
+            <button class="sg-btn ${item.revoked_at ? 'sg-btn-ghost' : 'sg-btn-danger'}" type="button" data-toggle="${item.id}" data-revoked="${item.revoked_at ? 'false' : 'true'}">${item.revoked_at ? 'Restore' : 'Revoke'}</button>
+          </div>
+        </article>`;
+      }).join('');
+
+      list.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyPath(button.dataset.copy)));
+      list.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', async () => {
+        const revoke = button.dataset.revoked === 'true';
+        if (revoke && !confirm('Revoke this invitation? Its private link will stop working.')) return;
+        button.disabled = true;
+        try {
+          await api(`/api/admin/invitations/${button.dataset.toggle}`, { method:'PATCH',body:{revoked:revoke} });
+          toast(revoke ? 'Invitation revoked' : 'Invitation restored');
+          await loadInvitations();
+        } catch (err) {
+          button.disabled = false;
+          toast(err.message);
+        }
+      }));
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      createButton.disabled = true;
+      createButton.textContent = 'Creating…';
+      try {
+        const { invitation } = await api('/api/admin/invitations', {
+          method:'POST',body:{host_name:hostName.value,personal_note:personalNote.value}
+        });
+        createdPath = invitation.path;
+        document.getElementById('created-url').textContent = fullUrl(createdPath);
+        document.getElementById('created-open').href = createdPath;
+        document.getElementById('created-panel').classList.add('open');
+        form.reset();
+        toast('Invitation created');
+        await loadInvitations();
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        createButton.disabled = false;
+        createButton.textContent = 'Create invitation';
+      }
+    });
+    document.getElementById('created-copy').addEventListener('click', () => copyPath(createdPath));
+    loadInvitations();
+  </script>
+</body>
+</html>

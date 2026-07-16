@@ -1,9 +1,11 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const pool = require('../config/db');
 
 const router = express.Router();
 const template = fs.readFileSync(path.join(__dirname, '..', 'views', 'invite.html'), 'utf8');
+const generatedTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'generated-invite.html'), 'utf8');
 
 const INVITES = {
   'dna-studio': {
@@ -74,6 +76,15 @@ function esc(value) {
     .replace(/'/g, '&#039;');
 }
 
+function render(source, values) {
+  let html = source;
+  Object.entries(values).forEach(([key, value]) => {
+    const placeholder = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+    html = html.replace(new RegExp(`{{${placeholder}}}`, 'g'), esc(value));
+  });
+  return html;
+}
+
 router.get('/invite/mmmargaritta', (req, res) => {
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.redirect(302, '/invite/mmmargarita');
@@ -84,12 +95,30 @@ router.get('/invite/:slug', (req, res) => {
   if (!invite) return res.status(404).send('Invitation not found');
 
   res.set('X-Robots-Tag', 'noindex, nofollow');
-  let html = template;
-  Object.entries(invite).forEach(([key, value]) => {
-    const placeholder = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
-    html = html.replace(new RegExp(`{{${placeholder}}}`, 'g'), esc(value));
-  });
-  res.send(html);
+  res.send(render(template, invite));
+});
+
+router.get('/i/:token', async (req, res, next) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!/^[a-z0-9-]{12,220}$/.test(token)) return res.status(404).send('Invitation not found');
+    const { rows } = await pool.query(
+      `SELECT token, host_name, personal_note
+         FROM host_invitations
+        WHERE token=$1 AND revoked_at IS NULL`,
+      [token]
+    );
+    if (!rows.length) return res.status(404).send('Invitation not found');
+
+    const invite = rows[0];
+    const nextPath = `/events/new?invite=${invite.token}`;
+    res.set('X-Robots-Tag', 'noindex, nofollow');
+    res.send(render(generatedTemplate, {
+      hostName: invite.host_name,
+      personalNote: invite.personal_note,
+      ctaUrl: `/login?next=${encodeURIComponent(nextPath)}`
+    }));
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
