@@ -26,6 +26,64 @@ const invitationSelect = `
     FROM host_invitations i
     LEFT JOIN organizers o ON o.id=i.joined_organizer_id`;
 
+const hostAccountSelect = `
+  WITH account_stats AS (
+    SELECT e.organizer_id,
+           COUNT(DISTINCT e.id)::int AS event_count,
+           COUNT(r.id) FILTER (WHERE r.status='confirmed')::int AS rsvp_count
+      FROM events e
+      LEFT JOIN rsvps r ON r.event_id=e.id
+     GROUP BY e.organizer_id
+  ), latest_invitation AS (
+    SELECT DISTINCT ON (joined_organizer_id)
+           joined_organizer_id, id AS invitation_id, token AS invitation_token,
+           host_name AS invitation_host_name, joined_at AS invitation_joined_at,
+           revoked_at AS invitation_revoked_at
+      FROM host_invitations
+     WHERE joined_organizer_id IS NOT NULL
+     ORDER BY joined_organizer_id, joined_at DESC NULLS LAST, id DESC
+  )
+  SELECT o.id, o.email, o.name, o.org_name, o.public_slug, o.logo_url,
+         o.plan, o.is_admin, o.created_at, o.last_login_at,
+         COALESCE(s.event_count,0)::int AS event_count,
+         COALESCE(s.rsvp_count,0)::int AS rsvp_count,
+         i.invitation_id, i.invitation_token, i.invitation_host_name,
+         i.invitation_joined_at, i.invitation_revoked_at
+    FROM organizers o
+    LEFT JOIN account_stats s ON s.organizer_id=o.id
+    LEFT JOIN latest_invitation i ON i.joined_organizer_id=o.id`;
+
+// GET /api/admin/hosts — read-only account overview for early MVP tracking
+router.get('/api/admin/hosts', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`${hostAccountSelect} ORDER BY o.created_at DESC, o.id DESC`);
+    res.json({ hosts: rows });
+  } catch (err) { next(err); }
+});
+
+// GET /api/admin/hosts/:id — account details and owned events, still read-only
+router.get('/api/admin/hosts/:id', async (req, res, next) => {
+  try {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'Host account not found' });
+    const { rows } = await pool.query(`${hostAccountSelect} WHERE o.id=$1`, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Host account not found' });
+    const events = await pool.query(
+      `SELECT e.id, e.title, e.slug, e.event_date, e.start_time, e.status,
+              e.visibility, e.archived_at, e.venue_name,
+              COUNT(r.id) FILTER (WHERE r.status='confirmed')::int AS rsvp_count
+         FROM events e
+         LEFT JOIN rsvps r ON r.event_id=e.id
+        WHERE e.organizer_id=$1
+        GROUP BY e.id
+        ORDER BY e.event_date DESC, e.id DESC
+        LIMIT 100`,
+      [id]
+    );
+    res.json({ host: rows[0], events: events.rows });
+  } catch (err) { next(err); }
+});
+
 // GET /api/admin/invitations
 router.get('/api/admin/invitations', async (req, res, next) => {
   try {

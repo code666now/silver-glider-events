@@ -66,6 +66,7 @@ app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/event
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
 app.get('/settings', requireOrganizer, view('settings.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
+app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
 

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hosts — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .host-summary { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px; }
+    .host-summary-card { padding:18px 20px;border:1px solid var(--sg-border-soft);border-radius:17px;background:rgba(17,17,17,.72); }
+    .host-summary-card strong { display:block;font-family:var(--sg-font-display);font-size:28px;line-height:1.1;margin-bottom:5px; }
+    .host-summary-card span { color:var(--sg-text-faint);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
+    .host-search { margin-bottom:17px; }
+    .host-list-head,.host-admin-row {
+      display:grid;grid-template-columns:minmax(155px,1.3fr) minmax(170px,1.4fr) 92px 92px 52px 52px minmax(115px,1fr);
+      gap:12px;align-items:center;
+    }
+    .host-list-head { padding:0 16px 9px;color:var(--sg-text-faint);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
+    .host-admin-row {
+      width:100%;padding:16px;margin-bottom:8px;border:1px solid var(--sg-border-soft);border-radius:16px;
+      background:rgba(17,17,17,.78);color:var(--sg-text);font-family:var(--sg-font-body);text-align:left;cursor:pointer;
+    }
+    .host-admin-row:hover,.host-admin-row:focus-visible { border-color:rgba(28,197,190,.42);outline:none; }
+    .host-identity,.host-email,.host-source { min-width:0; }
+    .host-identity strong,.host-email { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .host-identity strong { font-size:13px; }
+    .host-identity span,.host-source span { display:block;margin-top:2px;color:var(--sg-text-faint);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .host-email,.host-date,.host-source { color:var(--sg-text-dim);font-size:11px; }
+    .host-count { font-family:var(--sg-font-display);font-size:18px;text-align:center; }
+    .host-empty { display:none;padding:52px 18px;text-align:center;color:var(--sg-text-dim); }
+    .host-detail-modal { align-items:center;justify-content:center; }
+    .host-detail-card { width:min(100%,680px);max-height:min(88vh,780px);overflow:auto; }
+    .host-detail-actions { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px; }
+    .host-detail-actions .sg-btn { padding:9px 15px;font-size:11px; }
+    .host-detail-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:22px; }
+    .host-detail-cell { min-width:0;padding:12px;border:1px solid var(--sg-border-soft);border-radius:12px;background:rgba(255,255,255,.012); }
+    .host-detail-cell label { display:block;margin-bottom:4px;color:var(--sg-text-faint);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
+    .host-detail-cell p { color:var(--sg-text-dim);font-size:12px;overflow-wrap:anywhere; }
+    .host-events-title { margin-bottom:10px;font-size:18px; }
+    .host-event-row { display:flex;justify-content:space-between;gap:14px;align-items:center;padding:13px 0;border-top:1px solid var(--sg-border-soft); }
+    .host-event-row:first-of-type { border-top:0; }
+    .host-event-row h3 { font-size:14px;margin-bottom:3px; }
+    .host-event-row p { color:var(--sg-text-faint);font-size:10px; }
+    .host-event-row a { flex:0 0 auto;color:var(--sg-accent);font-size:11px;font-weight:700; }
+    @media(max-width:800px) {
+      .host-list-head { display:none; }
+      .host-admin-row { grid-template-columns:1fr auto;gap:7px 14px; }
+      .host-identity,.host-email,.host-source { grid-column:1/-1; }
+      .host-created,.host-login { grid-column:1; }
+      .host-events,.host-rsvps { grid-column:2;grid-row:auto;text-align:right; }
+      .host-count { font-family:var(--sg-font-body);font-size:11px;color:var(--sg-text-dim); }
+      .host-events::before { content:'Events: ';color:var(--sg-text-faint); }
+      .host-rsvps::before { content:'RSVPs: ';color:var(--sg-text-faint); }
+    }
+    @media(max-width:560px) {
+      .host-summary { grid-template-columns:1fr;gap:8px; }
+      .host-summary-card { display:flex;align-items:center;justify-content:space-between;padding:14px 16px; }
+      .host-summary-card strong { margin:0;font-size:24px;order:2; }
+      .host-detail-grid { grid-template-columns:1fr; }
+      .host-event-row { align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-shell" style="max-width:1080px">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">Hosts</h1>
+    <p class="sg-page-sub">A read-only view of account creation and early host activity.</p>
+    <div class="admin-section-nav" aria-label="Admin sections">
+      <a href="/admin/line">The Line</a>
+      <a class="active" href="/admin/hosts">Hosts</a>
+      <a href="/admin/feedback">Feedback</a>
+      <a href="/admin/invitations">Invitations</a>
+    </div>
+
+    <section class="host-summary" aria-label="Host account summary">
+      <div class="host-summary-card"><strong id="total-hosts">—</strong><span>Total accounts</span></div>
+      <div class="host-summary-card"><strong id="new-hosts">—</strong><span>New in 30 days</span></div>
+      <div class="host-summary-card"><strong id="active-hosts">—</strong><span>Created an event</span></div>
+    </section>
+
+    <input class="sg-input host-search" id="host-search" type="search" placeholder="Search host name or email" aria-label="Search host accounts">
+    <div class="host-list-head"><span>Host</span><span>Email</span><span>Created</span><span>Last login</span><span>Events</span><span>RSVPs</span><span>Source</span></div>
+    <div id="host-list"></div>
+    <p class="host-empty" id="host-empty">No host accounts match this search.</p>
+  </div>
+
+  <div class="feedback-modal host-detail-modal" id="host-detail-modal" aria-hidden="true">
+    <div class="feedback-modal-card host-detail-card" role="dialog" aria-modal="true" aria-labelledby="host-detail-title">
+      <div class="feedback-modal-head">
+        <div><h2 id="host-detail-title">Host account</h2><p id="host-detail-email"></p></div>
+        <button class="feedback-modal-close" id="host-detail-close" type="button" aria-label="Close host details">×</button>
+      </div>
+      <div class="host-detail-actions" id="host-detail-actions"></div>
+      <div class="host-detail-grid" id="host-detail-grid"></div>
+      <h2 class="host-events-title">Events</h2>
+      <div id="host-detail-events"></div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    let hosts = [];
+    const detailModal = document.getElementById('host-detail-modal');
+
+    function esc(value) {
+      return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function hostName(host) { return host.org_name || host.name || host.email; }
+    function formatDate(value, includeTime = false) {
+      if (!value) return 'Never';
+      return new Date(value).toLocaleString('en-US', includeTime
+        ? { month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit' }
+        : { month:'short',day:'numeric',year:'numeric' });
+    }
+    function eventDate(value) {
+      return new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
+    }
+    function sourceLabel(host) { return host.invitation_host_name || 'Direct signup'; }
+
+    function renderSummary() {
+      const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      document.getElementById('total-hosts').textContent = hosts.length;
+      document.getElementById('new-hosts').textContent = hosts.filter(host => new Date(host.created_at).getTime() >= cutoff).length;
+      document.getElementById('active-hosts').textContent = hosts.filter(host => Number(host.event_count) > 0).length;
+    }
+
+    function renderHosts() {
+      const query = document.getElementById('host-search').value.trim().toLowerCase();
+      const filtered = hosts.filter(host => [host.org_name,host.name,host.email,host.invitation_host_name].filter(Boolean).join(' ').toLowerCase().includes(query));
+      document.getElementById('host-empty').style.display = filtered.length ? 'none' : 'block';
+      document.getElementById('host-list').innerHTML = filtered.map(host => {
+        const secondary = host.org_name && host.name ? host.name : host.is_admin ? 'Admin account' : `Account #${host.id}`;
+        return `<button class="host-admin-row" type="button" data-host-id="${host.id}" aria-label="Open ${esc(hostName(host))} account">
+          <span class="host-identity"><strong>${esc(hostName(host))}</strong><span>${esc(secondary)}</span></span>
+          <span class="host-email">${esc(host.email)}</span>
+          <span class="host-date host-created">${formatDate(host.created_at)}</span>
+          <span class="host-date host-login">${formatDate(host.last_login_at)}</span>
+          <span class="host-count host-events">${host.event_count}</span>
+          <span class="host-count host-rsvps">${host.rsvp_count}</span>
+          <span class="host-source">${esc(sourceLabel(host))}<span>${host.invitation_id ? 'Personal invitation' : 'No invitation'}</span></span>
+        </button>`;
+      }).join('');
+      document.querySelectorAll('[data-host-id]').forEach(row => row.addEventListener('click', () => openHost(row.dataset.hostId)));
+    }
+
+    async function loadHosts() {
+      const data = await api('/api/admin/hosts');
+      hosts = data.hosts;
+      renderSummary();
+      renderHosts();
+    }
+
+    async function openHost(id) {
+      const { host, events } = await api(`/api/admin/hosts/${id}`);
+      document.getElementById('host-detail-title').textContent = hostName(host);
+      document.getElementById('host-detail-email').textContent = host.email;
+      const actions = [`<a class="sg-btn sg-btn-ghost" href="mailto:${encodeURIComponent(host.email)}">Email host</a>`];
+      if (host.public_slug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/h/${encodeURIComponent(host.public_slug)}" target="_blank" rel="noopener">Open host page</a>`);
+      if (host.invitation_token && !host.invitation_revoked_at) actions.push(`<a class="sg-btn sg-btn-ghost" href="/i/${encodeURIComponent(host.invitation_token)}" target="_blank" rel="noopener">Open original invite</a>`);
+      document.getElementById('host-detail-actions').innerHTML = actions.join('');
+      const cells = [
+        ['Account ID', host.id], ['Plan', host.plan === 'pro' ? 'Pro' : 'Free'],
+        ['Contact name', host.name || 'Not added'], ['Public host name', host.org_name || 'Not added'],
+        ['Created', formatDate(host.created_at, true)], ['Last login', formatDate(host.last_login_at, true)],
+        ['Events', host.event_count], ['Confirmed RSVPs', host.rsvp_count],
+        ['Signup source', sourceLabel(host)], ['Invitation joined', host.invitation_joined_at ? formatDate(host.invitation_joined_at, true) : 'Not invited']
+      ];
+      document.getElementById('host-detail-grid').innerHTML = cells.map(([label,value]) => `<div class="host-detail-cell"><label>${esc(label)}</label><p>${esc(value)}</p></div>`).join('');
+      document.getElementById('host-detail-events').innerHTML = events.length ? events.map(event => {
+        const meta = `${eventDate(event.event_date)} · ${event.venue_name} · ${event.rsvp_count} RSVP${event.rsvp_count === 1 ? '' : 's'}${event.archived_at ? ' · Archived' : ''}`;
+        return `<div class="host-event-row"><div><h3>${esc(event.title)}</h3><p>${esc(meta)} · ${esc(event.status)}</p></div>${event.status === 'draft' ? '' : `<a href="/e/${encodeURIComponent(event.slug)}" target="_blank" rel="noopener">Open</a>`}</div>`;
+      }).join('') : '<p style="color:var(--sg-text-dim);font-size:13px;padding:12px 0 6px">No events created yet.</p>';
+      detailModal.classList.add('open');
+      detailModal.setAttribute('aria-hidden','false');
+    }
+
+    function closeDetail() {
+      detailModal.classList.remove('open');
+      detailModal.setAttribute('aria-hidden','true');
+    }
+    document.getElementById('host-search').addEventListener('input', renderHosts);
+    document.getElementById('host-detail-close').addEventListener('click', closeDetail);
+    detailModal.addEventListener('click', event => { if (event.target === detailModal) closeDetail(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && detailModal.classList.contains('open')) closeDetail(); });
+    loadHosts();
+  </script>
+</body>
+</html>
