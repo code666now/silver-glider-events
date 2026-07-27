@@ -54,13 +54,14 @@ async function loadEvent() {
 
   $('view-link').href = eventUrl();
   $('edit-link').href = `/events/${eventId}/edit`;
-  $('qr').src = `/e/${event.slug}/qr.png`;
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
     $('line-card').style.display = 'none';
   } else if (event.visibility === 'private') {
-    $('line-card').style.display = 'none';
+    $('promotion-copy').textContent = 'Share your private event link or download its QR code.';
+    $('submit-line').style.display = 'none';
+    $('line-status').style.display = 'none';
   }
 }
 
@@ -123,6 +124,42 @@ async function loadGuests(search = '') {
 $('copy-link').addEventListener('click', async () => {
   await navigator.clipboard.writeText(eventUrl());
   toast('Link copied');
+});
+
+$('share-event').addEventListener('click', async () => {
+  const shareData = { title: eventData.title, url: eventUrl() };
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+    } else {
+      await navigator.clipboard.writeText(eventUrl());
+      toast('Event link copied');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') toast('Could not share this event');
+  }
+});
+
+$('download-qr').addEventListener('click', async () => {
+  const button = $('download-qr');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/e/${eventData.slug}/qr.png`);
+    if (!response.ok) throw new Error('Could not download QR code');
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${eventData.slug}-qr-code.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    toast('QR code downloaded');
+  } catch (err) {
+    toast(err.message || 'Could not download QR code');
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $('export-csv').addEventListener('click', () => {

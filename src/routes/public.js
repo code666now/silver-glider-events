@@ -161,7 +161,7 @@ function renderComments(event) {
   if (event.visibility !== 'private' || !event.comments_enabled) return '';
   return `<section class="event-wall" id="event-wall" aria-labelledby="event-wall-title">
     <div class="section-heading">
-      <h2 id="event-wall-title">Event wall</h2>
+      <h2 id="event-wall-title">Comments</h2>
       <span id="comment-count">${Number(event.comment_count) || 0}</span>
     </div>
     <div id="comment-list" class="comment-list"><p class="section-empty">Loading comments…</p></div>

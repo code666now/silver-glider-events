@@ -38,22 +38,6 @@
     .more-menu-panel button:hover { background: rgba(255,255,255,.055); }
     .more-menu-panel .danger { color: var(--sg-danger); }
     .more-menu-divider { height: 1px; margin: 6px 4px; background: var(--sg-border); }
-    .share-qr { margin: 0 0 28px; }
-    .share-qr summary {
-      display: inline-flex; align-items: center; gap: 7px; list-style: none;
-      color: var(--sg-text-dim); font-size: 12px; font-weight: 700; cursor: pointer;
-    }
-    .share-qr summary::-webkit-details-marker { display: none; }
-    .share-qr summary::before { content: '＋'; color: var(--sg-accent); }
-    .share-qr[open] summary::before { content: '−'; }
-    .qr-box {
-      display: flex; align-items: center; gap: 16px; width: fit-content;
-      margin-top: 12px; padding: 14px; background: var(--sg-card);
-      border: 1px solid var(--sg-border-soft); border-radius: 16px;
-    }
-    .qr-box img { width: 104px; height: 104px; border-radius: 10px; background: #fff; padding: 6px; }
-    .qr-box strong { display: block; font-size: 13px; margin-bottom: 3px; }
-    .qr-box p { color: var(--sg-text-faint); font-size: 11px; max-width: 180px; }
     .promotion-card {
       background: rgba(17,17,17,.78);
       border: 1px solid var(--sg-border-soft);
@@ -138,22 +122,16 @@
       </details>
     </div>
 
-    <details class="share-qr">
-      <summary>Show QR code</summary>
-      <div class="qr-box">
-        <img id="qr" alt="Event QR code">
-        <div><strong>Event QR code</strong><p>Guests can scan this to open the event page.</p></div>
-      </div>
-    </details>
-
     <section class="promotion-card" id="line-card">
       <h2>Promote your event</h2>
-      <p>Email people who follow your events or submit for a chance to be featured on The Line.</p>
+      <p id="promotion-copy">Share the event directly, invite followers, or submit for a chance to be featured on The Line.</p>
       <div class="promotion-actions">
+        <button class="sg-btn sg-btn-ghost" id="share-event">Share Event</button>
+        <button class="sg-btn sg-btn-ghost" id="download-qr">Download QR Code</button>
         <button class="sg-btn sg-btn-ghost" id="announce" style="display:none">Email my followers</button>
         <button class="sg-btn sg-btn-ghost" id="submit-line">Submit to The Line</button>
       </div>
-      <p class="line-status"><strong id="line-title">The Line</strong> · <span id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</span></p>
+      <p class="line-status" id="line-status"><strong id="line-title">The Line</strong> · <span id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</span></p>
     </section>
 
     <div class="guest-head">
