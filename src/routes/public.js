@@ -198,7 +198,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const isPaid = event.admission_type === 'paid';
     const ticketHtml = isPaid
       ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
-      : '<div class="ticket-note"><span>Free</span><em>RSVP required</em></div>';
+      : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
     const vibeHtml = renderVibe(event.event_vibe_url);
 
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
