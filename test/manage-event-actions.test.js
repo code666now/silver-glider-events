@@ -36,3 +36,17 @@ test('promotion actions share the event and download its existing QR endpoint', 
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];
   assert.doesNotMatch(privateBranch, /line-card/);
 });
+
+test('management metrics follow public and private event visibility', () => {
+  const view = source('src/views/event-manage.html');
+  const client = source('public/js/manage.js');
+  const stats = view.slice(view.indexOf('<div class="stat-row">'), view.indexOf('<div class="toolbar"'));
+
+  assert.match(stats, /<div class="stat">\s*<strong id="stat-rsvps">/);
+  assert.equal((stats.match(/data-private-metric/g) || []).length, 3);
+  for (const id of ['stat-attendance', 'stat-guests', 'stat-comments']) {
+    assert.match(stats, new RegExp(`data-private-metric[\\s\\S]*?id="${id}"`));
+    assert.match(client, new RegExp(`\\$\\('${id}'\\)\\.textContent = event\\.`));
+  }
+  assert.match(client, /card\.hidden = event\.visibility !== 'private'/);
+});

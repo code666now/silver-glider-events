@@ -42,6 +42,9 @@ async function loadEvent() {
   else if (event.visibility === 'private') { badge.className = 'sg-badge'; badge.textContent = 'Private — Link Only'; }
   else { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Live'; }
 
+  document.querySelectorAll('[data-private-metric]').forEach(card => {
+    card.hidden = event.visibility !== 'private';
+  });
   $('stat-rsvps').textContent = event.rsvp_count;
   $('stat-attendance').textContent = event.total_attendance;
   $('stat-guests').textContent = event.guest_count;
