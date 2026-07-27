@@ -102,7 +102,35 @@
       background: radial-gradient(130% 100% at 50% 34%, transparent 0%, rgba(14,14,14,.34) 88%);
     }
     .fx-veil.fx-veil-warm {
-      background: radial-gradient(120% 100% at 50% 30%, rgba(27,12,6,.48), rgba(8,5,4,.76));
+      background:
+        linear-gradient(90deg, rgba(8,5,4,.38) 0%, rgba(8,5,4,.48) 38%, rgba(8,5,4,.7) 58%, rgba(8,5,4,.82) 100%),
+        linear-gradient(180deg, rgba(24,10,5,.42), rgba(8,5,4,.64));
+    }
+
+    /* After Hours Saloon has a detailed photo, so its secondary copy and
+       translucent surfaces get a theme-only readability lift. */
+    .event-bg.fx-saloon ~ .layout .desc,
+    .event-bg.fx-saloon ~ .layout .venue > span,
+    .event-bg.fx-saloon ~ .layout .host-attribution p,
+    .event-bg.fx-saloon ~ .layout .powered-by,
+    .event-bg.fx-saloon ~ .layout .section-empty,
+    .event-bg.fx-saloon ~ .layout .comment-locked {
+      color: rgba(255,255,255,.78);
+      font-weight: 500;
+      text-shadow: 0 1px 4px rgba(0,0,0,.92);
+    }
+    .event-bg.fx-saloon ~ .layout .ticket-note,
+    .event-bg.fx-saloon ~ .layout .public-guest-list,
+    .event-bg.fx-saloon ~ .layout .event-wall,
+    .event-bg.fx-saloon ~ .layout .comment-card {
+      background: rgba(10,7,5,.68);
+      border-color: rgba(255,255,255,.13);
+      backdrop-filter: blur(4px);
+    }
+    @media (max-width: 879px) {
+      .fx-veil.fx-veil-warm {
+        background: linear-gradient(180deg, rgba(8,5,4,.66), rgba(8,5,4,.74));
+      }
     }
 
     .layout { position: relative; z-index: 1; }

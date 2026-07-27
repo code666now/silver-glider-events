@@ -219,7 +219,10 @@ $('rsvp-form').addEventListener('submit', async e => {
     if (res.status === 409 && data.error === 'party_full') throw new Error(data.message || 'There is not enough room for a guest.');
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
     if (data.alreadyRsvpd) $('success-sub').textContent = "You were already on the list — we've re-sent your confirmation.";
-    else if (EVENT.commentsEnabled) $('success-sub').textContent = 'Confirmation and calendar invite are on the way. Open the email to join the event wall.';
+    else if (EVENT.commentsEnabled) {
+      $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the event wall below.';
+      await loadComments();
+    }
     show('success-state');
   } catch (err) {
     const el = $('rsvp-error');

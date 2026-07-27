@@ -20,3 +20,11 @@ test('After Hours Saloon is accepted and renders from its dedicated asset', () =
   assert.match(source('src/views/event-public.html'), /\.event-bg\.fx-saloon/);
   assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-saloon/);
 });
+
+test('After Hours Saloon readability overrides stay isolated to that effect', () => {
+  const publicView = source('src/views/event-public.html');
+  assert.match(publicView, /\.event-bg\.fx-saloon ~ \.layout \.desc/);
+  assert.match(publicView, /\.fx-veil\.fx-veil-warm/);
+  assert.match(publicView, /@media \(max-width: 879px\)/);
+  assert.doesNotMatch(publicView, /\.event-bg\.fx-(?:fog|disco|paper|static) ~ \.layout \.desc/);
+});

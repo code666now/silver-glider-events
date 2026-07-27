@@ -528,6 +528,7 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
     }
 
     let rsvp;
+    const isNewRsvp = existing.length === 0;
     if (existing.length) {
       // previously cancelled — re-confirm
       rsvp = (await client.query(
@@ -550,6 +551,12 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
     }
     await client.query('COMMIT');
 
+    // A fresh RSVP establishes attendee access on this browser immediately.
+    // Existing-email attempts still require the confirmation link so knowing
+    // another attendee's email can never grant comment or deletion access.
+    if (isNewRsvp && event.visibility === 'private' && event.comments_enabled) {
+      setAttendeeCookie(res, event.id, rsvp.manage_token);
+    }
     resendConfirmation(event, rsvp);
     res.status(201).json({ ok: true });
   } catch (err) {

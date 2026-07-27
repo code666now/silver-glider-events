@@ -116,3 +116,13 @@ test('comments are text-only and limited to 300 characters', () => {
   assert.ok(cleanComment(' '.repeat(10)).error);
   assert.ok(cleanComment('x'.repeat(301)).error);
 });
+
+test('fresh comment-enabled RSVPs receive attendee access without trusting existing emails', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public.js'), 'utf8');
+  assert.match(source, /const isNewRsvp = existing\.length === 0/);
+  assert.match(source, /if \(isNewRsvp && event\.visibility === 'private' && event\.comments_enabled\)/);
+  assert.match(source, /setAttendeeCookie\(res, event\.id, rsvp\.manage_token\)/);
+
+  const clientSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'public-event.js'), 'utf8');
+  assert.match(clientSource, /await loadComments\(\)/);
+});
