@@ -47,21 +47,25 @@
       const { submissions } = await api(`/api/admin/line-submissions?status=${current}`);
       const list = document.getElementById('list');
       document.getElementById('empty').style.display = submissions.length ? 'none' : 'block';
-      list.innerHTML = submissions.map(s => `
+      list.innerHTML = submissions.map(s => {
+        const id = Number(s.id);
+        const host = s.org_name || s.organizer_name || s.organizer_email;
+        return `
         <div class="sg-card" style="margin-bottom:14px;padding:20px 22px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
             <div>
-              <h3 style="font-size:18px;margin-bottom:4px"><a href="/e/${s.slug}" target="_blank" style="color:var(--sg-text)">${s.title}</a></h3>
-              <p style="font-size:13px;color:var(--sg-text-dim)">${fmt(s.event_date)} · ${s.venue_name}</p>
-              <p style="font-size:12px;color:var(--sg-text-faint);margin-top:4px">${s.org_name || s.organizer_name || s.organizer_email}</p>
+              <h3 style="font-size:18px;margin-bottom:4px"><a href="/e/${encodeURIComponent(String(s.slug))}" target="_blank" rel="noopener" style="color:var(--sg-text)">${sgEscapeHtml(s.title)}</a></h3>
+              <p style="font-size:13px;color:var(--sg-text-dim)">${sgEscapeHtml(fmt(s.event_date))} · ${sgEscapeHtml(s.venue_name)}</p>
+              <p style="font-size:12px;color:var(--sg-text-faint);margin-top:4px">${sgEscapeHtml(host)}</p>
             </div>
             ${current === 'pending' ? `
             <div style="display:flex;gap:8px;flex-shrink:0">
-              <button class="sg-btn sg-btn-primary" style="padding:8px 18px;font-size:13px" onclick="act(${s.id},'approve')">Approve</button>
-              <button class="sg-btn sg-btn-ghost" style="padding:8px 18px;font-size:13px" onclick="act(${s.id},'reject')">Reject</button>
+              <button class="sg-btn sg-btn-primary" style="padding:8px 18px;font-size:13px" onclick="act(${id},'approve')">Approve</button>
+              <button class="sg-btn sg-btn-ghost" style="padding:8px 18px;font-size:13px" onclick="act(${id},'reject')">Reject</button>
             </div>` : `<span class="sg-badge ${current === 'approved' ? 'sg-badge-accent' : ''}">${current}</span>`}
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     async function act(id, action) {

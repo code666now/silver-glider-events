@@ -152,22 +152,26 @@
         }
         const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
         const dateStr = new Date(ev.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+        const title = String(ev.title || 'Untitled event');
+        const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+        const rsvpCount = Number(ev.rsvp_count) || 0;
+        const capacity = Number(ev.capacity) || 0;
         document.getElementById('sub').textContent = 'Your next event.';
         document.getElementById('dashboard-stats').textContent =
           `${upcoming.length} upcoming event${upcoming.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
         container.innerHTML = `
-          <a class="next-card" href="/events/${ev.id}/manage">
-            ${ev.cover_image_url
-              ? `<div class="next-visual"><img src="${ev.cover_image_url}" alt=""></div>`
-              : `<div class="next-visual placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+          <a class="next-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
+            ${coverUrl
+              ? `<div class="next-visual"><img src="${sgEscapeHtml(coverUrl)}" alt=""></div>`
+              : `<div class="next-visual placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
             <div class="next-details">
               <div>
-                <h2>${ev.title}</h2>
-                <p>${dateStr} · ${ev.venue_name}</p>
+                <h2>${sgEscapeHtml(title)}</h2>
+                <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name)}</p>
               </div>
               <div class="next-count">
-                <strong>${ev.rsvp_count}</strong>
-                <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+                <strong>${rsvpCount}</strong>
+                <span>going${capacity ? ` / ${capacity}` : ''}</span>
               </div>
             </div>
           </a>`;

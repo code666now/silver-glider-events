@@ -17,6 +17,24 @@ async function api(path, opts = {}) {
   return data;
 }
 
+function sgEscapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function sgSafeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ''), location.origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch (_) {
+    return '';
+  }
+}
+
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;

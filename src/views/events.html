@@ -102,8 +102,8 @@
 
     // Wrap a card in a swipe-to-archive row
     function swipeWrap(ev, inner) {
-      const t = (ev.title || '').replace(/"/g, '&quot;');
-      return `<div class="swipe-row" data-id="${ev.id}" data-title="${t}">
+      const title = sgEscapeHtml(ev.title || '');
+      return `<div class="swipe-row" data-id="${encodeURIComponent(String(ev.id))}" data-title="${title}">
         <div class="swipe-action"><button class="swipe-arch-btn" type="button">Archive</button></div>
         ${inner}
       </div>`;
@@ -226,24 +226,28 @@
     function card(ev) {
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
         { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+      const title = String(ev.title || 'Untitled event');
+      const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+      const rsvpCount = Number(ev.rsvp_count) || 0;
+      const capacity = Number(ev.capacity) || 0;
       const badges = [
         ev.status === 'cancelled' ? '<span class="sg-badge sg-badge-danger">Cancelled</span>' : '',
         ev.status === 'draft' ? '<span class="sg-badge">Draft</span>' : '',
         ev.visibility === 'private' ? '<span class="sg-badge">Private</span>' : ''
       ].filter(Boolean).join(' ');
       return `
-        <a class="sg-event-card" href="/events/${ev.id}/manage">
-          ${ev.cover_image_url
-            ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
-            : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+        <a class="sg-event-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
+          ${coverUrl
+            ? `<img class="sg-event-thumb" src="${sgEscapeHtml(coverUrl)}" alt="">`
+            : `<div class="sg-event-thumb placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
           <div class="sg-event-meta">
-            <h3>${ev.title}</h3>
-            <p>${dateStr} · ${ev.venue_name}</p>
+            <h3>${sgEscapeHtml(title)}</h3>
+            <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name)}</p>
             ${badges ? `<p style="margin-top:6px">${badges}</p>` : ''}
           </div>
           <div class="sg-event-count">
-            <strong>${ev.rsvp_count}</strong>
-            <span>going${ev.capacity ? ` / ${ev.capacity}` : ''}</span>
+            <strong>${rsvpCount}</strong>
+            <span>going${capacity ? ` / ${capacity}` : ''}</span>
           </div>
         </a>`;
     }
@@ -251,16 +255,19 @@
     function archivedCard(ev) {
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
         { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+      const title = String(ev.title || 'Untitled event');
+      const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+      const rsvpCount = Number(ev.rsvp_count) || 0;
       return `
         <div class="sg-event-card" style="opacity:.75">
-          ${ev.cover_image_url
-            ? `<img class="sg-event-thumb" src="${ev.cover_image_url}" alt="">`
-            : `<div class="sg-event-thumb placeholder">${ev.title.charAt(0).toUpperCase()}</div>`}
+          ${coverUrl
+            ? `<img class="sg-event-thumb" src="${sgEscapeHtml(coverUrl)}" alt="">`
+            : `<div class="sg-event-thumb placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
           <div class="sg-event-meta">
-            <h3>${ev.title}</h3>
-            <p>${dateStr} · ${ev.rsvp_count} RSVP${ev.rsvp_count === 1 ? '' : 's'} kept</p>
+            <h3>${sgEscapeHtml(title)}</h3>
+            <p>${sgEscapeHtml(dateStr)} · ${rsvpCount} RSVP${rsvpCount === 1 ? '' : 's'} kept</p>
           </div>
-          <button class="sg-btn sg-btn-ghost restore-btn" data-id="${ev.id}" style="padding:8px 18px;font-size:13px;flex-shrink:0">Restore</button>
+          <button class="sg-btn sg-btn-ghost restore-btn" data-id="${encodeURIComponent(String(ev.id))}" style="padding:8px 18px;font-size:13px;flex-shrink:0">Restore</button>
         </div>`;
     }
 

@@ -167,7 +167,8 @@
       const actions = [];
       if (feedback.event_slug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/e/${encodeURIComponent(feedback.event_slug)}" target="_blank" rel="noopener">Open event</a>`);
       if (feedback.public_slug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/h/${encodeURIComponent(feedback.public_slug)}" target="_blank" rel="noopener">Open host page</a>`);
-      actions.push(`<a class="sg-btn sg-btn-ghost" href="${esc(feedback.page_url)}" target="_blank" rel="noopener">Open reported page</a>`);
+      const safePageUrl = sgSafeHttpUrl(feedback.page_url);
+      if (safePageUrl) actions.push(`<a class="sg-btn sg-btn-ghost" href="${sgEscapeHtml(safePageUrl)}" target="_blank" rel="noopener">Open reported page</a>`);
       actions.push('<button class="sg-btn sg-btn-ghost" id="copy-page-url" type="button">Copy page URL</button>');
       document.getElementById('detail-actions').innerHTML = actions.join('');
       document.getElementById('copy-page-url').addEventListener('click', async () => {

@@ -9,6 +9,7 @@ const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
 const { parseSession, readSessionCookie } = require('../lib/session');
+const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const {
   attendeeCookieName,
   cleanComment,
@@ -21,6 +22,28 @@ const {
 const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RSVP_RATE_WINDOW_MS = 15 * 60 * 1000;
+const rsvpRateLimiter = createRateLimiter({
+  windowMs: RSVP_RATE_WINDOW_MS,
+  rules: [
+    { name: 'ip-event', max: 8, key: ({ ip, slug }) => `${ip}:${slug}` },
+    { name: 'email-event', max: 4, key: ({ email, slug }) => email ? `${email}:${slug}` : '' },
+    { name: 'ip-global', max: 30, key: ({ ip }) => ip }
+  ]
+});
+setInterval(() => rsvpRateLimiter.prune(), RSVP_RATE_WINDOW_MS).unref();
+
+function protectRsvp(req, res, next) {
+  const result = rsvpRateLimiter.consume({
+    ip: clientIp(req),
+    slug: String(req.params.slug || '').trim().toLowerCase().slice(0, 220),
+    email: String(req.body?.email || '').trim().toLowerCase().slice(0, 320)
+  });
+  if (result.allowed) return next();
+  res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+  return res.status(429).json({ error: 'Too many RSVP attempts. Please wait a few minutes and try again.' });
+}
+
 const publicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public.html'), 'utf8');
 const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
 const rsvpManageTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'rsvp-manage.html'), 'utf8');
@@ -470,8 +493,8 @@ router.delete('/api/public/events/:slug/comments/:id', async (req, res, next) =>
   } catch (err) { next(err); }
 });
 
-// POST /api/public/events/:slug/rsvp — capacity-safe
-router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
+// POST /api/public/events/:slug/rsvp — rate-limited and capacity-safe
+router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next) => {
   const client = await pool.connect();
   try {
     const fullName = String(req.body.full_name || '').trim().replace(/\s+/g, ' ').slice(0, 160);
@@ -503,7 +526,7 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
     );
     if (existing.length && existing[0].status === 'confirmed') {
       await client.query('COMMIT');
-      resendConfirmation(event, existing[0]);
+      void resendConfirmation(event, existing[0]);
       return res.json({ ok: true, alreadyRsvpd: true });
     }
 
@@ -557,7 +580,7 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
     if (isNewRsvp && event.visibility === 'private' && event.comments_enabled) {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
-    resendConfirmation(event, rsvp);
+    void resendConfirmation(event, rsvp);
     res.status(201).json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -567,29 +590,45 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
   }
 });
 
-// Confirmation email — fire-and-forget after commit, logged to message_log
-function resendConfirmation(event, rsvp) {
-  (async () => {
-    try {
-      const ics = buildIcs(event);
-      const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics });
+// Confirmation email — an atomic database claim prevents duplicate sends across
+// rapid retries, app restarts, or multiple app instances. One resend is allowed
+// after 15 minutes so an attendee can recover a lost confirmation safely.
+async function resendConfirmation(event, rsvp) {
+  let logId = null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
+       VALUES ($1,$2,$3,'rsvp_confirmation','email','pending')
+       ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL
+       DO UPDATE SET event_id=EXCLUDED.event_id, recipient=EXCLUDED.recipient,
+                     status='pending', provider_id=NULL, error=NULL,
+                     created_at=NOW(), sent_at=NULL
+       WHERE COALESCE(message_log.sent_at, message_log.created_at) < NOW() - INTERVAL '15 minutes'
+       RETURNING id`,
+      [rsvp.id, event.id, rsvp.email]
+    );
+    if (!rows.length) return false;
+    logId = rows[0].id;
+
+    const ics = buildIcs(event);
+    const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics });
+    await pool.query(
+      `UPDATE message_log
+          SET status='sent', provider_id=$2, error=NULL, sent_at=NOW()
+        WHERE id=$1`,
+      [logId, result?.id || null]
+    );
+    return true;
+  } catch (err) {
+    console.error('[rsvp-confirmation]', err.message);
+    if (logId) {
       await pool.query(
-        `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status, provider_id, sent_at)
-         VALUES ($1,$2,$3,'rsvp_confirmation','email','sent',$4,NOW())
-         ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL
-         DO UPDATE SET status='sent', sent_at=NOW()`,
-        [rsvp.id, event.id, rsvp.email, result?.id || null]
-      );
-    } catch (err) {
-      console.error('[rsvp-confirmation]', err.message);
-      pool.query(
-        `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status, error)
-         VALUES ($1,$2,$3,'rsvp_confirmation','email','failed',$4)
-         ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL DO NOTHING`,
-        [rsvp.id, event.id, rsvp.email, err.message]
+        `UPDATE message_log SET status='failed', error=$2 WHERE id=$1`,
+        [logId, String(err.message || 'Email delivery failed').slice(0, 2000)]
       ).catch(() => {});
     }
-  })();
+    return false;
+  }
 }
 
 // GET /e/:slug/calendar.ics
