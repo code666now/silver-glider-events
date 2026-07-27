@@ -55,3 +55,9 @@ test('share and calendar remain available after RSVP confirmation', () => {
   assert.match(client, /\$\('cal-btn'\)\.href = icsUrl/);
   assert.match(client, /\$\('share-btn'\)\.addEventListener\('click', share\)/);
 });
+
+test('host and Silver Glider attribution center only on mobile', () => {
+  const view = source('src/views/event-public.html');
+  assert.match(view, /@media \(max-width: 879px\) \{\s*\.host-attribution \{ justify-content: center; \}\s*\.powered-by \{ text-align: center; \}/);
+  assert.match(view, /@media \(min-width: 880px\)/);
+});
