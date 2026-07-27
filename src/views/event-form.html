@@ -65,6 +65,19 @@
     }
     .private-option strong { display: block; color: var(--sg-text); font-size: 14px; }
     .private-option span { display: block; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
+    .secret-shortcut {
+      display:flex;align-items:center;justify-content:space-between;gap:18px;
+      margin:0 0 24px;padding:18px 20px;border:1px solid rgba(28,197,190,.18);
+      border-radius:17px;background:linear-gradient(120deg,rgba(28,197,190,.055),rgba(255,255,255,.015));
+    }
+    .secret-shortcut strong { display:block;margin-bottom:3px;font-size:14px; }
+    .secret-shortcut span { display:block;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
+    .secret-shortcut .sg-btn { flex:0 0 auto;padding:9px 16px;font-size:11px; }
+    .secret-option { margin-top:3px;padding-top:14px;border-top:1px solid var(--sg-border-soft); }
+    .secret-code-fields { display:none;grid-template-columns:1fr 1fr;gap:12px;padding:4px 0 2px; }
+    .secret-code-fields.show { display:grid; }
+    .secret-code-fields .sg-field { margin:0; }
+    .secret-code-help { grid-column:1/-1;color:var(--sg-text-faint);font-size:10px;line-height:1.55; }
     .admission-fields { display: none; }
     .admission-fields.show { display: grid; }
     .places-status {
@@ -387,6 +400,9 @@
       }
     }
     @media (max-width: 640px) {
+      .secret-shortcut { align-items:flex-start;flex-direction:column; }
+      .secret-code-fields { grid-template-columns:1fr; }
+      .secret-code-help { grid-column:1; }
       .image-modal { padding: 0; align-items: stretch; }
       .image-modal-card {
         height: 100dvh;
@@ -417,6 +433,11 @@
     <nav id="nav"></nav>
     <h1 class="sg-page-title" id="page-title">Create Event</h1>
     <p class="sg-page-sub">Only four fields are required. You can edit everything later.</p>
+
+    <aside class="secret-shortcut" id="secret-shortcut">
+      <div><strong>Hosting a Secret Show?</strong><span>Create an invite-only event protected by a secret access code.</span></div>
+      <button class="sg-btn sg-btn-ghost" id="create-secret-show" type="button">Create Secret Show</button>
+    </aside>
 
     <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
 
@@ -588,6 +609,21 @@
           <input type="checkbox" id="comments_enabled">
           <span><strong>Enable comments</strong>Confirmed attendees can post to a simple comments section.</span>
         </label>
+        <label class="private-option secret-option">
+          <input type="checkbox" id="secret_show_enabled">
+          <span><strong>Secret Show Mode</strong>Guests must enter a code before they can view the event.</span>
+        </label>
+        <div class="secret-code-fields" id="secret-code-fields">
+          <div class="sg-field">
+            <label for="secret_code">Access code</label>
+            <input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers">
+          </div>
+          <div class="sg-field">
+            <label for="secret_code_confirm">Confirm access code</label>
+            <input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again">
+          </div>
+          <p class="secret-code-help" id="secret-code-help">Guests must enter this code before they can view the event.</p>
+        </div>
       </div>
 
       <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>

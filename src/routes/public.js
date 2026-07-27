@@ -11,6 +11,12 @@ const { verifyOptout } = require('../lib/followers');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const {
+  ensureAttemptSession,
+  hasUnlockCookie,
+  setUnlockCookie,
+  verifyCode
+} = require('../lib/secret-show');
+const {
   attendeeCookieName,
   cleanComment,
   parseNamedGuest,
@@ -33,6 +39,17 @@ const rsvpRateLimiter = createRateLimiter({
 });
 setInterval(() => rsvpRateLimiter.prune(), RSVP_RATE_WINDOW_MS).unref();
 
+const SECRET_UNLOCK_WINDOW_MS = 15 * 60 * 1000;
+const secretUnlockLimiter = createRateLimiter({
+  windowMs: SECRET_UNLOCK_WINDOW_MS,
+  rules: [
+    { name: 'secret-session-event', max: 6, key: ({ session, slug }) => `${session}:${slug}` },
+    { name: 'secret-ip-event', max: 30, key: ({ ip, slug }) => `${ip}:${slug}` },
+    { name: 'secret-ip-global', max: 100, key: ({ ip }) => ip }
+  ]
+});
+setInterval(() => secretUnlockLimiter.prune(), SECRET_UNLOCK_WINDOW_MS).unref();
+
 function protectRsvp(req, res, next) {
   const result = rsvpRateLimiter.consume({
     ip: clientIp(req),
@@ -47,6 +64,7 @@ function protectRsvp(req, res, next) {
 const publicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public.html'), 'utf8');
 const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
 const rsvpManageTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'rsvp-manage.html'), 'utf8');
+const secretShowTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'secret-show.html'), 'utf8');
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -145,6 +163,27 @@ async function loadEventBySlug(slug) {
     [slug]
   );
   return rows[0] || null;
+}
+
+async function loadEventAccessEnvelope(slug) {
+  const { rows } = await pool.query(
+    `SELECT id, slug, organizer_id, visibility, status,
+            secret_show_enabled, secret_show_version
+       FROM events
+      WHERE slug=$1 AND status <> 'draft'`,
+    [slug]
+  );
+  return rows[0] || null;
+}
+
+function secretShowLocked(req, event) {
+  return Boolean(event?.secret_show_enabled) &&
+    !organizerViewer(req, event) &&
+    !hasUnlockCookie(req, event);
+}
+
+function rejectLockedSecret(res) {
+  return res.status(404).json({ error: 'Event not found' });
 }
 
 function renderGuestList(event, rows) {
@@ -288,9 +327,53 @@ router.get('/h/:slug', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/public/events/:slug/unlock — access-code gate only; no event data.
+router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
+  try {
+    const event = await loadEventAccessEnvelope(req.params.slug);
+    if (!event || event.visibility !== 'private' || !event.secret_show_enabled) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const attemptSession = ensureAttemptSession(req, res);
+    const rate = secretUnlockLimiter.consume({
+      session: attemptSession,
+      ip: clientIp(req),
+      slug: event.slug
+    });
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+      return res.status(429).json({ error: 'Too many attempts. Wait a few minutes and try again.' });
+    }
+
+    const { rows } = await pool.query(
+      'SELECT code_hash FROM event_secret_codes WHERE event_id=$1',
+      [event.id]
+    );
+    const valid = rows.length && await verifyCode(req.body?.code, rows[0].code_hash);
+    if (!valid) return res.status(401).json({ error: 'That code does not open this event.' });
+
+    setUnlockCookie(res, event);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 // GET /e/:slug — server-rendered so OG tags work for link previews
 router.get('/e/:slug', async (req, res, next) => {
   try {
+    const accessEvent = await loadEventAccessEnvelope(req.params.slug);
+    if (!accessEvent) return res.status(404).send(render404());
+
+    if (accessEvent.secret_show_enabled) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      res.setHeader('Cache-Control', 'private, no-store');
+      if (secretShowLocked(req, accessEvent)) {
+        ensureAttemptSession(req, res);
+        return res.type('html').send(secretShowTemplate);
+      }
+    }
+
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send(render404());
 
@@ -418,6 +501,7 @@ router.get('/api/public/events/:slug/comments', async (req, res, next) => {
     if (!event || event.visibility !== 'private' || !event.comments_enabled) {
       return res.status(404).json({ error: 'Event wall not found' });
     }
+    if (secretShowLocked(req, event)) return rejectLockedSecret(res);
     const attendee = await confirmedAttendee(req, event);
     const canModerate = organizerViewer(req, event);
     const { rows } = await pool.query(
@@ -449,6 +533,7 @@ router.post('/api/public/events/:slug/comments', async (req, res, next) => {
     if (!event || event.visibility !== 'private' || !event.comments_enabled || event.status !== 'published') {
       return res.status(404).json({ error: 'Event wall not found' });
     }
+    if (secretShowLocked(req, event)) return rejectLockedSecret(res);
     const attendee = await confirmedAttendee(req, event);
     if (!attendee) return res.status(403).json({ error: 'Open your RSVP confirmation link before commenting' });
     const cleaned = cleanComment(req.body.message);
@@ -479,6 +564,7 @@ router.delete('/api/public/events/:slug/comments/:id', async (req, res, next) =>
     if (!Number.isInteger(commentId) || commentId < 1) return res.status(404).json({ error: 'Comment not found' });
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).json({ error: 'Comment not found' });
+    if (secretShowLocked(req, event)) return rejectLockedSecret(res);
     const { rows } = await pool.query(
       'SELECT id, rsvp_id FROM event_comments WHERE id=$1 AND event_id=$2',
       [commentId, event.id]
@@ -520,6 +606,10 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       return res.status(404).json({ error: 'Event not found' });
     }
     const event = evRows[0];
+    if (secretShowLocked(req, event)) {
+      await client.query('ROLLBACK');
+      return rejectLockedSecret(res);
+    }
 
     const { rows: existing } = await client.query(
       `SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2)`, [event.id, email]
@@ -636,6 +726,7 @@ router.get('/e/:slug/calendar.ics', async (req, res, next) => {
   try {
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send('Not found');
+    if (secretShowLocked(req, event)) return res.status(404).send('Not found');
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${event.slug}.ics"`);
     res.send(buildIcs(event));
@@ -647,6 +738,7 @@ router.get('/e/:slug/qr.png', async (req, res, next) => {
   try {
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send('Not found');
+    if (secretShowLocked(req, event)) return res.status(404).send('Not found');
     const png = await QRCode.toBuffer(`${process.env.APP_URL}/e/${event.slug}`, {
       width: 600, margin: 2,
       // Brand teal modules on near-black — high contrast so it still scans reliably

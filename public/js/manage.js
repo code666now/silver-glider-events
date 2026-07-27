@@ -39,6 +39,7 @@ async function loadEvent() {
   const badge = $('status-badge');
   if (event.status === 'cancelled') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Cancelled'; }
   else if (event.status === 'draft') { badge.className = 'sg-badge'; badge.textContent = 'Draft'; }
+  else if (event.secret_show_enabled) { badge.className = 'sg-badge'; badge.textContent = 'Secret Show'; }
   else if (event.visibility === 'private') { badge.className = 'sg-badge'; badge.textContent = 'Private — Link Only'; }
   else { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Live'; }
 

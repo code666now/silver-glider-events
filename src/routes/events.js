@@ -8,6 +8,7 @@ const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
+const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -19,6 +20,19 @@ router.use('/api/places', requireOrganizer);
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog', 'saloon'];
 const ADMISSION_TYPES = ['free_rsvp', 'paid'];
+
+function isTrue(value) {
+  return value === true || value === 'true';
+}
+
+function validateSecretCodePair(body) {
+  const validated = validateCode(body.secret_code);
+  if (validated.error) return validated;
+  if (normalizeCode(body.secret_code_confirm) !== validated.code) {
+    return { error: 'Access codes do not match' };
+  }
+  return validated;
+}
 
 function cleanTicketUrl(v) {
   const raw = String(v ?? '').trim();
@@ -182,6 +196,16 @@ router.post('/api/events', async (req, res, next) => {
     const { out, errors } = validateEventBody(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
     Object.assign(out, normalizePrivateSettings(out.visibility || 'public', req.body));
+    const secretShowEnabled = isTrue(req.body.secret_show_enabled);
+    if (secretShowEnabled && out.visibility !== 'private') {
+      return res.status(400).json({ error: 'Secret Show requires Private — Link Only' });
+    }
+    let secretCodeHash = null;
+    if (secretShowEnabled) {
+      const validated = validateSecretCodePair(req.body);
+      if (validated.error) return res.status(400).json({ error: validated.error });
+      secretCodeHash = await hashCode(validated.code);
+    }
 
     const presenterName = cleanHostName(req.body.presenter_name);
     if (!req.organizer.public_slug && presenterName) {
@@ -190,14 +214,16 @@ router.post('/api/events', async (req, res, next) => {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       const slug = out.visibility === 'private' ? makePrivateSlug() : makePublicSlug(out.title);
+      const client = await pool.connect();
       try {
-        const { rows } = await pool.query(
+        await client.query('BEGIN');
+        const { rows } = await client.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
-                               show_guest_list, allow_guests, comments_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+                               show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
@@ -206,12 +232,23 @@ router.post('/api/events', async (req, res, next) => {
            out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
            out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
            out.google_place_id || null, out.event_vibe_url || null,
-           out.show_guest_list, out.allow_guests, out.comments_enabled]
+           out.show_guest_list, out.allow_guests, out.comments_enabled,
+           secretShowEnabled, secretShowEnabled ? 1 : 0]
         );
+        if (secretShowEnabled) {
+          await client.query(
+            `INSERT INTO event_secret_codes (event_id, code_hash) VALUES ($1,$2)`,
+            [rows[0].id, secretCodeHash]
+          );
+        }
+        await client.query('COMMIT');
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         if (err.code === '23505' && attempt < 2) continue; // slug collision — retry
         throw err;
+      } finally {
+        client.release();
       }
     }
   } catch (err) { next(err); }
@@ -236,17 +273,23 @@ router.get('/api/events/:id', async (req, res, next) => {
 
 // PUT /api/events/:id — update (slug immutable)
 router.put('/api/events/:id', async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { out, errors } = validateEventBody(req.body, { partial: true });
     if (errors.length) return res.status(400).json({ error: errors[0] });
     delete out.status; // status changes go through /cancel
 
-    const { rows: currentRows } = await pool.query(
-      `SELECT visibility, show_guest_list, allow_guests, comments_enabled
-         FROM events WHERE id=$1 AND organizer_id=$2`,
+    await client.query('BEGIN');
+    const { rows: currentRows } = await client.query(
+      `SELECT visibility, show_guest_list, allow_guests, comments_enabled,
+              secret_show_enabled, secret_show_version
+         FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
-    if (!currentRows.length) return res.status(404).json({ error: 'Event not found' });
+    if (!currentRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const current = currentRows[0];
     const effectiveVisibility = out.visibility || current.visibility;
     Object.assign(out, normalizePrivateSettings(effectiveVisibility, {
@@ -255,17 +298,59 @@ router.put('/api/events/:id', async (req, res, next) => {
       comments_enabled: req.body.comments_enabled ?? current.comments_enabled
     }));
 
+    const secretShowEnabled = req.body.secret_show_enabled === undefined
+      ? current.secret_show_enabled
+      : isTrue(req.body.secret_show_enabled);
+    if (secretShowEnabled && effectiveVisibility !== 'private') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Disable Secret Show before making this event public' });
+    }
+
+    const codeWasEntered = Boolean(String(req.body.secret_code || '').trim() || String(req.body.secret_code_confirm || '').trim());
+    let replacementHash = null;
+    if (secretShowEnabled && (codeWasEntered || !current.secret_show_enabled)) {
+      const validated = validateSecretCodePair(req.body);
+      if (validated.error) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: validated.error });
+      }
+      replacementHash = await hashCode(validated.code);
+    }
+
+    const secretStateChanged = secretShowEnabled !== current.secret_show_enabled;
+    const secretVersion = Number(current.secret_show_version) + ((secretStateChanged || replacementHash) ? 1 : 0);
+    out.secret_show_enabled = secretShowEnabled;
+    out.secret_show_version = secretVersion;
+
     const keys = Object.keys(out);
-    if (!keys.length) return res.status(400).json({ error: 'Nothing to update' });
+    if (!keys.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Nothing to update' });
+    }
 
     const sets = keys.map((k, i) => `${k}=$${i + 3}`).join(', ');
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `UPDATE events SET ${sets}, updated_at=NOW() WHERE id=$1 AND organizer_id=$2 RETURNING *`,
       [req.params.id, req.organizer.id, ...keys.map(k => out[k])]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Event not found' });
+    if (secretShowEnabled && replacementHash) {
+      await client.query(
+        `INSERT INTO event_secret_codes (event_id, code_hash)
+         VALUES ($1,$2)
+         ON CONFLICT (event_id) DO UPDATE SET code_hash=EXCLUDED.code_hash, updated_at=NOW()`,
+        [req.params.id, replacementHash]
+      );
+    } else if (!secretShowEnabled) {
+      await client.query('DELETE FROM event_secret_codes WHERE event_id=$1', [req.params.id]);
+    }
+    await client.query('COMMIT');
     res.json({ event: rows[0] });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // POST /api/events/:id/duplicate

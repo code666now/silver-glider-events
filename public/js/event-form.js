@@ -3,6 +3,7 @@ renderNav('events');
 const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
 let admissionType = 'free_rsvp';
+let hasSavedSecretCode = false;
 
 const $ = id => document.getElementById(id);
 
@@ -39,13 +40,38 @@ document.querySelectorAll('[data-picker-target]').forEach(button => {
 });
 
 function setVisibility(v) {
+  if (v === 'public' && $('secret_show_enabled').checked) {
+    toast('Disable Secret Show Mode before making this event public');
+    return false;
+  }
   visibility = v;
   $('vis-public').classList.toggle('on', v === 'public');
   $('vis-private').classList.toggle('on', v === 'private');
   $('private-settings').classList.toggle('show', v === 'private');
+  return true;
 }
 $('vis-public').addEventListener('click', () => setVisibility('public'));
 $('vis-private').addEventListener('click', () => setVisibility('private'));
+
+function setSecretShow(enabled, { focus = false } = {}) {
+  if (enabled) setVisibility('private');
+  $('secret_show_enabled').checked = enabled;
+  $('secret-code-fields').classList.toggle('show', enabled);
+  const requiresCode = enabled && !hasSavedSecretCode;
+  $('secret_code').required = requiresCode;
+  $('secret_code_confirm').required = requiresCode;
+  if (!enabled) {
+    $('secret_code').value = '';
+    $('secret_code_confirm').value = '';
+  }
+  if (focus) window.setTimeout(() => $('secret_code').focus(), 0);
+}
+
+$('secret_show_enabled').addEventListener('change', event => setSecretShow(event.target.checked, { focus: event.target.checked }));
+$('create-secret-show').addEventListener('click', () => setSecretShow(true, { focus: true }));
+['secret_code','secret_code_confirm'].forEach(id => $(id).addEventListener('input', event => {
+  event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+}));
 
 function setAdmission(v) {
   admissionType = v === 'paid' ? 'paid' : 'free_rsvp';
@@ -624,6 +650,9 @@ function collect() {
     show_guest_list: visibility === 'private' && $('show_guest_list').checked,
     allow_guests: visibility === 'private' && $('allow_guests').checked,
     comments_enabled: visibility === 'private' && $('comments_enabled').checked,
+    secret_show_enabled: visibility === 'private' && $('secret_show_enabled').checked,
+    secret_code: $('secret_show_enabled').checked ? $('secret_code').value : '',
+    secret_code_confirm: $('secret_show_enabled').checked ? $('secret_code_confirm').value : '',
     background_theme: $('background_theme').value,
     admission_type: admissionType,
     ticket_price: admissionType === 'paid' ? ($('ticket_price').value || null) : null,
@@ -641,6 +670,7 @@ if (editId) {
   $('page-title').textContent = 'Edit Event';
   document.querySelector('.sg-page-sub').textContent = 'Changes go live as soon as you save.';
   $('publish-btn').textContent = 'Save Changes';
+  $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {
     $('title').value = event.title;
     $('description').value = event.description || '';
@@ -660,6 +690,11 @@ if (editId) {
     $('allow_guests').checked = event.allow_guests === true;
     $('comments_enabled').checked = event.comments_enabled === true;
     setVisibility(event.visibility);
+    hasSavedSecretCode = event.secret_show_enabled === true;
+    setSecretShow(hasSavedSecretCode);
+    if (hasSavedSecretCode) {
+      $('secret-code-help').textContent = 'The current code is protected. Leave both fields blank to keep it, or enter a new matching code to replace it.';
+    }
     setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
     $('ticket_price').value = event.ticket_price || '';
