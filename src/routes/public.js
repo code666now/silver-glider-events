@@ -371,7 +371,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_LIST_HTML}}/g, renderGuestList(event, publicGuestRows))
       .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
-      .replace(/{{RSVP_CTA}}/g, isPaid ? 'RSVP' : "RSVP — it's free")
+      .replace(/{{RSVP_CTA}}/g, 'RSVP')
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);
