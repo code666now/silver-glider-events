@@ -7,6 +7,7 @@ const { cleanHostName, ensureHostProfile } = require('../lib/host-profile');
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
+const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -130,11 +131,18 @@ router.get('/api/events', async (req, res, next) => {
     const archivedOnly = req.query.archived === '1';
     const { rows } = await pool.query(
       `SELECT e.*,
-              COALESCE(r.cnt, 0)::int AS rsvp_count
+              COALESCE(r.cnt, 0)::int AS rsvp_count,
+              COALESCE(r.guest_count, 0)::int AS guest_count,
+              (COALESCE(r.cnt, 0) + COALESCE(r.guest_count, 0))::int AS total_attendance,
+              COALESCE(c.comment_count, 0)::int AS comment_count
          FROM events e
          LEFT JOIN (
-           SELECT event_id, COUNT(*) AS cnt FROM rsvps WHERE status='confirmed' GROUP BY event_id
+           SELECT event_id, COUNT(*) AS cnt, COUNT(guest_first_name) AS guest_count
+             FROM rsvps WHERE status='confirmed' GROUP BY event_id
          ) r ON r.event_id = e.id
+         LEFT JOIN (
+           SELECT event_id, COUNT(*) AS comment_count FROM event_comments GROUP BY event_id
+         ) c ON c.event_id = e.id
         WHERE e.organizer_id=$1
           AND e.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
         ORDER BY e.event_date DESC, e.id DESC`,
@@ -173,6 +181,7 @@ router.post('/api/events', async (req, res, next) => {
   try {
     const { out, errors } = validateEventBody(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
+    Object.assign(out, normalizePrivateSettings(out.visibility || 'public', req.body));
 
     const presenterName = cleanHostName(req.body.presenter_name);
     if (!req.organizer.public_slug && presenterName) {
@@ -186,8 +195,9 @@ router.post('/api/events', async (req, res, next) => {
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
+                               show_guest_list, allow_guests, comments_enabled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
@@ -195,7 +205,8 @@ router.post('/api/events', async (req, res, next) => {
            out.cover_credit_name || null, out.cover_credit_link || null,
            out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
            out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
-           out.google_place_id || null, out.event_vibe_url || null]
+           out.google_place_id || null, out.event_vibe_url || null,
+           out.show_guest_list, out.allow_guests, out.comments_enabled]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
@@ -210,7 +221,11 @@ router.post('/api/events', async (req, res, next) => {
 router.get('/api/events/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT e.*, COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count
+      `SELECT e.*,
+              COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
+              COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
+              COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
+              COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
          FROM events e WHERE e.id=$1 AND e.organizer_id=$2`,
       [req.params.id, req.organizer.id]
     );
@@ -225,6 +240,20 @@ router.put('/api/events/:id', async (req, res, next) => {
     const { out, errors } = validateEventBody(req.body, { partial: true });
     if (errors.length) return res.status(400).json({ error: errors[0] });
     delete out.status; // status changes go through /cancel
+
+    const { rows: currentRows } = await pool.query(
+      `SELECT visibility, show_guest_list, allow_guests, comments_enabled
+         FROM events WHERE id=$1 AND organizer_id=$2`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!currentRows.length) return res.status(404).json({ error: 'Event not found' });
+    const current = currentRows[0];
+    const effectiveVisibility = out.visibility || current.visibility;
+    Object.assign(out, normalizePrivateSettings(effectiveVisibility, {
+      show_guest_list: req.body.show_guest_list ?? current.show_guest_list,
+      allow_guests: req.body.allow_guests ?? current.allow_guests,
+      comments_enabled: req.body.comments_enabled ?? current.comments_enabled
+    }));
 
     const keys = Object.keys(out);
     if (!keys.length) return res.status(400).json({ error: 'Nothing to update' });
@@ -257,15 +286,17 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                start_time, end_time, timezone, venue_name, venue_address, category,
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
                                background_theme, cover_credit_name, cover_credit_link,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
+                               show_guest_list, allow_guests, comments_enabled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url, e.event_date,
            e.start_time, e.end_time, e.timezone, e.venue_name, e.venue_address, e.category,
            e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
            e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
            e.venue_city || null, e.venue_state || null, e.venue_latitude, e.venue_longitude,
-           e.google_place_id || null, e.event_vibe_url || null]
+           e.google_place_id || null, e.event_vibe_url || null,
+           e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
@@ -311,10 +342,12 @@ router.get('/api/events/:id/rsvps', async (req, res, next) => {
     let where = `event_id=$1`;
     if (search) {
       params.push(`%${search}%`);
-      where += ` AND (first_name ILIKE $2 OR last_name ILIKE $2 OR email ILIKE $2)`;
+      where += ` AND (first_name ILIKE $2 OR last_name ILIKE $2 OR email ILIKE $2
+                    OR guest_first_name ILIKE $2 OR guest_last_name ILIKE $2 OR guest_email ILIKE $2)`;
     }
     const { rows } = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, wants_reminders, organizer_optin, status, created_at
+      `SELECT id, first_name, last_name, email, phone, guest_first_name, guest_last_name, guest_email,
+              wants_reminders, organizer_optin, status, created_at
          FROM rsvps WHERE ${where} ORDER BY created_at DESC`,
       params
     );
@@ -329,7 +362,8 @@ router.get('/api/events/:id/rsvps.csv', async (req, res, next) => {
     if (!ev.length) return res.status(404).json({ error: 'Event not found' });
 
     const { rows } = await pool.query(
-      `SELECT first_name, last_name, email, phone, wants_reminders, organizer_optin, status, created_at
+      `SELECT first_name, last_name, email, phone, guest_first_name, guest_last_name, guest_email,
+              wants_reminders, organizer_optin, status, created_at
          FROM rsvps WHERE event_id=$1 ORDER BY created_at ASC`,
       [req.params.id]
     );
@@ -342,8 +376,14 @@ router.get('/api/events/:id/rsvps.csv', async (req, res, next) => {
 // POST /api/events/:id/submit-to-line
 router.post('/api/events/:id/submit-to-line', async (req, res, next) => {
   try {
-    const { rows: ev } = await pool.query('SELECT id FROM events WHERE id=$1 AND organizer_id=$2', [req.params.id, req.organizer.id]);
+    const { rows: ev } = await pool.query(
+      'SELECT id, visibility, status FROM events WHERE id=$1 AND organizer_id=$2',
+      [req.params.id, req.organizer.id]
+    );
     if (!ev.length) return res.status(404).json({ error: 'Event not found' });
+    if (!canAppearInPublicListings(ev[0])) {
+      return res.status(400).json({ error: 'Only published public events can be submitted to The Line' });
+    }
 
     await pool.query(
       `INSERT INTO line_submissions (event_id, organizer_id) VALUES ($1, $2)
@@ -361,7 +401,8 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT ls.status, ls.created_at, ls.reviewed_at
          FROM line_submissions ls JOIN events e ON e.id=ls.event_id
-        WHERE ls.event_id=$1 AND e.organizer_id=$2`,
+        WHERE ls.event_id=$1 AND e.organizer_id=$2
+          AND e.visibility='public' AND e.status='published'`,
       [req.params.id, req.organizer.id]
     );
     res.json({ submission: rows[0] || null });

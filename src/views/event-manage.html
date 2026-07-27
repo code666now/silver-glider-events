@@ -8,9 +8,9 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <style>
-    .stat-row { display: flex; gap: 14px; margin-bottom: 24px; }
+    .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
-      flex: 1; background: var(--sg-card); border: 1px solid var(--sg-border-soft);
+      min-width: 0; background: var(--sg-card); border: 1px solid var(--sg-border-soft);
       border-radius: 18px; padding: 18px 20px;
     }
     .stat strong { font-family: var(--sg-font-display); font-size: 30px; display: block; line-height: 1; }
@@ -78,6 +78,7 @@
     }
     .hero-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
     @media (max-width: 620px) {
+      .stat-row { grid-template-columns: 1fr 1fr; }
       .toolbar .sg-btn, .more-menu summary { padding: 10px 15px; }
       .toolbar .sg-btn-primary { flex: 1 1 100%; }
       .more-menu-panel { right: auto; left: 0; }
@@ -105,13 +106,21 @@
 
     <div class="stat-row">
       <div class="stat">
-        <strong id="stat-count">0</strong>
-        <span>Going</span>
+        <strong id="stat-rsvps">0</strong>
+        <span>RSVP submissions</span>
+      </div>
+      <div class="stat">
+        <strong id="stat-attendance">0</strong>
+        <span>People going</span>
         <div class="cap-bar" id="cap-bar" style="display:none"><div id="cap-fill"></div></div>
       </div>
       <div class="stat">
-        <strong id="stat-days">—</strong>
-        <span id="days-label">Days away</span>
+        <strong id="stat-guests">0</strong>
+        <span>Guests</span>
+      </div>
+      <div class="stat">
+        <strong id="stat-comments">0</strong>
+        <span>Comments</span>
       </div>
     </div>
 
@@ -133,7 +142,7 @@
       <summary>Show QR code</summary>
       <div class="qr-box">
         <img id="qr" alt="Event QR code">
-        <div><strong>Event QR code</strong><p>Guests can scan this to open the public event page.</p></div>
+        <div><strong>Event QR code</strong><p>Guests can scan this to open the event page.</p></div>
       </div>
     </details>
 
@@ -156,7 +165,7 @@
     </div>
     <div style="overflow-x:auto">
       <table class="sg-table" id="guests">
-        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>RSVP'd</th></tr></thead>
+        <thead><tr><th>Attendee</th><th>Attendee email</th><th>Guest</th><th>Guest email</th><th>RSVP'd</th></tr></thead>
         <tbody id="guest-rows"></tbody>
       </table>
     </div>

@@ -4,9 +4,14 @@ function csvEscape(val) {
 }
 
 function rsvpsToCsv(rows) {
-  const header = ['first_name', 'last_name', 'email', 'phone', 'reminders', 'organizer_optin', 'status', 'rsvpd_at'];
+  const header = [
+    'first_name', 'last_name', 'email', 'phone',
+    'guest_first_name', 'guest_last_name', 'guest_email',
+    'reminders', 'organizer_optin', 'status', 'rsvpd_at'
+  ];
   const lines = rows.map(r => [
     r.first_name, r.last_name, r.email, r.phone || '',
+    r.guest_first_name || '', r.guest_last_name || '', r.guest_email || '',
     r.wants_reminders ? 'yes' : 'no',
     r.organizer_optin ? 'yes' : 'no',
     r.status,

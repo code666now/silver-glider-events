@@ -5,6 +5,10 @@ const $ = id => document.getElementById(id);
 let eventData = null;
 const LINE_NUMBER = '(844) 261-6758';
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 if (new URLSearchParams(location.search).get('created')) {
   $('created-note').style.display = 'block';
   api('/api/auth/me').then(({ organizer }) => {
@@ -35,20 +39,18 @@ async function loadEvent() {
   const badge = $('status-badge');
   if (event.status === 'cancelled') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Cancelled'; }
   else if (event.status === 'draft') { badge.className = 'sg-badge'; badge.textContent = 'Draft'; }
-  else if (event.visibility === 'private') { badge.className = 'sg-badge'; badge.textContent = 'Private'; }
+  else if (event.visibility === 'private') { badge.className = 'sg-badge'; badge.textContent = 'Private — Link Only'; }
   else { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Live'; }
 
-  $('stat-count').textContent = event.rsvp_count;
+  $('stat-rsvps').textContent = event.rsvp_count;
+  $('stat-attendance').textContent = event.total_attendance;
+  $('stat-guests').textContent = event.guest_count;
+  $('stat-comments').textContent = event.comment_count;
   if (event.capacity) {
     $('cap-bar').style.display = 'block';
-    $('cap-fill').style.width = `${Math.min(100, (event.rsvp_count / event.capacity) * 100)}%`;
-    $('stat-count').textContent = `${event.rsvp_count}/${event.capacity}`;
+    $('cap-fill').style.width = `${Math.min(100, (event.total_attendance / event.capacity) * 100)}%`;
+    $('stat-attendance').textContent = `${event.total_attendance}/${event.capacity}`;
   }
-
-  const days = Math.round((new Date(event.event_date) - new Date(new Date().toDateString())) / 86400000);
-  if (days > 0) { $('stat-days').textContent = days; $('days-label').textContent = days === 1 ? 'Day away' : 'Days away'; }
-  else if (days === 0) { $('stat-days').textContent = 'Today'; $('days-label').textContent = 'Event day'; }
-  else { $('stat-days').textContent = `${-days}d`; $('days-label').textContent = 'Ago'; }
 
   $('view-link').href = eventUrl();
   $('edit-link').href = `/events/${eventId}/edit`;
@@ -56,6 +58,8 @@ async function loadEvent() {
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
+    $('line-card').style.display = 'none';
+  } else if (event.visibility === 'private') {
     $('line-card').style.display = 'none';
   }
 }
@@ -105,9 +109,10 @@ async function loadGuests(search = '') {
   const tbody = $('guest-rows');
   tbody.innerHTML = active.map(r => `
     <tr>
-      <td>${r.first_name} ${r.last_name}</td>
-      <td class="dim">${r.email}</td>
-      <td class="dim">${r.phone || '—'}</td>
+      <td>${escapeHtml(`${r.first_name} ${r.last_name}`.trim())}</td>
+      <td class="dim">${escapeHtml(r.email)}</td>
+      <td>${r.guest_first_name ? escapeHtml(`${r.guest_first_name} ${r.guest_last_name || ''}`.trim()) : '—'}</td>
+      <td class="dim">${escapeHtml(r.guest_email || '—')}</td>
       <td class="dim">${new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
     </tr>`).join('');
   $('no-guests').style.display = active.length ? 'none' : 'block';

@@ -179,6 +179,21 @@ $('rsvp-cta').addEventListener('click', () => {
   $('full_name').focus();
 });
 
+const guestFields = $('guest-fields');
+if (guestFields) {
+  document.querySelectorAll('input[name="party_size"]').forEach(input => {
+    input.addEventListener('change', () => {
+      const bringingGuest = document.querySelector('input[name="party_size"]:checked')?.value === 'guest';
+      guestFields.hidden = !bringingGuest;
+      $('guest_name').required = bringingGuest;
+      if (!bringingGuest) {
+        $('guest_name').value = '';
+        $('guest_email').value = '';
+      }
+    });
+  });
+}
+
 $('rsvp-form').addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('rsvp-submit');
@@ -192,14 +207,19 @@ $('rsvp-form').addEventListener('submit', async e => {
         full_name: $('full_name').value.trim(),
         email: $('email').value.trim(),
         phone: $('phone').value.trim() || null,
+        bringing_guest: document.querySelector('input[name="party_size"]:checked')?.value === 'guest',
+        guest_name: $('guest_name')?.value.trim() || null,
+        guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
         organizer_optin: $('organizer_optin').checked
       })
     });
     const data = await res.json().catch(() => ({}));
     if (res.status === 409 && data.error === 'full') return show('full-state');
+    if (res.status === 409 && data.error === 'party_full') throw new Error(data.message || 'There is not enough room for a guest.');
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
     if (data.alreadyRsvpd) $('success-sub').textContent = "You were already on the list — we've re-sent your confirmation.";
+    else if (EVENT.commentsEnabled) $('success-sub').textContent = 'Confirmation and calendar invite are on the way. Open the email to join the event wall.';
     show('success-state');
   } catch (err) {
     const el = $('rsvp-error');
@@ -224,3 +244,102 @@ async function share() {
 }
 $('share-btn').addEventListener('click', share);
 $('success-share').addEventListener('click', share);
+
+const guestListToggle = $('guest-list-toggle');
+if (guestListToggle) {
+  guestListToggle.addEventListener('click', () => {
+    const expanded = guestListToggle.getAttribute('aria-expanded') === 'true';
+    document.querySelectorAll('.guest-name-extra').forEach(item => { item.hidden = expanded; });
+    guestListToggle.setAttribute('aria-expanded', String(!expanded));
+    guestListToggle.textContent = expanded ? 'See everyone' : 'Show less';
+  });
+}
+
+function formatCommentTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function makeCommentCard(comment) {
+  const card = document.createElement('article');
+  card.className = 'comment-card';
+
+  const meta = document.createElement('div');
+  meta.className = 'comment-meta';
+  const name = document.createElement('strong');
+  name.textContent = comment.first_name;
+  const time = document.createElement('span');
+  time.textContent = formatCommentTime(comment.created_at);
+  meta.append(name, time);
+
+  const message = document.createElement('p');
+  message.textContent = comment.message;
+  card.append(meta, message);
+
+  if (comment.can_delete) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'comment-delete';
+    button.textContent = 'Delete';
+    button.addEventListener('click', async () => {
+      if (!confirm('Delete this comment?')) return;
+      const res = await fetch(`/api/public/events/${EVENT.slug}/comments/${comment.id}`, { method: 'DELETE' });
+      if (res.ok) loadComments();
+    });
+    card.appendChild(button);
+  }
+  return card;
+}
+
+async function loadComments() {
+  if (!EVENT.commentsEnabled || !$('event-wall')) return;
+  const res = await fetch(`/api/public/events/${EVENT.slug}/comments`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const list = $('comment-list');
+  list.replaceChildren();
+  if (!data.comments.length) {
+    const empty = document.createElement('p');
+    empty.className = 'section-empty';
+    empty.textContent = 'No comments yet.';
+    list.appendChild(empty);
+  } else {
+    data.comments.forEach(comment => list.appendChild(makeCommentCard(comment)));
+  }
+  $('comment-count').textContent = data.comments.length;
+  $('comment-form').hidden = !data.canComment;
+  $('comment-locked').hidden = data.canComment;
+}
+
+if (EVENT.commentsEnabled && $('event-wall')) {
+  const message = $('comment-message');
+  message.addEventListener('input', () => { $('comment-length').textContent = `${message.value.length}/300`; });
+  $('comment-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = $('comment-submit');
+    const error = $('comment-error');
+    error.style.display = 'none';
+    button.disabled = true;
+    button.textContent = 'Posting…';
+    try {
+      const res = await fetch(`/api/public/events/${EVENT.slug}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message.value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not post comment');
+      message.value = '';
+      $('comment-length').textContent = '0/300';
+      await loadComments();
+    } catch (err) {
+      error.textContent = err.message;
+      error.style.display = 'block';
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Post';
+    }
+  });
+  loadComments();
+}

@@ -38,6 +38,33 @@
       background: var(--sg-surface); color: var(--sg-text-dim); border: 1px solid var(--sg-border);
     }
     .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
+    .private-settings {
+      display: none;
+      margin: -4px 0 24px;
+      padding: 18px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 16px;
+      background: rgba(255,255,255,.025);
+    }
+    .private-settings.show { display: grid; gap: 13px; }
+    .private-settings > p { color: var(--sg-text-faint); font-size: 12px; line-height: 1.55; }
+    .private-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      color: var(--sg-text-dim);
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .private-option input {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      flex: 0 0 auto;
+      accent-color: var(--sg-accent);
+    }
+    .private-option strong { display: block; color: var(--sg-text); font-size: 14px; }
+    .private-option span { display: block; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
     .admission-fields { display: none; }
     .admission-fields.show { display: grid; }
     .places-status {
@@ -545,6 +572,22 @@
           <button type="button" id="vis-public" class="on">Public</button>
           <button type="button" id="vis-private">Private — link only</button>
         </div>
+      </div>
+
+      <div class="private-settings" id="private-settings">
+        <p>Anyone with the direct link can view this event. It will not appear on your public host page or in Silver Glider discovery.</p>
+        <label class="private-option">
+          <input type="checkbox" id="show_guest_list">
+          <span><strong>Show guest list</strong>Display first names only on the event page.</span>
+        </label>
+        <label class="private-option">
+          <input type="checkbox" id="allow_guests">
+          <span><strong>Allow guests</strong>Each RSVP may bring one named guest.</span>
+        </label>
+        <label class="private-option">
+          <input type="checkbox" id="comments_enabled">
+          <span><strong>Enable comments</strong>Confirmed attendees can post to a simple event wall.</span>
+        </label>
       </div>
 
       <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>

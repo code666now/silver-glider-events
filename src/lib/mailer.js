@@ -63,6 +63,12 @@ function formatTime(t) {
   return `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+function attendeeEventUrl(event, rsvp) {
+  return event.comments_enabled
+    ? `${process.env.APP_URL}/r/${rsvp.manage_token}/event`
+    : `${process.env.APP_URL}/e/${event.slug}`;
+}
+
 async function send({ to, subject, html, attachments, replyTo }) {
   if (!resend) {
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
@@ -109,8 +115,8 @@ async function sendRsvpConfirmation({ to, event, rsvp, icsContent }) {
       headline: "You're on the list.",
       sub: `${name}you have RSVP'd to ${event.title} ${reminderLine}`,
       bodyHtml: eventCard(event),
-      cta: 'View event',
-      ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
+      cta: event.comments_enabled ? 'View event & comments' : 'View event',
+      ctaUrl: attendeeEventUrl(event, rsvp),
       footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">A calendar invite is attached.<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE">Manage your RSVP</a>.</p>`
     }),
     attachments: icsContent
@@ -129,8 +135,8 @@ async function sendDayBeforeReminder({ to, event, rsvp }) {
       headline: 'Tomorrow.',
       sub: event.title,
       bodyHtml: eventCard(event),
-      cta: 'View event',
-      ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
+      cta: event.comments_enabled ? 'View event & comments' : 'View event',
+      ctaUrl: attendeeEventUrl(event, rsvp),
       footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0">Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE">Cancel your RSVP</a> so someone else can go.</p>`
     })
   });
@@ -145,8 +151,8 @@ async function sendDayOfReminder({ to, event, rsvp }) {
       headline: 'See you tonight.',
       sub: event.title,
       bodyHtml: eventCard(event),
-      cta: 'View event',
-      ctaUrl: `${process.env.APP_URL}/e/${event.slug}`
+      cta: event.comments_enabled ? 'View event & comments' : 'View event',
+      ctaUrl: attendeeEventUrl(event, rsvp)
     })
   });
 }

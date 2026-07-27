@@ -42,6 +42,7 @@ function setVisibility(v) {
   visibility = v;
   $('vis-public').classList.toggle('on', v === 'public');
   $('vis-private').classList.toggle('on', v === 'private');
+  $('private-settings').classList.toggle('show', v === 'private');
 }
 $('vis-public').addEventListener('click', () => setVisibility('public'));
 $('vis-private').addEventListener('click', () => setVisibility('private'));
@@ -619,6 +620,9 @@ function collect() {
     category: $('category').value || null,
     capacity: $('capacity').value || null,
     visibility,
+    show_guest_list: visibility === 'private' && $('show_guest_list').checked,
+    allow_guests: visibility === 'private' && $('allow_guests').checked,
+    comments_enabled: visibility === 'private' && $('comments_enabled').checked,
     background_theme: $('background_theme').value,
     admission_type: admissionType,
     ticket_price: admissionType === 'paid' ? ($('ticket_price').value || null) : null,
@@ -651,6 +655,9 @@ if (editId) {
     $('google_place_id').value = event.google_place_id || '';
     $('category').value = event.category || '';
     $('capacity').value = event.capacity || '';
+    $('show_guest_list').checked = event.show_guest_list === true;
+    $('allow_guests').checked = event.allow_guests === true;
+    $('comments_enabled').checked = event.comments_enabled === true;
     setVisibility(event.visibility);
     setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');

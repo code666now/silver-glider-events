@@ -144,8 +144,11 @@ router.get('/api/admin/line-submissions', async (req, res, next) => {
   try {
     const status = ['pending', 'approved', 'rejected'].includes(req.query.status) ? req.query.status : null;
     const params = [];
-    let where = '';
-    if (status) { params.push(status); where = 'WHERE ls.status=$1'; }
+    const conditions = ["e.visibility='public'", "e.status='published'"];
+    if (status) {
+      params.push(status);
+      conditions.push(`ls.status=$${params.length}`);
+    }
     const { rows } = await pool.query(
       `SELECT ls.id, ls.status, ls.created_at, ls.reviewed_at,
               e.title, e.event_date, e.venue_name, e.slug, e.visibility,
@@ -153,7 +156,7 @@ router.get('/api/admin/line-submissions', async (req, res, next) => {
          FROM line_submissions ls
          JOIN events e ON e.id = ls.event_id
          JOIN organizers o ON o.id = ls.organizer_id
-        ${where}
+        WHERE ${conditions.join(' AND ')}
         ORDER BY ls.created_at ASC`,
       params
     );
@@ -164,7 +167,14 @@ router.get('/api/admin/line-submissions', async (req, res, next) => {
 async function review(req, res, next, status) {
   try {
     const { rows } = await pool.query(
-      `UPDATE line_submissions SET status=$2, reviewed_at=NOW() WHERE id=$1 RETURNING *`,
+      `UPDATE line_submissions ls
+          SET status=$2, reviewed_at=NOW()
+         FROM events e
+        WHERE ls.id=$1
+          AND e.id=ls.event_id
+          AND e.visibility='public'
+          AND e.status='published'
+        RETURNING ls.*`,
       [req.params.id, status]
     );
     if (!rows.length) return res.status(404).json({ error: 'Submission not found' });

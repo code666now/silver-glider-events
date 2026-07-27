@@ -8,6 +8,15 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
+const { parseSession, readSessionCookie } = require('../lib/session');
+const {
+  attendeeCookieName,
+  cleanComment,
+  parseNamedGuest,
+  publicGuestNames,
+  readCookie,
+  robotsDirective
+} = require('../lib/private-events');
 
 const router = express.Router();
 
@@ -104,12 +113,88 @@ async function loadEventBySlug(slug) {
   const { rows } = await pool.query(
     `SELECT e.*,
             COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
+            COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
+            COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
+            COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count,
             o.org_name, o.name AS organizer_name, o.public_slug AS organizer_public_slug, o.logo_url AS organizer_logo_url
        FROM events e JOIN organizers o ON o.id = e.organizer_id
       WHERE e.slug=$1 AND e.status <> 'draft'`,
     [slug]
   );
   return rows[0] || null;
+}
+
+function renderGuestList(event, rows) {
+  if (event.visibility !== 'private' || !event.show_guest_list) return '';
+  const names = publicGuestNames(rows);
+  const visibleLimit = 8;
+  const items = names.map((entry, index) =>
+    `<li${index >= visibleLimit ? ' class="guest-name-extra" hidden' : ''}>${esc(entry.firstName)}</li>`
+  ).join('');
+  const toggle = names.length > visibleLimit
+    ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false">See everyone</button>'
+    : '';
+  const count = Number(event.total_attendance) || 0;
+  return `<section class="public-guest-list" aria-labelledby="guest-list-title">
+    <div class="section-heading">
+      <h2 id="guest-list-title">${count} ${count === 1 ? 'person is' : 'people are'} going</h2>
+    </div>
+    ${items ? `<ul class="guest-name-list">${items}</ul>` : '<p class="section-empty">Be the first to RSVP.</p>'}
+    ${toggle}
+  </section>`;
+}
+
+function renderGuestFields(event) {
+  if (event.visibility !== 'private' || !event.allow_guests) return '';
+  return `<fieldset class="party-size-field">
+    <legend>Who is attending?</legend>
+    <label><input type="radio" name="party_size" value="solo" checked> Just me</label>
+    <label><input type="radio" name="party_size" value="guest"> I’m bringing someone</label>
+  </fieldset>
+  <div id="guest-fields" hidden>
+    <div class="sg-field"><label for="guest_name">Guest name</label><input class="sg-input" id="guest_name" maxlength="160" autocomplete="name"></div>
+    <div class="sg-field"><label for="guest_email">Guest email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="email" id="guest_email" maxlength="254" autocomplete="email"></div>
+  </div>`;
+}
+
+function renderComments(event) {
+  if (event.visibility !== 'private' || !event.comments_enabled) return '';
+  return `<section class="event-wall" id="event-wall" aria-labelledby="event-wall-title">
+    <div class="section-heading">
+      <h2 id="event-wall-title">Event wall</h2>
+      <span id="comment-count">${Number(event.comment_count) || 0}</span>
+    </div>
+    <div id="comment-list" class="comment-list"><p class="section-empty">Loading comments…</p></div>
+    <form id="comment-form" hidden>
+      <label for="comment-message">Add a comment</label>
+      <textarea id="comment-message" class="sg-textarea" maxlength="300" placeholder="Say something to the group"></textarea>
+      <div class="comment-compose-foot"><span id="comment-length">0/300</span><button class="sg-btn sg-btn-ghost" id="comment-submit" type="submit">Post</button></div>
+      <p class="comment-error" id="comment-error"></p>
+    </form>
+    <p class="comment-locked" id="comment-locked">Confirmed attendees can comment. Open your RSVP confirmation link to join in.</p>
+  </section>`;
+}
+
+function setAttendeeCookie(res, eventId, token) {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.append('Set-Cookie', `${attendeeCookieName(eventId)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${180 * 24 * 3600}${secure}`);
+}
+
+async function confirmedAttendee(req, event) {
+  const token = readCookie(req, attendeeCookieName(event.id));
+  if (!token) return null;
+  const { rows } = await pool.query(
+    `SELECT id, first_name
+       FROM rsvps
+      WHERE event_id=$1 AND manage_token=$2 AND status='confirmed'`,
+    [event.id, token]
+  );
+  return rows[0] || null;
+}
+
+function organizerViewer(req, event) {
+  const session = parseSession(readSessionCookie(req));
+  return session?.id === event.organizer_id;
 }
 
 function eventCardVisual(event) {
@@ -185,7 +270,22 @@ router.get('/e/:slug', async (req, res, next) => {
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send(render404());
 
-    const isFull = event.capacity != null && event.rsvp_count >= event.capacity;
+    if (event.visibility === 'private') {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    }
+
+    let publicGuestRows = [];
+    if (event.visibility === 'private' && event.show_guest_list) {
+      publicGuestRows = (await pool.query(
+        `SELECT first_name, guest_first_name
+           FROM rsvps
+          WHERE event_id=$1 AND status='confirmed'
+          ORDER BY created_at ASC, id ASC`,
+        [event.id]
+      )).rows;
+    }
+
+    const isFull = event.capacity != null && event.total_attendance >= event.capacity;
     const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
     const presenterHtml = event.org_name
       ? `<div class="host-attribution">
@@ -238,6 +338,9 @@ router.get('/e/:slug', async (req, res, next) => {
       status: event.status,
       isFull,
       capacity: event.capacity,
+      totalAttendance: event.total_attendance,
+      allowGuests: event.visibility === 'private' && event.allow_guests,
+      commentsEnabled: event.visibility === 'private' && event.comments_enabled,
       organizerLabel,
       coverImageUrl: event.cover_image_url || null,
       bgEffect: isEffect ? theme : null
@@ -245,6 +348,7 @@ router.get('/e/:slug', async (req, res, next) => {
 
     const html = publicTemplate
       .replace(/{{TITLE}}/g, esc(event.title))
+      .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(robotsDirective(event.visibility)))
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))
       .replace(/{{OG_IMAGE}}/g, esc(event.cover_image_url || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
@@ -262,6 +366,9 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
+      .replace(/{{GUEST_FIELDS_HTML}}/g, renderGuestFields(event))
+      .replace(/{{GUEST_LIST_HTML}}/g, renderGuestList(event, publicGuestRows))
+      .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, isPaid ? 'RSVP' : "RSVP — it's free")
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
@@ -279,6 +386,88 @@ function render404() {
 <p style="color:var(--sg-text-dim);font-size:15px">This event may have been removed, or the link is wrong.</p>
 </main></body></html>`;
 }
+
+// GET /api/public/events/:slug/comments — safe public wall data only.
+router.get('/api/public/events/:slug/comments', async (req, res, next) => {
+  try {
+    const event = await loadEventBySlug(req.params.slug);
+    if (!event || event.visibility !== 'private' || !event.comments_enabled) {
+      return res.status(404).json({ error: 'Event wall not found' });
+    }
+    const attendee = await confirmedAttendee(req, event);
+    const canModerate = organizerViewer(req, event);
+    const { rows } = await pool.query(
+      `SELECT c.id, c.message, c.created_at, c.rsvp_id, r.first_name
+         FROM event_comments c
+         JOIN rsvps r ON r.id=c.rsvp_id
+        WHERE c.event_id=$1
+        ORDER BY c.created_at ASC, c.id ASC`,
+      [event.id]
+    );
+    res.json({
+      canComment: event.status === 'published' && Boolean(attendee),
+      canModerate,
+      comments: rows.map(row => ({
+        id: row.id,
+        first_name: row.first_name,
+        message: row.message,
+        created_at: row.created_at,
+        can_delete: canModerate || attendee?.id === row.rsvp_id
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/public/events/:slug/comments — confirmed attendee token required.
+router.post('/api/public/events/:slug/comments', async (req, res, next) => {
+  try {
+    const event = await loadEventBySlug(req.params.slug);
+    if (!event || event.visibility !== 'private' || !event.comments_enabled || event.status !== 'published') {
+      return res.status(404).json({ error: 'Event wall not found' });
+    }
+    const attendee = await confirmedAttendee(req, event);
+    if (!attendee) return res.status(403).json({ error: 'Open your RSVP confirmation link before commenting' });
+    const cleaned = cleanComment(req.body.message);
+    if (cleaned.error) return res.status(400).json({ error: cleaned.error });
+
+    const { rows } = await pool.query(
+      `INSERT INTO event_comments (event_id, rsvp_id, message)
+       VALUES ($1,$2,$3)
+       RETURNING id, message, created_at`,
+      [event.id, attendee.id, cleaned.message]
+    );
+    res.status(201).json({
+      comment: {
+        id: rows[0].id,
+        first_name: attendee.first_name,
+        message: rows[0].message,
+        created_at: rows[0].created_at,
+        can_delete: true
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/public/events/:slug/comments/:id — comment owner or event organizer.
+router.delete('/api/public/events/:slug/comments/:id', async (req, res, next) => {
+  try {
+    const commentId = Number(req.params.id);
+    if (!Number.isInteger(commentId) || commentId < 1) return res.status(404).json({ error: 'Comment not found' });
+    const event = await loadEventBySlug(req.params.slug);
+    if (!event) return res.status(404).json({ error: 'Comment not found' });
+    const { rows } = await pool.query(
+      'SELECT id, rsvp_id FROM event_comments WHERE id=$1 AND event_id=$2',
+      [commentId, event.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Comment not found' });
+
+    const attendee = await confirmedAttendee(req, event);
+    const allowed = organizerViewer(req, event) || attendee?.id === rows[0].rsvp_id;
+    if (!allowed) return res.status(403).json({ error: 'You cannot delete this comment' });
+    await pool.query('DELETE FROM event_comments WHERE id=$1 AND event_id=$2', [commentId, event.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
 
 // POST /api/public/events/:slug/rsvp — capacity-safe
 router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
@@ -317,12 +506,24 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
       return res.json({ ok: true, alreadyRsvpd: true });
     }
 
-    const { rows: cnt } = await client.query(
-      `SELECT COUNT(*)::int AS n FROM rsvps WHERE event_id=$1 AND status='confirmed'`, [event.id]
-    );
-    if (event.capacity != null && cnt[0].n >= event.capacity) {
+    const guest = parseNamedGuest({
+      allow_guests: event.visibility === 'private' && event.allow_guests
+    }, req.body);
+    if (guest.error) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'full' });
+      return res.status(400).json({ error: guest.error });
+    }
+
+    const { rows: cnt } = await client.query(
+      `SELECT (COUNT(*) + COUNT(guest_first_name))::int AS n
+         FROM rsvps WHERE event_id=$1 AND status='confirmed'`,
+      [event.id]
+    );
+    if (event.capacity != null && cnt[0].n + guest.partySize > event.capacity) {
+      await client.query('ROLLBACK');
+      return guest.partySize > 1
+        ? res.status(409).json({ error: 'party_full', message: 'There is only room for one more person.' })
+        : res.status(409).json({ error: 'full' });
     }
 
     let rsvp;
@@ -330,15 +531,19 @@ router.post('/api/public/events/:slug/rsvp', async (req, res, next) => {
       // previously cancelled — re-confirm
       rsvp = (await client.query(
         `UPDATE rsvps SET status='confirmed', first_name=$2, last_name=$3, phone=$4,
-                wants_reminders=$5, organizer_optin=$6
+                wants_reminders=$5, organizer_optin=$6,
+                guest_first_name=$7, guest_last_name=$8, guest_email=$9
           WHERE id=$1 RETURNING *`,
-        [existing[0].id, firstName, lastName, phone, wantsReminders, organizerOptin]
+        [existing[0].id, firstName, lastName, phone, wantsReminders, organizerOptin,
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail]
       )).rows[0];
     } else {
       rsvp = (await client.query(
-        `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin, manage_token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
+                            guest_first_name, guest_last_name, guest_email, manage_token)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [event.id, firstName, lastName, email, phone, wantsReminders, organizerOptin,
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail,
          crypto.randomBytes(16).toString('hex')]
       )).rows[0];
     }
@@ -407,16 +612,32 @@ router.get('/e/:slug/qr.png', async (req, res, next) => {
 });
 
 // GET /r/:manageToken — attendee RSVP management
+router.get('/r/:token/event', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.id AS event_id, e.slug
+         FROM rsvps r JOIN events e ON e.id=r.event_id
+        WHERE r.manage_token=$1`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).send(render404());
+    setAttendeeCookie(res, rows[0].event_id, req.params.token);
+    res.redirect(303, `/e/${encodeURIComponent(rows[0].slug)}`);
+  } catch (err) { next(err); }
+});
+
 router.get('/r/:token', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT r.first_name, r.status AS rsvp_status, e.*
+      `SELECT r.id AS rsvp_id, r.first_name, r.status AS rsvp_status,
+              e.id AS event_id, e.*
          FROM rsvps r JOIN events e ON e.id = r.event_id
         WHERE r.manage_token=$1`,
       [req.params.token]
     );
     if (!rows.length) return res.status(404).send(render404());
     const row = rows[0];
+    setAttendeeCookie(res, row.event_id, req.params.token);
 
     const html = rsvpManageTemplate
       .replace(/{{TITLE}}/g, esc(row.title))
@@ -425,6 +646,7 @@ router.get('/r/:token', async (req, res, next) => {
       .replace(/{{TIME_STR}}/g, esc(formatTime(row.start_time)))
       .replace(/{{VENUE_NAME}}/g, esc(row.venue_name))
       .replace(/{{EVENT_URL}}/g, esc(`/e/${row.slug}`))
+      .replace(/{{EVENT_LINK_LABEL}}/g, row.comments_enabled ? 'View event & comments' : 'View event')
       .replace(/{{ICS_URL}}/g, esc(`/e/${row.slug}/calendar.ics`))
       .replace(/{{TOKEN}}/g, esc(req.params.token))
       .replace(/{{RSVP_STATUS}}/g, esc(row.rsvp_status))

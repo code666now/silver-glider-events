@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="{{ROBOTS_DIRECTIVE}}">
   <title>{{TITLE}} — Silver Glider Events</title>
   <meta property="og:title" content="{{TITLE}}">
   <meta property="og:description" content="{{OG_DESCRIPTION}}">
@@ -217,6 +218,94 @@
       margin-bottom: 14px; cursor: pointer;
     }
     .check input { accent-color: var(--sg-accent); width: 17px; height: 17px; margin-top: 1px; flex-shrink: 0; }
+    .party-size-field {
+      margin: 2px 0 18px;
+      padding: 16px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 14px;
+    }
+    .party-size-field legend {
+      padding: 0 6px;
+      color: var(--sg-text-dim);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+    .party-size-field label {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--sg-text-dim);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .party-size-field label + label { margin-top: 10px; }
+    .party-size-field input { accent-color: var(--sg-accent); width: 17px; height: 17px; }
+
+    .public-guest-list, .event-wall {
+      margin: 0 0 38px;
+      padding: 22px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 20px;
+      background: rgba(17,17,17,.42);
+    }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .section-heading h2 { font-size: 22px; }
+    .section-heading > span {
+      min-width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(28,197,190,.1);
+      color: var(--sg-accent);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .guest-name-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
+    .guest-name-list li {
+      padding: 7px 11px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 999px;
+      color: var(--sg-text-dim);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .guest-list-toggle {
+      margin-top: 15px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--sg-accent);
+      font: 700 12px var(--sg-font-body);
+      cursor: pointer;
+    }
+    .section-empty, .comment-locked { color: var(--sg-text-faint); font-size: 12px; line-height: 1.6; }
+    .comment-list { display: grid; gap: 12px; }
+    .comment-card { padding: 14px; border-radius: 14px; background: rgba(255,255,255,.035); }
+    .comment-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+    .comment-meta strong { color: var(--sg-text); font-size: 12px; }
+    .comment-meta span { color: var(--sg-text-faint); font-size: 10px; }
+    .comment-card p { color: var(--sg-text-dim); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .comment-delete {
+      margin-top: 8px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--sg-text-faint);
+      font: 600 10px var(--sg-font-body);
+      cursor: pointer;
+    }
+    #comment-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--sg-border-soft); }
+    #comment-form > label { display: block; margin-bottom: 8px; color: var(--sg-text-dim); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+    #comment-message { min-height: 86px; }
+    .comment-compose-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+    .comment-compose-foot span { color: var(--sg-text-faint); font-size: 10px; }
+    .comment-compose-foot .sg-btn { padding: 8px 18px; font-size: 11px; }
+    .comment-error { display: none; margin-top: 9px; color: var(--sg-danger); font-size: 11px; }
+    .comment-locked { margin-top: 16px; }
 
     #success-state, #full-state, #cancelled-state { display: none; text-align: center; padding: 36px 0 8px; }
     .big-check {
@@ -279,6 +368,7 @@
           <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
           <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
           <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
+          {{GUEST_FIELDS_HTML}}
           <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
           <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
           <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit" style="margin-top:10px">Confirm RSVP</button>
@@ -310,6 +400,9 @@
       <button class="sg-btn sg-btn-ghost" id="share-btn">Share</button>
       <a class="sg-btn sg-btn-ghost" id="cal-btn" href="#">Add to calendar</a>
     </div>
+
+    {{GUEST_LIST_HTML}}
+    {{COMMENTS_HTML}}
 
     <div class="qr-footer">
       <img id="qr-img" alt="QR code for this event" loading="lazy">
