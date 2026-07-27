@@ -303,6 +303,10 @@ a { color: var(--sg-accent); text-decoration: none; }
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
+#effect-picker { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 620px) {
+  #effect-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 
 /* Effect swatches — generative, texture, and video-loop posters */
 .sg-swatch.fx-static {
@@ -333,6 +337,14 @@ a { color: var(--sg-accent); text-decoration: none; }
     url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/fog.jpg");
   background-size: cover;
   background-position: center;
+}
+.sg-swatch.fx-saloon {
+  background-color: #2b1b12;
+  background-image:
+    linear-gradient(rgba(18,10,6,.25), rgba(18,10,6,.48)),
+    url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_320/sg-events/backgrounds/after-hours-saloon.png");
+  background-size: cover;
+  background-position: center 62%;
 }
 
 /* Moving aurora background for the organizer app pages (dashboard, events,

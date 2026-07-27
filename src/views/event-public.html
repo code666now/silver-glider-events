@@ -45,7 +45,7 @@
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
 
     /* ── Background effects — replace the gradient ── */
-    .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-disco, .event-bg.fx-fog {
+    .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-disco, .event-bg.fx-fog, .event-bg.fx-saloon {
       animation: none;
       background-image: none;
       filter: none;
@@ -78,6 +78,13 @@
     .event-bg.fx-fog {
       background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/fog.jpg");
     }
+    .event-bg.fx-saloon {
+      background-color: #2b1b12;
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_2400/sg-events/backgrounds/after-hours-saloon.png");
+      background-size: cover;
+      background-position: center 62%;
+      background-repeat: no-repeat;
+    }
     .fx-video-media {
       position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; opacity: 0; transition: opacity .45s ease;
@@ -93,6 +100,9 @@
     /* Paper is already dark & legible — only a soft vignette for depth */
     .fx-veil.fx-veil-soft {
       background: radial-gradient(130% 100% at 50% 34%, transparent 0%, rgba(14,14,14,.34) 88%);
+    }
+    .fx-veil.fx-veil-warm {
+      background: radial-gradient(120% 100% at 50% 30%, rgba(27,12,6,.48), rgba(8,5,4,.76));
     }
 
     .layout { position: relative; z-index: 1; }

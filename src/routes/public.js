@@ -204,7 +204,8 @@ function eventCardVisual(event) {
   const posters = {
     paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/textures/kraft-paper.jpg',
     disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/disco.jpg',
-    fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/fog.jpg'
+    fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/fog.jpg',
+    saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/backgrounds/after-hours-saloon.png'
   };
   if (posters[event.background_theme]) {
     return `<img src="${posters[event.background_theme]}" alt="" loading="lazy">`;
@@ -304,7 +305,7 @@ router.get('/e/:slug', async (req, res, next) => {
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
     // rendered for already-published events that selected them.
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-    const EFFECTS = ['static', 'paper', 'disco', 'fog'];
+    const EFFECTS = ['static', 'paper', 'disco', 'fog', 'saloon'];
     const VIDEO_EFFECTS = {
       disco: 'sg-events/effects/disco',
       fog: 'sg-events/effects/fog'
@@ -319,7 +320,7 @@ router.get('/e/:slug', async (req, res, next) => {
       : '';
     // Effects sit behind everything and need a darkening veil for legibility
     const fxVeil = isEffect
-      ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}" aria-hidden="true"></div>`
+      ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"></div>`
       : '';
     const heroHtml = event.cover_image_url
       ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`

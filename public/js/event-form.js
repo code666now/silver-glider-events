@@ -64,11 +64,12 @@ $('admission-paid').addEventListener('click', () => setAdmission('paid'));
 
 // Background picker — gradients + generative/photo/video effects
 const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
-const EFFECTS = ['disco', 'fog', 'paper', 'static'];
+const EFFECTS = ['disco', 'fog', 'paper', 'static', 'saloon'];
 const THEMES = [...GRADIENTS, ...EFFECTS];
 const THEME_LABELS = {
   midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
-  static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog'
+  static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog',
+  saloon: 'After Hours Saloon'
 };
 function setTheme(key) {
   $('background_theme').value = key;
