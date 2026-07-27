@@ -3,8 +3,6 @@ const $ = id => document.getElementById(id);
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
-$('success-cal').href = icsUrl;
-$('qr-img').src = `/e/${EVENT.slug}/qr.png`;
 
 function softenRgb({ r, g, b }) {
   const darken = 0.66;
@@ -166,9 +164,6 @@ mountVideoEffect();
 function show(stateId) {
   ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
     .forEach(id => { $(id).style.display = id === stateId ? 'block' : 'none'; });
-  // Success card has its own share/calendar buttons — drop the page-level pair
-  document.querySelector('.wrap > .actions').style.display =
-    stateId === 'success-state' ? 'none' : 'flex';
 }
 
 if (EVENT.status === 'cancelled') show('cancelled-state');
@@ -220,7 +215,7 @@ $('rsvp-form').addEventListener('submit', async e => {
     if (!res.ok) throw new Error(data.error || 'Something went wrong');
     if (data.alreadyRsvpd) $('success-sub').textContent = "You were already on the list — we've re-sent your confirmation.";
     else if (EVENT.commentsEnabled) {
-      $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the event wall below.';
+      $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the comments below.';
       await loadComments();
     }
     show('success-state');
@@ -246,7 +241,6 @@ async function share() {
   }
 }
 $('share-btn').addEventListener('click', share);
-$('success-share').addEventListener('click', share);
 
 const guestListToggle = $('guest-list-toggle');
 if (guestListToggle) {
