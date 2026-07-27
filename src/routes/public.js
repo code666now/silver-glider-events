@@ -272,7 +272,7 @@ router.get('/e/:slug', async (req, res, next) => {
 
 function render404() {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Event not found</title><link rel="stylesheet" href="/css/brand.css"></head>
+<title>Event not found</title><link rel="stylesheet" href="/css/brand.css"><script src="/js/legal-footer.js" defer></script></head>
 <body><main style="max-width:400px;margin:0 auto;padding:20vh 24px;text-align:center">
 <p class="sg-label" style="margin-bottom:20px">Silver Glider Events</p>
 <h1 style="font-size:30px;margin-bottom:10px">Event not found</h1>
@@ -452,7 +452,7 @@ router.get('/unsubscribe', async (req, res, next) => {
 
 function unsubscribePage(message, ok) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Unsubscribe — Silver Glider Events</title><link rel="stylesheet" href="/css/brand.css"></head>
+<title>Unsubscribe — Silver Glider Events</title><link rel="stylesheet" href="/css/brand.css"><script src="/js/legal-footer.js" defer></script></head>
 <body><main style="max-width:420px;margin:0 auto;padding:18vh 24px;text-align:center">
 <p class="sg-label" style="margin-bottom:20px">Silver Glider Events</p>
 <h1 style="font-size:28px;margin-bottom:12px">${ok ? 'Unsubscribed' : 'Link problem'}</h1>

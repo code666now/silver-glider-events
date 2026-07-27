@@ -1,0 +1,208 @@
+Owner and Data Controller
+Silver Glider Entertainment Inc.
+490 Post Street, Suite 500
+San Francisco, CA 94102
+Owner contact email: contact@silverglidertickets.com
+
+This Privacy Policy applies to Silver Glider Events and all related products and services offered by Silver Glider Entertainment Inc., including ticketing, RSVPs, registrations, guest lists, waitlists, invitations, reservations, messaging, The Silver Glider Line, and services previously offered under the Silver Glider Tickets name (collectively, the “Platform”). Ticketing is part of Silver Glider Events and is not treated as a separate platform under this Privacy Policy.
+
+Types of Data We Collect
+Among the types of Personal Data that Silver Glider Events collects, by itself or through third parties, there are:
+
+First name
+Last name
+Email address
+Phone number (when provided for SMS communications)
+Usage Data
+Trackers
+Event Access purchase, registration, and attendance history
+Event host application information
+Public profile information (for approved hosts)
+Third parties that help us process it: Google Ireland Limited, Netlify, Inc., Stripe, Inc.
+
+Data We Collect Automatically
+We automatically collect data from you when you visit silvergliderevents.com including Usage Data and Trackers.
+
+Data You Give to Us
+We collect the data you provide while using our service. This includes data submitted through account registration, Event Access purchases, RSVPs, registrations, guest list and waitlist activity, invitations, reservations, event host applications, email subscription forms, and SMS opt-in.
+
+Mode and Place of Processing the Data
+Methods of processing
+Silver Glider Entertainment Inc. takes appropriate security measures to prevent unauthorized access, disclosure, modification, or unauthorized destruction of the Data. Processing is carried out using computers and IT enabled tools, following organizational procedures strictly related to the purposes indicated.
+
+Place
+The Data is processed at the Owner's operating offices and in any other places where the parties involved in the processing are located. Depending on your location, data transfers may involve transferring your Data to a country other than your own.
+
+Retention time
+Personal Data shall be processed and stored for as long as required by the purpose for which it was collected and may be retained for longer due to applicable legal obligation or based on the Users' consent.
+
+Paid Event Access transaction records are retained for a minimum of 7 years for accounting and legal compliance purposes. Event host application data is retained for the duration of the host relationship plus 3 years.
+
+The Purposes of Processing
+The Data concerning the User is collected to allow Silver Glider Entertainment Inc. to provide the Platform, comply with its legal obligations, respond to enforcement requests, protect its rights and interests, detect any malicious or fraudulent activity, as well as the following:
+
+Handling and facilitating payments for Event Access
+Issuing digital tickets and managing RSVPs, registrations, guest lists, waitlists, invitations, and reservations
+Registration and authentication
+Hosting and backend infrastructure
+Managing contacts and sending messages
+Processing event host applications
+Enabling public host profiles
+Managing follower relationships between fans and hosts
+
+The Platform enables Hosts to create, promote, and manage Events and allows users to discover, RSVP to, register for, and attend Events.
+Detailed Information on the Processing of Personal Data
+Handling and Facilitating Payments for Event Access
+Silver Glider Events facilitates transactions for Tickets and other paid Event Access between attendees and Hosts. Hosts who publish Events on Silver Glider Events act as the merchant of record for their respective sales of paid Event Access. Payments are processed securely through Stripe, Inc. on behalf of the Host. When you purchase Event Access, your payment information is transmitted directly to Stripe. Silver Glider Events receives transaction confirmation and associated Personal Data including your name, email address, and purchase details solely for issuing or managing Event Access, maintaining your account, and facilitating the transaction between you and the Host.
+
+Stripe, Inc. · Place of processing: United States · Personal Data processed: email address, first name, last name, transaction data
+
+Hosts may use third-party ticket providers for Tickets or other Event Access. Purchases and registrations made through those providers are governed by the applicable third party’s terms and privacy policy. Those providers independently determine how they process Personal Data, and Silver Glider Events receives such Data only when it is shared with the Platform or needed to provide connected services.
+
+Event Access, Ticket Issuance, and Activity History
+When you purchase a Ticket, RSVP, register, join a guest list or waitlist, accept an invitation, or make a reservation through Silver Glider Events, an Event Access record is generated. That record may include your name, email address, participation status, Event details, and account association. The Host will have access to relevant information for guest list management, event entry, attendee communication, and administration of the Event. Silver Glider Events retains paid Event Access purchase history for a minimum of 7 years for accounting, legal compliance, and customer service purposes.
+
+In the event of a refund or chargeback for paid Event Access, your transaction data may be shared between Silver Glider Events, the Host, Stripe, and any applicable third-party provider to process and resolve the transaction.
+
+Event Host Application Data
+When you submit a Request Access application to become an event host on Silver Glider Events, we collect your first name, last name, email address, venue or project name, city, and optionally your website or Instagram URL and a description of your shows. This data is used solely to review and process your application. Approved host application data is retained for the duration of the host relationship plus 3 years. Declined application data is retained for 12 months.
+
+Public Host Profiles
+When a host account is approved, a public profile is created on Silver Glider Events. This profile may include the host's name, venue or project name, city, and event listings. This information is publicly visible to all users of the platform. To request removal or modification of public profile information, contact contact@silverglidertickets.com.
+
+Follower Relationships
+Fans on Silver Glider Events may follow public profiles of artists, venues, and promoters. Following a public profile is a public action. Event hosts can see the number of followers on their profile. Individual follower identities are not publicly displayed but may be accessible to the host for the purposes of notifying followers of new events. Users may unfollow a profile at any time through their account settings.
+
+Hosting and Backend Infrastructure
+Netlify, Inc. · Place of processing: United States
+
+Railway · Cloud hosting platform for backend infrastructure and database · Place of processing: United States
+
+Managing Contacts and Sending Messages
+Formspree · Form submission service for event host application data · Place of processing: United States
+
+Resend · Transactional email service for confirmation emails · Place of processing: United States
+
+Registration and Authentication
+Google OAuth — Google Ireland Limited · Place of processing: Ireland · Personal Data processed: first name, last name, email address
+
+SMS Communications and The Silver Glider Line
+Silver Glider Events operates a telephone service called The Silver Glider Line (+1 (844) 261-6758) which provides a weekly recorded message featuring upcoming shows and events. No personal data is collected through inbound calls to The Silver Glider Line.
+
+If you provide your phone number and consent to receive SMS communications from Silver Glider Events, you agree to receive text messages related to RSVP confirmations, reminders, event updates, Host announcements, event recommendations, ticket announcements, venue updates, presale alerts, platform updates, and promotional communications. Message and data rates may apply. Message frequency varies.
+
+You may opt out at any time by replying STOP to any SMS message. For help, reply HELP or contact contact@silverglidertickets.com. Silver Glider Entertainment Inc. will not share your phone number with third parties for marketing purposes without your explicit consent.
+
+SMS consent is not a condition of obtaining Event Access or using the Platform.
+
+Weekly Event Drop Email Subscription
+Silver Glider Events offers a weekly email drop featuring upcoming shows in your city (San Francisco or Los Angeles). When you subscribe, we collect your email address and city preference. You may unsubscribe at any time by clicking the unsubscribe link in any email or by contacting contact@silverglidertickets.com. Your email address will be removed from the subscription list within 10 business days of your request.
+
+Cookie Policy
+Silver Glider Events uses Trackers including Cookies. Cookies are small sets of data stored in the User's browser used to track usage, maintain sessions, and improve the service. Users may control cookie preferences through their browser settings. Disabling cookies may affect the functionality of certain features of the platform.
+
+Further Information for Users in the European Union
+Legal basis of processing
+The Owner may process Personal Data relating to Users if one of the following applies:
+
+Users have given their consent for one or more specific purposes
+Provision of Data is necessary for the performance of an agreement with the User
+Processing is necessary for compliance with a legal obligation
+Processing is necessary for the purposes of the legitimate interests pursued by the Owner or by a third party
+Rights of Users under GDPR
+Users have the right to:
+
+Withdraw their consent at any time
+Object to processing of their Data
+Access their Data
+Verify and seek rectification
+Restrict the processing of their Data
+Have their Personal Data deleted or otherwise removed
+Receive their Data in a portable format
+Lodge a complaint with their competent data protection authority
+To exercise these rights, contact us at contact@silverglidertickets.com. Requests are free of charge and will be answered within one month.
+
+Further Information for Users in the United States
+This section applies to all Users who are residents of the following states: California, Virginia, Colorado, Connecticut, Utah, Texas, Oregon, Nevada, Delaware, Iowa, New Hampshire, New Jersey, Nebraska, Tennessee, Minnesota, Maryland, Indiana, Kentucky, Rhode Island and Montana.
+
+Notice at Collection
+Identifiers · Personal Data collected: First name, Last name, Email address, Usage data, Phone number (when provided) · Purpose: Account creation, Event Access fulfillment, host applications, email and SMS communications
+
+Internet or other electronic network activity information · Personal Data collected: Usage data, IP address, browser type, pages visited · Purpose: Platform operation, security, service improvement
+
+Financial information · Transaction data processed via Stripe on behalf of event hosts · Purpose: Payment facilitation for Event Access
+
+Commercial information · Event Access purchase, registration, and attendance history · Purpose: Event Access fulfillment, customer service, legal compliance
+
+Your Privacy Rights Under US State Laws
+Access your Personal Information
+Correct inaccurate Personal Information
+Request deletion of your Personal Information
+Obtain a portable copy of your Personal Information
+Opt out of the Sale of your Personal Information
+Non-discrimination for exercising your privacy rights
+Additional Rights for California Residents (CCPA/CPRA)
+The right to opt out of the Sharing of your Personal Information for cross-context behavioral advertising
+The right to request to limit our use or disclosure of your Sensitive Personal Information
+The right to know what Personal Information has been collected, used, shared, or sold in the past 12 months
+Submit your request by contacting us at contact@silverglidertickets.com. We will respond within the timeframe required by applicable law. We will not discriminate against you for exercising your privacy rights.
+
+Additional Information About Data Collection and Processing
+Legal action
+Your Personal Data may be used for legal purposes by Silver Glider Entertainment Inc. in Court or in the stages leading to possible legal action arising from improper use of this Application or the related Services.
+
+System logs and maintenance
+For operation and maintenance purposes, this Application and any third-party services may collect files that record interaction with the Application or use other Personal Data such as the IP Address.
+
+Changes to this privacy policy
+Silver Glider Entertainment Inc. reserves the right to make changes to this privacy policy at any time by notifying Users on this page. It is strongly recommended to check this page often, referring to the date of the last modification listed at the top. Should changes affect processing activities performed on the basis of the User's consent, we will collect new consent where required.
+
+Definitions and Legal References
+Personal Data
+Any information that directly, indirectly, or in connection with other information allows for the identification or identifiability of a natural person.
+
+Usage Data
+Information collected automatically through this Application including IP addresses, browser type, pages visited, time spent, and other device information.
+
+User
+The individual using the Platform.
+
+Data Controller
+Silver Glider Entertainment Inc., the legal entity that determines the purposes and means of the processing of Personal Data.
+
+Tracker
+Any technology such as Cookies, unique identifiers, web beacons, or embedded scripts that enables the tracking of Users.
+
+Event Access
+Tickets, RSVPs, registrations, guest lists, waitlists, invitations, reservations, and similar offerings or methods of access to Events.
+
+Host
+A user who creates, lists, manages, promotes, sells Event Access for, or otherwise offers an Event through the Platform.
+
+Sale
+Any exchange of Personal Information by the Owner to a third party for monetary or other valuable consideration as defined by applicable US state law.
+
+Merchant of Record
+The Host who publishes and sells Tickets or other paid Event Access through Silver Glider Events and assumes responsibility for the transaction.
+
+SMS Messaging Program
+Silver Glider Events may offer users the opportunity to receive recurring SMS and MMS messages regarding RSVP confirmations, reminders, event updates, Host announcements, event recommendations, ticket announcements, venue updates, presale alerts, promotional offers, and other event-related communications.
+
+Users may opt in to receive SMS communications through approved opt-in methods, including website signup forms and keyword-based SMS opt-in campaigns.
+
+By opting in, you expressly consent to receive recurring automated marketing and informational text messages from Silver Glider Events at the phone number provided. Consent is not a condition of purchase.
+
+Message frequency varies.
+Message and data rates may apply.
+To stop receiving messages, reply STOP at any time.
+For assistance, reply HELP or contact support@silverglidertickets.com.
+Mobile information will not be shared with third parties or affiliates for marketing or promotional purposes.
+Silver Glider Entertainment Inc. reserves the right to modify, suspend, or terminate its SMS program at any time.
+Contact
+Silver Glider Entertainment Inc.
+490 Post Street, Suite 500
+San Francisco, CA 94102
+United States
+Email: support@silverglidertickets.com
+Website: https://silvergliderevents.com
+This policy applies to Silver Glider Events and the related products and services offered by Silver Glider Entertainment Inc., including ticketing and services previously offered under the Silver Glider Tickets name. © 2025 Silver Glider Entertainment Inc. All rights reserved.

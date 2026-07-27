@@ -41,10 +41,13 @@ h1, h2, h3, .sg-display {
 
 a { color: var(--sg-accent); text-decoration: none; }
 
-/* Quiet brand social link used only in the home and dashboard footers. */
+/* Quiet social and legal footers. Legal links are available site-wide. */
 .sg-social-footer {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
   margin-top: 52px;
   padding-top: 24px;
   border-top: 1px solid var(--sg-border-soft);
@@ -60,6 +63,43 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-social-link:hover { color: var(--sg-text); }
 .sg-social-link svg { width: 25px; height: 25px; flex: 0 0 auto; }
+.sg-legal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--sg-text-faint);
+  font-size: 10px;
+}
+.sg-legal-links .sg-legal-link {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--sg-text-faint) !important;
+  font: 600 10px var(--sg-font-body) !important;
+  line-height: 1.4 !important;
+  text-decoration: none !important;
+}
+.sg-legal-links .sg-legal-link:hover { color: var(--sg-text-dim) !important; }
+.sg-global-footer {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(1120px, calc(100% - 48px));
+  margin: 56px auto 0;
+  padding: 26px 0 max(34px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--sg-border-soft);
+  color: var(--sg-text-faint);
+  text-align: center;
+}
+.sg-global-footer p {
+  margin: 0;
+  color: #414141;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
 
 /* Uppercase micro-label */
 .sg-label {

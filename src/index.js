@@ -5,6 +5,7 @@ const express = require('express');
 const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
+const { renderLegalPage } = require('./lib/legal-pages');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -36,6 +37,10 @@ const { parseSession, readSessionCookie } = require('./lib/session');
 
 // Public pages
 app.get('/', view('index.html'));
+app.get('/privacy', (req, res) => res.type('html').send(renderLegalPage('privacy')));
+app.get('/terms', (req, res) => res.type('html').send(renderLegalPage('terms')));
+app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
+app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
   if (parseSession(readSessionCookie(req))) return res.redirect(safeNext(req.query.next) || '/dashboard');

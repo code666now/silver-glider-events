@@ -1,0 +1,151 @@
+These Terms of Service (“Terms”) are a binding agreement between you and Silver Glider Entertainment Inc., doing business as Silver Glider Events (“Silver Glider,” “we,” “us,” or “our”). These Terms govern your access to and use of the Silver Glider Events website, applications, and related services (collectively, the “Platform”).
+By accessing or using the Platform, creating an account, purchasing a ticket, listing an event, or otherwise using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy (“Privacy Policy”), which is incorporated by reference.
+If you do not agree, do not use the Platform.
+
+
+
+1. Definitions
+“Attendee” means a user who purchases or attempts to purchase tickets and/or attends an Event.
+“Host (also referred to in these Terms as the Organizer)” means a user who lists, manages, promotes, sells tickets for, or otherwise offers an Event through the Platform.
+“Event” means any event, experience, performance, or gathering listed on the Platform.
+“Event Access” means tickets, RSVPs, registrations, guest lists, waitlists, invitations, reservations, and similar offerings or methods of access to Events.
+“Tickets” means tickets, passes, RSVPs, registrations, or similar offerings for Events.
+“Content” means all text, graphics, images, audio, video, listings, trademarks, and other materials submitted to or made available through the Platform.
+2. Eligibility; Authority
+You must be at least 18 years old (or the age of majority in your jurisdiction) to use the Platform.
+If you use the Platform on behalf of a company or organization, you represent and warrant you have authority to bind that entity to these Terms.
+3. The Platform; Role of Silver Glider Events
+Silver Glider provides a technology platform that allows Hosts to create, promote, and manage Events, and allows users to discover, RSVP to, and attend Events.
+Silver Glider is not the organizer, promoter, host, venue operator, producer, or sponsor of any Event, and does not control any Event.
+Silver Glider does not guarantee:
+that any Event will occur as scheduled;
+the quality, safety, legality, or suitability of any Event;
+the truth or accuracy of Host listings, claims, or communications.
+Hosts and Attendees interact directly with each other, and any transaction for Tickets is between the Attendee and the Host.
+4. Accounts; Security
+To access certain features you may need to create an account. You agree to:
+provide accurate and complete account information;
+maintain the confidentiality of your credentials;
+promptly notify us of any unauthorized use.
+You are responsible for all activity under your account.
+5. Ticket Sales; Host is Merchant of Record
+5.1 Host as Merchant of Record
+For all ticket sales made through the Platform, the Host is the merchant of record (“Merchant of Record”).
+This means the Host (not Silver Glider) is the seller of record for Tickets and is responsible for:
+setting ticket prices and ticket rules;
+providing accurate Event information;
+fulfilling ticket purchaser obligations;
+establishing and honoring refund and event policies;
+resolving Attendee disputes relating to the Event and Tickets;
+compliance with applicable laws (including permits, licenses, venue approvals, and age restrictions).
+Silver Glider acts only as a technology provider facilitating ticket sales and platform communications.
+Hosts may use third-party ticket providers for Tickets or other Event Access, and purchases made through those providers are governed by the applicable third party’s terms, policies, and refund rules.
+5.2 Host Refund Policies
+Hosts are solely responsible for their refund policies, including whether refunds are permitted, the timeframe for refunds, and the conditions under which refunds are provided (except where applicable law requires otherwise).
+Silver Glider may display Host refund policies through the Platform, but Silver Glider does not guarantee that a Host will honor their policies.
+5.3 Host Responsibilities
+As a Host you represent, warrant, and agree:
+you have all rights, authority, and approvals to sell Tickets for the Event;
+the Event listing is true and not misleading;
+you will comply with applicable laws and regulations;
+you will not list fraudulent or deceptive Events.
+6. Payments; Payment Processing
+Payments for Event Access and other paid Platform services may be processed by third-party processors such as Stripe. Hosts may be required to connect a Stripe account or similar payment account.
+You agree that:
+third-party payment processing is subject to the processor’s terms, policies, and decisions;
+payout timing, holds, reserves, account reviews, and chargeback outcomes are determined by the processor;
+Silver Glider is not responsible for payment processor actions, delays, reversals, holds, errors, or account limitations.
+7. RSVPs, Registrations, and Ticket Purchases
+When purchasing a Ticket:
+you are purchasing from the Host;
+you agree to the Host’s event rules and refund policy;
+you are responsible for reviewing Event details prior to purchase.
+8. Fees
+Silver Glider may charge fees for use of the Platform, including service or ticketing fees that may be paid by Hosts and/or Attendees. Where applicable, fees will be disclosed prior to the transaction being completed.
+9. Prohibited Conduct
+You agree not to:
+violate any law or regulation;
+post or list false, misleading, or fraudulent content;
+list Events involving illegal goods or activities;
+impersonate another person or misrepresent affiliation;
+infringe intellectual property rights;
+harass, threaten, abuse, or promote hate or violence;
+distribute malware, spam, or malicious code;
+scrape or copy the Platform without authorization;
+attempt to bypass security features.
+We reserve the right to remove Content, cancel listings, suspend accounts, or take other action in our sole discretion.
+10. Content; Intellectual Property
+You retain ownership of the Content you submit. By posting Content, you grant Silver Glider a worldwide, non-exclusive, royalty-free license to use, reproduce, display, and distribute such Content solely for operating, improving, and marketing the Platform and Events.
+Silver Glider owns all rights in and to the Platform, including software, branding, and design.
+11. Termination; Suspension; Refusal of Service
+Silver Glider may, at any time and in its sole discretion:
+refuse service;
+suspend or terminate your account;
+remove or restrict Content;
+restrict access to the Platform.
+This may occur with or without notice, including if we believe you violated these Terms, created risk for other users, engaged in unlawful conduct, or harmed the Platform’s integrity or reputation.
+12. Disclaimers
+THE PLATFORM IS PROVIDED “AS IS” AND “AS AVAILABLE.” TO THE MAXIMUM EXTENT PERMITTED BY LAW, SILVER GLIDER DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+SILVER GLIDER DOES NOT WARRANT THAT:
+THE PLATFORM WILL BE ERROR-FREE OR UNINTERRUPTED;
+EVENTS WILL OCCUR AS LISTED;
+HOSTS WILL HONOR POLICIES OR MEET EXPECTATIONS.
+13. Limitation of Liability
+TO THE MAXIMUM EXTENT PERMITTED BY LAW:
+SILVER GLIDER SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES.
+SILVER GLIDER’S TOTAL LIABILITY ARISING OUT OF OR RELATED TO THESE TERMS OR THE PLATFORM SHALL NOT EXCEED THE GREATER OF: (A) $100 OR (B) THE AMOUNT OF FEES PAID TO SILVER GLIDER IN THE SIX (6) MONTHS PRIOR TO THE EVENT GIVING RISE TO THE CLAIM.
+Some jurisdictions do not allow certain limitations, so these limits may not apply to you.
+14. Dispute Resolution; Waiver of Jury Trial; Class Action Waiver; Binding Arbitration
+14.1 Informal Resolution Required
+Before initiating arbitration, you agree to contact us at [support@silverglidertickets.com] and attempt to resolve the dispute informally for at least thirty (30) days.
+14.2 Binding Arbitration
+You and Silver Glider agree that any dispute, claim, or controversy arising out of or relating to these Terms, the Platform, any Event listing, or any Ticket transaction shall be resolved exclusively through final and binding arbitration, rather than in court, except as stated in Section 14.6.
+14.3 Waiver of Right to Sue in Court
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, YOU AND SILVER GLIDER EACH EXPRESSLY WAIVE ANY RIGHT TO BRING A LAWSUIT IN A COURT OF LAW for disputes covered by this arbitration agreement.
+You acknowledge and agree that you are waiving the right to have disputes decided by a judge or jury.
+14.4 Waiver of Jury Trial
+YOU AND SILVER GLIDER WAIVE ANY RIGHT TO A TRIAL BY JURY.
+14.5 Class Action Waiver
+ALL CLAIMS MUST BE BROUGHT IN AN INDIVIDUAL CAPACITY ONLY.
+You agree you will not participate in any class action, collective action, private attorney general action, or representative proceeding against Silver Glider.
+The arbitrator may not consolidate claims or preside over any representative or class proceeding.
+14.6 Exceptions
+Either party may:
+bring an individual action in small claims court, if eligible; and
+seek injunctive relief in court relating to intellectual property misuse, unauthorized access, or security issues.
+14.7 Arbitration Provider; Rules; Location
+Arbitration shall be administered by JAMS or AAA (at Silver Glider’s election) under its applicable rules. The arbitration shall take place in San Francisco, California, unless otherwise required by law or agreed by the parties.
+14.8 Arbitration Opt-Out (30 Days)
+Opt-Out of Arbitration.
+You may opt out of the arbitration provisions in this Section 14 by sending written notice to Silver Glider within thirty (30) days of the earliest of: (a) the date you first accept these Terms; or (b) the date you first use the Platform (the “Opt-Out Period”). The opt-out notice must include: (i) your full legal name; (ii) the email address associated with your account; (iii) your mailing address; and (iv) a clear statement that you wish to opt out of arbitration. The notice must be sent to: [support@silverglidertickets.com] with the subject line: “Arbitration Opt-Out”.
+If you opt out, neither you nor Silver Glider may require the other to arbitrate disputes covered by these Terms. Opting out does not affect any other provisions of these Terms.
+14.9 Time Limitation
+Any claim must be filed within one (1) year after it arose, unless a longer period is required by applicable law.
+15. Indemnification
+You agree to indemnify, defend, and hold harmless Silver Glider and its officers, directors, employees, contractors, and agents from claims, liabilities, damages, losses, and expenses (including attorneys’ fees) arising from:
+your use of the Platform;
+your Content;
+your Event (if a Host);
+your violation of these Terms or applicable law.
+16. Governing Law; Venue
+These Terms are governed by the laws of the State of California, without regard to conflict of laws principles.
+If arbitration is found unenforceable, disputes shall be brought exclusively in state or federal courts located in San Francisco County, California, and you consent to jurisdiction and venue there.
+17. Changes to Terms
+We may update these Terms. Updates will be posted with a revised “Last Updated” date. Your continued use of the Platform after changes become effective constitutes acceptance.
+18. SMS Messaging Program
+By opting into SMS communications from Silver Glider Events, you agree to receive recurring text messages related to RSVP confirmations, reminders, event updates, Host announcements, event recommendations, ticket announcements, venue updates, presale alerts, and promotional communications.
+Message frequency varies.
+Message and data rates may apply.
+To opt out at any time, reply STOP to any message.
+For assistance, reply HELP or contact support@silverglidertickets.com.
+Consent to receive SMS messages is not a condition of purchase.
+Users may opt in through the Silver Glider Events website signup form or through approved keyword-based opt-in methods.
+Mobile information will not be shared with third parties or affiliates for marketing or promotional purposes.
+Silver Glider Events reserves the right to modify or discontinue SMS communications at any time.
+19. Contact
+Silver Glider Entertainment Inc.
+490 Post Street, Suite 500
+San Francisco, CA 94102
+United States
+Email: support@silverglidertickets.com
+Website: https://silvergliderevents.com
