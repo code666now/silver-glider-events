@@ -7,23 +7,46 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Shared dark layout. Emails use a system font stack — webfonts are unreliable in clients.
+// Shared premium dark layout. Emails use a system font stack — webfonts are unreliable in clients.
 function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   return `
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="background:#0E0E0E;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:0">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;padding:40px 20px">
-    <tr><td>
-      <p style="font-size:11px;letter-spacing:.25em;color:#555;margin:0 0 32px;text-transform:uppercase;font-weight:700">Silver Glider Events</p>
-      ${kicker ? `<p style="font-size:12px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px">${esc(kicker)}</p>` : ''}
-      <h1 style="font-size:34px;font-weight:800;margin:0 0 10px;color:#f0f0f0;letter-spacing:-.02em;line-height:1.08">${esc(headline)}</h1>
-      ${sub ? `<p style="color:#999;font-size:15px;line-height:1.7;margin:0 0 28px">${esc(sub)}</p>` : '<div style="height:20px"></div>'}
-      ${bodyHtml || ''}
-      ${cta ? `<a href="${esc(ctaUrl)}" style="display:block;background:#1CC5BE;color:#0a0a0a;text-align:center;padding:16px;border-radius:999px;text-decoration:none;font-weight:800;font-size:16px;margin:28px 0 24px">${esc(cta)}</a>` : ''}
-      ${footerHtml || ''}
-      <p style="color:#444;font-size:12px;text-align:center;margin-top:36px">Silver Glider Events</p>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <style>
+    @media only screen and (max-width:620px) {
+      .sg-email-shell { padding:36px 20px 28px !important; }
+      .sg-email-brand { padding-bottom:42px !important; }
+      .sg-email-headline { font-size:39px !important; }
+      .sg-email-sub { font-size:17px !important; }
+    }
+  </style>
+</head>
+<body style="background:#080808;color:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:0">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#080808" style="width:100%;background:#080808">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-shell" style="width:100%;max-width:640px;margin:0 auto;padding:56px 28px 36px">
+        <tr><td align="center" class="sg-email-brand" style="padding:0 0 54px">
+          <img src="${esc(baseUrl)}/logo.png" width="88" height="88" alt="Silver Glider Events" style="display:block;width:88px;height:88px;border:0;outline:none;text-decoration:none;margin:0 auto">
+          <p style="color:#6f6f6f;font-size:10px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;margin:12px 0 0">Silver Glider Events</p>
+        </td></tr>
+        <tr><td>
+          ${kicker ? `<p style="font-size:13px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">${esc(kicker)}</p>` : ''}
+          <h1 class="sg-email-headline" style="font-size:48px;font-weight:800;margin:0 0 20px;color:#f4f4f4;letter-spacing:-.035em;line-height:1.04">${esc(headline)}</h1>
+          ${sub ? `<p class="sg-email-sub" style="color:#9a9a9a;font-size:19px;line-height:1.58;margin:0 0 38px">${esc(sub)}</p>` : '<div style="height:18px"></div>'}
+          ${bodyHtml || ''}
+          ${cta ? `<a href="${esc(ctaUrl)}" style="display:block;background:#1CC5BE;color:#080808;text-align:center;padding:18px 20px;border-radius:999px;text-decoration:none;font-weight:800;font-size:17px;margin:34px 0 28px">${esc(cta)}</a>` : ''}
+          ${footerHtml ? `<div style="margin:0 0 34px">${footerHtml}</div>` : '<div style="height:6px"></div>'}
+        </td></tr>
+        <tr><td style="border-top:1px solid #202020;padding:34px 0 8px;text-align:center">
+          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">Silver Glider Events</p>
+        </td></tr>
+      </table>
     </td></tr>
   </table>
 </body>
@@ -227,5 +250,6 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
 
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventAnnouncement, formatTime, renderRsvpConfirmationEmail
+  sendEventAnnouncement, formatTime, renderRsvpConfirmationEmail,
+  renderSharedEmailLayout: layout
 };

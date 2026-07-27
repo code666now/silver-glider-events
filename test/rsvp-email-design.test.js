@@ -49,7 +49,7 @@ test('RSVP email preserves event information, management, and calendar messaging
   assert.match(html, /We’ll send one reminder the day before\./);
 });
 
-test('RSVP confirmation remains responsive and dark without changing shared emails', () => {
+test('RSVP confirmation remains responsive and dark', () => {
   const html = renderRsvpConfirmationEmail({ event, rsvp });
   assert.match(html, /@media only screen and \(max-width:620px\)/);
   assert.match(html, /bgcolor="#080808"/);
