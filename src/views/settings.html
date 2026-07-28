@@ -7,6 +7,25 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .settings-form { max-width:680px; }
+    .settings-section { margin:34px 0 22px;padding-top:28px;border-top:1px solid var(--sg-border-soft); }
+    .settings-section h2 { font-size:25px;margin-bottom:6px; }
+    .settings-section > p { color:var(--sg-text-faint);font-size:12px;line-height:1.55;margin-bottom:22px; }
+    .profile-upload { display:flex;align-items:center;gap:14px; }
+    .profile-preview { display:none;overflow:hidden;flex:0 0 auto;background:var(--sg-surface);border:1px solid var(--sg-border); }
+    .profile-preview img { width:100%;height:100%;display:block; }
+    .profile-preview.logo { width:72px;height:72px;border-radius:18px; }
+    .profile-preview.logo img { object-fit:contain; }
+    .profile-preview.header { width:180px;aspect-ratio:16/7;border-radius:15px; }
+    .profile-preview.header img { object-fit:cover; }
+    .profile-upload .sg-btn { padding:10px 18px;font-size:13px; }
+    .profile-help,.upload-status { font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5; }
+    @media(max-width:560px) {
+      .profile-upload { align-items:flex-start;flex-direction:column; }
+      .profile-preview.header { width:100%; }
+    }
+  </style>
 </head>
 <body>
   <div class="sg-shell">
@@ -14,7 +33,7 @@
     <h1 class="sg-page-title">Settings</h1>
     <p class="sg-page-sub">How you appear on your event pages.</p>
 
-    <form id="settings-form" style="max-width:520px">
+    <form id="settings-form" class="settings-form">
       <div class="sg-field">
         <label for="email">Email</label>
         <input class="sg-input" id="email" disabled style="opacity:.55">
@@ -26,18 +45,62 @@
       <div class="sg-field">
         <label for="org_name">Public host name <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
         <input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking">
-        <p style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">Shown as “Presented by” on your events. Adding one creates a public page for your upcoming events.</p>
+        <p class="profile-help">Shown as “Presented by” on your events. Adding one creates your public event home.</p>
       </div>
+
+      <section class="settings-section" aria-labelledby="host-profile-title">
+        <h2 id="host-profile-title">Host page</h2>
+        <p>Give guests one beautiful place to find your public events.</p>
+      </section>
+
+      <div class="sg-field">
+        <label for="public_slug">Host page URL</label>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="color:var(--sg-text-faint);font-size:13px">/h/</span>
+          <input class="sg-input" id="public_slug" maxlength="70" placeholder="heat-wave-booking" style="flex:1" disabled>
+        </div>
+        <p class="profile-help" id="slug-help">Save a public host name to create your URL. Changing it later will break previously shared host-page links.</p>
+      </div>
+
+      <div class="sg-field">
+        <label for="bio">Bio or tagline <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea>
+      </div>
+
+      <div class="sg-field">
+        <label for="instagram_url">Instagram URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="instagram_url" type="url" maxlength="500" placeholder="https://instagram.com/heatwavebooking">
+      </div>
+
+      <div class="sg-field">
+        <label for="website_url">Website URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com">
+      </div>
+
+      <div class="sg-field">
+        <label for="contact_email">Contact email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="contact_email" type="email" maxlength="254" placeholder="hello@heatwavebooking.com">
+        <p class="profile-help">Saved with your host profile but not displayed publicly.</p>
+      </div>
+
+      <div class="sg-field" id="host-header-field" style="display:none">
+        <label>Header image <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <div class="profile-upload">
+          <div class="profile-preview header" id="header-preview-wrap"><img id="header-preview" alt="Host header image"></div>
+          <button class="sg-btn sg-btn-ghost" type="button" id="header-btn">Upload header</button>
+          <input type="file" id="header-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        </div>
+        <p class="upload-status" id="header-status">Wide images work best.</p>
+      </div>
+
       <div class="sg-field" id="host-logo-field" style="display:none">
         <label>Host logo <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <div style="display:flex;align-items:center;gap:14px">
-          <div id="logo-preview-wrap" style="display:none;width:64px;height:64px;border-radius:16px;background:var(--sg-surface);border:1px solid var(--sg-border);overflow:hidden;flex:0 0 auto">
-            <img id="logo-preview" alt="Host logo" style="width:100%;height:100%;object-fit:contain">
-          </div>
-          <button class="sg-btn sg-btn-ghost" type="button" id="logo-btn" style="padding:10px 18px;font-size:13px">Upload logo</button>
+        <div class="profile-upload">
+          <div class="profile-preview logo" id="logo-preview-wrap"><img id="logo-preview" alt="Host logo"></div>
+          <button class="sg-btn sg-btn-ghost" type="button" id="logo-btn">Upload logo</button>
           <input type="file" id="logo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
         </div>
-        <p id="logo-status" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px"></p>
+        <p class="upload-status" id="logo-status"></p>
       </div>
       <div class="sg-field" id="host-link-field" style="display:none">
         <label>Your public host page</label>
@@ -60,21 +123,46 @@
     function renderHostProfile(organizer) {
       const hasProfile = !!organizer.public_slug;
       $('host-logo-field').style.display = hasProfile ? 'block' : 'none';
+      $('host-header-field').style.display = hasProfile ? 'block' : 'none';
       $('host-link-field').style.display = hasProfile ? 'block' : 'none';
-      if (hasProfile) $('host-link').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
+      $('public_slug').disabled = !hasProfile;
+      $('public_slug').value = organizer.public_slug || '';
+      if (hasProfile) {
+        $('host-link').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
+        $('slug-help').textContent = 'Use lowercase letters, numbers, and hyphens. Changing this breaks previously shared host-page links.';
+      }
       if (organizer.logo_url) {
         $('logo-preview').src = organizer.logo_url;
         $('logo-preview-wrap').style.display = 'block';
         $('logo-btn').textContent = 'Replace logo';
+      } else {
+        $('logo-preview-wrap').style.display = 'none';
+        $('logo-btn').textContent = 'Upload logo';
+      }
+      if (organizer.header_image_url) {
+        $('header-preview').src = organizer.header_image_url;
+        $('header-preview-wrap').style.display = 'block';
+        $('header-btn').textContent = 'Replace header';
+      } else {
+        $('header-preview-wrap').style.display = 'none';
+        $('header-btn').textContent = 'Upload header';
       }
     }
 
-    api('/api/auth/me').then(({ organizer }) => {
+    function populateSettings(organizer) {
       $('email').value = organizer.email;
       $('name').value = organizer.name || '';
       $('org_name').value = organizer.org_name || '';
+      $('bio').value = organizer.bio || '';
+      $('instagram_url').value = organizer.instagram_url || '';
+      $('website_url').value = organizer.website_url || '';
+      $('contact_email').value = organizer.contact_email || '';
       $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
       renderHostProfile(organizer);
+    }
+
+    api('/api/auth/me').then(({ organizer }) => {
+      populateSettings(organizer);
       if (organizer.is_admin) {
         const nav = document.querySelector('.sg-nav-links');
         nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
@@ -86,8 +174,17 @@
       const btn = $('save-btn');
       btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        const { organizer } = await api('/api/settings', { method: 'PUT', body: { name: $('name').value, org_name: $('org_name').value } });
-        renderHostProfile(organizer);
+        const body = {
+          name: $('name').value,
+          org_name: $('org_name').value,
+          bio: $('bio').value,
+          instagram_url: $('instagram_url').value,
+          website_url: $('website_url').value,
+          contact_email: $('contact_email').value
+        };
+        if (!$('public_slug').disabled) body.public_slug = $('public_slug').value;
+        const { organizer } = await api('/api/settings', { method: 'PUT', body });
+        populateSettings(organizer);
         toast('Saved');
       } catch (err) {
         toast(err.message);
@@ -96,27 +193,35 @@
       }
     });
 
-    $('logo-btn').addEventListener('click', () => $('logo-input').click());
-    $('logo-input').addEventListener('change', async () => {
-      const file = $('logo-input').files[0];
+    async function uploadProfileImage(kind) {
+      const input = $(`${kind}-input`);
+      const button = $(`${kind}-btn`);
+      const status = $(`${kind}-status`);
+      const file = input.files[0];
       if (!file) return;
       const form = new FormData();
       form.append('image', file);
-      $('logo-btn').disabled = true;
-      $('logo-status').textContent = 'Uploading…';
+      button.disabled = true;
+      status.textContent = 'Uploading…';
       try {
-        const response = await fetch('/api/uploads/host-logo', { method: 'POST', body: form });
+        const path = kind === 'logo' ? '/api/uploads/host-logo' : '/api/uploads/host-header';
+        const response = await fetch(path, { method: 'POST', body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Upload failed');
         renderHostProfile(data.organizer);
-        $('logo-status').textContent = 'Logo saved.';
+        status.textContent = `${kind === 'logo' ? 'Logo' : 'Header'} saved.`;
       } catch (err) {
-        $('logo-status').textContent = err.message;
+        status.textContent = err.message;
       } finally {
-        $('logo-btn').disabled = false;
-        $('logo-input').value = '';
+        button.disabled = false;
+        input.value = '';
       }
-    });
+    }
+
+    $('logo-btn').addEventListener('click', () => $('logo-input').click());
+    $('logo-input').addEventListener('change', () => uploadProfileImage('logo'));
+    $('header-btn').addEventListener('click', () => $('header-input').click());
+    $('header-input').addEventListener('change', () => uploadProfileImage('header'));
 
     $('logout-btn').addEventListener('click', async () => {
       await api('/api/auth/logout', { method: 'POST' });

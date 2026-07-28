@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { makePublicSlug, makePrivateSlug } = require('../lib/slug');
-const { cleanHostName, ensureHostProfile } = require('../lib/host-profile');
+const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
@@ -575,20 +575,34 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
 router.put('/api/settings', async (req, res, next) => {
   try {
     const name = String(req.body.name ?? '').trim().slice(0, 100) || null;
-    const orgName = cleanHostName(req.body.org_name);
-    if (req.organizer.public_slug && !orgName) {
-      return res.status(400).json({ error: 'A public host page needs a host name' });
+    const normalized = normalizeHostProfile(req.body || {}, req.organizer);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    const profile = normalized.value;
+
+    let publicSlug = profile.publicSlug;
+    if (profile.orgName && !publicSlug) {
+      const ensured = await ensureHostProfile(req.organizer.id, profile.orgName);
+      publicSlug = ensured.public_slug;
     }
     const { rows } = await pool.query(
-      `UPDATE organizers SET name=$2, org_name=$3 WHERE id=$1
-       RETURNING id, email, name, org_name, public_slug, logo_url, plan, is_admin, created_at`,
-      [req.organizer.id, name, orgName]
+      `UPDATE organizers
+          SET name=$2, org_name=$3, public_slug=$4, bio=$5,
+              website_url=$6, instagram_url=$7, contact_email=$8,
+              updated_at=NOW()
+        WHERE id=$1
+        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+                  bio, website_url, instagram_url, contact_email,
+                  plan, is_admin, created_at, updated_at`,
+      [
+        req.organizer.id, name, profile.orgName, publicSlug, profile.bio,
+        profile.websiteUrl, profile.instagramUrl, profile.contactEmail
+      ]
     );
-    const organizer = orgName && !rows[0].public_slug
-      ? await ensureHostProfile(req.organizer.id, orgName)
-      : rows[0];
-    res.json({ organizer });
-  } catch (err) { next(err); }
+    res.json({ organizer: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That host page slug is already taken' });
+    next(err);
+  }
 });
 
 module.exports = router;

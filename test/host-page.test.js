@@ -1,0 +1,105 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const {
+  cleanHostSlug,
+  cleanProfileUrl,
+  normalizeHostProfile
+} = require('../src/lib/host-profile');
+
+function source(relativePath) {
+  return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
+}
+
+test('host profile migration extends organizers without replacing stable identity fields', () => {
+  const migration = source('src/db/migrations/014_host_page_profiles.sql');
+  for (const column of ['header_image_url', 'bio', 'website_url', 'instagram_url', 'contact_email', 'updated_at']) {
+    assert.match(migration, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  const original = source('src/db/migrations/009_public_host_profiles.sql');
+  assert.match(original, /public_slug TEXT/);
+  assert.match(original, /logo_url TEXT/);
+  assert.match(original, /organizers_public_slug_unique/);
+});
+test('host slug and link validation reject unsafe or misleading values', () => {
+  assert.deepEqual(cleanHostSlug('heat-wave-booking'), { value: 'heat-wave-booking', error: null });
+  assert.ok(cleanHostSlug('Heat Wave!').error);
+  assert.ok(cleanHostSlug('-broken-').error);
+  assert.equal(cleanProfileUrl('javascript:alert(1)', 'website').value, null);
+  assert.equal(cleanProfileUrl('example.com', 'website').value, 'https://example.com/');
+  assert.equal(cleanProfileUrl('https://instagram.com/silverglidertix', 'Instagram', { instagramOnly: true }).error, null);
+  assert.ok(cleanProfileUrl('https://example.com/not-instagram', 'Instagram', { instagramOnly: true }).error);
+});
+
+test('host profile normalization keeps contact details optional and server validated', () => {
+  const parsed = normalizeHostProfile({
+    org_name: ' Heat Wave Booking ',
+    public_slug: 'heat-wave',
+    bio: '  Independent events.  ',
+    website_url: 'heatwave.example',
+    instagram_url: 'https://instagram.com/heatwave',
+    contact_email: 'HELLO@HEATWAVE.EXAMPLE'
+  }, { public_slug: 'heat-wave' });
+  assert.equal(parsed.error, null);
+  assert.deepEqual(parsed.value, {
+    orgName: 'Heat Wave Booking',
+    publicSlug: 'heat-wave',
+    bio: 'Independent events.',
+    websiteUrl: 'https://heatwave.example/',
+    instagramUrl: 'https://instagram.com/heatwave',
+    contactEmail: 'hello@heatwave.example'
+  });
+  assert.ok(normalizeHostProfile({ org_name: '', bio: 'Orphan bio' }, {}).error);
+  assert.ok(normalizeHostProfile({ org_name: 'Host', contact_email: 'not-an-email' }, {}).error);
+});
+
+test('public host page separates upcoming and past public events in the requested order', () => {
+  const routes = source('src/routes/public.js');
+  assert.match(routes, /status='published'/);
+  assert.match(routes, /visibility='public'/);
+  assert.match(routes, /event_date >= CURRENT_DATE ORDER BY event_date ASC, start_time ASC/);
+  assert.match(routes, /event_date < CURRENT_DATE ORDER BY event_date DESC, start_time DESC/);
+  assert.match(routes, /No upcoming events yet\./);
+  assert.match(routes, /No past events yet\./);
+
+  const view = source('src/views/host-public.html');
+  assert.ok(view.indexOf('{{HOST_HEADER}}') < view.indexOf('{{HOST_AVATAR}}'));
+  assert.ok(view.indexOf('{{HOST_AVATAR}}') < view.indexOf('{{HOST_BIO}}'));
+  assert.ok(view.indexOf('{{HOST_LINKS}}') < view.indexOf('Upcoming Events'));
+  assert.ok(view.indexOf('Upcoming Events') < view.indexOf('Past Events'));
+  assert.match(view, /<title>{{HOST_NAME}} events \| Silver Glider<\/title>/);
+  assert.match(view, /Powered by <a href="\/">Silver Glider<\/a>/);
+  assert.doesNotMatch(view, /Follow Host|>Follow</);
+});
+
+test('host social links are conditional, icon-only, accessible, and safe', () => {
+  const routes = source('src/routes/public.js');
+  assert.match(routes, /aria-label="Instagram"/);
+  assert.match(routes, /aria-label="Website"/);
+  assert.match(routes, /target="_blank" rel="noopener noreferrer"/);
+  assert.match(routes, /links\.length \? `<nav class="host-links"/);
+  assert.match(routes, /hostInitials/);
+  assert.match(routes, /cleanProfileUrl\(host\.header_image_url/);
+});
+
+test('event pages keep the linked Presented by host attribution', () => {
+  const routes = source('src/routes/public.js');
+  assert.match(routes, /<span>Presented by<\/span>/);
+  assert.match(routes, /href="\/h\/\$\{encodeURIComponent\(event\.organizer_public_slug\)\}"/);
+});
+
+test('host and super-admin settings expose only the requested profile controls', () => {
+  const settings = source('src/views/settings.html');
+  for (const id of ['org_name', 'public_slug', 'bio', 'instagram_url', 'website_url', 'contact_email', 'header-input', 'logo-input']) {
+    assert.match(settings, new RegExp(`id="${id}"`));
+  }
+  const admin = source('src/views/admin-hosts.html');
+  assert.match(admin, /id="host-profile-form"/);
+  assert.match(admin, /\/api\/admin\/hosts\/\$\{activeHostId\}\/profile/);
+  for (const excluded of ['Follow Host', 'Mailchimp', 'ticket-click', 'CRM', 'SMS']) {
+    assert.equal(settings.includes(excluded), false);
+    assert.equal(admin.includes(excluded), false);
+  }
+});

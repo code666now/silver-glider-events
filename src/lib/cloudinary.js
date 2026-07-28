@@ -6,6 +6,8 @@ const coverFolder = process.env.CLOUDINARY_COVER_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/covers' : 'sg-events-dev/covers');
 const hostLogoFolder = process.env.CLOUDINARY_HOST_LOGO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/hosts' : 'sg-events-dev/hosts');
+const hostHeaderFolder = process.env.CLOUDINARY_HOST_HEADER_FOLDER ||
+  (process.env.NODE_ENV === 'production' ? 'sg-events/hosts/headers' : 'sg-events-dev/hosts/headers');
 
 if (configured) {
   cloudinary.config({
@@ -46,4 +48,18 @@ async function uploadHostLogo(buffer) {
   });
 }
 
-module.exports = { uploadCover, uploadHostLogo, configured };
+async function uploadHostHeader(buffer) {
+  if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: hostHeaderFolder,
+        transformation: [{ width: 2000, height: 1200, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
+      },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+module.exports = { uploadCover, uploadHostHeader, uploadHostLogo, configured };

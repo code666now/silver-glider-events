@@ -8,6 +8,7 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
+const { cleanProfileUrl } = require('../lib/host-profile');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const {
@@ -277,23 +278,43 @@ function eventCardVisual(event) {
   return `<div class="host-event-placeholder bg-${theme}" aria-hidden="true"></div>`;
 }
 
-function renderHostEventCard(event) {
+function renderHostEventCard(event, { past = false } = {}) {
   const time = formatTime(event.start_time);
-  return `<a class="host-event-card" href="/e/${encodeURIComponent(event.slug)}">
+  const location = [event.venue_name, event.venue_city].filter(Boolean).map(esc).join(' · ');
+  return `<a class="host-event-card${past ? ' past' : ''}" href="/e/${encodeURIComponent(event.slug)}" aria-label="View ${esc(event.title)}">
     <div class="host-event-art">${eventCardVisual(event)}</div>
     <div class="host-event-copy">
-      <p>${esc(fmtDate(event.event_date))} · ${esc(time)}</p>
-      <h2>${esc(event.title)}</h2>
-      <span>${esc(event.venue_name)}${event.venue_city ? ` · ${esc(event.venue_city)}` : ''}</span>
+      <p class="host-event-date">${esc(fmtDate(event.event_date))} · ${esc(time)}</p>
+      <h3>${esc(event.title)}</h3>
+      ${location ? `<p class="host-event-location">${location}</p>` : ''}
+      <span class="host-event-cta">View Event <b aria-hidden="true">→</b></span>
     </div>
   </a>`;
+}
+
+function hostInitials(name) {
+  return String(name || '').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
+}
+
+function hostSocialLinks(host) {
+  const instagram = cleanProfileUrl(host.instagram_url, 'Instagram', { instagramOnly: true }).value;
+  const website = cleanProfileUrl(host.website_url, 'website').value;
+  const links = [];
+  if (instagram) {
+    links.push(`<a class="host-link" href="${esc(instagram)}" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle></svg></a>`);
+  }
+  if (website) {
+    links.push(`<a class="host-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer" aria-label="Website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.2 2.5 3.4 5.5 3.4 9S14.2 18.5 12 21M12 3C9.8 5.5 8.6 8.5 8.6 12s1.2 6.5 3.4 9"></path></svg></a>`);
+  }
+  return links.length ? `<nav class="host-links" aria-label="Host links">${links.join('')}</nav>` : '';
 }
 
 // GET /h/:slug — one public home for an organizer's upcoming events
 router.get('/h/:slug', async (req, res, next) => {
   try {
     const { rows: hosts } = await pool.query(
-      `SELECT id, org_name, public_slug, logo_url
+      `SELECT id, org_name, public_slug, logo_url, header_image_url,
+              bio, website_url, instagram_url
          FROM organizers
         WHERE LOWER(public_slug)=LOWER($1) AND org_name IS NOT NULL`,
       [req.params.slug]
@@ -301,29 +322,44 @@ router.get('/h/:slug', async (req, res, next) => {
     const host = hosts[0];
     if (!host) return res.status(404).send(render404());
 
-    const { rows: events } = await pool.query(
-      `SELECT slug, title, cover_image_url, event_date, start_time, venue_name, venue_city, background_theme
-         FROM events
-        WHERE organizer_id=$1
-          AND status='published'
-          AND visibility='public'
-          AND event_date >= CURRENT_DATE
-        ORDER BY event_date ASC, start_time ASC, id ASC`,
-      [host.id]
-    );
-    const cardsHtml = events.length
-      ? events.map(renderHostEventCard).join('')
-      : '<div class="host-empty"><h2>No upcoming events yet.</h2><p>Check back soon for the next one.</p></div>';
-    const logoHtml = host.logo_url
-      ? `<img class="host-logo" src="${esc(host.logo_url)}" alt="${esc(host.org_name)} logo">`
-      : '';
+    const eventSelect = `SELECT slug, title, cover_image_url, event_date, start_time,
+                                venue_name, venue_city, background_theme
+                           FROM events
+                          WHERE organizer_id=$1
+                            AND status='published'
+                            AND visibility='public'`;
+    const [upcomingResult, pastResult] = await Promise.all([
+      pool.query(`${eventSelect} AND event_date >= CURRENT_DATE ORDER BY event_date ASC, start_time ASC, id ASC`, [host.id]),
+      pool.query(`${eventSelect} AND event_date < CURRENT_DATE ORDER BY event_date DESC, start_time DESC, id DESC`, [host.id])
+    ]);
+    const upcomingHtml = upcomingResult.rows.length
+      ? upcomingResult.rows.map(event => renderHostEventCard(event)).join('')
+      : '<p class="host-empty">No upcoming events yet.</p>';
+    const pastHtml = pastResult.rows.length
+      ? pastResult.rows.map(event => renderHostEventCard(event, { past: true })).join('')
+      : '<p class="host-empty">No past events yet.</p>';
+
+    const logoUrl = cleanProfileUrl(host.logo_url, 'logo').value;
+    const headerUrl = cleanProfileUrl(host.header_image_url, 'header image').value;
+    const avatarHtml = logoUrl
+      ? `<div class="host-avatar"><img src="${esc(logoUrl)}" alt="${esc(host.org_name)} logo"></div>`
+      : `<div class="host-avatar" aria-label="${esc(host.org_name)} initials"><span class="host-initials" aria-hidden="true">${esc(hostInitials(host.org_name))}</span></div>`;
+    const headerHtml = headerUrl ? `<img class="host-hero-image" src="${esc(headerUrl)}" alt="">` : '';
+    const bioHtml = host.bio ? `<p class="host-bio">${esc(host.bio)}</p>` : '';
+    const description = String(host.bio || `Public events presented by ${host.org_name}.`).replace(/\s+/g, ' ').trim().slice(0, 160);
+    const appUrl = String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 
     res.send(hostTemplate
       .replace(/{{HOST_NAME}}/g, esc(host.org_name))
-      .replace(/{{HOST_LOGO}}/g, logoHtml)
-      .replace(/{{EVENT_CARDS}}/g, cardsHtml)
-      .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/h/${host.public_slug}`))
-      .replace(/{{OG_IMAGE}}/g, esc(host.logo_url || `${process.env.APP_URL}/logo.png`)));
+      .replace(/{{META_DESCRIPTION}}/g, esc(description))
+      .replace(/{{HOST_HEADER}}/g, headerHtml)
+      .replace(/{{HOST_AVATAR}}/g, avatarHtml)
+      .replace(/{{HOST_BIO}}/g, bioHtml)
+      .replace(/{{HOST_LINKS}}/g, hostSocialLinks(host))
+      .replace(/{{UPCOMING_EVENT_CARDS}}/g, upcomingHtml)
+      .replace(/{{PAST_EVENT_CARDS}}/g, pastHtml)
+      .replace(/{{OG_URL}}/g, esc(`${appUrl}/h/${host.public_slug}`))
+      .replace(/{{OG_IMAGE}}/g, esc(headerUrl || logoUrl || `${appUrl}/logo.png`)));
   } catch (err) { next(err); }
 });
 

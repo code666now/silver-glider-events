@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
+const { ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
 
 const router = express.Router();
 router.use('/api/admin', requireAdmin);
@@ -44,6 +45,8 @@ const hostAccountSelect = `
      ORDER BY joined_organizer_id, joined_at DESC NULLS LAST, id DESC
   )
   SELECT o.id, o.email, o.name, o.org_name, o.public_slug, o.logo_url,
+         o.header_image_url, o.bio, o.website_url, o.instagram_url,
+         o.contact_email, o.updated_at,
          o.plan, o.is_admin, o.created_at, o.last_login_at,
          COALESCE(s.event_count,0)::int AS event_count,
          COALESCE(s.rsvp_count,0)::int AS rsvp_count,
@@ -82,6 +85,44 @@ router.get('/api/admin/hosts/:id', async (req, res, next) => {
     );
     res.json({ host: rows[0], events: events.rows });
   } catch (err) { next(err); }
+});
+
+// PUT /api/admin/hosts/:id/profile — targeted public-profile editing only.
+router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
+  try {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'Host account not found' });
+    const { rows: currentRows } = await pool.query('SELECT * FROM organizers WHERE id=$1', [id]);
+    const current = currentRows[0];
+    if (!current) return res.status(404).json({ error: 'Host account not found' });
+
+    const normalized = normalizeHostProfile(req.body || {}, current);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    const profile = normalized.value;
+    let publicSlug = profile.publicSlug;
+    if (profile.orgName && !publicSlug) {
+      const ensured = await ensureHostProfile(id, profile.orgName);
+      publicSlug = ensured.public_slug;
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE organizers
+          SET org_name=$2, public_slug=$3, bio=$4, website_url=$5,
+              instagram_url=$6, contact_email=$7, updated_at=NOW()
+        WHERE id=$1
+        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+                  bio, website_url, instagram_url, contact_email,
+                  plan, is_admin, created_at, updated_at`,
+      [
+        id, profile.orgName, publicSlug, profile.bio,
+        profile.websiteUrl, profile.instagramUrl, profile.contactEmail
+      ]
+    );
+    res.json({ host: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That host page slug is already taken' });
+    next(err);
+  }
 });
 
 // GET /api/admin/invitations

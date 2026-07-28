@@ -104,8 +104,18 @@ router.post('/api/auth/logout', (req, res) => {
 });
 
 router.get('/api/auth/me', requireOrganizer, (req, res) => {
-  const { id, email, name, org_name, public_slug, logo_url, plan, is_admin, created_at } = req.organizer;
-  res.json({ organizer: { id, email, name, org_name, public_slug, logo_url, plan, is_admin, created_at } });
+  const {
+    id, email, name, org_name, public_slug, logo_url, header_image_url,
+    bio, website_url, instagram_url, contact_email,
+    plan, is_admin, created_at, updated_at
+  } = req.organizer;
+  res.json({
+    organizer: {
+      id, email, name, org_name, public_slug, logo_url, header_image_url,
+      bio, website_url, instagram_url, contact_email,
+      plan, is_admin, created_at, updated_at
+    }
+  });
 });
 
 module.exports = router;
