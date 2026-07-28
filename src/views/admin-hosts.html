@@ -109,7 +109,7 @@
       <div class="host-detail-grid" id="host-detail-grid"></div>
       <section class="host-profile-editor" aria-labelledby="admin-host-profile-title">
         <h2 id="admin-host-profile-title">Public host profile</h2>
-        <p>Edit only the public identity and contact details used by the host page.</p>
+        <p>Edit only the public identity and links used by the host page.</p>
         <form id="host-profile-form">
           <div class="host-profile-grid">
             <div class="sg-field"><label for="profile-org-name">Host name</label><input class="sg-input" id="profile-org-name" maxlength="100"></div>
@@ -117,7 +117,6 @@
             <div class="sg-field wide"><label for="profile-bio">Bio</label><textarea class="sg-textarea" id="profile-bio" maxlength="500"></textarea></div>
             <div class="sg-field"><label for="profile-instagram">Instagram URL</label><input class="sg-input" id="profile-instagram" type="url" maxlength="500"></div>
             <div class="sg-field"><label for="profile-website">Website URL</label><input class="sg-input" id="profile-website" type="url" maxlength="500"></div>
-            <div class="sg-field wide"><label for="profile-contact-email">Contact email</label><input class="sg-input" id="profile-contact-email" type="email" maxlength="254"></div>
           </div>
           <div class="host-admin-uploads">
             <button class="sg-btn sg-btn-ghost" id="profile-logo-btn" type="button">Upload logo</button>
@@ -212,7 +211,6 @@
       document.getElementById('profile-bio').value = host.bio || '';
       document.getElementById('profile-instagram').value = host.instagram_url || '';
       document.getElementById('profile-website').value = host.website_url || '';
-      document.getElementById('profile-contact-email').value = host.contact_email || '';
       document.getElementById('profile-logo-btn').textContent = host.logo_url ? 'Replace logo' : 'Upload logo';
       document.getElementById('profile-header-btn').textContent = host.header_image_url ? 'Replace header' : 'Upload header';
       document.getElementById('host-profile-status').textContent = host.public_slug
@@ -243,8 +241,7 @@
         org_name: document.getElementById('profile-org-name').value,
         bio: document.getElementById('profile-bio').value,
         instagram_url: document.getElementById('profile-instagram').value,
-        website_url: document.getElementById('profile-website').value,
-        contact_email: document.getElementById('profile-contact-email').value
+        website_url: document.getElementById('profile-website').value
       };
       if (!document.getElementById('profile-slug').disabled) body.public_slug = document.getElementById('profile-slug').value;
       try {

@@ -65,7 +65,9 @@ function normalizeHostProfile(body, current = {}) {
   if (website.error) return { error: website.error };
   const instagram = cleanProfileUrl(body.instagram_url, 'Instagram', { instagramOnly: true });
   if (instagram.error) return { error: instagram.error };
-  const contact = cleanContactEmail(body.contact_email);
+  const contact = Object.prototype.hasOwnProperty.call(body, 'contact_email')
+    ? cleanContactEmail(body.contact_email)
+    : { value: current.contact_email || null, error: null };
   if (contact.error) return { error: contact.error };
 
   const hasProfileDetails = Boolean(cleanHostBio(body.bio) || website.value || instagram.value || contact.value);

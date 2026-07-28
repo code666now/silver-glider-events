@@ -53,6 +53,11 @@ test('host profile normalization keeps contact details optional and server valid
   });
   assert.ok(normalizeHostProfile({ org_name: '', bio: 'Orphan bio' }, {}).error);
   assert.ok(normalizeHostProfile({ org_name: 'Host', contact_email: 'not-an-email' }, {}).error);
+  const preserved = normalizeHostProfile(
+    { org_name: 'Host' },
+    { public_slug: 'host', contact_email: 'bookings@example.com' }
+  );
+  assert.equal(preserved.value.contactEmail, 'bookings@example.com');
 });
 
 test('public host page separates upcoming and past public events in the requested order', () => {
@@ -92,12 +97,14 @@ test('event pages keep the linked Presented by host attribution', () => {
 
 test('host and super-admin settings expose only the requested profile controls', () => {
   const settings = source('src/views/settings.html');
-  for (const id of ['org_name', 'public_slug', 'bio', 'instagram_url', 'website_url', 'contact_email', 'header-input', 'logo-input']) {
+  for (const id of ['org_name', 'public_slug', 'bio', 'instagram_url', 'website_url', 'header-input', 'logo-input']) {
     assert.match(settings, new RegExp(`id="${id}"`));
   }
+  assert.doesNotMatch(settings, /id="contact_email"|>Contact email</);
   const admin = source('src/views/admin-hosts.html');
   assert.match(admin, /id="host-profile-form"/);
   assert.match(admin, /\/api\/admin\/hosts\/\$\{activeHostId\}\/profile/);
+  assert.doesNotMatch(admin, /profile-contact-email|>Contact email</);
   for (const excluded of ['Follow Host', 'Mailchimp', 'ticket-click', 'CRM', 'SMS']) {
     assert.equal(settings.includes(excluded), false);
     assert.equal(admin.includes(excluded), false);

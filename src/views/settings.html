@@ -138,11 +138,6 @@
                 <label for="website_url">Website URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
                 <input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com">
               </div>
-              <div class="sg-field wide">
-                <label for="contact_email">Contact email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-                <input class="sg-input" id="contact_email" type="email" maxlength="254" placeholder="hello@heatwavebooking.com">
-                <p class="profile-help">Saved with your host profile but not displayed publicly.</p>
-              </div>
             </div>
 
             <div class="host-media-grid">
@@ -258,7 +253,6 @@
       $('bio').value = organizer.bio || '';
       $('instagram_url').value = organizer.instagram_url || '';
       $('website_url').value = organizer.website_url || '';
-      $('contact_email').value = organizer.contact_email || '';
       renderHostProfile(organizer);
     }
 
@@ -273,8 +267,7 @@
         org_name: organizer.org_name || '',
         bio: organizer.bio || '',
         instagram_url: organizer.instagram_url || '',
-        website_url: organizer.website_url || '',
-        contact_email: organizer.contact_email || ''
+        website_url: organizer.website_url || ''
       };
       if (organizer.public_slug) body.public_slug = organizer.public_slug;
       return body;
@@ -318,8 +311,7 @@
           org_name: $('org_name').value,
           bio: $('bio').value,
           instagram_url: $('instagram_url').value,
-          website_url: $('website_url').value,
-          contact_email: $('contact_email').value
+          website_url: $('website_url').value
         };
         if (!$('public_slug').disabled) body.public_slug = $('public_slug').value;
         const { organizer } = await api('/api/settings', { method: 'PUT', body });
