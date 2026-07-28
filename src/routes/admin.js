@@ -45,7 +45,7 @@ const hostAccountSelect = `
      ORDER BY joined_organizer_id, joined_at DESC NULLS LAST, id DESC
   )
   SELECT o.id, o.email, o.name, o.org_name, o.public_slug, o.logo_url,
-         o.header_image_url, o.bio, o.website_url, o.instagram_url,
+         o.header_image_url, o.bio, o.website_url, o.instagram_handle, o.instagram_url,
          o.contact_email, o.updated_at,
          o.plan, o.is_admin, o.created_at, o.last_login_at,
          COALESCE(s.event_count,0)::int AS event_count,
@@ -108,14 +108,14 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
     const { rows } = await pool.query(
       `UPDATE organizers
           SET org_name=$2, public_slug=$3, bio=$4, website_url=$5,
-              instagram_url=$6, contact_email=$7, updated_at=NOW()
+              instagram_handle=$6, contact_email=$7, updated_at=NOW()
         WHERE id=$1
         RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                  bio, website_url, instagram_url, contact_email,
+                  bio, website_url, instagram_handle, instagram_url, contact_email,
                   plan, is_admin, created_at, updated_at`,
       [
         id, profile.orgName, publicSlug, profile.bio,
-        profile.websiteUrl, profile.instagramUrl, profile.contactEmail
+        profile.websiteUrl, profile.instagramHandle, profile.contactEmail
       ]
     );
     res.json({ host: rows[0] });

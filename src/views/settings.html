@@ -131,8 +131,9 @@
                 <textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea>
               </div>
               <div class="sg-field">
-                <label for="instagram_url">Instagram URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-                <input class="sg-input" id="instagram_url" type="url" maxlength="500" placeholder="https://instagram.com/heatwavebooking">
+                <label for="instagram_handle">Instagram handle <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <input class="sg-input" id="instagram_handle" maxlength="500" placeholder="@silverglidertix" autocomplete="off">
+                <p class="profile-help">Enter your @handle—or paste your Instagram profile URL.</p>
               </div>
               <div class="sg-field">
                 <label for="website_url">Website URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
@@ -251,7 +252,7 @@
     function populateHostFields(organizer) {
       $('org_name').value = organizer.org_name || '';
       $('bio').value = organizer.bio || '';
-      $('instagram_url').value = organizer.instagram_url || '';
+      $('instagram_handle').value = organizer.instagram_handle ? `@${organizer.instagram_handle}` : '';
       $('website_url').value = organizer.website_url || '';
       renderHostProfile(organizer);
     }
@@ -266,7 +267,7 @@
       const body = {
         org_name: organizer.org_name || '',
         bio: organizer.bio || '',
-        instagram_url: organizer.instagram_url || '',
+        instagram_handle: organizer.instagram_handle || '',
         website_url: organizer.website_url || ''
       };
       if (organizer.public_slug) body.public_slug = organizer.public_slug;
@@ -310,7 +311,7 @@
           name: currentOrganizer.name || '',
           org_name: $('org_name').value,
           bio: $('bio').value,
-          instagram_url: $('instagram_url').value,
+          instagram_handle: $('instagram_handle').value,
           website_url: $('website_url').value
         };
         if (!$('public_slug').disabled) body.public_slug = $('public_slug').value;

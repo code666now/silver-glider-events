@@ -8,7 +8,7 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
-const { cleanProfileUrl } = require('../lib/host-profile');
+const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const {
@@ -297,7 +297,8 @@ function hostInitials(name) {
 }
 
 function hostSocialLinks(host) {
-  const instagram = cleanProfileUrl(host.instagram_url, 'Instagram', { instagramOnly: true }).value;
+  const instagramHandle = cleanInstagramHandle(host.instagram_handle || host.instagram_url).value;
+  const instagram = instagramHandle ? `https://instagram.com/${encodeURIComponent(instagramHandle)}` : null;
   const website = cleanProfileUrl(host.website_url, 'website').value;
   const links = [];
   if (instagram) {
@@ -314,7 +315,7 @@ router.get('/h/:slug', async (req, res, next) => {
   try {
     const { rows: hosts } = await pool.query(
       `SELECT id, org_name, public_slug, logo_url, header_image_url,
-              bio, website_url, instagram_url
+              bio, website_url, instagram_handle, instagram_url
          FROM organizers
         WHERE LOWER(public_slug)=LOWER($1) AND org_name IS NOT NULL`,
       [req.params.slug]

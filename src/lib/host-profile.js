@@ -39,6 +39,37 @@ function cleanProfileUrl(value, label, { instagramOnly = false } = {}) {
   }
 }
 
+function cleanInstagramHandle(value) {
+  let raw = String(value ?? '').trim();
+  if (!raw) return { value: null, error: null };
+  if (raw.length > 500) return { value: null, error: 'Instagram handle is too long' };
+
+  let handle = raw;
+  try {
+    if (/instagram\.com\//i.test(raw)) {
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `https://${raw}`;
+      const url = new URL(raw);
+      const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (!['http:', 'https:'].includes(url.protocol) || hostname !== 'instagram.com' || parts.length !== 1) {
+        throw new Error('profile');
+      }
+      handle = decodeURIComponent(parts[0]);
+    } else {
+      handle = raw.replace(/^@/, '');
+    }
+  } catch (_) {
+    return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+  }
+
+  handle = handle.trim().toLowerCase();
+  if (handle.length > 30 || !/^[a-z0-9._]+$/.test(handle) ||
+      handle.startsWith('.') || handle.endsWith('.') || handle.includes('..')) {
+    return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+  }
+  return { value: handle, error: null };
+}
+
 function cleanContactEmail(value) {
   const email = String(value ?? '').trim().toLowerCase();
   if (!email) return { value: null, error: null };
@@ -63,7 +94,12 @@ function normalizeHostProfile(body, current = {}) {
 
   const website = cleanProfileUrl(body.website_url, 'website');
   if (website.error) return { error: website.error };
-  const instagram = cleanProfileUrl(body.instagram_url, 'Instagram', { instagramOnly: true });
+  const instagramInput = Object.prototype.hasOwnProperty.call(body, 'instagram_handle')
+    ? body.instagram_handle
+    : (Object.prototype.hasOwnProperty.call(body, 'instagram_url')
+      ? body.instagram_url
+      : (current.instagram_handle || current.instagram_url));
+  const instagram = cleanInstagramHandle(instagramInput);
   if (instagram.error) return { error: instagram.error };
   const contact = Object.prototype.hasOwnProperty.call(body, 'contact_email')
     ? cleanContactEmail(body.contact_email)
@@ -79,7 +115,7 @@ function normalizeHostProfile(body, current = {}) {
       publicSlug,
       bio: cleanHostBio(body.bio),
       websiteUrl: website.value,
-      instagramUrl: instagram.value,
+      instagramHandle: instagram.value,
       contactEmail: contact.value
     },
     error: null
@@ -89,7 +125,7 @@ function normalizeHostProfile(body, current = {}) {
 async function organizerWithHostProfile(organizerId) {
   const { rows } = await pool.query(
     `SELECT id, email, name, org_name, public_slug, logo_url, header_image_url,
-            bio, website_url, instagram_url, contact_email,
+            bio, website_url, instagram_handle, instagram_url, contact_email,
             plan, is_admin, created_at, updated_at
        FROM organizers WHERE id=$1`,
     [organizerId]
@@ -114,7 +150,7 @@ async function ensureHostProfile(organizerId, hostName) {
             SET org_name=$2, public_slug=$3, updated_at=NOW()
           WHERE id=$1 AND public_slug IS NULL
           RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                    bio, website_url, instagram_url, contact_email,
+                    bio, website_url, instagram_handle, instagram_url, contact_email,
                     plan, is_admin, created_at, updated_at`,
         [organizerId, cleanName, `${base}${suffix}`]
       );
@@ -133,6 +169,7 @@ module.exports = {
   cleanHostBio,
   cleanHostName,
   cleanHostSlug,
+  cleanInstagramHandle,
   cleanProfileUrl,
   ensureHostProfile,
   normalizeHostProfile,

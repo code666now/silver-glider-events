@@ -50,7 +50,7 @@ router.post('/api/uploads/host-logo', requireOrganizer, handleUpload, async (req
     const { rows } = await pool.query(
       `UPDATE organizers SET logo_url=$2, updated_at=NOW() WHERE id=$1
        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                 bio, website_url, instagram_url, contact_email,
+                 bio, website_url, instagram_handle, instagram_url, contact_email,
                  plan, is_admin, created_at, updated_at`,
       [req.organizer.id, result.secure_url]
     );
@@ -73,7 +73,7 @@ router.post('/api/uploads/host-header', requireOrganizer, handleUpload, async (r
     const { rows } = await pool.query(
       `UPDATE organizers SET header_image_url=$2, updated_at=NOW() WHERE id=$1
        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                 bio, website_url, instagram_url, contact_email,
+                 bio, website_url, instagram_handle, instagram_url, contact_email,
                  plan, is_admin, created_at, updated_at`,
       [req.organizer.id, result.secure_url]
     );
@@ -104,7 +104,7 @@ function adminHostUpload(kind, uploadImage) {
       const { rows } = await pool.query(
         `UPDATE organizers SET ${column}=$2, updated_at=NOW() WHERE id=$1
          RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                   bio, website_url, instagram_url, contact_email,
+                   bio, website_url, instagram_handle, instagram_url, contact_email,
                    plan, is_admin, created_at, updated_at`,
         [id, result.secure_url]
       );

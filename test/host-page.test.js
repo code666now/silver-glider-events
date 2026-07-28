@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const {
   cleanHostSlug,
+  cleanInstagramHandle,
   cleanProfileUrl,
   normalizeHostProfile
 } = require('../src/lib/host-profile');
@@ -23,6 +24,14 @@ test('host profile migration extends organizers without replacing stable identit
   assert.match(original, /logo_url TEXT/);
   assert.match(original, /organizers_public_slug_unique/);
 });
+
+test('Instagram handle migration safely backfills existing profile URLs', () => {
+  const migration = source('src/db/migrations/015_instagram_handles.sql');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS instagram_handle/);
+  assert.match(migration, /instagram_url IS NOT NULL/);
+  assert.match(migration, /instagram_handle=c\.handle/);
+  assert.doesNotMatch(migration, /DROP COLUMN|DELETE FROM/);
+});
 test('host slug and link validation reject unsafe or misleading values', () => {
   assert.deepEqual(cleanHostSlug('heat-wave-booking'), { value: 'heat-wave-booking', error: null });
   assert.ok(cleanHostSlug('Heat Wave!').error);
@@ -33,13 +42,22 @@ test('host slug and link validation reject unsafe or misleading values', () => {
   assert.ok(cleanProfileUrl('https://example.com/not-instagram', 'Instagram', { instagramOnly: true }).error);
 });
 
+test('Instagram handles accept friendly input and profile URLs but reject non-profiles', () => {
+  assert.deepEqual(cleanInstagramHandle('@SilverGliderTix'), { value: 'silverglidertix', error: null });
+  assert.deepEqual(cleanInstagramHandle('silver.glider_tix'), { value: 'silver.glider_tix', error: null });
+  assert.deepEqual(cleanInstagramHandle('https://www.instagram.com/SilverGliderTix/?hl=en'), { value: 'silverglidertix', error: null });
+  assert.ok(cleanInstagramHandle('https://instagram.com/p/abc123').error);
+  assert.ok(cleanInstagramHandle('https://example.com/silverglidertix').error);
+  assert.ok(cleanInstagramHandle('bad handle').error);
+});
+
 test('host profile normalization keeps contact details optional and server validated', () => {
   const parsed = normalizeHostProfile({
     org_name: ' Heat Wave Booking ',
     public_slug: 'heat-wave',
     bio: '  Independent events.  ',
     website_url: 'heatwave.example',
-    instagram_url: 'https://instagram.com/heatwave',
+    instagram_handle: '@HeatWave',
     contact_email: 'HELLO@HEATWAVE.EXAMPLE'
   }, { public_slug: 'heat-wave' });
   assert.equal(parsed.error, null);
@@ -48,7 +66,7 @@ test('host profile normalization keeps contact details optional and server valid
     publicSlug: 'heat-wave',
     bio: 'Independent events.',
     websiteUrl: 'https://heatwave.example/',
-    instagramUrl: 'https://instagram.com/heatwave',
+    instagramHandle: 'heatwave',
     contactEmail: 'hello@heatwave.example'
   });
   assert.ok(normalizeHostProfile({ org_name: '', bio: 'Orphan bio' }, {}).error);
@@ -87,6 +105,7 @@ test('host social links are conditional, icon-only, accessible, and safe', () =>
   assert.match(routes, /links\.length \? `<nav class="host-links"/);
   assert.match(routes, /hostInitials/);
   assert.match(routes, /cleanProfileUrl\(host\.header_image_url/);
+  assert.match(routes, /cleanInstagramHandle\(host\.instagram_handle \|\| host\.instagram_url\)/);
 });
 
 test('event pages keep the linked Presented by host attribution', () => {
@@ -97,10 +116,11 @@ test('event pages keep the linked Presented by host attribution', () => {
 
 test('host and super-admin settings expose only the requested profile controls', () => {
   const settings = source('src/views/settings.html');
-  for (const id of ['org_name', 'public_slug', 'bio', 'instagram_url', 'website_url', 'header-input', 'logo-input']) {
+  for (const id of ['org_name', 'public_slug', 'bio', 'instagram_handle', 'website_url', 'header-input', 'logo-input']) {
     assert.match(settings, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(settings, /id="contact_email"|>Contact email</);
+  assert.match(settings, /placeholder="@silverglidertix"/);
   const admin = source('src/views/admin-hosts.html');
   assert.match(admin, /id="host-profile-form"/);
   assert.match(admin, /\/api\/admin\/hosts\/\$\{activeHostId\}\/profile/);

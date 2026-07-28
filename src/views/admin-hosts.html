@@ -115,7 +115,7 @@
             <div class="sg-field"><label for="profile-org-name">Host name</label><input class="sg-input" id="profile-org-name" maxlength="100"></div>
             <div class="sg-field"><label for="profile-slug">Slug</label><input class="sg-input" id="profile-slug" maxlength="70"></div>
             <div class="sg-field wide"><label for="profile-bio">Bio</label><textarea class="sg-textarea" id="profile-bio" maxlength="500"></textarea></div>
-            <div class="sg-field"><label for="profile-instagram">Instagram URL</label><input class="sg-input" id="profile-instagram" type="url" maxlength="500"></div>
+            <div class="sg-field"><label for="profile-instagram">Instagram handle</label><input class="sg-input" id="profile-instagram" maxlength="500" placeholder="@silverglidertix"></div>
             <div class="sg-field"><label for="profile-website">Website URL</label><input class="sg-input" id="profile-website" type="url" maxlength="500"></div>
           </div>
           <div class="host-admin-uploads">
@@ -209,7 +209,7 @@
       document.getElementById('profile-slug').value = host.public_slug || '';
       document.getElementById('profile-slug').disabled = !host.public_slug;
       document.getElementById('profile-bio').value = host.bio || '';
-      document.getElementById('profile-instagram').value = host.instagram_url || '';
+      document.getElementById('profile-instagram').value = host.instagram_handle ? `@${host.instagram_handle}` : '';
       document.getElementById('profile-website').value = host.website_url || '';
       document.getElementById('profile-logo-btn').textContent = host.logo_url ? 'Replace logo' : 'Upload logo';
       document.getElementById('profile-header-btn').textContent = host.header_image_url ? 'Replace header' : 'Upload header';
@@ -240,7 +240,7 @@
       const body = {
         org_name: document.getElementById('profile-org-name').value,
         bio: document.getElementById('profile-bio').value,
-        instagram_url: document.getElementById('profile-instagram').value,
+        instagram_handle: document.getElementById('profile-instagram').value,
         website_url: document.getElementById('profile-website').value
       };
       if (!document.getElementById('profile-slug').disabled) body.public_slug = document.getElementById('profile-slug').value;

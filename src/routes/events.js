@@ -587,15 +587,15 @@ router.put('/api/settings', async (req, res, next) => {
     const { rows } = await pool.query(
       `UPDATE organizers
           SET name=$2, org_name=$3, public_slug=$4, bio=$5,
-              website_url=$6, instagram_url=$7, contact_email=$8,
+              website_url=$6, instagram_handle=$7, contact_email=$8,
               updated_at=NOW()
         WHERE id=$1
         RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                  bio, website_url, instagram_url, contact_email,
+                  bio, website_url, instagram_handle, instagram_url, contact_email,
                   plan, is_admin, created_at, updated_at`,
       [
         req.organizer.id, name, profile.orgName, publicSlug, profile.bio,
-        profile.websiteUrl, profile.instagramUrl, profile.contactEmail
+        profile.websiteUrl, profile.instagramHandle, profile.contactEmail
       ]
     );
     res.json({ organizer: rows[0] });
