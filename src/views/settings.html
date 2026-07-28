@@ -8,22 +8,57 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <style>
-    .settings-form { max-width:680px; }
-    .settings-section { margin:34px 0 22px;padding-top:28px;border-top:1px solid var(--sg-border-soft); }
-    .settings-section h2 { font-size:25px;margin-bottom:6px; }
-    .settings-section > p { color:var(--sg-text-faint);font-size:12px;line-height:1.55;margin-bottom:22px; }
+    .settings-wrap { max-width:720px; }
+    .settings-card { padding:26px;border:1px solid var(--sg-border-soft);border-radius:24px;background:rgba(17,17,17,.7); }
+    .settings-card + .settings-card { margin-top:18px; }
+    .settings-card-head { margin-bottom:22px; }
+    .settings-eyebrow { margin-bottom:5px;color:var(--sg-text-faint);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.16em; }
+    .settings-card h2 { font-size:25px; }
+    .settings-card-copy { margin-top:5px;color:var(--sg-text-faint);font-size:12px;line-height:1.55; }
+    .account-grid,.host-profile-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
+    .host-profile-grid .wide { grid-column:1/-1; }
+    .settings-card .sg-field { margin-bottom:0; }
+    .settings-actions { display:flex;align-items:center;gap:10px;margin-top:22px; }
+    .settings-actions .sg-btn { padding:11px 19px;font-size:12px; }
+    .host-summary { display:flex;align-items:center;gap:18px; }
+    .host-summary-avatar { width:72px;height:72px;display:flex;flex:0 0 auto;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--sg-border);border-radius:19px;background:var(--sg-surface);color:var(--sg-accent);font-family:var(--sg-font-display);font-size:21px;font-weight:700;letter-spacing:.04em; }
+    .host-summary-avatar img { width:100%;height:100%;display:block;object-fit:contain;padding:6px; }
+    .host-summary-copy { min-width:0;flex:1; }
+    .host-summary-copy h2 { overflow-wrap:anywhere; }
+    .host-summary-url { margin-top:5px;color:var(--sg-text-faint);font-size:12px;overflow-wrap:anywhere; }
+    .host-summary-actions { display:flex;flex:0 0 auto;align-items:center;gap:8px; }
+    .host-summary-actions .sg-btn { padding:10px 15px;font-size:11px;white-space:nowrap; }
+    .host-editor { margin-top:26px;padding-top:26px;border-top:1px solid var(--sg-border-soft); }
+    .host-editor[hidden] { display:none; }
+    .host-editor-intro { margin-bottom:22px; }
+    .host-editor-intro h3 { margin-bottom:5px;font-size:21px; }
+    .host-editor-intro p { color:var(--sg-text-faint);font-size:12px;line-height:1.55; }
+    .host-media-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px; }
+    .host-media-card { padding:16px;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(255,255,255,.015); }
+    .host-media-card > label { display:block;margin-bottom:11px; }
     .profile-upload { display:flex;align-items:center;gap:14px; }
     .profile-preview { display:none;overflow:hidden;flex:0 0 auto;background:var(--sg-surface);border:1px solid var(--sg-border); }
     .profile-preview img { width:100%;height:100%;display:block; }
-    .profile-preview.logo { width:72px;height:72px;border-radius:18px; }
+    .profile-preview.logo { width:62px;height:62px;border-radius:16px; }
     .profile-preview.logo img { object-fit:contain; }
-    .profile-preview.header { width:180px;aspect-ratio:16/7;border-radius:15px; }
+    .profile-preview.header { width:105px;aspect-ratio:16/9;border-radius:13px; }
     .profile-preview.header img { object-fit:cover; }
-    .profile-upload .sg-btn { padding:10px 18px;font-size:13px; }
+    .profile-upload .sg-btn { padding:9px 13px;font-size:11px; }
     .profile-help,.upload-status { font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5; }
+    .settings-footer-card { display:flex;align-items:center;justify-content:space-between;gap:20px; }
+    .settings-plan { display:flex;align-items:center;gap:12px; }
+    .settings-plan .settings-eyebrow { margin:0; }
+    .settings-footer-card .sg-btn { padding:10px 16px;font-size:11px; }
     @media(max-width:560px) {
-      .profile-upload { align-items:flex-start;flex-direction:column; }
-      .profile-preview.header { width:100%; }
+      .settings-card { padding:21px 19px;border-radius:21px; }
+      .account-grid,.host-profile-grid,.host-media-grid { grid-template-columns:1fr; }
+      .host-profile-grid .wide { grid-column:auto; }
+      .host-summary { align-items:flex-start;flex-wrap:wrap; }
+      .host-summary-copy { padding-top:5px; }
+      .host-summary-actions { width:100%; }
+      .host-summary-actions .sg-btn { flex:1;text-align:center; }
+      .profile-upload { align-items:center; }
+      .settings-footer-card { align-items:flex-start;flex-direction:column; }
     }
   </style>
 </head>
@@ -31,111 +66,173 @@
   <div class="sg-shell">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Settings</h1>
-    <p class="sg-page-sub">How you appear on your event pages.</p>
+    <p class="sg-page-sub">Account basics and your public event home.</p>
 
-    <form id="settings-form" class="settings-form">
-      <div class="sg-field">
-        <label for="email">Email</label>
-        <input class="sg-input" id="email" disabled style="opacity:.55">
-      </div>
-      <div class="sg-field">
-        <label for="name">Your name</label>
-        <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez">
-      </div>
-      <div class="sg-field">
-        <label for="org_name">Public host name <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking">
-        <p class="profile-help">Shown as “Presented by” on your events. Adding one creates your public event home.</p>
-      </div>
-
-      <section class="settings-section" aria-labelledby="host-profile-title">
-        <h2 id="host-profile-title">Host page</h2>
-        <p>Give guests one beautiful place to find your public events.</p>
+    <div class="settings-wrap">
+      <section class="settings-card" aria-labelledby="account-settings-title">
+        <div class="settings-card-head">
+          <p class="settings-eyebrow">Account</p>
+          <h2 id="account-settings-title">Your details</h2>
+          <p class="settings-card-copy">Used for signing in and managing your events.</p>
+        </div>
+        <form id="account-form">
+          <div class="account-grid">
+            <div class="sg-field">
+              <label for="email">Email</label>
+              <input class="sg-input" id="email" disabled style="opacity:.55">
+            </div>
+            <div class="sg-field">
+              <label for="name">Your name</label>
+              <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez">
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button class="sg-btn sg-btn-primary" type="submit" id="account-save-btn">Save account</button>
+          </div>
+        </form>
       </section>
 
-      <div class="sg-field">
-        <label for="public_slug">Host page URL</label>
-        <div style="display:flex;align-items:center;gap:9px">
-          <span style="color:var(--sg-text-faint);font-size:13px">/h/</span>
-          <input class="sg-input" id="public_slug" maxlength="70" placeholder="heat-wave-booking" style="flex:1" disabled>
+      <section class="settings-card" aria-labelledby="host-summary-name">
+        <div class="host-summary">
+          <div class="host-summary-avatar" id="host-summary-avatar" aria-hidden="true"><span>SG</span></div>
+          <div class="host-summary-copy">
+            <p class="settings-eyebrow">Public host page</p>
+            <h2 id="host-summary-name">Loading…</h2>
+            <p class="host-summary-url" id="host-summary-url">One home for your public events.</p>
+          </div>
+          <div class="host-summary-actions">
+            <a id="host-summary-view" class="sg-btn sg-btn-ghost" target="_blank" rel="noopener" hidden>View page</a>
+            <button class="sg-btn sg-btn-ghost" type="button" id="host-editor-toggle" aria-controls="host-editor" aria-expanded="false" disabled>Edit host page</button>
+          </div>
         </div>
-        <p class="profile-help" id="slug-help">Save a public host name to create your URL. Changing it later will break previously shared host-page links.</p>
-      </div>
 
-      <div class="sg-field">
-        <label for="bio">Bio or tagline <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea>
-      </div>
+        <div class="host-editor" id="host-editor" hidden>
+          <div class="host-editor-intro">
+            <h3>Edit host page</h3>
+            <p>Give guests one beautiful place to find your public events.</p>
+          </div>
+          <form id="host-profile-form">
+            <div class="host-profile-grid">
+              <div class="sg-field">
+                <label for="org_name">Public host name</label>
+                <input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking">
+                <p class="profile-help">Shown as “Presented by” on your events.</p>
+              </div>
+              <div class="sg-field">
+                <label for="public_slug">Host page URL</label>
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="color:var(--sg-text-faint);font-size:13px">/h/</span>
+                  <input class="sg-input" id="public_slug" maxlength="70" placeholder="heat-wave-booking" style="min-width:0;flex:1" disabled>
+                </div>
+                <p class="profile-help" id="slug-help">Save a host name to create your URL.</p>
+              </div>
+              <div class="sg-field wide">
+                <label for="bio">Bio or tagline <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea>
+              </div>
+              <div class="sg-field">
+                <label for="instagram_url">Instagram URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <input class="sg-input" id="instagram_url" type="url" maxlength="500" placeholder="https://instagram.com/heatwavebooking">
+              </div>
+              <div class="sg-field">
+                <label for="website_url">Website URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com">
+              </div>
+              <div class="sg-field wide">
+                <label for="contact_email">Contact email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <input class="sg-input" id="contact_email" type="email" maxlength="254" placeholder="hello@heatwavebooking.com">
+                <p class="profile-help">Saved with your host profile but not displayed publicly.</p>
+              </div>
+            </div>
 
-      <div class="sg-field">
-        <label for="instagram_url">Instagram URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="instagram_url" type="url" maxlength="500" placeholder="https://instagram.com/heatwavebooking">
-      </div>
+            <div class="host-media-grid">
+              <div class="host-media-card" id="host-header-field" style="display:none">
+                <label>Header image <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <div class="profile-upload">
+                  <div class="profile-preview header" id="header-preview-wrap"><img id="header-preview" alt="Host header image"></div>
+                  <button class="sg-btn sg-btn-ghost" type="button" id="header-btn">Upload header</button>
+                  <input type="file" id="header-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                </div>
+                <p class="upload-status" id="header-status">Wide images work best.</p>
+              </div>
+              <div class="host-media-card" id="host-logo-field" style="display:none">
+                <label>Host logo <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+                <div class="profile-upload">
+                  <div class="profile-preview logo" id="logo-preview-wrap"><img id="logo-preview" alt="Host logo"></div>
+                  <button class="sg-btn sg-btn-ghost" type="button" id="logo-btn">Upload logo</button>
+                  <input type="file" id="logo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                </div>
+                <p class="upload-status" id="logo-status"></p>
+              </div>
+            </div>
 
-      <div class="sg-field">
-        <label for="website_url">Website URL <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com">
-      </div>
-
-      <div class="sg-field">
-        <label for="contact_email">Contact email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="contact_email" type="email" maxlength="254" placeholder="hello@heatwavebooking.com">
-        <p class="profile-help">Saved with your host profile but not displayed publicly.</p>
-      </div>
-
-      <div class="sg-field" id="host-header-field" style="display:none">
-        <label>Header image <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <div class="profile-upload">
-          <div class="profile-preview header" id="header-preview-wrap"><img id="header-preview" alt="Host header image"></div>
-          <button class="sg-btn sg-btn-ghost" type="button" id="header-btn">Upload header</button>
-          <input type="file" id="header-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+            <div class="settings-actions">
+              <button class="sg-btn sg-btn-primary" type="submit" id="host-save-btn">Save host page</button>
+              <button class="sg-btn sg-btn-ghost" type="button" id="host-editor-close">Cancel</button>
+            </div>
+          </form>
         </div>
-        <p class="upload-status" id="header-status">Wide images work best.</p>
-      </div>
+      </section>
 
-      <div class="sg-field" id="host-logo-field" style="display:none">
-        <label>Host logo <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <div class="profile-upload">
-          <div class="profile-preview logo" id="logo-preview-wrap"><img id="logo-preview" alt="Host logo"></div>
-          <button class="sg-btn sg-btn-ghost" type="button" id="logo-btn">Upload logo</button>
-          <input type="file" id="logo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
-        </div>
-        <p class="upload-status" id="logo-status"></p>
-      </div>
-      <div class="sg-field" id="host-link-field" style="display:none">
-        <label>Your public host page</label>
-        <a id="host-link" class="sg-btn sg-btn-ghost" target="_blank" rel="noopener" style="padding:10px 18px;font-size:13px">View host page →</a>
-      </div>
-      <div class="sg-field">
-        <label>Plan</label>
-        <span class="sg-badge" id="plan-badge">Free</span>
-      </div>
-      <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="save-btn">Save</button>
-      <button class="sg-btn sg-btn-ghost sg-btn-block" type="button" id="logout-btn" style="margin-top:12px">Sign out</button>
-    </form>
+      <section class="settings-card settings-footer-card" aria-label="Plan and account actions">
+        <div class="settings-plan"><p class="settings-eyebrow">Plan</p><span class="sg-badge" id="plan-badge">Free</span></div>
+        <button class="sg-btn sg-btn-ghost" type="button" id="logout-btn">Sign out</button>
+      </section>
+    </div>
   </div>
 
   <script src="/js/api.js"></script>
   <script>
     renderNav('settings');
     const $ = id => document.getElementById(id);
+    let currentOrganizer = null;
+    let hostEditorOpen = false;
+
+    function hostInitials(name) {
+      return String(name || 'SG').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
+    }
+
+    function setHostEditor(open) {
+      hostEditorOpen = !!open;
+      $('host-editor').hidden = !hostEditorOpen;
+      $('host-editor-toggle').setAttribute('aria-expanded', String(hostEditorOpen));
+      $('host-editor-toggle').textContent = hostEditorOpen
+        ? 'Close editor'
+        : (currentOrganizer?.public_slug ? 'Edit host page' : 'Set up host page');
+    }
 
     function renderHostProfile(organizer) {
       const hasProfile = !!organizer.public_slug;
       $('host-logo-field').style.display = hasProfile ? 'block' : 'none';
       $('host-header-field').style.display = hasProfile ? 'block' : 'none';
-      $('host-link-field').style.display = hasProfile ? 'block' : 'none';
       $('public_slug').disabled = !hasProfile;
       $('public_slug').value = organizer.public_slug || '';
+      $('host-summary-name').textContent = organizer.org_name || 'Not set up yet';
+      $('host-summary-url').textContent = hasProfile
+        ? `/h/${organizer.public_slug}`
+        : 'Create one public home for your events.';
+      $('host-summary-view').hidden = !hasProfile;
+      $('host-editor-toggle').disabled = false;
       if (hasProfile) {
-        $('host-link').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
+        $('host-summary-view').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
         $('slug-help').textContent = 'Use lowercase letters, numbers, and hyphens. Changing this breaks previously shared host-page links.';
+      } else {
+        $('slug-help').textContent = 'Save a host name to create your URL.';
       }
+      const summaryAvatar = $('host-summary-avatar');
+      summaryAvatar.replaceChildren();
       if (organizer.logo_url) {
+        const summaryImage = document.createElement('img');
+        summaryImage.src = organizer.logo_url;
+        summaryImage.alt = '';
+        summaryAvatar.appendChild(summaryImage);
         $('logo-preview').src = organizer.logo_url;
         $('logo-preview-wrap').style.display = 'block';
         $('logo-btn').textContent = 'Replace logo';
       } else {
+        const initials = document.createElement('span');
+        initials.textContent = hostInitials(organizer.org_name || organizer.name);
+        summaryAvatar.appendChild(initials);
         $('logo-preview-wrap').style.display = 'none';
         $('logo-btn').textContent = 'Upload logo';
       }
@@ -147,18 +244,40 @@
         $('header-preview-wrap').style.display = 'none';
         $('header-btn').textContent = 'Upload header';
       }
+      setHostEditor(hostEditorOpen);
     }
 
-    function populateSettings(organizer) {
+    function populateAccount(organizer) {
       $('email').value = organizer.email;
       $('name').value = organizer.name || '';
+      $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
+    }
+
+    function populateHostFields(organizer) {
       $('org_name').value = organizer.org_name || '';
       $('bio').value = organizer.bio || '';
       $('instagram_url').value = organizer.instagram_url || '';
       $('website_url').value = organizer.website_url || '';
       $('contact_email').value = organizer.contact_email || '';
-      $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
       renderHostProfile(organizer);
+    }
+
+    function populateSettings(organizer) {
+      currentOrganizer = organizer;
+      populateAccount(organizer);
+      populateHostFields(organizer);
+    }
+
+    function savedHostBody(organizer) {
+      const body = {
+        org_name: organizer.org_name || '',
+        bio: organizer.bio || '',
+        instagram_url: organizer.instagram_url || '',
+        website_url: organizer.website_url || '',
+        contact_email: organizer.contact_email || ''
+      };
+      if (organizer.public_slug) body.public_slug = organizer.public_slug;
+      return body;
     }
 
     api('/api/auth/me').then(({ organizer }) => {
@@ -169,13 +288,33 @@
       }
     });
 
-    $('settings-form').addEventListener('submit', async e => {
+    $('account-form').addEventListener('submit', async e => {
       e.preventDefault();
-      const btn = $('save-btn');
+      if (!currentOrganizer) return;
+      const btn = $('account-save-btn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const body = { ...savedHostBody(currentOrganizer), name: $('name').value };
+        const { organizer } = await api('/api/settings', { method: 'PUT', body });
+        currentOrganizer = organizer;
+        populateAccount(organizer);
+        renderHostProfile(organizer);
+        toast('Account saved');
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save account';
+      }
+    });
+
+    $('host-profile-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!currentOrganizer) return;
+      const btn = $('host-save-btn');
       btn.disabled = true; btn.textContent = 'Saving…';
       try {
         const body = {
-          name: $('name').value,
+          name: currentOrganizer.name || '',
           org_name: $('org_name').value,
           bio: $('bio').value,
           instagram_url: $('instagram_url').value,
@@ -185,12 +324,23 @@
         if (!$('public_slug').disabled) body.public_slug = $('public_slug').value;
         const { organizer } = await api('/api/settings', { method: 'PUT', body });
         populateSettings(organizer);
-        toast('Saved');
+        setHostEditor(false);
+        toast('Host page saved');
       } catch (err) {
         toast(err.message);
       } finally {
-        btn.disabled = false; btn.textContent = 'Save';
+        btn.disabled = false; btn.textContent = 'Save host page';
       }
+    });
+
+    $('host-editor-toggle').addEventListener('click', () => {
+      setHostEditor(!hostEditorOpen);
+      if (hostEditorOpen) setTimeout(() => $('org_name').focus(), 0);
+    });
+    $('host-editor-close').addEventListener('click', () => {
+      if (currentOrganizer) populateHostFields(currentOrganizer);
+      setHostEditor(false);
+      $('host-editor-toggle').focus();
     });
 
     async function uploadProfileImage(kind) {
@@ -208,6 +358,7 @@
         const response = await fetch(path, { method: 'POST', body: form });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Upload failed');
+        currentOrganizer = data.organizer;
         renderHostProfile(data.organizer);
         status.textContent = `${kind === 'logo' ? 'Logo' : 'Header'} saved.`;
       } catch (err) {

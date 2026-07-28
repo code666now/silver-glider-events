@@ -103,3 +103,17 @@ test('host and super-admin settings expose only the requested profile controls',
     assert.equal(admin.includes(excluded), false);
   }
 });
+
+test('settings use progressive disclosure and separate account from host-page saves', () => {
+  const settings = source('src/views/settings.html');
+  assert.match(settings, /id="account-form"/);
+  assert.match(settings, /id="account-save-btn">Save account</);
+  assert.match(settings, /id="host-summary-view"[^>]*hidden>View page</);
+  assert.match(settings, /id="host-editor-toggle"[^>]*aria-expanded="false"/);
+  assert.match(settings, /class="host-editor" id="host-editor" hidden/);
+  assert.match(settings, /id="host-profile-form"/);
+  assert.match(settings, /id="host-save-btn">Save host page</);
+  assert.ok(settings.indexOf('id="account-form"') < settings.indexOf('id="host-profile-form"'));
+  assert.ok(settings.indexOf('id="host-summary-name"') < settings.indexOf('for="org_name"'));
+  assert.doesNotMatch(settings, /id="settings-form"|id="save-btn"/);
+});
