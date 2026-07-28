@@ -26,5 +26,16 @@ test('After Hours Saloon readability overrides stay isolated to that effect', ()
   assert.match(publicView, /\.event-bg\.fx-saloon ~ \.layout \.desc/);
   assert.match(publicView, /\.fx-veil\.fx-veil-warm/);
   assert.match(publicView, /@media \(max-width: 879px\)/);
-  assert.doesNotMatch(publicView, /\.event-bg\.fx-(?:fog|disco|paper|static) ~ \.layout \.desc/);
+  assert.doesNotMatch(publicView, /\.event-bg\.fx-(?:fog|disco|paper) ~ \.layout \.desc/);
+});
+
+test('TV Static strengthens typography without adding a theme overlay', () => {
+  const publicView = source('src/views/event-public.html');
+  assert.match(publicView, /\.event-bg\.fx-static ~ \.layout \.event-title/);
+  assert.match(publicView, /font-weight: 800/);
+  assert.match(publicView, /--static-text-secondary: rgba\(255,255,255,\.8\)/);
+  assert.match(publicView, /--static-text-shadow: 0 1px 2px rgba\(0,0,0,\.9\), 0 0 8px rgba\(0,0,0,\.75\)/);
+  assert.match(publicView, /-webkit-text-stroke: \.4px rgba\(0,0,0,\.55\)/);
+  assert.match(publicView, /\.event-bg\.fx-static ~ \.layout \.sg-event-legal-footer \.sg-legal-link/);
+  assert.doesNotMatch(publicView, /\.fx-veil\.fx-veil-static/);
 });

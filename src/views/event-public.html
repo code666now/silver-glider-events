@@ -107,6 +107,69 @@
         linear-gradient(180deg, rgba(24,10,5,.16), rgba(8,5,4,.28));
     }
 
+    /* TV Static is intentionally loud. Keep the texture visible and improve
+       legibility through theme-only type weight, contrast, and shadow instead
+       of adding another page veil. Future noisy/VHS effects can reuse this
+       treatment by opting into the same scoped selectors. */
+    .event-bg.fx-static ~ .layout {
+      --static-text-important: rgba(255,255,255,.96);
+      --static-text-secondary: rgba(255,255,255,.8);
+      --static-text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.75);
+    }
+    .event-bg.fx-static ~ .layout .event-title {
+      color: #fff;
+      font-weight: 800;
+      text-shadow: var(--static-text-shadow);
+      -webkit-text-stroke: .4px rgba(0,0,0,.55);
+    }
+    .event-bg.fx-static ~ .layout .cat,
+    .event-bg.fx-static ~ .layout .when,
+    .event-bg.fx-static ~ .layout .venue strong,
+    .event-bg.fx-static ~ .layout .venue a,
+    .event-bg.fx-static ~ .layout .ticket-note span,
+    .event-bg.fx-static ~ .layout .ticket-note a,
+    .event-bg.fx-static ~ .layout .actions .sg-btn,
+    .event-bg.fx-static ~ .layout .host-attribution strong,
+    .event-bg.fx-static ~ .layout .host-attribution a {
+      color: var(--static-text-important);
+      text-shadow: var(--static-text-shadow);
+    }
+    .event-bg.fx-static ~ .layout .when,
+    .event-bg.fx-static ~ .layout .venue strong,
+    .event-bg.fx-static ~ .layout .venue a,
+    .event-bg.fx-static ~ .layout .ticket-note span,
+    .event-bg.fx-static ~ .layout .ticket-note a,
+    .event-bg.fx-static ~ .layout .actions .sg-btn,
+    .event-bg.fx-static ~ .layout .host-attribution strong,
+    .event-bg.fx-static ~ .layout .host-attribution a {
+      font-weight: 700;
+    }
+    .event-bg.fx-static ~ .layout .venue > span,
+    .event-bg.fx-static ~ .layout .ticket-note em,
+    .event-bg.fx-static ~ .layout .desc,
+    .event-bg.fx-static ~ .layout .host-attribution p,
+    .event-bg.fx-static ~ .layout .powered-by,
+    .event-bg.fx-static ~ .layout .powered-by a,
+    .event-bg.fx-static ~ .layout .photo-credit,
+    .event-bg.fx-static ~ .layout .photo-credit a,
+    .event-bg.fx-static ~ .layout .sg-event-legal-footer .sg-legal-links {
+      color: var(--static-text-secondary) !important;
+      font-weight: 500;
+      text-shadow: var(--static-text-shadow);
+    }
+    .event-bg.fx-static ~ .layout .ticket-note em,
+    .event-bg.fx-static ~ .layout .host-attribution p,
+    .event-bg.fx-static ~ .layout .powered-by,
+    .event-bg.fx-static ~ .layout .powered-by a,
+    .event-bg.fx-static ~ .layout .sg-event-legal-footer .sg-legal-link {
+      font-weight: 600;
+    }
+    .event-bg.fx-static ~ .layout .sg-event-legal-footer .sg-legal-link {
+      color: var(--static-text-secondary) !important;
+      text-shadow: var(--static-text-shadow);
+    }
+    .event-bg.fx-static ~ .layout #rsvp-cta { font-weight: 800; }
+
     /* After Hours Saloon has a detailed photo, so its secondary copy and
        translucent surfaces get a theme-only readability lift. */
     .event-bg.fx-saloon ~ .layout .desc,
