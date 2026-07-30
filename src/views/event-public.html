@@ -326,6 +326,8 @@
     .actions .sg-btn { flex: 1; padding: 12px; font-size: 13px; }
 
     .rsvp-zone { margin-bottom: 44px; }
+    .mobile-rsvp-dock { display: none; }
+    .mobile-rsvp-dock[hidden] { display: none; }
     #rsvp-form-box { display: none; margin-top: 20px; }
     .check {
       display: flex; gap: 12px; align-items: flex-start;
@@ -480,6 +482,29 @@
       .host-attribution { justify-content: center; }
       .powered-by { text-align: center; }
     }
+    @media (max-width: 767px) {
+      body.has-mobile-rsvp-dock { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+      .mobile-rsvp-dock {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 50;
+        display: block;
+        padding: 10px max(14px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+        border-top: 1px solid rgba(255,255,255,.1);
+        background: linear-gradient(180deg, rgba(8,8,8,.72), rgba(8,8,8,.94));
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+      .mobile-rsvp-dock .sg-btn {
+        width: min(100%, 640px);
+        min-height: 52px;
+        margin: 0 auto;
+        font-size: 16px;
+        box-shadow: 0 8px 28px rgba(0,0,0,.32);
+      }
+    }
     .photo-credit { font-size: 11px; color: var(--sg-text-faint); margin-top: 8px; text-align: center; }
     .photo-credit a { color: var(--sg-text-dim); text-decoration: underline; }
     @media (min-width: 880px) { .photo-credit { text-align: left; } }
@@ -560,6 +585,10 @@
   </div>
     </div><!-- /col-details -->
   </div><!-- /layout -->
+
+  <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
+    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
+  </div>
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
   <script src="/js/public-event.js"></script>

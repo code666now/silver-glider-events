@@ -161,18 +161,57 @@ function mountVideoEffect() {
 }
 mountVideoEffect();
 
+let activeRsvpState = 'cta-state';
+const mobileRsvpDock = $('mobile-rsvp-dock');
+const mobileRsvpCta = $('mobile-rsvp-cta');
+const mobileRsvpMedia = window.matchMedia('(max-width: 767px)');
+
+function syncMobileRsvpDock() {
+  if (!mobileRsvpDock || !mobileRsvpCta) return;
+  const inlineCta = $('rsvp-cta');
+  const hasPassedInlineCta = inlineCta.getBoundingClientRect().bottom <= 0;
+  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && hasPassedInlineCta;
+  mobileRsvpDock.hidden = !shouldShow;
+  document.body.classList.toggle('has-mobile-rsvp-dock', shouldShow);
+}
+
+let mobileRsvpSyncQueued = false;
+function queueMobileRsvpDockSync() {
+  if (mobileRsvpSyncQueued) return;
+  mobileRsvpSyncQueued = true;
+  requestAnimationFrame(() => {
+    mobileRsvpSyncQueued = false;
+    syncMobileRsvpDock();
+  });
+}
+
 function show(stateId) {
+  activeRsvpState = stateId;
   ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
     .forEach(id => { $(id).style.display = id === stateId ? 'block' : 'none'; });
+  syncMobileRsvpDock();
 }
 
 if (EVENT.status === 'cancelled') show('cancelled-state');
 else if (EVENT.isFull) show('full-state');
 
-$('rsvp-cta').addEventListener('click', () => {
+function openRsvpForm({ scrollToForm = false } = {}) {
   show('rsvp-form-box');
-  $('full_name').focus();
-});
+  $('full_name').focus({ preventScroll: scrollToForm });
+  if (scrollToForm) {
+    $('rsvp-form-box').scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start'
+    });
+  }
+}
+
+$('rsvp-cta').addEventListener('click', () => openRsvpForm());
+mobileRsvpCta?.addEventListener('click', () => openRsvpForm({ scrollToForm: true }));
+window.addEventListener('scroll', queueMobileRsvpDockSync, { passive: true });
+window.addEventListener('resize', queueMobileRsvpDockSync);
+mobileRsvpMedia.addEventListener?.('change', queueMobileRsvpDockSync);
+queueMobileRsvpDockSync();
 
 const guestFields = $('guest-fields');
 if (guestFields) {

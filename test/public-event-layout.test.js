@@ -83,3 +83,21 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
     assert.doesNotMatch(options, /id="full_name"|id="email"|id="wants_reminders"/);
   }
 });
+
+test('mobile RSVP dock reuses the existing form only after the inline CTA has been passed', () => {
+  const client = source('public/js/public-event.js');
+
+  for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = source(templatePath);
+    assert.equal((view.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
+    assert.equal((view.match(/id="mobile-rsvp-cta"/g) || []).length, 1);
+    assert.match(view, /id="mobile-rsvp-dock" hidden/);
+    assert.match(view, /aria-controls="rsvp-form-box"/);
+  }
+
+  assert.match(client, /matchMedia\('\(max-width: 767px\)'\)/);
+  assert.match(client, /getBoundingClientRect\(\)\.bottom <= 0/);
+  assert.match(client, /activeRsvpState === 'cta-state'/);
+  assert.match(client, /openRsvpForm\(\{ scrollToForm: true \}\)/);
+  assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
+});
