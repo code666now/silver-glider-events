@@ -52,6 +52,7 @@
     .section-toggle.open .chev { transform: rotate(90deg); }
 
     .archive-hint { color: var(--sg-text-faint); font-size: 12px; margin: 6px 0 0; }
+    .sg-event-thumb.flyer { object-fit:contain;background:#090909; }
 
     /* Toast with an action button */
     .sg-toast .toast-action {
@@ -227,7 +228,10 @@
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
         { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
       const title = String(ev.title || 'Untitled event');
-      const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+      const flyerMode = ev.presentation_mode === 'flyer';
+      const coverUrl = flyerMode
+        ? sgSafeHttpUrl(ev.flyer_image_url)
+        : sgSafeHttpUrl(ev.cover_image_url);
       const rsvpCount = Number(ev.rsvp_count) || 0;
       const capacity = Number(ev.capacity) || 0;
       const badges = [
@@ -240,7 +244,7 @@
       return `
         <a class="sg-event-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
           ${coverUrl
-            ? `<img class="sg-event-thumb" src="${sgEscapeHtml(coverUrl)}" alt="">`
+            ? `<img class="sg-event-thumb${flyerMode ? ' flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt="">`
             : `<div class="sg-event-thumb placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
           <div class="sg-event-meta">
             <h3>${sgEscapeHtml(title)}</h3>
@@ -258,12 +262,15 @@
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
         { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
       const title = String(ev.title || 'Untitled event');
-      const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+      const flyerMode = ev.presentation_mode === 'flyer';
+      const coverUrl = flyerMode
+        ? sgSafeHttpUrl(ev.flyer_image_url)
+        : sgSafeHttpUrl(ev.cover_image_url);
       const rsvpCount = Number(ev.rsvp_count) || 0;
       return `
         <div class="sg-event-card" style="opacity:.75">
           ${coverUrl
-            ? `<img class="sg-event-thumb" src="${sgEscapeHtml(coverUrl)}" alt="">`
+            ? `<img class="sg-event-thumb${flyerMode ? ' flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt="">`
             : `<div class="sg-event-thumb placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
           <div class="sg-event-meta">
             <h3>${sgEscapeHtml(title)}</h3>

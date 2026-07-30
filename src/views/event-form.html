@@ -30,7 +30,36 @@
       position: absolute; bottom: 0; left: 0; height: 3px;
       background: var(--sg-accent); width: 0%; transition: width 0.2s ease;
     }
-    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .presentation-toggle { margin-bottom: 26px; }
+    .presentation-toggle .vis-toggle button { text-align: left; border-radius: 16px; padding: 15px 17px; }
+    .presentation-toggle strong { display: block; color: inherit; font-size: 14px; }
+    .presentation-toggle span { display: block; color: var(--sg-text-faint); font-size: 11px; font-weight: 500; line-height: 1.45; margin-top: 3px; }
+    .presentation-toggle button.on span { color: rgba(28,197,190,.72); }
+    .media-panel[hidden] { display: none; }
+    .flyer-drop {
+      position: relative;
+      min-height: 280px;
+      border: 1px dashed var(--sg-border);
+      border-radius: var(--sg-radius-card);
+      background: var(--sg-surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      overflow: hidden;
+      transition: border-color .15s ease;
+      padding: 24px;
+      margin-bottom: 14px;
+    }
+    .flyer-drop:hover, .flyer-drop.dragover { border-color: var(--sg-accent); }
+    .flyer-drop img { display: none; width: auto; max-width: 100%; height: auto; max-height: 720px; object-fit: contain; }
+    .flyer-drop.has-image img { display: block; }
+    .flyer-drop.has-image .hint { display: none; }
+    .flyer-drop .hint { color: var(--sg-text-faint); font-size: 13px; line-height: 1.55; text-align: center; }
+    .flyer-help { color: var(--sg-text-faint); font-size: 11px; line-height: 1.55; margin: 0 0 24px; }
+    .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+    .row2 > * { min-width: 0; }
+    .row2 .sg-input { min-width: 0; width: 100%; }
     .vis-toggle { display: flex; gap: 10px; }
     .vis-toggle button {
       flex: 1; padding: 12px; border-radius: 999px; font-family: var(--sg-font-body);
@@ -442,6 +471,15 @@
     <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
 
     <form id="event-form">
+      <div class="sg-field presentation-toggle">
+        <label>Presentation</label>
+        <div class="vis-toggle" role="group" aria-label="Event presentation">
+          <button type="button" class="on" id="presentation-standard" aria-pressed="true"><strong>Standard</strong><span>Cover image, background, and event details.</span></button>
+          <button type="button" id="presentation-flyer" aria-pressed="false"><strong>Flyer</strong><span>Put your uploaded flyer front and center.</span></button>
+        </div>
+      </div>
+
+      <section class="media-panel" id="standard-media" aria-label="Standard event artwork">
       <div class="cover-drop" id="cover-drop">
         <img id="cover-preview" alt="" style="display:none">
         <p class="hint">Add a cover image<br><span style="font-size:11px">JPG, PNG, or WebP · up to 5 MB · optional</span></p>
@@ -498,6 +536,23 @@
         <p class="theme-selected-name" id="theme-selected-name" aria-live="polite">Selected: Midnight</p>
         <input type="hidden" id="background_theme" value="midnight">
       </div>
+      </section>
+
+      <section class="media-panel" id="flyer-media" aria-label="Flyer artwork" hidden>
+        <label style="display:block;margin-bottom:9px">Flyer image <span style="color:var(--sg-accent)">required</span></label>
+        <div class="flyer-drop" id="flyer-drop">
+          <img id="flyer-preview" alt="Flyer preview">
+          <p class="hint"><strong style="display:block;color:var(--sg-text);margin-bottom:4px">Upload your flyer</strong>JPG, PNG, WebP, or GIF · up to 5 MB<br>Portrait and landscape artwork are both preserved.</p>
+          <div class="cover-progress" id="flyer-progress"></div>
+          <input type="file" id="flyer-input" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button type="button" class="sg-btn sg-btn-ghost" id="btn-flyer-upload" style="flex:1;padding:9px;font-size:13px">Choose flyer</button>
+          <button type="button" class="sg-btn sg-btn-ghost" id="btn-clear-flyer" style="padding:9px 14px;font-size:13px;display:none">Remove</button>
+        </div>
+        <p class="flyer-help">Your flyer is shown without cropping on the event page and in flyer-focused emails.</p>
+        <input type="hidden" id="flyer_image_url">
+      </section>
 
       <div class="sg-field">
         <label for="title">Title</label>

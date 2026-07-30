@@ -61,6 +61,8 @@
       aspect-ratio: 16/6; background: var(--sg-surface);
     }
     .hero-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero-banner.flyer { height:auto;max-height:none;background:#090909;text-align:center; }
+    .hero-banner.flyer img { width:auto;max-width:100%;height:auto;max-height:720px;object-fit:contain;margin:0 auto; }
     @media (max-width: 620px) {
       .stat-row { grid-template-columns: 1fr 1fr; }
       .toolbar .sg-btn, .more-menu summary { padding: 10px 15px; }

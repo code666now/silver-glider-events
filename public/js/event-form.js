@@ -3,9 +3,24 @@ renderNav('events');
 const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
 let admissionType = 'free_rsvp';
+let presentationMode = 'standard';
 let hasSavedSecretCode = false;
 
 const $ = id => document.getElementById(id);
+
+function setPresentationMode(mode) {
+  presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
+  const standard = presentationMode === 'standard';
+  $('presentation-standard').classList.toggle('on', standard);
+  $('presentation-flyer').classList.toggle('on', !standard);
+  $('presentation-standard').setAttribute('aria-pressed', String(standard));
+  $('presentation-flyer').setAttribute('aria-pressed', String(!standard));
+  $('standard-media').hidden = !standard;
+  $('flyer-media').hidden = standard;
+}
+
+$('presentation-standard').addEventListener('click', () => setPresentationMode('standard'));
+$('presentation-flyer').addEventListener('click', () => setPresentationMode('flyer'));
 
 function applyOrganizerProfile(organizer) {
   const input = $('presenter_name');
@@ -442,6 +457,61 @@ function uploadCover(file) {
   xhr.send(form);
 }
 
+const flyerDrop = $('flyer-drop');
+const flyerInput = $('flyer-input');
+
+function setFlyer(url) {
+  $('flyer_image_url').value = url || '';
+  const preview = $('flyer-preview');
+  if (url) {
+    preview.src = url;
+    flyerDrop.classList.add('has-image');
+    $('btn-clear-flyer').style.display = '';
+  } else {
+    preview.removeAttribute('src');
+    flyerDrop.classList.remove('has-image');
+    $('btn-clear-flyer').style.display = 'none';
+  }
+}
+
+function uploadFlyer(file) {
+  const progress = $('flyer-progress');
+  progress.style.width = '30%';
+  const form = new FormData();
+  form.append('image', file);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/uploads/flyer');
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) progress.style.width = `${Math.round((e.loaded / e.total) * 90)}%`;
+  };
+  xhr.onload = () => {
+    progress.style.width = '0%';
+    try {
+      const data = JSON.parse(xhr.responseText);
+      if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
+      setFlyer(data.url);
+    } catch (err) {
+      showError(err.message);
+    }
+  };
+  xhr.onerror = () => { progress.style.width = '0%'; showError('Upload failed'); };
+  xhr.send(form);
+}
+
+flyerDrop.addEventListener('click', () => flyerInput.click());
+$('btn-flyer-upload').addEventListener('click', () => flyerInput.click());
+$('btn-clear-flyer').addEventListener('click', () => setFlyer(''));
+flyerDrop.addEventListener('dragover', handleImageDragover);
+flyerDrop.addEventListener('dragleave', handleImageDragleave);
+flyerDrop.addEventListener('drop', event => {
+  event.preventDefault();
+  event.currentTarget.classList.remove('dragover');
+  if (event.dataTransfer.files[0]) uploadFlyer(event.dataTransfer.files[0]);
+});
+flyerInput.addEventListener('change', () => {
+  if (flyerInput.files[0]) uploadFlyer(flyerInput.files[0]);
+});
+
 // Unsplash search — only shown if the server has an access key configured
 $('btn-search').addEventListener('click', openImageModal);
 api('/api/photos/enabled').then(({ enabled }) => {
@@ -635,6 +705,8 @@ function collect() {
     description: $('description').value.trim(),
     event_vibe_url: $('event_vibe_url').value.trim() || null,
     cover_image_url: $('cover_image_url').value || null,
+    presentation_mode: presentationMode,
+    flyer_image_url: $('flyer_image_url').value || null,
     event_date: $('event_date').value,
     start_time: $('start_time').value,
     venue_name: $('venue_name').value.trim(),
@@ -696,6 +768,8 @@ if (editId) {
       $('secret-code-help').textContent = 'The current code is protected. Leave both fields blank to keep it, or enter a new matching code to replace it.';
     }
     setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
+    setPresentationMode(event.presentation_mode === 'flyer' ? 'flyer' : 'standard');
+    if (event.flyer_image_url) setFlyer(event.flyer_image_url);
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
@@ -712,6 +786,9 @@ $('event-form').addEventListener('submit', async e => {
   btn.textContent = editId ? 'Saving…' : 'Publishing…';
   try {
     await organizerProfileReady;
+    if (presentationMode === 'flyer' && !$('flyer_image_url').value) {
+      throw new Error('Upload a flyer before publishing this event');
+    }
     const body = collect();
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })

@@ -31,9 +31,11 @@ async function loadEvent() {
     { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
   $('meta').textContent = `${dateStr} · ${event.venue_name}`;
 
-  if (event.cover_image_url) {
+  const manageImage = event.presentation_mode === 'flyer' ? event.flyer_image_url : event.cover_image_url;
+  if (manageImage) {
     $('hero').style.display = 'block';
-    $('hero-img').src = event.cover_image_url;
+    $('hero').classList.toggle('flyer', event.presentation_mode === 'flyer');
+    $('hero-img').src = manageImage;
   }
 
   const badge = $('status-badge');

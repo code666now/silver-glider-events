@@ -34,6 +34,7 @@
       object-fit: cover;
       display: block;
     }
+    .next-visual img.flyer { object-fit: contain; background:#090909; }
     .next-visual.placeholder {
       display: flex;
       align-items: center;
@@ -153,7 +154,10 @@
         const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
         const dateStr = new Date(ev.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
         const title = String(ev.title || 'Untitled event');
-        const coverUrl = sgSafeHttpUrl(ev.cover_image_url);
+        const flyerMode = ev.presentation_mode === 'flyer';
+        const coverUrl = flyerMode
+          ? sgSafeHttpUrl(ev.flyer_image_url)
+          : sgSafeHttpUrl(ev.cover_image_url);
         const rsvpCount = Number(ev.rsvp_count) || 0;
         const capacity = Number(ev.capacity) || 0;
         document.getElementById('sub').textContent = 'Your next event.';
@@ -162,7 +166,7 @@
         container.innerHTML = `
           <a class="next-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
             ${coverUrl
-              ? `<div class="next-visual"><img src="${sgEscapeHtml(coverUrl)}" alt=""></div>`
+              ? `<div class="next-visual"><img class="${flyerMode ? 'flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt=""></div>`
               : `<div class="next-visual placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
             <div class="next-details">
               <div>

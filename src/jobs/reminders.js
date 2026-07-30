@@ -13,10 +13,12 @@ const SENDERS = {
 // impossible even across concurrent runs — only the run that wins the INSERT sends.
 async function processReminders(messageType, targetHour, dayOffset) {
   const { rows: events } = await pool.query(
-    `SELECT * FROM events
-      WHERE status='published'
-        AND event_date = ((NOW() AT TIME ZONE timezone)::date + $1::int)
-        AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE timezone)) = $2`,
+    `SELECT e.*, o.org_name, o.public_slug AS organizer_public_slug
+       FROM events e
+       JOIN organizers o ON o.id=e.organizer_id
+      WHERE e.status='published'
+        AND e.event_date = ((NOW() AT TIME ZONE e.timezone)::date + $1::int)
+        AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE e.timezone)) = $2`,
     [dayOffset, targetHour]
   );
 
@@ -60,10 +62,12 @@ async function deliver(logId, messageType, event, rsvp) {
 async function retryFailed() {
   const { rows } = await pool.query(
     `SELECT ml.id AS log_id, ml.message_type, e.*, r.id AS rsvp_id2, r.email AS rsvp_email,
-            r.manage_token, r.first_name, r.last_name
+            r.manage_token, r.first_name, r.last_name,
+            o.org_name, o.public_slug AS organizer_public_slug
        FROM message_log ml
        JOIN rsvps r  ON r.id = ml.rsvp_id
        JOIN events e ON e.id = ml.event_id
+       JOIN organizers o ON o.id = e.organizer_id
       WHERE ml.status='failed'
         AND ml.message_type IN ('reminder_day_before','reminder_day_of')
         AND ml.created_at > NOW() - INTERVAL '20 hours'

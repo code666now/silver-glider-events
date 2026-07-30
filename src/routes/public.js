@@ -261,6 +261,9 @@ function organizerViewer(req, event) {
 }
 
 function eventCardVisual(event) {
+  if (event.presentation_mode === 'flyer' && event.flyer_image_url) {
+    return `<img class="flyer-art" src="${esc(event.flyer_image_url)}" alt="" loading="lazy">`;
+  }
   if (event.cover_image_url) {
     return `<img src="${esc(event.cover_image_url)}" alt="" loading="lazy">`;
   }
@@ -323,7 +326,7 @@ router.get('/h/:slug', async (req, res, next) => {
     const host = hosts[0];
     if (!host) return res.status(404).send(render404());
 
-    const eventSelect = `SELECT slug, title, cover_image_url, event_date, start_time,
+    const eventSelect = `SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url, event_date, start_time,
                                 venue_name, venue_city, background_theme
                            FROM events
                           WHERE organizer_id=$1
@@ -465,7 +468,11 @@ router.get('/e/:slug', async (req, res, next) => {
     const fxVeil = isEffect
       ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"></div>`
       : '';
-    const heroHtml = event.cover_image_url
+    const flyerImageUrl = event.presentation_mode === 'flyer' ? event.flyer_image_url : null;
+    const primaryImageUrl = flyerImageUrl || event.cover_image_url;
+    const heroHtml = flyerImageUrl
+      ? `<div class="hero flyer-hero" id="hero"><img src="${esc(flyerImageUrl)}" alt="${esc(event.title)} flyer" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
+      : event.cover_image_url
       ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
       : (isEffect
           ? `<div class="hero no-image" id="hero"></div>`
@@ -487,6 +494,8 @@ router.get('/e/:slug', async (req, res, next) => {
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
       organizerLabel,
       coverImageUrl: event.cover_image_url || null,
+      presentationMode: event.presentation_mode || 'standard',
+      flyerImageUrl: event.flyer_image_url || null,
       bgEffect: isEffect ? theme : null
     };
 
@@ -494,7 +503,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{TITLE}}/g, esc(event.title))
       .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(robotsDirective(event.visibility)))
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))
-      .replace(/{{OG_IMAGE}}/g, esc(event.cover_image_url || `${process.env.APP_URL}/logo.png`))
+      .replace(/{{OG_IMAGE}}/g, esc(primaryImageUrl || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
       .replace(/{{BODY_CLASS}}/g, bgClass)
       .replace(/{{FX_MEDIA}}/g, fxMedia)
@@ -636,7 +645,10 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 
     await client.query('BEGIN');
     const { rows: evRows } = await client.query(
-      `SELECT * FROM events WHERE slug=$1 AND status='published' FOR UPDATE`, [req.params.slug]
+      `SELECT e.*, o.org_name, o.public_slug AS organizer_public_slug
+         FROM events e JOIN organizers o ON o.id=e.organizer_id
+        WHERE e.slug=$1 AND e.status='published'
+        FOR UPDATE OF e`, [req.params.slug]
     );
     if (!evRows.length) {
       await client.query('ROLLBACK');
@@ -767,6 +779,25 @@ router.get('/e/:slug/calendar.ics', async (req, res, next) => {
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${event.slug}.ics"`);
     res.send(buildIcs(event));
+  } catch (err) { next(err); }
+});
+
+// A confirmation/reminder recipient can download the calendar file even when
+// the event itself is protected by a Secret Show code. The unguessable RSVP
+// management token is the authorization boundary for this attendee-only URL.
+router.get('/r/:token/calendar.ics', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.*
+         FROM rsvps r JOIN events e ON e.id=r.event_id
+        WHERE r.manage_token=$1 AND r.status='confirmed'`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${rows[0].slug}.ics"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(buildIcs(rows[0]));
   } catch (err) { next(err); }
 });
 

@@ -8,7 +8,7 @@ function esc(s) {
 }
 
 // Shared premium dark layout. Emails use a system font stack — webfonts are unreliable in clients.
-function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
+function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml, footerBrand = 'Silver Glider Events' }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   return `
 <!DOCTYPE html>
@@ -44,7 +44,7 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
           ${footerHtml ? `<div style="margin:0 0 34px">${footerHtml}</div>` : '<div style="height:6px"></div>'}
         </td></tr>
         <tr><td style="border-top:1px solid #202020;padding:34px 0 8px;text-align:center">
-          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">Silver Glider Events</p>
+          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -55,7 +55,7 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml }) {
 
 // RSVP confirmations use the same dark, spacious visual language as Silver
 // Glider's activation emails without changing the shared transactional layout.
-function rsvpConfirmationLayout({ headline, sub, bodyHtml, cta, ctaUrl, secondaryHtml }) {
+function rsvpConfirmationLayout({ headline, sub, bodyHtml, cta, ctaUrl, secondaryHtml, footerBrand = 'Silver Glider Events' }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   return `
 <!DOCTYPE html>
@@ -91,7 +91,7 @@ function rsvpConfirmationLayout({ headline, sub, bodyHtml, cta, ctaUrl, secondar
           ${secondaryHtml || ''}
         </td></tr>
         <tr><td style="border-top:1px solid #202020;padding:34px 0 8px;text-align:center">
-          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">Silver Glider Events</p>
+          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p>
         </td></tr>
       </table>
     </td></tr>
@@ -139,6 +139,46 @@ function attendeeEventUrl(event, rsvp) {
     : `${process.env.APP_URL}/e/${event.slug}`;
 }
 
+function isFlyerEvent(event) {
+  return event?.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
+}
+
+function flyerArtwork(event) {
+  if (!isFlyerEvent(event)) return '';
+  return `<div style="background:#111;border:1px solid #222;border-radius:18px;overflow:hidden;margin:0 0 22px;text-align:center">
+    <img src="${esc(event.flyer_image_url)}" width="584" alt="${esc(event.title)} flyer" style="display:block;width:100%;max-width:584px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none">
+  </div>`;
+}
+
+function flyerSecondaryLinks(event, rsvp, { includeManage = true } = {}) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const calendarUrl = `${baseUrl}/r/${rsvp.manage_token}/calendar.ics`;
+  const manageUrl = `${baseUrl}/r/${rsvp.manage_token}`;
+  const hostUrl = event.organizer_public_slug ? `${baseUrl}/h/${encodeURIComponent(event.organizer_public_slug)}` : '';
+  const links = [
+    `<a href="${esc(calendarUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Add to Calendar</a>`
+  ];
+  if (includeManage) links.push(`<a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>`);
+  if (hostUrl && event.org_name) links.push(`<a href="${esc(hostUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">${esc(event.org_name)}</a>`);
+  return `<p style="color:#777;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.9">${links.join('<span style="color:#444"> &nbsp;·&nbsp; </span>')}</p>`;
+}
+
+function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
+  const greeting = rsvp.first_name ? `${rsvp.first_name}, your RSVP` : 'Your RSVP';
+  const reminderHtml = rsvp.wants_reminders
+    ? '<p style="color:#777;font-size:12px;text-align:center;margin:-18px 0 28px">We’ll send one reminder the day before.</p>'
+    : '';
+  return rsvpConfirmationLayout({
+    headline: 'See you there.',
+    sub: `${greeting} for ${event.title} is confirmed.`,
+    bodyHtml: `${flyerArtwork(event)}${eventCard(event)}`,
+    cta: event.comments_enabled ? 'View event & comments' : 'View event',
+    ctaUrl: attendeeEventUrl(event, rsvp),
+    secondaryHtml: `${flyerSecondaryLinks(event, rsvp)}${reminderHtml}`,
+    footerBrand: 'Powered by Silver Glider'
+  });
+}
+
 async function send({ to, subject, html, attachments, replyTo }) {
   if (!resend) {
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
@@ -172,6 +212,7 @@ async function sendMagicLink({ to, link }) {
 }
 
 function renderRsvpConfirmationEmail({ event, rsvp }) {
+  if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp });
   const manageUrl = `${process.env.APP_URL}/r/${rsvp.manage_token}`;
   const greeting = rsvp.first_name ? `${rsvp.first_name}, your` : 'Your';
   const reminderHtml = rsvp.wants_reminders
@@ -184,6 +225,19 @@ function renderRsvpConfirmationEmail({ event, rsvp }) {
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
     secondaryHtml: `<p style="color:#777;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.75">A calendar invite is attached.${reminderHtml}<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>.</p>`
+  });
+}
+
+function renderFlyerReminderEmail({ event, rsvp, kicker, headline }) {
+  return layout({
+    kicker,
+    headline,
+    sub: event.title,
+    bodyHtml: `${flyerArtwork(event)}${eventCard(event)}`,
+    cta: event.comments_enabled ? 'View event & comments' : 'View event',
+    ctaUrl: attendeeEventUrl(event, rsvp),
+    footerHtml: flyerSecondaryLinks(event, rsvp),
+    footerBrand: 'Powered by Silver Glider'
   });
 }
 
@@ -203,7 +257,7 @@ async function sendDayBeforeReminder({ to, event, rsvp }) {
   return send({
     to,
     subject: `Tomorrow: ${event.title}`,
-    html: layout({
+    html: isFlyerEvent(event) ? renderFlyerReminderEmail({ event, rsvp, kicker: 'Reminder', headline: 'Tomorrow.' }) : layout({
       kicker: 'Reminder',
       headline: 'Tomorrow.',
       sub: event.title,
@@ -219,7 +273,7 @@ async function sendDayOfReminder({ to, event, rsvp }) {
   return send({
     to,
     subject: `Today: ${event.title} at ${formatTime(event.start_time)}`,
-    html: layout({
+    html: isFlyerEvent(event) ? renderFlyerReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.' }) : layout({
       kicker: 'Today',
       headline: 'See you tonight.',
       sub: event.title,
@@ -251,5 +305,6 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventAnnouncement, formatTime, renderRsvpConfirmationEmail,
+  renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout
 };

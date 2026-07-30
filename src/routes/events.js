@@ -9,6 +9,7 @@ const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
+const { isManagedFlyerUrl } = require('../lib/cloudinary');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -20,6 +21,7 @@ router.use('/api/places', requireOrganizer);
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog', 'saloon'];
 const ADMISSION_TYPES = ['free_rsvp', 'paid'];
+const PRESENTATION_MODES = ['standard', 'flyer'];
 
 function isTrue(value) {
   return value === true || value === 'true';
@@ -66,6 +68,12 @@ function cleanVibeUrl(v) {
   }
 }
 
+function cleanFlyerUrl(v) {
+  const raw = String(v ?? '').trim();
+  if (!raw) return null;
+  return isManagedFlyerUrl(raw) ? raw.slice(0, 1000) : null;
+}
+
 function cleanFloat(v) {
   if (v === '' || v == null) return null;
   const n = Number(v);
@@ -84,6 +92,8 @@ function validateEventBody(body, { partial = false } = {}) {
     description:     v => String(v ?? '').trim(),
     event_vibe_url:  cleanVibeUrl,
     cover_image_url: v => String(v ?? '').trim() || null,
+    presentation_mode: v => (PRESENTATION_MODES.includes(v) ? v : 'standard'),
+    flyer_image_url: cleanFlyerUrl,
     cover_credit_name: v => (v ? String(v).trim().slice(0, 120) : null),
     cover_credit_link: v => (v ? String(v).trim().slice(0, 300) : null),
     event_date:      v => String(v).trim(),
@@ -110,6 +120,7 @@ function validateEventBody(body, { partial = false } = {}) {
     out[key] = clean(body[key]);
   }
   if (!partial) {
+    out.presentation_mode = out.presentation_mode || 'standard';
     if (!out.title) errors.push('Title is required');
     if (!out.event_date || !/^\d{4}-\d{2}-\d{2}$/.test(out.event_date)) errors.push('Date is required');
     if (!out.start_time || !/^\d{2}:\d{2}/.test(out.start_time)) errors.push('Start time is required');
@@ -118,6 +129,8 @@ function validateEventBody(body, { partial = false } = {}) {
     if (out.event_date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(out.event_date || '')) errors.push('Invalid date');
     if (out.start_time !== undefined && !/^\d{2}:\d{2}/.test(out.start_time || '')) errors.push('Invalid start time');
   }
+  if (body.flyer_image_url && !out.flyer_image_url) errors.push('Upload the flyer through Silver Glider Events');
+  if (!partial && out.presentation_mode === 'flyer' && !out.flyer_image_url) errors.push('A flyer image is required for Flyer presentation');
   const paid = out.admission_type === 'paid' || (partial && body.admission_type === undefined && (out.ticket_price != null || out.ticket_url));
   if (out.admission_type === 'free_rsvp') {
     out.ticket_price = null;
@@ -218,15 +231,15 @@ router.post('/api/events', async (req, res, next) => {
       try {
         await client.query('BEGIN');
         const { rows } = await client.query(
-          `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
+          `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, presentation_mode, flyer_image_url, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
                                show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
-           out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
+           out.presentation_mode, out.flyer_image_url, out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
            out.category, out.capacity, out.visibility || 'public', out.background_theme || 'midnight',
            out.cover_credit_name || null, out.cover_credit_link || null,
            out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
@@ -282,7 +295,7 @@ router.put('/api/events/:id', async (req, res, next) => {
     await client.query('BEGIN');
     const { rows: currentRows } = await client.query(
       `SELECT visibility, show_guest_list, allow_guests, comments_enabled,
-              secret_show_enabled, secret_show_version
+              secret_show_enabled, secret_show_version, presentation_mode, flyer_image_url
          FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
@@ -291,6 +304,12 @@ router.put('/api/events/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     const current = currentRows[0];
+    const effectivePresentationMode = out.presentation_mode ?? current.presentation_mode ?? 'standard';
+    const effectiveFlyerImage = out.flyer_image_url !== undefined ? out.flyer_image_url : current.flyer_image_url;
+    if (effectivePresentationMode === 'flyer' && !effectiveFlyerImage) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'A flyer image is required for Flyer presentation' });
+    }
     const effectiveVisibility = out.visibility || current.visibility;
     Object.assign(out, normalizePrivateSettings(effectiveVisibility, {
       show_guest_list: req.body.show_guest_list ?? current.show_guest_list,
@@ -367,15 +386,16 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
       const slug = e.visibility === 'private' ? makePrivateSlug() : makePublicSlug(e.title);
       try {
         const { rows } = await pool.query(
-          `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, event_date,
+          `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, presentation_mode, flyer_image_url, event_date,
                                start_time, end_time, timezone, venue_name, venue_address, category,
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
                                background_theme, cover_credit_name, cover_credit_link,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
                                show_guest_list, allow_guests, comments_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'draft',$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
            RETURNING *`,
-          [req.organizer.id, slug, e.title, e.description, e.cover_image_url, e.event_date,
+          [req.organizer.id, slug, e.title, e.description, e.cover_image_url,
+           e.presentation_mode || 'standard', e.flyer_image_url || null, e.event_date,
            e.start_time, e.end_time, e.timezone, e.venue_name, e.venue_address, e.category,
            e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
            e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
