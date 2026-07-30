@@ -333,6 +333,42 @@
       margin-bottom: 14px; cursor: pointer;
     }
     .check input { accent-color: var(--sg-accent); width: 17px; height: 17px; margin-top: 1px; flex-shrink: 0; }
+    .rsvp-options {
+      margin: 2px 0 18px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 14px;
+      background: rgba(255,255,255,.025);
+    }
+    .rsvp-options summary {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      color: var(--sg-text-dim);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      list-style: none;
+    }
+    .rsvp-options summary::-webkit-details-marker { display: none; }
+    .rsvp-options summary small {
+      margin-left: auto;
+      color: var(--sg-text-faint);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .rsvp-options summary::after {
+      content: '+';
+      color: var(--sg-accent);
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1;
+      transition: transform .15s ease;
+    }
+    .rsvp-options[open] summary::after { transform: rotate(45deg); }
+    .rsvp-options-body { padding: 2px 14px 14px; }
+    .rsvp-options-body .sg-field { margin-bottom: 16px; }
+    .rsvp-options-body .check { margin-bottom: 0; }
     .party-size-field {
       margin: 2px 0 18px;
       padding: 16px;
@@ -481,10 +517,15 @@
         <form id="rsvp-form">
           <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
           <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
-          <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
           {{GUEST_FIELDS_HTML}}
           <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
-          <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
+          <details class="rsvp-options">
+            <summary><span>More options</span><small>Phone and host updates</small></summary>
+            <div class="rsvp-options-body">
+              <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
+              <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
+            </div>
+          </details>
           <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit" style="margin-top:10px">Confirm RSVP</button>
         </form>
       </div>

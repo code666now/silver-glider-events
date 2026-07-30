@@ -46,10 +46,15 @@
           <form id="rsvp-form">
             <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
             <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
-            <div class="sg-field"><label>Phone <span class="optional-label">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
             {{GUEST_FIELDS_HTML}}
             <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
-            <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
+            <details class="rsvp-options">
+              <summary><span>More options</span><small>Phone and host updates</small></summary>
+              <div class="rsvp-options-body">
+                <div class="sg-field"><label>Phone <span class="optional-label">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
+                <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
+              </div>
+            </details>
             <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit">Confirm RSVP</button>
           </form>
         </div>

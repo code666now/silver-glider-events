@@ -66,3 +66,20 @@ test('legal footer mounts inside both isolated public event presentations', () =
   const client = source('public/js/legal-footer.js');
   assert.match(client, /document\.querySelector\('\.col-details \.wrap'\) \|\| document\.querySelector\('\.flyer-details'\)/);
 });
+
+test('RSVP keeps essential identity fields visible and progressively discloses only optional controls', () => {
+  for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = source(templatePath);
+    const form = view.slice(view.indexOf('<form id="rsvp-form">'), view.indexOf('</form>'));
+    const options = form.slice(form.indexOf('<details class="rsvp-options">'), form.indexOf('</details>'));
+
+    assert.ok(form.indexOf('id="full_name"') < form.indexOf('id="email"'));
+    assert.ok(form.indexOf('id="email"') < form.indexOf('<details class="rsvp-options">'));
+    assert.ok(form.indexOf('id="wants_reminders"') < form.indexOf('<details class="rsvp-options">'));
+    assert.doesNotMatch(form, /<details class="rsvp-options"\s+open/);
+    assert.match(options, /Phone and host updates/);
+    assert.match(options, /id="phone"/);
+    assert.match(options, /id="organizer_optin"/);
+    assert.doesNotMatch(options, /id="full_name"|id="email"|id="wants_reminders"/);
+  }
+});

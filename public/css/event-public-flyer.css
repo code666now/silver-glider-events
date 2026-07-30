@@ -255,6 +255,42 @@
   flex-shrink: 0;
   accent-color: var(--sg-accent);
 }
+.rsvp-options {
+  margin: 2px 0 18px;
+  border: 1px solid var(--sg-border-soft);
+  border-radius: 14px;
+  background: rgba(255,255,255,.025);
+}
+.rsvp-options summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--sg-text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+.rsvp-options summary::-webkit-details-marker { display: none; }
+.rsvp-options summary small {
+  margin-left: auto;
+  color: var(--sg-text-faint);
+  font-size: 10px;
+  font-weight: 500;
+}
+.rsvp-options summary::after {
+  content: '+';
+  color: var(--sg-accent);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  transition: transform .15s ease;
+}
+.rsvp-options[open] summary::after { transform: rotate(45deg); }
+.rsvp-options-body { padding: 2px 14px 14px; }
+.rsvp-options-body .sg-field { margin-bottom: 16px; }
+.rsvp-options-body .check { margin-bottom: 0; }
 .party-size-field {
   margin: 2px 0 18px;
   padding: 16px;
