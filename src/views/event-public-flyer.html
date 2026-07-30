@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="{{ROBOTS_DIRECTIVE}}">
+  <title>{{TITLE}} — Silver Glider Events</title>
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{OG_DESCRIPTION}}">
+  <meta property="og:image" content="{{OG_IMAGE}}">
+  <meta property="og:url" content="{{OG_URL}}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/event-public-flyer.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body class="flyer-public-page">
+  <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true">{{FX_MEDIA}}</div>
+  {{FX_VEIL}}
+
+  <main class="flyer-layout">
+    <div class="flyer-poster">{{HERO}}{{PHOTO_CREDIT}}</div>
+
+    <section class="flyer-details" aria-label="Event details">
+      <p class="sg-label cat">{{CATEGORY}}</p>
+      <h1 class="event-title">{{TITLE}}</h1>
+
+      <div class="when"><span>{{DATE_STR}}</span><span class="dot">·</span><span>{{TIME_STR}}</span></div>
+
+      <div class="venue">
+        <strong>{{VENUE_NAME}}</strong>
+        <span>{{VENUE_ADDRESS}}</span>
+        <a href="{{MAPS_URL}}" target="_blank" rel="noopener">Open in Maps →</a>
+      </div>
+
+      {{TICKET_HTML}}
+
+      <div class="rsvp-zone">
+        <div id="cta-state">
+          <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta">{{RSVP_CTA}}</button>
+        </div>
+
+        <div id="rsvp-form-box">
+          <p id="rsvp-error"></p>
+          <form id="rsvp-form">
+            <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
+            <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
+            <div class="sg-field"><label>Phone <span class="optional-label">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
+            {{GUEST_FIELDS_HTML}}
+            <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
+            <label class="check"><input type="checkbox" id="organizer_optin"> Email me about future events from this host. Unsubscribe anytime.</label>
+            <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit">Confirm RSVP</button>
+          </form>
+        </div>
+
+        <div id="success-state">
+          <div class="big-check">✓</div>
+          <h2>You're on the list.</h2>
+          <p id="success-sub">Confirmation and calendar invite are on the way to your inbox.</p>
+        </div>
+
+        <div id="full-state">
+          <h2>Event full</h2>
+          <p>This event has reached capacity.</p>
+        </div>
+
+        <div id="cancelled-state">
+          <h2>Event cancelled</h2>
+          <p>This event is no longer happening.</p>
+        </div>
+      </div>
+
+      <p class="desc">{{DESCRIPTION_HTML}}</p>
+      {{VIBE_HTML}}
+
+      {{GUEST_LIST_HTML}}
+      {{COMMENTS_HTML}}
+
+      <div class="actions">
+        <button class="sg-btn sg-btn-ghost" id="share-btn">Share</button>
+        <a class="sg-btn sg-btn-ghost" id="cal-btn" href="#">Add to calendar</a>
+      </div>
+
+      <div class="flyer-attribution">
+        {{PRESENTER_HTML}}
+        <p class="powered-by">Powered by <a href="/">Silver Glider</a></p>
+      </div>
+    </section>
+  </main>
+
+  <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
+  <script src="/js/public-event.js"></script>
+</body>
+</html>

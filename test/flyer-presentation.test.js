@@ -68,14 +68,46 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /Upload a flyer before publishing this event/);
 });
 
-test('flyer public rendering is poster-first without replacing the existing event flow', () => {
+test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {
   const route = read('src/routes/public.js');
-  const template = read('src/views/event-public.html');
+  const standardTemplate = read('src/views/event-public.html');
+  const flyerTemplate = read('src/views/event-public-flyer.html');
+  const flyerStyles = read('public/css/event-public-flyer.css');
+
+  assert.match(route, /const flyerPublicTemplate = fs\.readFileSync/);
+  assert.match(route, /const isFlyerPresentation = event\.presentation_mode === 'flyer' && Boolean\(event\.flyer_image_url\)/);
+  assert.match(route, /const activePublicTemplate = isFlyerPresentation \? flyerPublicTemplate : publicTemplate/);
   assert.match(route, /class="hero flyer-hero"/);
   assert.match(route, /const primaryImageUrl = flyerImageUrl \|\| event\.cover_image_url/);
-  assert.match(template, /\.hero\.flyer-hero img[\s\S]*height: auto;[\s\S]*object-fit: contain/);
+  assert.match(flyerStyles, /\.flyer-layout[\s\S]*width: min\(720px, calc\(100% - 32px\)\)/);
+  assert.match(flyerStyles, /\.hero\.flyer-hero img[\s\S]*height: auto;[\s\S]*object-fit: contain/);
+  assert.doesNotMatch(flyerStyles, /grid-template-columns/);
+  assert.match(standardTemplate, /grid-template-columns: minmax\(0, 5fr\) minmax\(0, 6fr\)/);
+
+  const markers = [
+    '{{HERO}}',
+    '{{TITLE}}',
+    '{{DATE_STR}}',
+    '{{VENUE_NAME}}',
+    '{{TICKET_HTML}}',
+    '<div class="rsvp-zone">',
+    '{{DESCRIPTION_HTML}}',
+    '{{GUEST_LIST_HTML}}',
+    '{{COMMENTS_HTML}}',
+    'id="share-btn"',
+    '{{PRESENTER_HTML}}',
+    'Powered by <a href="/">Silver Glider</a>'
+  ];
+  const flyerLayout = flyerTemplate.slice(flyerTemplate.indexOf('<main class="flyer-layout">'));
+  for (let index = 1; index < markers.length; index += 1) {
+    assert.ok(
+      flyerLayout.indexOf(markers[index - 1]) < flyerLayout.indexOf(markers[index]),
+      `${markers[index - 1]} should precede ${markers[index]}`
+    );
+  }
+
   for (const existingPart of ['id="rsvp-form"', '{{GUEST_LIST_HTML}}', '{{COMMENTS_HTML}}', 'id="cal-btn"', '{{PRESENTER_HTML}}', 'Powered by']) {
-    assert.match(template, new RegExp(existingPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(flyerTemplate, new RegExp(existingPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 });
 

@@ -63,6 +63,7 @@ function protectRsvp(req, res, next) {
 }
 
 const publicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public.html'), 'utf8');
+const flyerPublicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public-flyer.html'), 'utf8');
 const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
 const rsvpManageTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'rsvp-manage.html'), 'utf8');
 const secretShowTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'secret-show.html'), 'utf8');
@@ -468,7 +469,8 @@ router.get('/e/:slug', async (req, res, next) => {
     const fxVeil = isEffect
       ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"></div>`
       : '';
-    const flyerImageUrl = event.presentation_mode === 'flyer' ? event.flyer_image_url : null;
+    const isFlyerPresentation = event.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
+    const flyerImageUrl = isFlyerPresentation ? event.flyer_image_url : null;
     const primaryImageUrl = flyerImageUrl || event.cover_image_url;
     const heroHtml = flyerImageUrl
       ? `<div class="hero flyer-hero" id="hero"><img src="${esc(flyerImageUrl)}" alt="${esc(event.title)} flyer" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
@@ -479,7 +481,7 @@ router.get('/e/:slug', async (req, res, next) => {
           : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`);
 
     // Unsplash attribution (only when a credited photo is the cover)
-    const creditHtml = (event.cover_image_url && event.cover_credit_name)
+    const creditHtml = (!isFlyerPresentation && event.cover_image_url && event.cover_credit_name)
       ? `<p class="photo-credit">Photo by <a href="${esc(event.cover_credit_link || '#')}" target="_blank" rel="noopener">${esc(event.cover_credit_name)}</a> on <a href="https://unsplash.com/?utm_source=silver_glider_events&utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></p>`
       : '';
 
@@ -494,12 +496,13 @@ router.get('/e/:slug', async (req, res, next) => {
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
       organizerLabel,
       coverImageUrl: event.cover_image_url || null,
-      presentationMode: event.presentation_mode || 'standard',
-      flyerImageUrl: event.flyer_image_url || null,
+      presentationMode: isFlyerPresentation ? 'flyer' : 'standard',
+      flyerImageUrl,
       bgEffect: isEffect ? theme : null
     };
 
-    const html = publicTemplate
+    const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
+    const html = activePublicTemplate
       .replace(/{{TITLE}}/g, esc(event.title))
       .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(robotsDirective(event.visibility)))
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))

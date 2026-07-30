@@ -61,3 +61,8 @@ test('host and Silver Glider attribution center only on mobile', () => {
   assert.match(view, /@media \(max-width: 879px\) \{\s*\.host-attribution \{ justify-content: center; \}\s*\.powered-by \{ text-align: center; \}/);
   assert.match(view, /@media \(min-width: 880px\)/);
 });
+
+test('legal footer mounts inside both isolated public event presentations', () => {
+  const client = source('public/js/legal-footer.js');
+  assert.match(client, /document\.querySelector\('\.col-details \.wrap'\) \|\| document\.querySelector\('\.flyer-details'\)/);
+});

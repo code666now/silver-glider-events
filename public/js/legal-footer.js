@@ -2,7 +2,7 @@
   function mount() {
     if (document.querySelector('[data-sg-legal-footer]')) return;
     const eventPageMount = document.querySelector('#event-data')
-      ? document.querySelector('.col-details .wrap')
+      ? (document.querySelector('.col-details .wrap') || document.querySelector('.flyer-details'))
       : null;
     const footer = document.createElement('footer');
     footer.className = eventPageMount
