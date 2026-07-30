@@ -169,8 +169,9 @@ const mobileRsvpMedia = window.matchMedia('(max-width: 767px)');
 function syncMobileRsvpDock() {
   if (!mobileRsvpDock || !mobileRsvpCta) return;
   const inlineCta = $('rsvp-cta');
-  const hasPassedInlineCta = inlineCta.getBoundingClientRect().bottom <= 0;
-  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && hasPassedInlineCta;
+  const inlineCtaRect = inlineCta.getBoundingClientRect();
+  const inlineCtaIsVisible = inlineCtaRect.bottom > 0 && inlineCtaRect.top < window.innerHeight;
+  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && !inlineCtaIsVisible;
   mobileRsvpDock.hidden = !shouldShow;
   document.body.classList.toggle('has-mobile-rsvp-dock', shouldShow);
 }

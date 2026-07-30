@@ -84,7 +84,7 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
   }
 });
 
-test('mobile RSVP dock reuses the existing form only after the inline CTA has been passed', () => {
+test('mobile RSVP dock reuses the existing form whenever the inline CTA is outside the viewport', () => {
   const client = source('public/js/public-event.js');
 
   for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
@@ -96,7 +96,8 @@ test('mobile RSVP dock reuses the existing form only after the inline CTA has be
   }
 
   assert.match(client, /matchMedia\('\(max-width: 767px\)'\)/);
-  assert.match(client, /getBoundingClientRect\(\)\.bottom <= 0/);
+  assert.match(client, /inlineCtaRect\.bottom > 0 && inlineCtaRect\.top < window\.innerHeight/);
+  assert.match(client, /&& !inlineCtaIsVisible/);
   assert.match(client, /activeRsvpState === 'cta-state'/);
   assert.match(client, /openRsvpForm\(\{ scrollToForm: true \}\)/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
