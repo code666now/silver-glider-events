@@ -102,3 +102,11 @@ test('mobile RSVP dock reuses the existing form whenever the inline CTA is outsi
   assert.match(client, /openRsvpForm\(\{ scrollToForm: true \}\)/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
 });
+
+test('public RSVP success state clearly confirms the RSVP without implying guest-list access', () => {
+  for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = source(templatePath);
+    assert.match(view, /Your RSVP is confirmed\./);
+    assert.doesNotMatch(view, /You're on the list\./);
+  }
+});
