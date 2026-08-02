@@ -134,19 +134,16 @@ test('adaptive Flyer palettes use an original print texture without touching Sta
   const flyerTemplate = read('src/views/event-public-flyer.html');
   const flyerStyles = read('public/css/event-public-flyer.css');
   const publicClient = read('public/js/public-event.js');
-  const texture = read('public/images/flyer-print-grain.svg');
 
   assert.match(flyerTemplate, /class="flyer-print-texture"/);
   assert.doesNotMatch(standardTemplate, /flyer-print-texture|has-adaptive-print/);
-  assert.match(flyerStyles, /url\('\/images\/flyer-print-grain\.svg'\)/);
-  assert.match(flyerStyles, /mix-blend-mode: soft-light/);
-  assert.match(flyerStyles, /has-adaptive-print \.flyer-print-texture \{ opacity: \.18; \}/);
-  assert.match(flyerStyles, /@media \(max-width: 599px\)[\s\S]*has-adaptive-print \.flyer-print-texture \{ opacity: \.11; \}/);
+  assert.match(flyerStyles, /url\('\/images\/flyer-paper-grunge\.jpg'\)/);
+  assert.match(flyerStyles, /mix-blend-mode: multiply/);
+  assert.match(flyerStyles, /has-adaptive-print \.flyer-print-texture \{ opacity: \.56; \}/);
+  assert.match(flyerStyles, /@media \(max-width: 599px\)[\s\S]*has-adaptive-print \.flyer-print-texture \{ opacity: \.46; \}/);
   assert.match(publicClient, /if \(EVENT\.bgEffect\) return/);
   assert.match(publicClient, /document\.querySelector\('\.flyer-print-texture'\)/);
   assert.match(publicClient, /document\.body\.classList\.add\('has-adaptive-print'\)/);
-  assert.match(texture, /feTurbulence/);
-  assert.match(texture, /stitchTiles="stitch"/);
 });
 
 test('locked Secret Shows do not render or query flyer assets before unlock', () => {
