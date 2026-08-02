@@ -463,16 +463,24 @@
       }
       .event-editor-shell .sg-nav { margin-bottom: 42px; }
       .event-editor-intro {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
-        gap: 40px;
-        align-items: end;
         margin-bottom: 30px;
       }
-      .event-editor-copy .sg-page-sub { margin-bottom: 0; }
+      .event-editor-copy .sg-page-sub { margin-bottom: 24px; }
       .event-editor-intro .secret-shortcut {
         margin: 0;
-        padding: 20px 24px;
+        min-height: 64px;
+        padding: 13px 18px;
+        border-radius: 16px;
+      }
+      .event-editor-intro .secret-shortcut > div {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        min-width: 0;
+      }
+      .event-editor-intro .secret-shortcut strong {
+        flex: 0 0 auto;
+        margin-bottom: 0;
       }
       .event-editor-grid {
         display: grid;

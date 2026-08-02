@@ -83,6 +83,8 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.match(html, /event-editor-group-heading">When &amp; where/);
   assert.match(html, /event-editor-group-heading">Audience &amp; access/);
   assert.match(html, /@media \(min-width: 1024px\)[\s\S]*\.event-editor-shell\s*\{[\s\S]*max-width: 1260px/);
+  assert.match(html, /\.event-editor-intro \.secret-shortcut\s*\{[\s\S]*min-height: 64px/);
+  assert.match(html, /\.event-editor-intro \.secret-shortcut > div\s*\{[\s\S]*display: flex/);
   assert.match(html, /grid-template-columns: minmax\(360px, \.9fr\) minmax\(480px, 1\.1fr\)/);
   assert.match(html, /@media \(min-width: 1200px\) and \(min-height: 900px\)[\s\S]*position: sticky/);
   assert.match(html, /@media \(max-width: 640px\)/);
