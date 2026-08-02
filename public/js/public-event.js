@@ -168,10 +168,14 @@ const mobileRsvpMedia = window.matchMedia('(max-width: 767px)');
 
 function syncMobileRsvpDock() {
   if (!mobileRsvpDock || !mobileRsvpCta) return;
-  const inlineCta = $('rsvp-cta');
+  const inlineCta = document.querySelector('[data-primary-action]');
+  if (!inlineCta) return;
   const inlineCtaRect = inlineCta.getBoundingClientRect();
   const inlineCtaIsVisible = inlineCtaRect.bottom > 0 && inlineCtaRect.top < window.innerHeight;
-  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && !inlineCtaIsVisible;
+  const footerTarget = document.querySelector('.sg-event-legal-footer') || document.querySelector('.flyer-attribution');
+  const footerRect = footerTarget?.getBoundingClientRect();
+  const footerIsNear = Boolean(footerRect && footerRect.bottom > 0 && footerRect.top < window.innerHeight * .88);
+  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && !inlineCtaIsVisible && !footerIsNear;
   mobileRsvpDock.hidden = !shouldShow;
   document.body.classList.toggle('has-mobile-rsvp-dock', shouldShow);
 }
@@ -207,8 +211,9 @@ function openRsvpForm({ scrollToForm = false } = {}) {
   }
 }
 
-$('rsvp-cta').addEventListener('click', () => openRsvpForm());
-mobileRsvpCta?.addEventListener('click', () => openRsvpForm({ scrollToForm: true }));
+document.querySelectorAll('[data-open-rsvp]').forEach(trigger => {
+  trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta }));
+});
 window.addEventListener('scroll', queueMobileRsvpDockSync, { passive: true });
 window.addEventListener('resize', queueMobileRsvpDockSync);
 mobileRsvpMedia.addEventListener?.('change', queueMobileRsvpDockSync);

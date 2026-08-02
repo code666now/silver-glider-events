@@ -84,22 +84,27 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
   }
 });
 
-test('mobile RSVP dock reuses the existing form whenever the inline CTA is outside the viewport', () => {
+test('mobile primary-action dock reuses the active Flyer action and avoids the footer', () => {
   const client = source('public/js/public-event.js');
+  const route = source('src/routes/public.js');
 
-  for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
-    const view = source(templatePath);
-    assert.equal((view.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
-    assert.equal((view.match(/id="mobile-rsvp-cta"/g) || []).length, 1);
-    assert.match(view, /id="mobile-rsvp-dock" hidden/);
-    assert.match(view, /aria-controls="rsvp-form-box"/);
-  }
+  const standardView = source('src/views/event-public.html');
+  const flyerView = source('src/views/event-public-flyer.html');
+  assert.equal((standardView.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
+  assert.equal((standardView.match(/id="mobile-rsvp-cta"/g) || []).length, 1);
+  assert.match(standardView, /aria-controls="rsvp-form-box"/);
+  assert.equal((flyerView.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
+  assert.match(flyerView, /{{MOBILE_PRIMARY_ACTION_HTML}}/);
+  assert.match(route, /id="mobile-rsvp-cta" data-mobile-primary-action="ticket"/);
+  assert.match(route, /id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp/);
 
   assert.match(client, /matchMedia\('\(max-width: 767px\)'\)/);
+  assert.match(client, /document\.querySelector\('\[data-primary-action\]'\)/);
   assert.match(client, /inlineCtaRect\.bottom > 0 && inlineCtaRect\.top < window\.innerHeight/);
   assert.match(client, /&& !inlineCtaIsVisible/);
+  assert.match(client, /&& !footerIsNear/);
   assert.match(client, /activeRsvpState === 'cta-state'/);
-  assert.match(client, /openRsvpForm\(\{ scrollToForm: true \}\)/);
+  assert.match(client, /openRsvpForm\(\{ scrollToForm: trigger === mobileRsvpCta \}\)/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
 });
 

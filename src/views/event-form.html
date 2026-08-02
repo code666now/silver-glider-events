@@ -30,11 +30,32 @@
       position: absolute; bottom: 0; left: 0; height: 3px;
       background: var(--sg-accent); width: 0%; transition: width 0.2s ease;
     }
-    .presentation-toggle { margin-bottom: 26px; }
-    .presentation-toggle .vis-toggle button { text-align: left; border-radius: 16px; padding: 15px 17px; }
-    .presentation-toggle strong { display: block; color: inherit; font-size: 14px; }
-    .presentation-toggle span { display: block; color: var(--sg-text-faint); font-size: 11px; font-weight: 500; line-height: 1.45; margin-top: 3px; }
-    .presentation-toggle button.on span { color: rgba(28,197,190,.72); }
+    .presentation-toggle { margin: 0 0 26px; padding: 0; border: 0; }
+    .presentation-toggle legend { margin-bottom: 9px; }
+    .page-style-segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      max-width: 360px;
+      padding: 3px;
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      background: var(--sg-surface);
+    }
+    .page-style-option { position: relative; cursor: pointer; }
+    .page-style-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .page-style-option span {
+      display: block;
+      padding: 10px 18px;
+      border-radius: 999px;
+      color: var(--sg-text-dim);
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      transition: background .15s ease, color .15s ease;
+    }
+    .page-style-option input:checked + span { background: rgba(28,197,190,.14); color: var(--sg-accent); }
+    .page-style-option input:focus-visible + span { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
+    .page-style-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
     .media-panel[hidden] { display: none; }
     .flyer-drop {
       position: relative;
@@ -471,13 +492,14 @@
     <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
 
     <form id="event-form">
-      <div class="sg-field presentation-toggle">
-        <label>Presentation</label>
-        <div class="vis-toggle" role="group" aria-label="Event presentation">
-          <button type="button" class="on" id="presentation-standard" aria-pressed="true"><strong>Standard</strong><span>Cover image, background, and event details.</span></button>
-          <button type="button" id="presentation-flyer" aria-pressed="false"><strong>Flyer</strong><span>Put your uploaded flyer front and center.</span></button>
+      <fieldset class="sg-field presentation-toggle">
+        <legend>Page style</legend>
+        <div class="page-style-segmented">
+          <label class="page-style-option"><input type="radio" name="presentation_mode" id="presentation-standard" value="standard" checked><span>Standard</span></label>
+          <label class="page-style-option"><input type="radio" name="presentation_mode" id="presentation-flyer" value="flyer"><span>Flyer</span></label>
         </div>
-      </div>
+        <p class="page-style-help" id="page-style-help">Cover image, background, and full event details.</p>
+      </fieldset>
 
       <section class="media-panel" id="standard-media" aria-label="Standard event artwork">
       <div class="cover-drop" id="cover-drop">

@@ -11,16 +11,17 @@ const $ = id => document.getElementById(id);
 function setPresentationMode(mode) {
   presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
   const standard = presentationMode === 'standard';
-  $('presentation-standard').classList.toggle('on', standard);
-  $('presentation-flyer').classList.toggle('on', !standard);
-  $('presentation-standard').setAttribute('aria-pressed', String(standard));
-  $('presentation-flyer').setAttribute('aria-pressed', String(!standard));
+  $('presentation-standard').checked = standard;
+  $('presentation-flyer').checked = !standard;
+  $('page-style-help').textContent = standard
+    ? 'Cover image, background, and full event details.'
+    : 'Put your uploaded flyer first and keep the page focused.';
   $('standard-media').hidden = !standard;
   $('flyer-media').hidden = standard;
 }
 
-$('presentation-standard').addEventListener('click', () => setPresentationMode('standard'));
-$('presentation-flyer').addEventListener('click', () => setPresentationMode('flyer'));
+$('presentation-standard').addEventListener('change', () => setPresentationMode('standard'));
+$('presentation-flyer').addEventListener('change', () => setPresentationMode('flyer'));
 
 function applyOrganizerProfile(organizer) {
   const input = $('presenter_name');

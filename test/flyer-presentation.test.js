@@ -58,8 +58,10 @@ test('flyer uploads and event writes reuse authenticated, size-limited infrastru
 test('create and edit form default to Standard and require an uploaded flyer in Flyer mode', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
-  assert.match(html, /id="presentation-standard" aria-pressed="true"/);
-  assert.match(html, /id="presentation-flyer" aria-pressed="false"/);
+  assert.match(html, /<legend>Page style<\/legend>/);
+  assert.match(html, /type="radio" name="presentation_mode" id="presentation-standard" value="standard" checked/);
+  assert.match(html, /type="radio" name="presentation_mode" id="presentation-flyer" value="flyer"/);
+  assert.match(html, /id="page-style-help"/);
   assert.match(html, /id="flyer-input"[^>]+image\/jpeg,image\/png,image\/webp,image\/gif/);
   assert.match(js, /xhr\.open\('POST', '\/api\/uploads\/flyer'\)/);
   assert.match(js, /presentation_mode: presentationMode/);
@@ -81,17 +83,18 @@ test('flyer public rendering uses an isolated poster-first template without repl
   assert.match(route, /const primaryImageUrl = flyerImageUrl \|\| event\.cover_image_url/);
   assert.match(flyerStyles, /\.flyer-layout[\s\S]*width: min\(720px, calc\(100% - 32px\)\)/);
   assert.match(flyerStyles, /\.hero\.flyer-hero img[\s\S]*height: auto;[\s\S]*object-fit: contain/);
-  assert.doesNotMatch(flyerStyles, /grid-template-columns/);
+  assert.doesNotMatch(flyerStyles, /\.flyer-layout\s*\{[^}]*grid-template-columns/);
   assert.match(standardTemplate, /grid-template-columns: minmax\(0, 5fr\) minmax\(0, 6fr\)/);
 
   const markers = [
     '{{HERO}}',
     '{{TITLE}}',
+    '{{HOST_IDENTITY_HTML}}',
     '{{DATE_STR}}',
-    '{{VENUE_NAME}}',
-    '{{TICKET_HTML}}',
+    '{{VENUE_SUMMARY_HTML}}',
     '<div class="rsvp-zone">',
-    '{{DESCRIPTION_HTML}}',
+    '{{PRIMARY_ACTION_HTML}}',
+    '{{ADDITIONAL_DETAILS_HTML}}',
     '{{GUEST_LIST_HTML}}',
     '{{COMMENTS_HTML}}',
     'id="share-btn"',
@@ -109,6 +112,9 @@ test('flyer public rendering uses an isolated poster-first template without repl
   for (const existingPart of ['id="rsvp-form"', '{{GUEST_LIST_HTML}}', '{{COMMENTS_HTML}}', 'id="cal-btn"', '{{PRESENTER_HTML}}', 'Powered by']) {
     assert.match(flyerTemplate, new RegExp(existingPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.doesNotMatch(flyerTemplate, /<p class="sg-label cat">/);
+  assert.match(route, /flyerPrimaryAction\(event\)/);
+  assert.match(route, /primaryActionType: flyerAction\.type/);
 });
 
 test('locked Secret Shows do not render or query flyer assets before unlock', () => {

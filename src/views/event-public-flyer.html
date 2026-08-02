@@ -23,22 +23,19 @@
     <div class="flyer-poster">{{HERO}}{{PHOTO_CREDIT}}</div>
 
     <section class="flyer-details" aria-label="Event details">
-      <p class="sg-label cat">{{CATEGORY}}</p>
       <h1 class="event-title">{{TITLE}}</h1>
+      {{HOST_IDENTITY_HTML}}
 
-      <div class="when"><span>{{DATE_STR}}</span><span class="dot">·</span><span>{{TIME_STR}}</span></div>
-
-      <div class="venue">
-        <strong>{{VENUE_NAME}}</strong>
-        <span>{{VENUE_ADDRESS}}</span>
-        <a href="{{MAPS_URL}}" target="_blank" rel="noopener">Open in Maps →</a>
+      <div class="flyer-essentials">
+        <div class="when"><span>{{DATE_STR}}</span><span class="dot">·</span><span>{{TIME_STR}}</span></div>
+        {{VENUE_SUMMARY_HTML}}
       </div>
 
-      {{TICKET_HTML}}
-
       <div class="rsvp-zone">
-        <div id="cta-state">
-          <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta">{{RSVP_CTA}}</button>
+        <div class="flyer-action-stack" id="cta-state">
+          {{PRIMARY_ACTION_HTML}}
+          {{PRIMARY_ACTION_SUPPORT_HTML}}
+          {{SECONDARY_ACTION_HTML}}
         </div>
 
         <div id="rsvp-form-box">
@@ -76,8 +73,7 @@
         </div>
       </div>
 
-      <p class="desc">{{DESCRIPTION_HTML}}</p>
-      {{VIBE_HTML}}
+      {{ADDITIONAL_DETAILS_HTML}}
 
       {{GUEST_LIST_HTML}}
       {{COMMENTS_HTML}}
@@ -95,7 +91,7 @@
   </main>
 
   <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
-    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
+    {{MOBILE_PRIMARY_ACTION_HTML}}
   </div>
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>

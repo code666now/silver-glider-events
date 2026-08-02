@@ -534,7 +534,7 @@
 
     <div class="rsvp-zone">
       <div id="cta-state">
-        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" style="font-size:17px;padding:17px">{{RSVP_CTA}}</button>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">{{RSVP_CTA}}</button>
       </div>
 
       <div id="rsvp-form-box">
@@ -587,7 +587,7 @@
   </div><!-- /layout -->
 
   <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
-    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
+    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
   </div>
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>

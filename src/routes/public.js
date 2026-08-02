@@ -11,6 +11,7 @@ const { verifyOptout } = require('../lib/followers');
 const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
+const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
 const {
   ensureAttemptSession,
   hasUnlockCookie,
@@ -75,13 +76,6 @@ function esc(s) {
 function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-US',
     { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
-
-function fmtTicketPrice(price) {
-  if (price == null) return 'Paid admission';
-  const n = Number(price);
-  if (!Number.isFinite(n)) return 'Paid admission';
-  return n === 0 ? 'Paid admission' : `$${n.toFixed(2).replace(/\.00$/, '')}`;
 }
 
 function youtubeId(url) {
@@ -445,9 +439,44 @@ router.get('/e/:slug', async (req, res, next) => {
       : '';
     const isPaid = event.admission_type === 'paid';
     const ticketHtml = isPaid
-      ? `<div class="ticket-note"><span>${esc(fmtTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
+      ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
     const vibeHtml = renderVibe(event.event_vibe_url);
+    const flyerAction = flyerPrimaryAction(event);
+    const flyerPrimaryActionHtml = flyerAction.type === 'ticket'
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
+    const flyerSecondaryActionHtml = flyerAction.secondaryRsvp
+      ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
+      : '';
+    const flyerActionSupportHtml = flyerAction.supportingText
+      ? `<p class="primary-action-support">${esc(flyerAction.supportingText)}</p>`
+      : '';
+    const flyerMobileActionHtml = flyerAction.type === 'ticket'
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
+
+    const hostIdentityHtml = organizerLabel
+      ? `<div class="flyer-host-identity">
+          ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
+          <p><span>Hosted by</span>${event.organizer_public_slug
+            ? `<a href="/h/${encodeURIComponent(event.organizer_public_slug)}">${esc(organizerLabel)}</a>`
+            : `<strong>${esc(organizerLabel)}</strong>`}</p>
+        </div>`
+      : '';
+    const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
+    const venueSummaryHtml = `<div class="venue-summary"><strong>${esc(event.venue_name)}</strong>${venueSummary ? `<span>${esc(venueSummary)}</span>` : ''}</div>`;
+    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`;
+    const detailParts = [];
+    if (event.category) detailParts.push(`<p class="detail-category"><span>Category</span><strong>${esc(event.category)}</strong></p>`);
+    if (event.venue_address) {
+      detailParts.push(`<div class="detail-location"><span>Location</span><p>${esc(event.venue_address)}</p><a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`);
+    }
+    if (event.description) detailParts.push(`<div class="desc">${esc(event.description).replace(/\n/g, '<br>')}</div>`);
+    if (vibeHtml) detailParts.push(vibeHtml);
+    const flyerAdditionalDetailsHtml = detailParts.length
+      ? `<section class="additional-details" aria-labelledby="additional-details-title"><h2 id="additional-details-title">Event details</h2>${detailParts.join('')}</section>`
+      : '';
 
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
     // rendered for already-published events that selected them.
@@ -495,9 +524,10 @@ router.get('/e/:slug', async (req, res, next) => {
       allowGuests: event.visibility === 'private' && event.allow_guests,
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
       organizerLabel,
-      coverImageUrl: event.cover_image_url || null,
+      coverImageUrl: primaryImageUrl || null,
       presentationMode: isFlyerPresentation ? 'flyer' : 'standard',
       flyerImageUrl,
+      primaryActionType: flyerAction.type,
       bgEffect: isEffect ? theme : null
     };
 
@@ -517,7 +547,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
       .replace(/{{VENUE_NAME}}/g, esc(event.venue_name))
       .replace(/{{VENUE_ADDRESS}}/g, esc(event.venue_address || ''))
-      .replace(/{{MAPS_URL}}/g, esc(`https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`))
+      .replace(/{{MAPS_URL}}/g, esc(mapsUrl))
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
@@ -527,6 +557,13 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, 'RSVP')
+      .replace(/{{HOST_IDENTITY_HTML}}/g, hostIdentityHtml)
+      .replace(/{{VENUE_SUMMARY_HTML}}/g, venueSummaryHtml)
+      .replace(/{{PRIMARY_ACTION_HTML}}/g, flyerPrimaryActionHtml)
+      .replace(/{{PRIMARY_ACTION_SUPPORT_HTML}}/g, flyerActionSupportHtml)
+      .replace(/{{SECONDARY_ACTION_HTML}}/g, flyerSecondaryActionHtml)
+      .replace(/{{ADDITIONAL_DETAILS_HTML}}/g, flyerAdditionalDetailsHtml)
+      .replace(/{{MOBILE_PRIMARY_ACTION_HTML}}/g, flyerMobileActionHtml)
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);
