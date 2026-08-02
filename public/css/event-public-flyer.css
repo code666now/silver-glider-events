@@ -9,36 +9,17 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  --event-bg-a: rgba(28,197,190,.44);
-  --event-bg-b: rgba(0,140,255,.34);
-  --event-bg-c: rgba(150,80,255,.24);
-  background-color: #171411;
-}
-.event-bg.image-palette {
+  background-color: #171717;
   background-image:
-    radial-gradient(82% 68% at -8% 5%, var(--event-bg-a), transparent 66%),
-    radial-gradient(74% 82% at 112% 8%, var(--event-bg-b), transparent 64%),
-    radial-gradient(88% 72% at 90% 112%, var(--event-bg-c), transparent 68%),
-    radial-gradient(64% 54% at 18% 86%, var(--event-bg-b), transparent 72%);
-  animation: none;
-  filter: saturate(.76) brightness(.82) contrast(.96);
-  transform: none;
-}
-.flyer-print-texture {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  background-image: url('/images/flyer-paper-grunge.jpg');
+    linear-gradient(rgba(10,10,10,.76), rgba(10,10,10,.76)),
+    url('/images/flyer-plaster-wall.jpg');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  mix-blend-mode: multiply;
-  filter: contrast(1.28) brightness(1.06);
-  transition: opacity .32s ease;
+  animation: none;
+  filter: grayscale(1) contrast(1.08);
+  transform: none;
 }
-.flyer-public-page.has-adaptive-print .flyer-print-texture { opacity: .56; }
 
 .event-bg.fx-static,
 .event-bg.fx-paper,
@@ -727,7 +708,6 @@
   .hero.flyer-hero { border-radius: 12px; }
   .flyer-details { padding-top: 30px; }
   .event-title { font-size: clamp(32px, 11vw, 44px); }
-  .flyer-public-page.has-adaptive-print .flyer-print-texture { opacity: .46; }
   .flyer-essentials { grid-template-columns: 1fr; }
   .when {
     max-width: 100%;

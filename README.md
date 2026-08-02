@@ -1,53 +1,123 @@
 # Silver Glider Events
 
-Beautiful event pages, RSVPs, and email reminders for independent organizers. V1 of the Silver Glider Events platform — free RSVP events only; the `admission_type` column on `events` is the hook for paid ticketing later (`free_rsvp` today; `paid`, `donation`, `door`, `vip` reserved).
+Silver Glider Events is a lightweight event publishing and RSVP platform for independent hosts, promoters, artists, venues, and private gatherings.
+
+Hosts can publish a Standard event page or a poster-first Flyer page, collect free RSVPs, link to an external ticket provider, manage guest lists, send reminders, and maintain a public host page. Silver Glider does **not** process ticket payments or issue tickets in this MVP.
+
+- Live: https://silvergliderevents.com
+- Railway: https://silver-glider-events-production.up.railway.app
+- Full product and operations reference: [`HANDOFF.md`](HANDOFF.md)
+- New-agent starting guide: [`CODEX.md`](CODEX.md)
 
 ## Stack
 
-Node.js, Express 5, CommonJS, PostgreSQL (`pg`), Resend (email), Cloudinary (cover images), `ics` + `qrcode`, `node-cron`. No build step. Server-rendered HTML + vanilla JS, same idiom as `uht-app` and `silver-glider-tickets`.
+- Node.js and Express 5 (CommonJS)
+- PostgreSQL via `pg`
+- Server-rendered HTML plus vanilla JavaScript and CSS
+- Resend for email
+- Cloudinary for uploaded covers, flyers, host images, and visual effects
+- Unsplash for the free-photo picker
+- `ics`, `qrcode`, and `node-cron`
+- No frontend framework and no build step
 
 ## Run locally
 
 ```bash
 createdb sge_dev
-cp .env.example .env   # fill SESSION_SECRET (openssl rand -hex 32)
+cp .env.example .env
 npm install
-npm run dev            # http://localhost:3100
+npm run dev
 ```
 
-Migrations run automatically on boot. With `RESEND_API_KEY` empty, magic links are printed to the console instead of emailed.
+Set `DATABASE_URL=postgresql://localhost:5432/sge_dev`, provide a local `SESSION_SECRET`, and keep `REMINDERS_ENABLED=false`. The app starts at `http://localhost:3100`; migrations run automatically on boot.
 
-## Layout
+When `RESEND_API_KEY` is empty, magic links and emails are printed to the server console. Without Cloudinary credentials, uploads return 503. Without an Unsplash key, the free-photo search control is hidden.
 
-```
-src/index.js              # bootstrap: migrate → routes → listen → reminder cron
-src/db/migrations/        # numbered .sql files, applied in order, tracked in schema_migrations
-src/routes/               # auth (magic links), events (organizer API), public (/e/:slug, RSVP), uploads, admin (The Line)
-src/lib/                  # mailer (Resend), session (HMAC cookie), slug, calendar (.ics), csv, cloudinary
-src/jobs/reminders.js     # hourly cron; day-before 4pm + day-of 9am, event-local time
-src/views/                # served HTML pages
-public/                   # css tokens (brand.css), page JS
+Never use the Railway production database for development or tests.
+
+## Current product
+
+- Passwordless host authentication with 30-day sliding sessions
+- Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and promotion tools
+- Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
+- Flyer events with a centered, uncropped poster-first public layout
+- Free RSVP and external paid-ticket links; no native payment processing
+- Progressive RSVP form, mobile docked CTA, capacity enforcement, cancellation links, and confirmation resends
+- Confirmation and reminder emails with calendar attachments
+- Public and Private—Link Only visibility
+- Optional named guest, first-name-only guest list, and verified-attendee comments for private events
+- Optional six-character Secret Show gate
+- Public host pages at `/h/:hostSlug`
+- Feedback reporting and super-admin feedback inbox
+- Personalized host invitations and lightweight admin host tracking
+- Privacy Policy and Terms available throughout the app
+- Output escaping, safe URL validation, and public RSVP/resend rate limiting
+
+## Presentation architecture
+
+Standard and Flyer public pages are intentionally isolated:
+
+- Standard template: `src/views/event-public.html`
+- Flyer template: `src/views/event-public-flyer.html`
+- Flyer-only styles: `public/css/event-public-flyer.css`
+- Shared event client: `public/js/public-event.js`
+
+Standard pages retain their existing animated gradients and cover-derived adaptive palette. Flyer pages skip adaptive palette extraction and, unless an explicit effect is selected, use the fixed darkened plaster background at `public/images/flyer-plaster-wall.jpg`. This keeps Flyer pages tactile and poster-like without changing Standard events.
+
+## Project layout
+
+```text
+src/index.js                 bootstrap, routes, health check, reminder cron
+src/db/migrations/           numbered SQL migrations (currently 001–016)
+src/routes/                  auth, organizer events, public pages, uploads, photos, admin
+src/lib/                     mailer, sessions, calendar, CSV, Cloudinary, Unsplash, escaping
+src/jobs/reminders.js        idempotent day-before and day-of reminder job
+src/views/                   server-rendered HTML templates
+public/css/                  brand and page styles
+public/js/                   browser behavior
+public/images/               local presentation assets
+test/                        focused Node test suite
 ```
 
 ## Key mechanics
 
-- **Auth**: magic link → one-time token (15 min, burned on use) → stateless HMAC session cookie (30 days). Attendees never log in; they get a `manage_token` link to cancel.
-- **Capacity**: RSVP endpoint locks the event row (`SELECT … FOR UPDATE`) and counts confirmed RSVPs inside the transaction — 409 `{error:'full'}` at capacity. Cancelling frees the slot.
-- **Reminder idempotency**: partial unique index on `message_log (rsvp_id, message_type, channel)`; the cron claims with `INSERT … ON CONFLICT DO NOTHING RETURNING id` and only sends on a successful claim. Double-sends are impossible.
-- **Private events**: 16-char hex slug, never listed. The link is the access control.
+- **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. Attendees do not create accounts.
+- **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
+- **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
+- **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
+- **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited.
 
-## Deploy (Railway)
+## Tests
 
-1. New Railway project → add PostgreSQL → new service from this repo.
-2. Set env vars: `DATABASE_URL` (reference variable), `SESSION_SECRET`, `APP_URL` (public domain), `NODE_ENV=production`, `RESEND_API_KEY`, `RESEND_FROM`, `CLOUDINARY_*`.
-3. **Resend domain must be verified before launch** — magic-link login depends on email delivery.
-4. Deploy: `git rev-parse --short HEAD > .git-sha && railway up` (buildCommand in railway.toml also writes `.git-sha`).
-5. Verify: `curl https://<domain>/health` — SHA should match `git rev-parse --short HEAD`.
+```bash
+npm test
+```
+
+As of August 2, 2026, the focused suite contains 65 tests. It covers Flyer/Standard isolation, Flyer uploads and emails, private-event visibility, Secret Show security, rate limits, guest counts, named guests, comments, and listing contracts.
 
 ## Admin
 
-Set `is_admin=TRUE` on your organizer row to see The Line review queue at `/admin/line`:
+Set `is_admin=TRUE` on the organizer row, then use:
+
+- `/admin/line`
+- `/admin/hosts`
+- `/admin/feedback`
+- `/admin/invitations`
 
 ```sql
 UPDATE organizers SET is_admin=TRUE WHERE email='you@example.com';
 ```
+
+## Deploy to Railway
+
+Production may contain promoted live events. Test locally, run `npm test`, and explicitly check whether a release changes existing pages, shared Cloudinary assets, RSVP/guest data, or outgoing email.
+
+```bash
+git rev-parse --short HEAD > .git-sha
+railway up --service silver-glider-events
+curl https://silver-glider-events-production.up.railway.app/health
+```
+
+The health response SHA must match `git rev-parse --short HEAD`. `.git-sha` remaining modified after deployment is expected.
+
+GitHub auto-deploy is not the production path. On the current Mac, GitHub HTTPS credentials are not configured, so `git push` may fail independently of a successful direct Railway deployment.

@@ -129,23 +129,20 @@ test('flyer public rendering uses an isolated poster-first template without repl
   assert.match(route, /primaryActionType: flyerAction\.type/);
 });
 
-test('adaptive Flyer palettes use an original print texture without touching Standard pages or explicit effects', () => {
+test('Flyer pages use a fixed plaster background while Standard pages retain adaptive palettes', () => {
   const standardTemplate = read('src/views/event-public.html');
   const flyerTemplate = read('src/views/event-public-flyer.html');
   const flyerStyles = read('public/css/event-public-flyer.css');
   const publicClient = read('public/js/public-event.js');
 
-  assert.match(flyerTemplate, /class="flyer-print-texture"/);
-  assert.doesNotMatch(standardTemplate, /flyer-print-texture|has-adaptive-print/);
-  assert.match(flyerStyles, /url\('\/images\/flyer-paper-grunge\.jpg'\)/);
-  assert.match(flyerStyles, /mix-blend-mode: multiply/);
-  assert.match(flyerStyles, /\.event-bg\.image-palette \{[\s\S]*?animation: none;[\s\S]*?saturate\(\.76\)[\s\S]*?transform: none;/);
-  assert.doesNotMatch(flyerStyles, /@keyframes flyer-bg-drift/);
-  assert.match(flyerStyles, /has-adaptive-print \.flyer-print-texture \{ opacity: \.56; \}/);
-  assert.match(flyerStyles, /@media \(max-width: 599px\)[\s\S]*has-adaptive-print \.flyer-print-texture \{ opacity: \.46; \}/);
+  assert.doesNotMatch(flyerTemplate, /flyer-print-texture|has-adaptive-print/);
+  assert.match(flyerStyles, /url\('\/images\/flyer-plaster-wall\.jpg'\)/);
+  assert.match(flyerStyles, /linear-gradient\(rgba\(10,10,10,\.76\), rgba\(10,10,10,\.76\)\)/);
+  assert.doesNotMatch(flyerStyles, /image-palette|flyer-bg-drift|has-adaptive-print/);
+  assert.match(standardTemplate, /\.event-bg\.image-palette/);
+  assert.match(publicClient, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
+  assert.match(publicClient, /bg\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /if \(EVENT\.bgEffect\) return/);
-  assert.match(publicClient, /document\.querySelector\('\.flyer-print-texture'\)/);
-  assert.match(publicClient, /document\.body\.classList\.add\('has-adaptive-print'\)/);
 });
 
 test('locked Secret Shows do not render or query flyer assets before unlock', () => {
