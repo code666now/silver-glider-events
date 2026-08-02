@@ -78,6 +78,7 @@ async function applyCoverPalette() {
     bg.style.setProperty('--event-bg-b', rgba(colors[1], .68));
     bg.style.setProperty('--event-bg-c', rgba(colors[2] || colors[0], .52));
     bg.classList.add('image-palette');
+    if (document.querySelector('.flyer-print-texture')) document.body.classList.add('has-adaptive-print');
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
   }
