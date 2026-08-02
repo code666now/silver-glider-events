@@ -133,9 +133,17 @@ test('host and super-admin settings expose only the requested profile controls',
 
 test('settings use progressive disclosure and separate account from host-page saves', () => {
   const settings = source('src/views/settings.html');
+  assert.match(settings, /class="sg-shell settings-shell"/);
+  assert.match(settings, /settings-account-card/);
+  assert.match(settings, /settings-host-card/);
+  assert.match(settings, /@media\(min-width:1024px\)[\s\S]*\.settings-shell\s*\{[\s\S]*max-width:1260px/);
+  assert.match(settings, /grid-template-columns:minmax\(340px,\.78fr\) minmax\(0,1\.22fr\)/);
+  assert.match(settings, /@media\(min-width:1200px\) and \(min-height:900px\)[\s\S]*position:sticky/);
+  assert.match(settings, /@media\(max-width:560px\)/);
   assert.match(settings, /id="account-form"/);
   assert.match(settings, /id="account-save-btn">Save account</);
   assert.match(settings, /id="host-summary-view"[^>]*hidden>View page</);
+  assert.match(settings, /\.host-summary-actions \[hidden\] \{ display:none; \}/);
   assert.match(settings, /id="host-editor-toggle"[^>]*aria-expanded="false"/);
   assert.match(settings, /class="host-editor" id="host-editor" hidden/);
   assert.match(settings, /id="host-profile-form"/);

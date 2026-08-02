@@ -9,6 +9,12 @@ function source(relativePath) {
 
 test('event management and promotion actions remain clearly separated', () => {
   const view = source('src/views/event-manage.html');
+  assert.match(view, /class="sg-shell manage-shell"/);
+  assert.match(view, /class="manage-overview"/);
+  assert.match(view, /class="manage-guest-section"/);
+  assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\s*\{[\s\S]*max-width:1260px/);
+  assert.match(view, /grid-template-columns:minmax\(0,1\.25fr\) minmax\(350px,\.75fr\)/);
+  assert.match(view, /@media \(max-width: 620px\)/);
   const toolbar = view.slice(view.indexOf('<div class="toolbar"'), view.indexOf('<section class="promotion-card"'));
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
@@ -49,4 +55,6 @@ test('management metrics follow public and private event visibility', () => {
     assert.match(client, new RegExp(`\\$\\('${id}'\\)\\.textContent = event\\.`));
   }
   assert.match(client, /card\.hidden = event\.visibility !== 'private'/);
+  assert.match(client, /classList\.toggle\('private-metrics', event\.visibility === 'private'\)/);
+  assert.match(client, /\$\('manage-hero-placeholder'\)\.hidden = true/);
 });

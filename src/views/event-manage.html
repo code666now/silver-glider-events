@@ -63,6 +63,87 @@
     .hero-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .hero-banner.flyer { height:auto;max-height:none;background:#090909;text-align:center; }
     .hero-banner.flyer img { width:auto;max-width:100%;height:auto;max-height:720px;object-fit:contain;margin:0 auto; }
+    .manage-hero-placeholder { display:none; }
+    @media (min-width: 1024px) {
+      .manage-shell {
+        max-width:1260px;
+        padding-right:32px;
+        padding-left:32px;
+        padding-bottom:96px;
+      }
+      .manage-shell .sg-nav { margin-bottom:42px; }
+      .manage-overview {
+        display:grid;
+        grid-template-columns:minmax(0,1.25fr) minmax(350px,.75fr);
+        gap:clamp(32px,4vw,54px);
+        align-items:stretch;
+        margin-bottom:34px;
+      }
+      .manage-visual-column,
+      .manage-event-panel { min-width:0; }
+      .manage-event-panel {
+        padding:28px;
+        border:1px solid var(--sg-border-soft);
+        border-radius:24px;
+        background:linear-gradient(145deg,rgba(19,19,21,.78),rgba(11,11,13,.62));
+        box-shadow:0 18px 55px rgba(0,0,0,.14);
+      }
+      .manage-title-row { margin-bottom:6px !important; }
+      .manage-event-panel .sg-page-sub { margin-bottom:24px; }
+      .hero-banner {
+        aspect-ratio:16/10;
+        margin-bottom:0;
+        border:1px solid var(--sg-border-soft);
+        border-radius:24px;
+        box-shadow:0 18px 55px rgba(0,0,0,.16);
+      }
+      .manage-visual-column .hero-banner:not(.flyer) { height:100%;min-height:500px;aspect-ratio:auto; }
+      .manage-hero-placeholder {
+        height:100%;
+        min-height:500px;
+        display:grid;
+        place-items:center;
+        border:1px dashed rgba(28,197,190,.24);
+        border-radius:24px;
+        background:linear-gradient(145deg,rgba(28,197,190,.045),rgba(255,255,255,.012));
+        color:var(--sg-text-faint);
+        font-family:var(--sg-font-display);
+        font-size:72px;
+      }
+      .manage-hero-placeholder[hidden] { display:none; }
+      .stat-row {
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+        margin-bottom:20px;
+      }
+      .stat { padding:17px; }
+      .stat-row:not(.private-metrics) .stat:first-child { grid-column:1/-1; }
+      .toolbar { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px; }
+      .toolbar .sg-btn,
+      .toolbar .more-menu,
+      .toolbar .more-menu summary { width:100%; }
+      .toolbar .sg-btn,
+      .more-menu summary { min-height:46px;display:flex;align-items:center;justify-content:center;padding:10px 14px; }
+      .toolbar .sg-btn-primary { grid-column:1/-1; }
+      .toolbar .more-menu { grid-column:1/-1; }
+      .more-menu-panel { width:100%;min-width:210px; }
+      .promotion-card { margin:0;padding:20px;background:rgba(255,255,255,.022); }
+      .promotion-actions { display:grid;grid-template-columns:1fr 1fr; }
+      .promotion-actions .sg-btn { width:100%;padding:10px 12px; }
+      .promotion-actions #announce,
+      .promotion-actions #submit-line { grid-column:1/-1; }
+      .manage-guest-section {
+        padding:26px;
+        border:1px solid var(--sg-border-soft);
+        border-radius:24px;
+        background:linear-gradient(145deg,rgba(19,19,21,.7),rgba(11,11,13,.55));
+      }
+      .manage-guest-section .guest-head { margin-bottom:18px; }
+      .manage-danger-zone { margin-top:34px !important; }
+    }
+    @media (min-width: 1200px) and (min-height: 900px) {
+      .manage-visual-column { position:sticky;top:24px; }
+    }
     @media (max-width: 620px) {
       .stat-row { grid-template-columns: 1fr 1fr; }
       .toolbar .sg-btn, .more-menu summary { padding: 10px 15px; }
@@ -75,7 +156,7 @@
   </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell manage-shell">
     <nav id="nav"></nav>
 
     <div id="created-note" style="display:none;background:rgba(28,197,190,.1);border:1px solid rgba(28,197,190,.3);border-radius:14px;padding:14px 18px;margin-bottom:24px;font-size:14px">
@@ -83,8 +164,14 @@
       <span id="created-host-note"></span>
     </div>
 
-    <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px">
+    <div class="manage-overview" id="manage-overview">
+    <div class="manage-visual-column">
+      <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
+      <div class="manage-hero-placeholder" id="manage-hero-placeholder" aria-hidden="true">SG</div>
+    </div>
+
+    <section class="manage-event-panel" aria-label="Event overview and actions">
+    <div class="manage-title-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px">
       <h1 class="sg-page-title" id="title" style="margin:0">…</h1>
       <span id="status-badge"></span>
     </div>
@@ -135,7 +222,10 @@
       </div>
       <p class="line-status" id="line-status"><strong id="line-title">The Line</strong> · <span id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</span></p>
     </section>
+    </section>
+    </div>
 
+    <section class="manage-guest-section" aria-label="Guest management">
     <div class="guest-head">
       <p class="sg-label" style="margin:0">Guest list</p>
       <div class="guest-tools">
@@ -150,8 +240,9 @@
       </table>
     </div>
     <p id="no-guests" style="display:none;color:var(--sg-text-dim);font-size:14px;padding:24px 0;text-align:center">No RSVPs yet. Share the event link to get the word out.</p>
+    </section>
 
-    <div style="margin-top:56px;padding-top:24px;border-top:1px solid var(--sg-border-soft);text-align:center">
+    <div class="manage-danger-zone" style="margin-top:56px;padding-top:24px;border-top:1px solid var(--sg-border-soft);text-align:center">
       <button class="sg-btn sg-btn-danger" id="delete-event" style="font-size:13px;padding:10px 22px">Delete permanently</button>
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>

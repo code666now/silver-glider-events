@@ -33,6 +33,7 @@ async function loadEvent() {
 
   const manageImage = event.presentation_mode === 'flyer' ? event.flyer_image_url : event.cover_image_url;
   if (manageImage) {
+    $('manage-hero-placeholder').hidden = true;
     $('hero').style.display = 'block';
     $('hero').classList.toggle('flyer', event.presentation_mode === 'flyer');
     $('hero-img').src = manageImage;
@@ -48,6 +49,7 @@ async function loadEvent() {
   document.querySelectorAll('[data-private-metric]').forEach(card => {
     card.hidden = event.visibility !== 'private';
   });
+  document.querySelector('.stat-row').classList.toggle('private-metrics', event.visibility === 'private');
   $('stat-rsvps').textContent = event.rsvp_count;
   $('stat-attendance').textContent = event.total_attendance;
   $('stat-guests').textContent = event.guest_count;

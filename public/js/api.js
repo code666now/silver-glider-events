@@ -28,7 +28,9 @@ function sgEscapeHtml(value) {
 
 function sgSafeHttpUrl(value) {
   try {
-    const url = new URL(String(value || ''), location.origin);
+    const candidate = String(value || '').trim();
+    if (!candidate) return '';
+    const url = new URL(candidate, location.origin);
     return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
   } catch (_) {
     return '';

@@ -21,11 +21,13 @@ test('shared dashboard renderer escapes HTML and rejects executable URLs', () =>
   const attack = '<img src=x onerror="alert(1)">\'&';
   vm.runInNewContext(`${helpers}\nresult = {
     escaped: sgEscapeHtml(${JSON.stringify(attack)}),
+    empty: sgSafeHttpUrl(''),
     unsafe: sgSafeHttpUrl('javascript:alert(1)'),
     safe: sgSafeHttpUrl('https://res.cloudinary.com/demo/image.jpg')
   };`, context);
 
   assert.equal(context.result.escaped, '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&#039;&amp;');
+  assert.equal(context.result.empty, '');
   assert.equal(context.result.unsafe, '');
   assert.equal(context.result.safe, 'https://res.cloudinary.com/demo/image.jpg');
 });

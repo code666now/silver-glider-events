@@ -57,6 +57,7 @@
       align-items: end;
       padding: 20px;
     }
+    .next-details > div:first-child { min-width: 0; }
     .next-details h2 {
       font-size: 28px;
       margin-bottom: 8px;
@@ -96,6 +97,156 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
+    .dashboard-desktop-only { display: none; }
+    .dashboard-overview { display: none; }
+    .dashboard-empty { display: none; }
+    @media (min-width: 1024px) {
+      .dashboard-shell {
+        max-width: 1260px;
+        padding-right: 32px;
+        padding-left: 32px;
+        padding-bottom: 96px;
+      }
+      .dashboard-shell .sg-nav { margin-bottom: 42px; }
+      .dashboard-header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 32px;
+        margin-bottom: 30px;
+      }
+      .dashboard-header .sg-page-sub { margin-bottom: 0; }
+      .dashboard-eyebrow {
+        color: var(--sg-accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .15em;
+        text-transform: uppercase;
+      }
+      .dashboard-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(310px, 360px);
+        gap: clamp(30px, 4vw, 54px);
+        align-items: start;
+      }
+      .dashboard-feature,
+      .dashboard-sidebar { min-width: 0; }
+      .dashboard-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 39px;
+        margin-bottom: 14px;
+      }
+      .dashboard-section-head h2,
+      .dashboard-overview h2 {
+        font-size: 20px;
+      }
+      .dashboard-section-head a {
+        color: var(--sg-text-dim);
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .dashboard-section-head a:hover { color: var(--sg-accent); }
+      .next-card { border-radius: 24px; }
+      .next-visual { aspect-ratio: 16 / 9; }
+      .next-details { padding: 24px 26px; }
+      .dashboard-empty {
+        min-height: 470px;
+        display: grid;
+        place-items: center;
+        padding: 44px;
+        border: 1px dashed rgba(28,197,190,.24);
+        border-radius: 24px;
+        background: linear-gradient(145deg, rgba(28,197,190,.045), rgba(255,255,255,.012));
+        text-align: center;
+      }
+      .dashboard-empty-mark {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 20px;
+        border: 1px solid rgba(28,197,190,.28);
+        border-radius: 18px;
+        color: var(--sg-accent);
+        background: rgba(28,197,190,.08);
+        font-family: var(--sg-font-display);
+        font-size: 28px;
+      }
+      .dashboard-empty h3 { margin-bottom: 9px; font-size: 26px; }
+      .dashboard-empty p {
+        max-width: 360px;
+        color: var(--sg-text-dim);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .dashboard-sidebar {
+        display: grid;
+        gap: 16px;
+        padding-top: 53px;
+      }
+      .dashboard-overview {
+        display: block;
+        padding: 24px;
+        border: 1px solid var(--sg-border-soft);
+        border-radius: 24px;
+        background: linear-gradient(145deg, rgba(19,19,21,.78), rgba(11,11,13,.62));
+        box-shadow: 0 18px 55px rgba(0,0,0,.14);
+      }
+      .dashboard-overview-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      .dashboard-overview-head span {
+        color: var(--sg-text-faint);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+      .dashboard-stat-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .dashboard-stat {
+        min-width: 0;
+        padding: 18px;
+        border: 1px solid var(--sg-border-soft);
+        border-radius: 18px;
+        background: rgba(255,255,255,.025);
+      }
+      .dashboard-stat-primary {
+        grid-column: 1 / -1;
+        background: linear-gradient(125deg, rgba(28,197,190,.12), rgba(28,197,190,.025));
+        border-color: rgba(28,197,190,.22);
+      }
+      .dashboard-stat strong {
+        display: block;
+        margin-bottom: 5px;
+        font-family: var(--sg-font-display);
+        font-size: 32px;
+        line-height: 1;
+      }
+      .dashboard-stat span {
+        color: var(--sg-text-dim);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .dashboard-stats { display: none; }
+      .dashboard-actions {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .dashboard-actions .sg-btn { min-height: 50px; }
+      .dashboard-social-footer { margin-top: 54px; }
+      .dashboard-desktop-only { display: flex; }
+    }
     @media (max-width: 520px) {
       .next-details { padding: 18px; }
       .next-details h2 { font-size: 24px; }
@@ -104,19 +255,47 @@
   </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell dashboard-shell">
     <nav id="nav"></nav>
-    <h1 class="sg-page-title" id="greeting">Welcome</h1>
-    <p class="sg-page-sub" id="sub">Your events at a glance.</p>
+    <header class="dashboard-header">
+      <div>
+        <h1 class="sg-page-title" id="greeting">Welcome</h1>
+        <p class="sg-page-sub" id="sub">Your events at a glance.</p>
+      </div>
+      <p class="dashboard-eyebrow dashboard-desktop-only">Host dashboard</p>
+    </header>
 
-    <div id="next-event"></div>
-    <p class="dashboard-stats" id="dashboard-stats"></p>
+    <div class="dashboard-layout">
+      <section class="dashboard-feature" aria-labelledby="next-up-heading">
+        <div class="dashboard-section-head dashboard-desktop-only">
+          <h2 id="next-up-heading">Next up</h2>
+          <a href="/events">View all events →</a>
+        </div>
+        <div id="next-event"></div>
+      </section>
 
-    <div class="dashboard-actions">
-      <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new">Create Event</a>
-      <a class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
+      <aside class="dashboard-sidebar" aria-label="Event overview and actions">
+        <section class="dashboard-overview" aria-labelledby="overview-heading">
+          <div class="dashboard-overview-head">
+            <h2 id="overview-heading">At a glance</h2>
+            <span>All events</span>
+          </div>
+          <div class="dashboard-stat-grid" aria-live="polite">
+            <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count">—</strong><span>Upcoming events</span></div>
+            <div class="dashboard-stat"><strong id="rsvp-count">—</strong><span>Total RSVPs</span></div>
+            <div class="dashboard-stat"><strong id="event-count">—</strong><span>Total events</span></div>
+          </div>
+        </section>
+
+        <p class="dashboard-stats" id="dashboard-stats"></p>
+
+        <div class="dashboard-actions">
+          <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new">Create Event</a>
+          <a class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
+        </div>
+      </aside>
     </div>
-    <footer class="sg-social-footer" data-sg-legal-footer>
+    <footer class="sg-social-footer dashboard-social-footer" data-sg-legal-footer>
       <a class="sg-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="5"></rect>
@@ -144,11 +323,15 @@
         const { events } = await api('/api/events');
         const upcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= new Date(new Date().toDateString()));
         const totalRsvps = events.reduce((sum, item) => sum + Number(item.rsvp_count || 0), 0);
+        document.getElementById('upcoming-count').textContent = String(upcoming.length);
+        document.getElementById('rsvp-count').textContent = String(totalRsvps);
+        document.getElementById('event-count').textContent = String(events.length);
         const container = document.getElementById('next-event');
         if (!upcoming.length) {
           document.getElementById('sub').textContent = 'No upcoming events. Create one in under a minute.';
           document.getElementById('dashboard-stats').textContent =
             `${events.length} total event${events.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
+          container.innerHTML = '<div class="dashboard-empty"><div><div class="dashboard-empty-mark">+</div><h3>Your next event starts here.</h3><p>Create a polished event page in under a minute, then manage every RSVP from one place.</p></div></div>';
           return;
         }
         const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];

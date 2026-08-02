@@ -27,6 +27,7 @@
     .host-summary-copy h2 { overflow-wrap:anywhere; }
     .host-summary-url { margin-top:5px;color:var(--sg-text-faint);font-size:12px;overflow-wrap:anywhere; }
     .host-summary-actions { display:flex;flex:0 0 auto;align-items:center;gap:8px; }
+    .host-summary-actions [hidden] { display:none; }
     .host-summary-actions .sg-btn { padding:10px 15px;font-size:11px;white-space:nowrap; }
     .host-editor { margin-top:26px;padding-top:26px;border-top:1px solid var(--sg-border-soft); }
     .host-editor[hidden] { display:none; }
@@ -49,6 +50,52 @@
     .settings-plan { display:flex;align-items:center;gap:12px; }
     .settings-plan .settings-eyebrow { margin:0; }
     .settings-footer-card .sg-btn { padding:10px 16px;font-size:11px; }
+    @media(min-width:1024px) {
+      .settings-shell {
+        max-width:1260px;
+        padding-right:32px;
+        padding-left:32px;
+        padding-bottom:96px;
+      }
+      .settings-shell .sg-nav { margin-bottom:42px; }
+      .settings-shell > .sg-page-sub { margin-bottom:30px; }
+      .settings-wrap {
+        max-width:none;
+        display:grid;
+        grid-template-columns:minmax(340px,.78fr) minmax(0,1.22fr);
+        gap:24px;
+        align-items:start;
+      }
+      .settings-card {
+        padding:30px;
+        background:linear-gradient(145deg,rgba(19,19,21,.78),rgba(11,11,13,.62));
+        box-shadow:0 18px 55px rgba(0,0,0,.14);
+      }
+      .settings-card + .settings-card { margin-top:0; }
+      .settings-account-card { grid-column:1; }
+      .settings-host-card {
+        grid-column:2;
+        min-height:390px;
+        display:flex;
+        align-items:center;
+      }
+      .settings-host-card.editor-open { display:block; }
+      .settings-host-card .host-summary { width:100%; }
+      .settings-footer-card {
+        grid-column:1/-1;
+        padding:18px 24px;
+      }
+      .settings-account-card .account-grid { grid-template-columns:1fr; }
+      .settings-account-card .settings-actions .sg-btn { width:100%;min-height:48px; }
+      .host-summary-avatar { width:86px;height:86px;border-radius:22px; }
+      .host-summary-copy h2 { font-size:30px; }
+      .host-summary-actions { gap:10px; }
+      .host-summary-actions .sg-btn { padding:11px 16px; }
+      .host-editor { margin-top:30px;padding-top:30px; }
+    }
+    @media(min-width:1200px) and (min-height:900px) {
+      .settings-account-card { position:sticky;top:24px; }
+    }
     @media(max-width:560px) {
       .settings-card { padding:21px 19px;border-radius:21px; }
       .account-grid,.host-profile-grid,.host-media-grid { grid-template-columns:1fr; }
@@ -63,13 +110,13 @@
   </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell settings-shell">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Settings</h1>
     <p class="sg-page-sub">Account basics and your public event home.</p>
 
     <div class="settings-wrap">
-      <section class="settings-card" aria-labelledby="account-settings-title">
+      <section class="settings-card settings-account-card" aria-labelledby="account-settings-title">
         <div class="settings-card-head">
           <p class="settings-eyebrow">Account</p>
           <h2 id="account-settings-title">Your details</h2>
@@ -92,7 +139,7 @@
         </form>
       </section>
 
-      <section class="settings-card" aria-labelledby="host-summary-name">
+      <section class="settings-card settings-host-card" id="host-settings-card" aria-labelledby="host-summary-name">
         <div class="host-summary">
           <div class="host-summary-avatar" id="host-summary-avatar" aria-hidden="true"><span>SG</span></div>
           <div class="host-summary-copy">
@@ -190,6 +237,7 @@
 
     function setHostEditor(open) {
       hostEditorOpen = !!open;
+      $('host-settings-card').classList.toggle('editor-open', hostEditorOpen);
       $('host-editor').hidden = !hostEditorOpen;
       $('host-editor-toggle').setAttribute('aria-expanded', String(hostEditorOpen));
       $('host-editor-toggle').textContent = hostEditorOpen
