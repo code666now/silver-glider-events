@@ -95,7 +95,7 @@ npm test
 npm run check:static
 ```
 
-As of August 2, 2026, the suite contains 68 tests. The 64 focused tests cover Flyer/Standard isolation, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, and listing contracts. Four HTTP/PostgreSQL integration tests exercise authenticated event creation, Standard/Flyer/host rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
+As of August 2, 2026, the suite contains 69 tests. The 65 focused tests cover Flyer/Standard isolation, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Four HTTP/PostgreSQL integration tests exercise authenticated event creation, Standard/Flyer/host rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

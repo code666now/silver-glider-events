@@ -32,6 +32,11 @@
     }
     .presentation-toggle { margin: 0 0 26px; padding: 0; border: 0; }
     .presentation-toggle legend { margin-bottom: 9px; }
+    .event-editor-grid,
+    .event-editor-design,
+    .event-editor-details { min-width: 0; }
+    .event-editor-section-heading,
+    .event-editor-group-heading { display: none; }
     .page-style-segmented {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -449,6 +454,83 @@
         transition: none;
       }
     }
+    @media (min-width: 1024px) {
+      .event-editor-shell {
+        max-width: 1260px;
+        padding-right: 32px;
+        padding-left: 32px;
+        padding-bottom: 96px;
+      }
+      .event-editor-shell .sg-nav { margin-bottom: 42px; }
+      .event-editor-intro {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+        gap: 40px;
+        align-items: end;
+        margin-bottom: 30px;
+      }
+      .event-editor-copy .sg-page-sub { margin-bottom: 0; }
+      .event-editor-intro .secret-shortcut {
+        margin: 0;
+        padding: 20px 24px;
+      }
+      .event-editor-grid {
+        display: grid;
+        grid-template-columns: minmax(360px, .9fr) minmax(480px, 1.1fr);
+        gap: clamp(32px, 4vw, 56px);
+        align-items: start;
+      }
+      .event-editor-design,
+      .event-editor-details {
+        padding: 26px;
+        border: 1px solid var(--sg-border-soft);
+        border-radius: 24px;
+        background: linear-gradient(145deg, rgba(19,19,21,.78), rgba(11,11,13,.62));
+        box-shadow: 0 18px 55px rgba(0,0,0,.16);
+      }
+      .event-editor-details { padding: 28px 30px 32px; }
+      .event-editor-section-heading {
+        display: block;
+        margin-bottom: 28px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--sg-border-soft);
+      }
+      .event-editor-section-heading .sg-label { margin-bottom: 7px; }
+      .event-editor-section-heading h2 {
+        font-size: clamp(24px, 2vw, 30px);
+        line-height: 1.15;
+      }
+      .event-editor-group-heading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 32px 0 18px;
+        color: var(--sg-text-faint);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .15em;
+        text-transform: uppercase;
+      }
+      .event-editor-group-heading::after {
+        content: '';
+        height: 1px;
+        flex: 1;
+        background: var(--sg-border-soft);
+      }
+      .event-editor-group-heading-first { margin-top: 0; }
+      .event-editor-design .page-style-segmented { max-width: none; }
+      .event-editor-design .presentation-toggle { margin-bottom: 24px; }
+      .event-editor-details #publish-btn {
+        min-height: 52px;
+        margin-top: 16px !important;
+      }
+    }
+    @media (min-width: 1200px) and (min-height: 900px) {
+      .event-editor-design {
+        position: sticky;
+        top: 24px;
+      }
+    }
     @media (max-width: 640px) {
       .secret-shortcut { align-items:flex-start;flex-direction:column; }
       .secret-code-fields { grid-template-columns:1fr; }
@@ -479,19 +561,28 @@
   </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell event-editor-shell">
     <nav id="nav"></nav>
-    <h1 class="sg-page-title" id="page-title">Create Event</h1>
-    <p class="sg-page-sub">Only four fields are required. You can edit everything later.</p>
-
-    <aside class="secret-shortcut" id="secret-shortcut">
-      <div><strong>Hosting a Secret Show?</strong><span>Create an invite-only event protected by a secret access code.</span></div>
-      <button class="sg-btn sg-btn-ghost" id="create-secret-show" type="button">Create Secret Show</button>
-    </aside>
+    <section class="event-editor-intro">
+      <div class="event-editor-copy">
+        <h1 class="sg-page-title" id="page-title">Create Event</h1>
+        <p class="sg-page-sub">Only four fields are required. You can edit everything later.</p>
+      </div>
+      <aside class="secret-shortcut" id="secret-shortcut">
+        <div><strong>Hosting a Secret Show?</strong><span>Create an invite-only event protected by a secret access code.</span></div>
+        <button class="sg-btn sg-btn-ghost" id="create-secret-show" type="button">Create Secret Show</button>
+      </aside>
+    </section>
 
     <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
 
     <form id="event-form">
+      <div class="event-editor-grid">
+      <div class="event-editor-design" aria-label="Page design">
+      <header class="event-editor-section-heading">
+        <p class="sg-label">Page design</p>
+        <h2>Make it unmistakably yours.</h2>
+      </header>
       <fieldset class="sg-field presentation-toggle">
         <legend>Page style</legend>
         <div class="page-style-segmented">
@@ -576,6 +667,15 @@
         <input type="hidden" id="flyer_image_url">
       </section>
 
+      </div>
+      <div class="event-editor-details" aria-label="Event information">
+      <header class="event-editor-section-heading">
+        <p class="sg-label">Event information</p>
+        <h2>Tell people what’s happening.</h2>
+      </header>
+
+      <p class="event-editor-group-heading event-editor-group-heading-first">Essentials</p>
+
       <div class="sg-field">
         <label for="title">Title</label>
         <input class="sg-input" id="title" maxlength="140" required placeholder="Vinyl Night at Make Out Room">
@@ -596,6 +696,8 @@
         <label for="event_vibe_url">What does this event sound like? <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
         <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link.">
       </div>
+
+      <p class="event-editor-group-heading">When &amp; where</p>
 
       <div class="row2">
         <div class="sg-field">
@@ -629,6 +731,8 @@
       <input type="hidden" id="venue_latitude">
       <input type="hidden" id="venue_longitude">
       <input type="hidden" id="google_place_id">
+
+      <p class="event-editor-group-heading">Audience &amp; access</p>
 
       <div class="row2">
         <div class="sg-field">
@@ -704,6 +808,8 @@
       </div>
 
       <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>
+      </div>
+      </div>
     </form>
   </div>
 

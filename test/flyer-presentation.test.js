@@ -70,6 +70,26 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /Upload a flyer before publishing this event/);
 });
 
+test('event editor expands into two columns on desktop without changing the mobile flow', () => {
+  const html = read('src/views/event-form.html');
+  const mainStyles = read('public/css/main.css');
+
+  assert.match(html, /class="sg-shell event-editor-shell"/);
+  assert.match(html, /class="event-editor-intro"/);
+  assert.match(html, /class="event-editor-grid"/);
+  assert.match(html, /class="event-editor-design"/);
+  assert.match(html, /class="event-editor-details"/);
+  assert.match(html, /event-editor-group-heading event-editor-group-heading-first">Essentials/);
+  assert.match(html, /event-editor-group-heading">When &amp; where/);
+  assert.match(html, /event-editor-group-heading">Audience &amp; access/);
+  assert.match(html, /@media \(min-width: 1024px\)[\s\S]*\.event-editor-shell\s*\{[\s\S]*max-width: 1260px/);
+  assert.match(html, /grid-template-columns: minmax\(360px, \.9fr\) minmax\(480px, 1\.1fr\)/);
+  assert.match(html, /@media \(min-width: 1200px\) and \(min-height: 900px\)[\s\S]*position: sticky/);
+  assert.match(html, /@media \(max-width: 640px\)/);
+  assert.match(mainStyles, /\.sg-shell\s*\{\s*max-width: 680px/);
+  assert.ok(html.indexOf('class="event-editor-design"') < html.indexOf('class="event-editor-details"'));
+});
+
 test('Standard artwork actions keep local upload separate from free-photo browsing', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
