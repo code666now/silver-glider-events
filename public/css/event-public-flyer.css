@@ -6,24 +6,23 @@
 
 .event-bg {
   position: fixed;
-  inset: -24%;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
   --event-bg-a: rgba(28,197,190,.44);
   --event-bg-b: rgba(0,140,255,.34);
   --event-bg-c: rgba(150,80,255,.24);
-  animation: flyer-bg-drift 8s cubic-bezier(.55,0,.25,1) infinite alternate;
-  transition: background-image .32s ease, filter .32s ease, opacity .32s ease;
-  will-change: transform, filter;
+  background-color: #171411;
 }
 .event-bg.image-palette {
   background-image:
-    radial-gradient(62% 56% at 5% 4%, var(--event-bg-a), transparent 62%),
-    radial-gradient(70% 62% at 108% 18%, var(--event-bg-b), transparent 60%),
-    radial-gradient(78% 66% at 82% 116%, var(--event-bg-c), transparent 64%),
-    linear-gradient(115deg, transparent 0 22%, var(--event-bg-b) 38%, transparent 56% 100%),
-    linear-gradient(25deg, transparent 0 35%, var(--event-bg-a) 48%, transparent 66% 100%);
-  filter: saturate(1.08) brightness(.88);
+    radial-gradient(82% 68% at -8% 5%, var(--event-bg-a), transparent 66%),
+    radial-gradient(74% 82% at 112% 8%, var(--event-bg-b), transparent 64%),
+    radial-gradient(88% 72% at 90% 112%, var(--event-bg-c), transparent 68%),
+    radial-gradient(64% 54% at 18% 86%, var(--event-bg-b), transparent 72%);
+  animation: none;
+  filter: saturate(.76) brightness(.82) contrast(.96);
+  transform: none;
 }
 .flyer-print-texture {
   position: fixed;
@@ -40,15 +39,6 @@
   transition: opacity .32s ease;
 }
 .flyer-public-page.has-adaptive-print .flyer-print-texture { opacity: .56; }
-@keyframes flyer-bg-drift {
-  0% { transform: translate3d(-8%, -5%, 0) rotate(-4deg) scale(1.08); }
-  33% { transform: translate3d(6%, -2%, 0) rotate(3deg) scale(1.2); }
-  66% { transform: translate3d(-3%, 7%, 0) rotate(-2deg) scale(1.16); }
-  100% { transform: translate3d(9%, 8%, 0) rotate(5deg) scale(1.24); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .event-bg { animation: none; }
-}
 
 .event-bg.fx-static,
 .event-bg.fx-paper,

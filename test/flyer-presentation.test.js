@@ -139,6 +139,8 @@ test('adaptive Flyer palettes use an original print texture without touching Sta
   assert.doesNotMatch(standardTemplate, /flyer-print-texture|has-adaptive-print/);
   assert.match(flyerStyles, /url\('\/images\/flyer-paper-grunge\.jpg'\)/);
   assert.match(flyerStyles, /mix-blend-mode: multiply/);
+  assert.match(flyerStyles, /\.event-bg\.image-palette \{[\s\S]*?animation: none;[\s\S]*?saturate\(\.76\)[\s\S]*?transform: none;/);
+  assert.doesNotMatch(flyerStyles, /@keyframes flyer-bg-drift/);
   assert.match(flyerStyles, /has-adaptive-print \.flyer-print-texture \{ opacity: \.56; \}/);
   assert.match(flyerStyles, /@media \(max-width: 599px\)[\s\S]*has-adaptive-print \.flyer-print-texture \{ opacity: \.46; \}/);
   assert.match(publicClient, /if \(EVENT\.bgEffect\) return/);
