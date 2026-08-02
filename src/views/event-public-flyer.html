@@ -41,6 +41,10 @@
         <div id="rsvp-form-box">
           <p id="rsvp-error"></p>
           <form id="rsvp-form">
+            <div class="rsvp-form-head">
+              <h2>RSVP</h2>
+              <button type="button" class="rsvp-close" id="rsvp-close" aria-label="Close RSVP form">Close <span aria-hidden="true">×</span></button>
+            </div>
             <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
             <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
             {{GUEST_FIELDS_HTML}}

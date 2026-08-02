@@ -162,6 +162,7 @@ function mountVideoEffect() {
 mountVideoEffect();
 
 let activeRsvpState = 'cta-state';
+let lastRsvpTrigger = null;
 const mobileRsvpDock = $('mobile-rsvp-dock');
 const mobileRsvpCta = $('mobile-rsvp-cta');
 const mobileRsvpMedia = window.matchMedia('(max-width: 767px)');
@@ -200,8 +201,10 @@ function show(stateId) {
 if (EVENT.status === 'cancelled') show('cancelled-state');
 else if (EVENT.isFull) show('full-state');
 
-function openRsvpForm({ scrollToForm = false } = {}) {
+function openRsvpForm({ scrollToForm = false, trigger = null } = {}) {
+  lastRsvpTrigger = trigger;
   show('rsvp-form-box');
+  document.querySelectorAll('[data-open-rsvp]').forEach(button => button.setAttribute('aria-expanded', 'true'));
   $('full_name').focus({ preventScroll: scrollToForm });
   if (scrollToForm) {
     $('rsvp-form-box').scrollIntoView({
@@ -211,9 +214,17 @@ function openRsvpForm({ scrollToForm = false } = {}) {
   }
 }
 
+function closeRsvpForm() {
+  show('cta-state');
+  document.querySelectorAll('[data-open-rsvp]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+  if (lastRsvpTrigger?.isConnected) lastRsvpTrigger.focus({ preventScroll: true });
+}
+
 document.querySelectorAll('[data-open-rsvp]').forEach(trigger => {
-  trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta }));
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta, trigger }));
 });
+$('rsvp-close').addEventListener('click', closeRsvpForm);
 window.addEventListener('scroll', queueMobileRsvpDockSync, { passive: true });
 window.addEventListener('resize', queueMobileRsvpDockSync);
 mobileRsvpMedia.addEventListener?.('change', queueMobileRsvpDockSync);

@@ -269,6 +269,35 @@
   border-radius: 20px;
   background: rgba(14,14,14,.86);
 }
+.rsvp-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.rsvp-form-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.rsvp-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 0 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--sg-text-dim);
+  font: 700 12px var(--sg-font-body);
+  cursor: pointer;
+}
+.rsvp-close span {
+  color: var(--sg-accent);
+  font-size: 20px;
+  line-height: .8;
+}
+.rsvp-close:hover,
+.rsvp-close:focus-visible { color: var(--sg-text); }
 #rsvp-error {
   display: none;
   margin-bottom: 14px;

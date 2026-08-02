@@ -400,8 +400,10 @@ function closeImageModal() {
   document.body.style.overflow = '';
 }
 
-drop.addEventListener('click', openImageModal);
-$('btn-upload').addEventListener('click', openImageModal);
+drop.addEventListener('click', event => {
+  if (event.target !== fileInput) fileInput.click();
+});
+$('btn-upload').addEventListener('click', () => fileInput.click());
 $('image-modal-close').addEventListener('click', closeImageModal);
 $('image-modal-done').addEventListener('click', closeImageModal);
 imageModal.addEventListener('click', e => { if (e.target === imageModal) closeImageModal(); });

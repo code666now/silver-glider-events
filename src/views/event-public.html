@@ -329,6 +329,27 @@
     .mobile-rsvp-dock { display: none; }
     .mobile-rsvp-dock[hidden] { display: none; }
     #rsvp-form-box { display: none; margin-top: 20px; }
+    .rsvp-form-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .rsvp-form-head h2 { margin: 0; font-size: 20px; }
+    .rsvp-close {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 0 7px 10px;
+      border: 0;
+      background: transparent;
+      color: var(--sg-text-dim);
+      font: 700 12px var(--sg-font-body);
+      cursor: pointer;
+    }
+    .rsvp-close span { color: var(--sg-accent); font-size: 20px; line-height: .8; }
+    .rsvp-close:hover, .rsvp-close:focus-visible { color: var(--sg-text); }
     .check {
       display: flex; gap: 12px; align-items: flex-start;
       font-size: 13px; color: var(--sg-text-dim);
@@ -540,6 +561,10 @@
       <div id="rsvp-form-box">
         <p id="rsvp-error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:14px"></p>
         <form id="rsvp-form">
+          <div class="rsvp-form-head">
+            <h2>RSVP</h2>
+            <button type="button" class="rsvp-close" id="rsvp-close" aria-label="Close RSVP form">Close <span aria-hidden="true">×</span></button>
+          </div>
           <div class="sg-field"><label>Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
           <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
           {{GUEST_FIELDS_HTML}}

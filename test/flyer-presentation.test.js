@@ -70,6 +70,18 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /Upload a flyer before publishing this event/);
 });
 
+test('Standard artwork actions keep local upload separate from free-photo browsing', () => {
+  const html = read('src/views/event-form.html');
+  const js = read('public/js/event-form.js');
+  assert.match(html, /id="btn-upload"[^>]*>Choose image<\/button>/);
+  assert.match(html, /id="btn-search"[^>]*>Browse free photos<\/button>/);
+  assert.match(js, /drop\.addEventListener\('click', event => \{\s*if \(event\.target !== fileInput\) fileInput\.click\(\);\s*\}\)/);
+  assert.match(js, /\$\('btn-upload'\)\.addEventListener\('click', \(\) => fileInput\.click\(\)\)/);
+  assert.match(js, /\$\('btn-search'\)\.addEventListener\('click', openImageModal\)/);
+  assert.doesNotMatch(js, /drop\.addEventListener\('click', openImageModal\)/);
+  assert.doesNotMatch(js, /\$\('btn-upload'\)\.addEventListener\('click', openImageModal\)/);
+});
+
 test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {
   const route = read('src/routes/public.js');
   const standardTemplate = read('src/views/event-public.html');

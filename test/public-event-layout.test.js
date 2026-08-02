@@ -84,6 +84,20 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
   }
 });
 
+test('expanded RSVP forms can be collapsed without resetting the shared form', () => {
+  const client = source('public/js/public-event.js');
+  for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = source(templatePath);
+    assert.match(view, /id="rsvp-close"/);
+    assert.match(view, /aria-label="Close RSVP form"/);
+  }
+  assert.match(client, /function closeRsvpForm\(\)/);
+  assert.match(client, /show\('cta-state'\)/);
+  assert.match(client, /\$\('rsvp-close'\)\.addEventListener\('click', closeRsvpForm\)/);
+  assert.match(client, /setAttribute\('aria-expanded', 'false'\)/);
+  assert.doesNotMatch(client, /closeRsvpForm[\s\S]{0,300}reset\(\)/);
+});
+
 test('mobile primary-action dock reuses the active Flyer action and avoids the footer', () => {
   const client = source('public/js/public-event.js');
   const route = source('src/routes/public.js');
@@ -104,7 +118,7 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(client, /&& !inlineCtaIsVisible/);
   assert.match(client, /&& !footerIsNear/);
   assert.match(client, /activeRsvpState === 'cta-state'/);
-  assert.match(client, /openRsvpForm\(\{ scrollToForm: trigger === mobileRsvpCta \}\)/);
+  assert.match(client, /openRsvpForm\(\{ scrollToForm: trigger === mobileRsvpCta, trigger \}\)/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
 });
 
