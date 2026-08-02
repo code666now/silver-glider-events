@@ -219,7 +219,12 @@ test('flyer events remain in the existing dashboard, event list, host page, and 
   assert.match(dashboard, /id="event-count"/);
   assert.match(dashboard, /class="dashboard-empty"/);
   assert.match(dashboard, /@media \(max-width: 520px\)/);
-  assert.match(read('src/views/events.html'), /ev\.presentation_mode === 'flyer'/);
+  const events = read('src/views/events.html');
+  assert.match(events, /ev\.presentation_mode === 'flyer'/);
+  assert.match(events, /class="sg-shell events-shell"/);
+  assert.match(events, /@media \(min-width:1024px\)[\s\S]*\.events-shell\s*\{[\s\S]*max-width:1260px/);
+  assert.match(events, /\.events-grid\.visible\s*\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(events, /\.events-grid \{ display:none; \}[\s\S]*\.events-grid\.visible \{ display:block; \}/);
   assert.match(read('public/js/manage.js'), /event\.presentation_mode === 'flyer'/);
   const hostRoute = read('src/routes/public-hosts.js');
   assert.match(hostRoute, /SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url/);

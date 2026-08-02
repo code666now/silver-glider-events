@@ -53,6 +53,8 @@
 
     .archive-hint { color: var(--sg-text-faint); font-size: 12px; margin: 6px 0 0; }
     .sg-event-thumb.flyer { object-fit:contain;background:#090909; }
+    .events-grid { display:none; }
+    .events-grid.visible { display:block; }
 
     /* Toast with an action button */
     .sg-toast .toast-action {
@@ -60,33 +62,63 @@
       font-family: var(--sg-font-body); font-weight: 800; font-size: 14px;
       margin-left: 14px; cursor: pointer; text-transform: uppercase; letter-spacing: .06em;
     }
+    @media (min-width:1024px) {
+      .events-shell {
+        max-width:1260px;
+        padding-right:32px;
+        padding-left:32px;
+        padding-bottom:96px;
+      }
+      .events-shell .sg-nav { margin-bottom:42px; }
+      .events-header { margin-bottom:32px !important; }
+      .events-grid.visible {
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:14px;
+      }
+      .events-grid .swipe-row { height:100%;margin-bottom:0; }
+      .events-grid .sg-event-card { min-height:122px;height:100%;padding:18px; }
+      .events-grid .sg-event-thumb { width:92px;height:92px; }
+      .events-grid .sg-event-meta h3 { font-size:20px; }
+      .events-grid .sg-event-count { min-width:54px; }
+      .events-grid .sg-event-count strong { font-size:26px; }
+      .events-shell .sg-empty {
+        min-height:470px;
+        display:grid;
+        place-items:center;
+        border:1px dashed rgba(28,197,190,.24);
+        border-radius:24px;
+        background:linear-gradient(145deg,rgba(28,197,190,.045),rgba(255,255,255,.012));
+      }
+      .events-shell .sg-empty[style*="display:none"] { display:none; }
+    }
   </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell events-shell">
     <nav id="nav"></nav>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
+    <div class="events-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
       <h1 class="sg-page-title" style="margin:0">My Events</h1>
       <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
     </div>
 
     <div id="upcoming-section" style="display:none">
       <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
-      <div id="upcoming"></div>
+      <div class="events-grid" id="upcoming"></div>
     </div>
 
     <div id="past-section" style="display:none;margin-top:36px">
       <button class="section-toggle" id="past-toggle" type="button">
         <span class="chev">▶</span><span class="sg-label" id="past-label">Past</span>
       </button>
-      <div id="past" style="display:none"></div>
+      <div class="events-grid" id="past"></div>
     </div>
 
     <div id="archived-section" style="display:none;margin-top:36px">
       <button class="section-toggle" id="archived-toggle" type="button">
         <span class="chev">▶</span><span class="sg-label" id="archived-label">Archived</span>
       </button>
-      <div id="archived" style="display:none"></div>
+      <div class="events-grid" id="archived"></div>
       <p class="archive-hint" id="archive-hint" style="display:none">Archiving hides an event from your list. Guest lists and RSVPs are always kept.</p>
     </div>
 
@@ -284,8 +316,8 @@
       const btn = document.getElementById(btnId);
       btn.addEventListener('click', () => {
         const panel = document.getElementById(panelId);
-        const open = panel.style.display !== 'none';
-        panel.style.display = open ? 'none' : 'block';
+        const open = panel.classList.contains('visible');
+        panel.classList.toggle('visible', !open);
         btn.classList.toggle('open', !open);
         if (panelId === 'archived') document.getElementById('archive-hint').style.display = open ? 'none' : 'block';
       });
@@ -308,14 +340,17 @@
 
       document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
       document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
+      document.getElementById('upcoming').classList.toggle('visible', upcoming.length > 0);
 
       document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
       document.getElementById('past-label').textContent = `Past (${past.length})`;
       document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
+      document.getElementById('past').classList.remove('visible');
 
       document.getElementById('archived-section').style.display = archived.length ? 'block' : 'none';
       document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
       document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
+      document.getElementById('archived').classList.remove('visible');
     }
     load();
   </script>

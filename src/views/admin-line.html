@@ -7,9 +7,26 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .line-filters { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px; }
+    .line-review-grid { display:grid;gap:14px; }
+    .line-review-card { margin:0;padding:22px; }
+    @media(min-width:1024px) {
+      .line-admin-shell { max-width:1260px;padding-right:32px;padding-left:32px;padding-bottom:96px; }
+      .line-admin-shell .sg-nav { margin-bottom:42px; }
+      .line-review-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .line-review-card { min-height:130px;display:flex;align-items:center; }
+      .line-review-card > div { width:100%; }
+    }
+    @media(max-width:620px) {
+      .line-review-card > div { flex-direction:column; }
+      .line-review-card > div > div:last-child { width:100%; }
+      .line-review-card .sg-btn { flex:1; }
+    }
+  </style>
 </head>
 <body>
-  <div class="sg-shell">
+  <div class="sg-shell line-admin-shell">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">The Line</h1>
     <p class="sg-page-sub">Events submitted for feature on The Line.</p>
@@ -20,13 +37,13 @@
       <a href="/admin/invitations">Invitations</a>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:24px" id="filters">
+    <div class="line-filters" id="filters">
       <button class="sg-btn sg-btn-ghost" data-status="pending" style="padding:8px 18px;font-size:13px">Pending</button>
       <button class="sg-btn sg-btn-ghost" data-status="approved" style="padding:8px 18px;font-size:13px">Approved</button>
       <button class="sg-btn sg-btn-ghost" data-status="rejected" style="padding:8px 18px;font-size:13px">Rejected</button>
     </div>
 
-    <div id="list"></div>
+    <div class="line-review-grid" id="list"></div>
     <p id="empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:40px 0">Nothing here.</p>
   </div>
 
@@ -51,7 +68,7 @@
         const id = Number(s.id);
         const host = s.org_name || s.organizer_name || s.organizer_email;
         return `
-        <div class="sg-card" style="margin-bottom:14px;padding:20px 22px">
+        <div class="sg-card line-review-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
             <div>
               <h3 style="font-size:18px;margin-bottom:4px"><a href="/e/${encodeURIComponent(String(s.slug))}" target="_blank" rel="noopener" style="color:var(--sg-text)">${sgEscapeHtml(s.title)}</a></h3>

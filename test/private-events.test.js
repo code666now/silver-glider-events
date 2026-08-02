@@ -51,8 +51,13 @@ test('host page query and private response retain link-only privacy contracts', 
 
 test('The Line feed and review action exclude private or unpublished events', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'admin.js'), 'utf8');
+  const reviewView = fs.readFileSync(path.join(__dirname, '..', 'src', 'views', 'admin-line.html'), 'utf8');
   assert.match(source, /conditions = \["e\.visibility='public'", "e\.status='published'"\]/);
   assert.match(source, /AND e\.visibility='public'\s+AND e\.status='published'/);
+  assert.match(reviewView, /class="sg-shell line-admin-shell"/);
+  assert.match(reviewView, /@media\(min-width:1024px\)[\s\S]*\.line-admin-shell \{ max-width:1260px/);
+  assert.match(reviewView, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(reviewView, /@media\(max-width:620px\)/);
 });
 
 test('public guest list exposes first names only', () => {
