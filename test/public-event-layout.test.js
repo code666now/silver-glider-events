@@ -109,8 +109,8 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(standardView, /aria-controls="rsvp-form-box"/);
   assert.equal((flyerView.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
   assert.match(flyerView, /{{MOBILE_PRIMARY_ACTION_HTML}}/);
-  assert.match(route, /id="mobile-rsvp-cta" data-mobile-primary-action="ticket"/);
-  assert.match(route, /id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp/);
+  assert.match(route, /id="mobile-rsvp-cta" href=/);
+  assert.match(route, /id="mobile-rsvp-cta" data-open-rsvp/);
 
   assert.match(client, /matchMedia\('\(max-width: 767px\)'\)/);
   assert.match(client, /document\.querySelector\('\[data-primary-action\]'\)/);

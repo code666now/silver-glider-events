@@ -210,18 +210,6 @@
     /* Surface placeholder only for photo heroes; no-image heroes show the theme gradient */
     .hero:has(img) { background: var(--sg-surface); }
     .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .hero.flyer-hero {
-      aspect-ratio: auto;
-      height: auto;
-      background: rgba(8,8,8,.78);
-    }
-    .hero.flyer-hero img {
-      width: 100%;
-      height: auto;
-      max-height: none;
-      object-fit: contain;
-    }
-    .hero.flyer-hero::after { display: none; }
     .hero::after {
       content: '';
       position: absolute; inset: 0;
@@ -254,8 +242,6 @@
       }
       .hero::after { display: none; }
       .hero.no-image { aspect-ratio: 4 / 5; height: auto; }
-      .hero.flyer-hero { aspect-ratio: auto; height: auto; }
-      .hero.flyer-hero img { height: auto; object-fit: contain; }
       .col-details .wrap { max-width: none; margin: 0 !important; padding: 0; }
     }
 
@@ -612,7 +598,7 @@
   </div><!-- /layout -->
 
   <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
-    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
+    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
   </div>
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>

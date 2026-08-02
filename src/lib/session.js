@@ -33,11 +33,6 @@ function parseSession(cookieVal) {
   return { id: idNum, exp: expNum };
 }
 
-function verifySession(cookieVal) {
-  const s = parseSession(cookieVal);
-  return s ? s.id : null;
-}
-
 function readSessionCookie(req) {
   const header = req.headers.cookie || '';
   const part = header.split(';').map(c => c.trim()).find(c => c.startsWith(COOKIE_NAME + '='));
@@ -55,7 +50,7 @@ function clearSessionCookie(res) {
 }
 
 module.exports = {
-  signSession, verifySession, parseSession,
+  signSession, parseSession,
   readSessionCookie, setSessionCookie, clearSessionCookie,
   MAX_AGE_SECONDS
 };

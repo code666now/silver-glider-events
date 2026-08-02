@@ -79,7 +79,7 @@ test('host profile normalization keeps contact details optional and server valid
 });
 
 test('public host page separates upcoming and past public events in the requested order', () => {
-  const routes = source('src/routes/public.js');
+  const routes = source('src/routes/public-hosts.js');
   assert.match(routes, /status='published'/);
   assert.match(routes, /visibility='public'/);
   assert.match(routes, /event_date >= CURRENT_DATE ORDER BY event_date ASC, start_time ASC/);
@@ -98,7 +98,7 @@ test('public host page separates upcoming and past public events in the requeste
 });
 
 test('host social links are conditional, icon-only, accessible, and safe', () => {
-  const routes = source('src/routes/public.js');
+  const routes = source('src/routes/public-hosts.js');
   assert.match(routes, /aria-label="Instagram"/);
   assert.match(routes, /aria-label="Website"/);
   assert.match(routes, /target="_blank" rel="noopener noreferrer"/);

@@ -27,6 +27,7 @@ app.use(require('./routes/uploads'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
 app.use(require('./routes/invites'));
+app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
 
@@ -88,12 +89,18 @@ app.get('/health', async (req, res) => {
 
 app.use(errorHandler);
 
-migrate()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
-    require('./jobs/reminders').startReminderCron();
-  })
-  .catch(err => {
+async function start() {
+  await migrate();
+  const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
+  require('./jobs/reminders').startReminderCron();
+  return server;
+}
+
+if (require.main === module) {
+  start().catch(err => {
     console.error('[startup] migration failed:', err.message);
     process.exit(1);
   });
+}
+
+module.exports = { app, start };

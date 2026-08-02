@@ -8,10 +8,10 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
-const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
+const { esc, fmtDate, render404 } = require('../lib/public-html');
 const {
   ensureAttemptSession,
   hasUnlockCookie,
@@ -65,18 +65,8 @@ function protectRsvp(req, res, next) {
 
 const publicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public.html'), 'utf8');
 const flyerPublicTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-public-flyer.html'), 'utf8');
-const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
 const rsvpManageTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'rsvp-manage.html'), 'utf8');
 const secretShowTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'secret-show.html'), 'utf8');
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function fmtDate(d) {
-  return new Date(d).toLocaleDateString('en-US',
-    { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
 
 function youtubeId(url) {
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
@@ -255,113 +245,6 @@ function organizerViewer(req, event) {
   return session?.id === event.organizer_id;
 }
 
-function eventCardVisual(event) {
-  if (event.presentation_mode === 'flyer' && event.flyer_image_url) {
-    return `<img class="flyer-art" src="${esc(event.flyer_image_url)}" alt="" loading="lazy">`;
-  }
-  if (event.cover_image_url) {
-    return `<img src="${esc(event.cover_image_url)}" alt="" loading="lazy">`;
-  }
-  const posters = {
-    paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/textures/kraft-paper.jpg',
-    disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/disco.jpg',
-    fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/fog.jpg',
-    saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/backgrounds/after-hours-saloon.png'
-  };
-  if (posters[event.background_theme]) {
-    return `<img src="${posters[event.background_theme]}" alt="" loading="lazy">`;
-  }
-  const themes = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-  const theme = themes.includes(event.background_theme) ? event.background_theme : 'midnight';
-  return `<div class="host-event-placeholder bg-${theme}" aria-hidden="true"></div>`;
-}
-
-function renderHostEventCard(event, { past = false } = {}) {
-  const time = formatTime(event.start_time);
-  const location = [event.venue_name, event.venue_city].filter(Boolean).map(esc).join(' · ');
-  return `<a class="host-event-card${past ? ' past' : ''}" href="/e/${encodeURIComponent(event.slug)}" aria-label="View ${esc(event.title)}">
-    <div class="host-event-art">${eventCardVisual(event)}</div>
-    <div class="host-event-copy">
-      <p class="host-event-date">${esc(fmtDate(event.event_date))} · ${esc(time)}</p>
-      <h3>${esc(event.title)}</h3>
-      ${location ? `<p class="host-event-location">${location}</p>` : ''}
-      <span class="host-event-cta">View Event <b aria-hidden="true">→</b></span>
-    </div>
-  </a>`;
-}
-
-function hostInitials(name) {
-  return String(name || '').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
-}
-
-function hostSocialLinks(host) {
-  const instagramHandle = cleanInstagramHandle(host.instagram_handle || host.instagram_url).value;
-  const instagram = instagramHandle ? `https://instagram.com/${encodeURIComponent(instagramHandle)}` : null;
-  const website = cleanProfileUrl(host.website_url, 'website').value;
-  const links = [];
-  if (instagram) {
-    links.push(`<a class="host-link" href="${esc(instagram)}" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle></svg></a>`);
-  }
-  if (website) {
-    links.push(`<a class="host-link" href="${esc(website)}" target="_blank" rel="noopener noreferrer" aria-label="Website"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.2 2.5 3.4 5.5 3.4 9S14.2 18.5 12 21M12 3C9.8 5.5 8.6 8.5 8.6 12s1.2 6.5 3.4 9"></path></svg></a>`);
-  }
-  return links.length ? `<nav class="host-links" aria-label="Host links">${links.join('')}</nav>` : '';
-}
-
-// GET /h/:slug — one public home for an organizer's upcoming events
-router.get('/h/:slug', async (req, res, next) => {
-  try {
-    const { rows: hosts } = await pool.query(
-      `SELECT id, org_name, public_slug, logo_url, header_image_url,
-              bio, website_url, instagram_handle, instagram_url
-         FROM organizers
-        WHERE LOWER(public_slug)=LOWER($1) AND org_name IS NOT NULL`,
-      [req.params.slug]
-    );
-    const host = hosts[0];
-    if (!host) return res.status(404).send(render404());
-
-    const eventSelect = `SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url, event_date, start_time,
-                                venue_name, venue_city, background_theme
-                           FROM events
-                          WHERE organizer_id=$1
-                            AND status='published'
-                            AND visibility='public'`;
-    const [upcomingResult, pastResult] = await Promise.all([
-      pool.query(`${eventSelect} AND event_date >= CURRENT_DATE ORDER BY event_date ASC, start_time ASC, id ASC`, [host.id]),
-      pool.query(`${eventSelect} AND event_date < CURRENT_DATE ORDER BY event_date DESC, start_time DESC, id DESC`, [host.id])
-    ]);
-    const upcomingHtml = upcomingResult.rows.length
-      ? upcomingResult.rows.map(event => renderHostEventCard(event)).join('')
-      : '<p class="host-empty">No upcoming events yet.</p>';
-    const pastHtml = pastResult.rows.length
-      ? pastResult.rows.map(event => renderHostEventCard(event, { past: true })).join('')
-      : '<p class="host-empty">No past events yet.</p>';
-
-    const logoUrl = cleanProfileUrl(host.logo_url, 'logo').value;
-    const headerUrl = cleanProfileUrl(host.header_image_url, 'header image').value;
-    const avatarHtml = logoUrl
-      ? `<div class="host-avatar"><img src="${esc(logoUrl)}" alt="${esc(host.org_name)} logo"></div>`
-      : `<div class="host-avatar" aria-label="${esc(host.org_name)} initials"><span class="host-initials" aria-hidden="true">${esc(hostInitials(host.org_name))}</span></div>`;
-    const headerHtml = headerUrl ? `<img class="host-hero-image" src="${esc(headerUrl)}" alt="">` : '';
-    const bioHtml = host.bio ? `<p class="host-bio">${esc(host.bio)}</p>` : '';
-    const description = String(host.bio || `Public events presented by ${host.org_name}.`).replace(/\s+/g, ' ').trim().slice(0, 160);
-    const appUrl = String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-
-    res.send(hostTemplate
-      .replace(/{{HOST_NAME}}/g, esc(host.org_name))
-      .replace(/{{META_DESCRIPTION}}/g, esc(description))
-      .replace(/{{HOST_HEADER}}/g, headerHtml)
-      .replace(/{{HOST_AVATAR}}/g, avatarHtml)
-      .replace(/{{HOST_BIO}}/g, bioHtml)
-      .replace(/{{HOST_LINKS}}/g, hostSocialLinks(host))
-      .replace(/{{UPCOMING_EVENT_CARDS}}/g, upcomingHtml)
-      .replace(/{{PAST_EVENT_CARDS}}/g, pastHtml)
-      .replace(/{{OG_URL}}/g, esc(`${appUrl}/h/${host.public_slug}`))
-      .replace(/{{OG_IMAGE}}/g, esc(headerUrl || logoUrl || `${appUrl}/logo.png`)));
-  } catch (err) { next(err); }
-});
-
 // POST /api/public/events/:slug/unlock — access-code gate only; no event data.
 router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
   try {
@@ -453,8 +336,8 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<p class="primary-action-support">${esc(flyerAction.supportingText)}</p>`
       : '';
     const flyerMobileActionHtml = flyerAction.type === 'ticket'
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
-      : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-mobile-primary-action="rsvp" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
     const hostIdentityHtml = organizerLabel
       ? `<div class="flyer-host-identity">
@@ -519,15 +402,8 @@ router.get('/e/:slug', async (req, res, next) => {
       title: event.title,
       status: event.status,
       isFull,
-      capacity: event.capacity,
-      totalAttendance: event.total_attendance,
-      allowGuests: event.visibility === 'private' && event.allow_guests,
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
-      organizerLabel,
       coverImageUrl: primaryImageUrl || null,
-      presentationMode: isFlyerPresentation ? 'flyer' : 'standard',
-      flyerImageUrl,
-      primaryActionType: flyerAction.type,
       bgEffect: isEffect ? theme : null
     };
 
@@ -569,16 +445,6 @@ router.get('/e/:slug', async (req, res, next) => {
     res.send(html);
   } catch (err) { next(err); }
 });
-
-function render404() {
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Event not found</title><link rel="stylesheet" href="/css/brand.css"><script src="/js/legal-footer.js" defer></script></head>
-<body><main style="max-width:400px;margin:0 auto;padding:20vh 24px;text-align:center">
-<p class="sg-label" style="margin-bottom:20px">Silver Glider Events</p>
-<h1 style="font-size:30px;margin-bottom:10px">Event not found</h1>
-<p style="color:var(--sg-text-dim);font-size:15px">This event may have been removed, or the link is wrong.</p>
-</main></body></html>`;
-}
 
 // GET /api/public/events/:slug/comments — safe public wall data only.
 router.get('/api/public/events/:slug/comments', async (req, res, next) => {

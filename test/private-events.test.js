@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
-  attendanceCounts,
   canAppearInPublicListings,
   cleanComment,
   normalizePrivateSettings,
@@ -43,10 +42,11 @@ test('only published public events are eligible for public listings', () => {
 });
 
 test('host page query and private response retain link-only privacy contracts', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public.js'), 'utf8');
-  assert.match(source, /AND visibility='public'/);
-  assert.match(source, /X-Robots-Tag/);
-  assert.match(source, /noindex, nofollow, noarchive/);
+  const hostSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public-hosts.js'), 'utf8');
+  const eventSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public.js'), 'utf8');
+  assert.match(hostSource, /AND visibility='public'/);
+  assert.match(eventSource, /X-Robots-Tag/);
+  assert.match(eventSource, /noindex, nofollow, noarchive/);
 });
 
 test('The Line feed and review action exclude private or unpublished events', () => {
@@ -74,14 +74,6 @@ test('public guest list exposes first names only', () => {
   for (const secret of ['Private', 'Secret', '@example.com', '555-0100', '91']) {
     assert.equal(serialized.includes(secret), false);
   }
-});
-
-test('attendance totals include at most one named guest per RSVP', () => {
-  assert.deepEqual(attendanceCounts([
-    { status: 'confirmed', guest_first_name: 'June' },
-    { status: 'confirmed', guest_first_name: null },
-    { status: 'cancelled', guest_first_name: 'Not attending' }
-  ]), { submissionCount: 2, guestCount: 1, totalAttendance: 3 });
 });
 
 test('named guest validation is server-controlled by the event setting', () => {

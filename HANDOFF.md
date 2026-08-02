@@ -57,7 +57,7 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 - **Stack:** Node.js + Express 5, PostgreSQL, server-rendered HTML + vanilla JS. No build step, no framework.
 - **Repo (local):** `~/silver-glider-events`
 - **Entry point:** `src/index.js`
-- **Key folders:** `src/routes/` (auth, events, public, uploads, photos, admin), `src/lib/` (mailer, session, calendar/ics, unsplash, cloudinary, slug, csv), `src/jobs/reminders.js` (cron), `src/views/` (HTML pages), `public/` (CSS + JS/assets).
+- **Key folders:** `src/routes/` (auth, events, public event/RSVP flows, isolated public host pages, uploads, photos, admin), `src/lib/` (mailer, session, shared public HTML, calendar/ics, unsplash, cloudinary, slug, csv), `src/jobs/reminders.js` (cron), `src/views/` (HTML pages), `public/` (CSS + JS/assets).
 - **Database:** auto-migrations run on startup from `src/db/migrations/*.sql`. Tables: organizers, magic_link_tokens, events, event_secret_codes, rsvps, event_comments, message_log, line_submissions, feedback_submissions, host_invitations.
 - **Current migrations:** `001` through `016_flyer_presentation_mode.sql`.
 - **Health check:** `GET /health` returns `{status:"ok", sha:"..."}`.
@@ -115,7 +115,7 @@ Magic-link login + persistent sessions · organizer dashboard · Standard and **
 - **The Line integration is manual for now:** approving a submission flags it; actual cross-promotion is done by hand.
 - **Admin access:** The Line review and Feedback inbox are gated by an `is_admin` flag on the organizer row (set directly in the database).
 - **Scale triggers (not needed yet):** if the app ever runs on more than one server instance, the in-memory rate limiter would need Redis; a "log out all devices" feature would need a small session-revocation change (a `sessions_valid_after` column). Neither is required at current scale.
-- **Automated tests:** `npm test` currently runs **65 focused tests** covering Flyer Mode migration/upload/rendering/email/reminder compatibility, Standard/Flyer presentation isolation, private-event and Secret Show privacy, code hashing, signed unlocks, rate limits, guest counts, named-guest validation, comment length, and public-listing contracts. Broader route/integration coverage is still future work.
+- **Automated tests:** `npm test` currently runs **68 tests**: 64 focused tests plus 4 real HTTP/PostgreSQL integration tests covering authenticated event creation, Standard/Flyer/host rendering, Secret Show privacy and unlock cookies, RSVP capacity transactions, and confirmation dispatch. Integration tests are hard-guarded to the dedicated local `sge_test` database. `npm run check:static` validates syntax, local imports/assets, public-template placeholders, and browser event-data usage; `npm run check` runs the complete verification sequence. Public host routing now lives in `src/routes/public-hosts.js`, while event, RSVP, comment, calendar, and attendee flows remain in `src/routes/public.js`.
 - **Repository push:** Railway deployment works directly from this checkout. GitHub HTTPS authentication is currently missing on this Mac, so a `git push` can fail even when production deploys and verifies correctly.
 
 ## 11. Future (planned, not in V1)

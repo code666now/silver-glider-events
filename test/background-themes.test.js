@@ -16,8 +16,9 @@ test('After Hours Saloon is offered immediately after TV Static', () => {
 test('After Hours Saloon is accepted and renders from its dedicated asset', () => {
   assert.match(source('src/routes/events.js'), /'fog', 'saloon'/);
   assert.match(source('src/routes/public.js'), /'fog', 'saloon'/);
-  assert.match(source('src/routes/public.js'), /sg-events\/backgrounds\/after-hours-saloon\.png/);
-  assert.match(source('src/views/event-public.html'), /\.event-bg\.fx-saloon/);
+  const standardView = source('src/views/event-public.html');
+  assert.match(standardView, /sg-events\/backgrounds\/after-hours-saloon\.png/);
+  assert.match(standardView, /\.event-bg\.fx-saloon/);
   assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-saloon/);
 });
 

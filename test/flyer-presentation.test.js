@@ -126,7 +126,7 @@ test('flyer public rendering uses an isolated poster-first template without repl
   }
   assert.doesNotMatch(flyerTemplate, /<p class="sg-label cat">/);
   assert.match(route, /flyerPrimaryAction\(event\)/);
-  assert.match(route, /primaryActionType: flyerAction\.type/);
+  assert.match(route, /const flyerAction = flyerPrimaryAction\(event\)/);
 });
 
 test('Flyer pages use a fixed plaster background while Standard pages retain adaptive palettes', () => {
@@ -149,7 +149,7 @@ test('locked Secret Shows do not render or query flyer assets before unlock', ()
   const route = read('src/routes/public.js');
   const accessQuery = route.slice(route.indexOf('async function loadEventAccessEnvelope'), route.indexOf('function secretShowLocked'));
   assert.doesNotMatch(accessQuery, /flyer_image_url/);
-  const publicHandler = route.slice(route.indexOf("router.get('/e/:slug'"), route.indexOf('function render404'));
+  const publicHandler = route.slice(route.indexOf("router.get('/e/:slug'"), route.indexOf('// GET /api/public/events/:slug/comments'));
   assert.ok(publicHandler.indexOf('secretShowTemplate') < publicHandler.indexOf('loadEventBySlug(req.params.slug)'));
   assert.doesNotMatch(read('src/views/secret-show.html'), /flyer_image_url|flyer-hero/);
 });
@@ -188,7 +188,7 @@ test('flyer events remain in the existing dashboard, event list, host page, and 
   assert.match(read('src/views/dashboard.html'), /ev\.presentation_mode === 'flyer'/);
   assert.match(read('src/views/events.html'), /ev\.presentation_mode === 'flyer'/);
   assert.match(read('public/js/manage.js'), /event\.presentation_mode === 'flyer'/);
-  const publicRoute = read('src/routes/public.js');
-  assert.match(publicRoute, /SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url/);
-  assert.match(publicRoute, /class="flyer-art"/);
+  const hostRoute = read('src/routes/public-hosts.js');
+  assert.match(hostRoute, /SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url/);
+  assert.match(hostRoute, /class="flyer-art"/);
 });

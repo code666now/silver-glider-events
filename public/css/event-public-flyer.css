@@ -123,17 +123,6 @@
   min-height: 52vh;
   border-color: var(--sg-border);
 }
-.photo-credit {
-  margin-top: 8px;
-  color: var(--sg-text-faint);
-  font-size: 11px;
-  text-align: center;
-}
-.photo-credit a {
-  color: var(--sg-text-dim);
-  text-decoration: underline;
-}
-
 .flyer-details {
   width: min(640px, 100%);
   margin: 0 auto;

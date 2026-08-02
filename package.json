@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:unit": "node --test test/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "check:static": "node scripts/check-static.js",
+    "check": "npm run check:static && npm test"
   },
   "dependencies": {
     "cloudinary": "^2.5.1",

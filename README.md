@@ -24,6 +24,7 @@ Hosts can publish a Standard event page or a poster-first Flyer page, collect fr
 
 ```bash
 createdb sge_dev
+createdb sge_test
 cp .env.example .env
 npm install
 npm run dev
@@ -69,7 +70,7 @@ Standard pages retain their existing animated gradients and cover-derived adapti
 ```text
 src/index.js                 bootstrap, routes, health check, reminder cron
 src/db/migrations/           numbered SQL migrations (currently 001–016)
-src/routes/                  auth, organizer events, public pages, uploads, photos, admin
+src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer, sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/reminders.js        idempotent day-before and day-of reminder job
 src/views/                   server-rendered HTML templates
@@ -91,9 +92,12 @@ test/                        focused Node test suite
 
 ```bash
 npm test
+npm run check:static
 ```
 
-As of August 2, 2026, the focused suite contains 65 tests. It covers Flyer/Standard isolation, Flyer uploads and emails, private-event visibility, Secret Show security, rate limits, guest counts, named guests, comments, and listing contracts.
+As of August 2, 2026, the suite contains 68 tests. The 64 focused tests cover Flyer/Standard isolation, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, and listing contracts. Four HTTP/PostgreSQL integration tests exercise authenticated event creation, Standard/Flyer/host rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
+
+Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
 ## Admin
 

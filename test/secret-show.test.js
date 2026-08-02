@@ -63,7 +63,7 @@ test('server prevents Secret Show on public events and never returns a code hash
 
 test('locked Secret Shows render no private event details before unlock', () => {
   const publicRoute = source('src/routes/public.js');
-  const getEvent = publicRoute.slice(publicRoute.indexOf("router.get('/e/:slug'"), publicRoute.indexOf('function render404'));
+  const getEvent = publicRoute.slice(publicRoute.indexOf("router.get('/e/:slug'"), publicRoute.indexOf('// GET /api/public/events/:slug/comments'));
   assert.ok(getEvent.indexOf('loadEventAccessEnvelope') < getEvent.indexOf('loadEventBySlug'));
   assert.ok(getEvent.indexOf('secretShowTemplate') < getEvent.indexOf('loadEventBySlug'));
   assert.match(getEvent, /Cache-Control', 'private, no-store'/);
@@ -89,7 +89,7 @@ test('unlock is rate-limited and all private social routes require access', () =
 
 test('existing private features remain on the normal event page after unlock', () => {
   const publicRoute = source('src/routes/public.js');
-  const getEvent = publicRoute.slice(publicRoute.indexOf("router.get('/e/:slug'"), publicRoute.indexOf('function render404'));
+  const getEvent = publicRoute.slice(publicRoute.indexOf("router.get('/e/:slug'"), publicRoute.indexOf('// GET /api/public/events/:slug/comments'));
   for (const feature of ['renderGuestFields(event)', 'renderGuestList(event, publicGuestRows)', 'renderComments(event)', "'RSVP'"]) {
     assert.match(getEvent, new RegExp(feature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }

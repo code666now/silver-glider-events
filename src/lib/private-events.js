@@ -53,16 +53,6 @@ function parseNamedGuest(event, body = {}) {
   };
 }
 
-function attendanceCounts(rows = []) {
-  const confirmed = rows.filter(row => row.status == null || row.status === 'confirmed');
-  const guestCount = confirmed.filter(row => Boolean(row.guest_first_name)).length;
-  return {
-    submissionCount: confirmed.length,
-    guestCount,
-    totalAttendance: confirmed.length + guestCount
-  };
-}
-
 function publicGuestNames(rows = []) {
   const names = [];
   for (const row of rows) {
@@ -100,7 +90,6 @@ function readCookie(req, name) {
 }
 
 module.exports = {
-  attendanceCounts,
   attendeeCookieName,
   canAppearInPublicListings,
   cleanComment,

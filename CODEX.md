@@ -9,7 +9,7 @@ Silver Glider Events is a production Express/PostgreSQL app for beautiful event 
 1. Read `CODEX.md`, `HANDOFF.md`, and `README.md`.
 2. Inspect `git status --short` before touching files. Preserve unrelated user changes.
 3. Run `npm install` if dependencies are missing.
-4. Use a local PostgreSQL database only: `postgresql://localhost:5432/sge_dev`.
+4. Use local PostgreSQL only: `sge_dev` for development and the dedicated `sge_test` database for tests.
 5. Keep `NODE_ENV=development` and `REMINDERS_ENABLED=false` locally.
 6. Start with `npm run dev` (normally `http://localhost:3100`).
 7. Verify `curl http://localhost:3100/health` and run `npm test` before release.
@@ -30,7 +30,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - No build step and no frontend framework.
 - `src/index.js` mounts routes, runs migrations, exposes `/health`, and starts reminder jobs.
 - `src/db/migrations/` contains ordered migrations, currently `001` through `016_flyer_presentation_mode.sql`.
-- `src/routes/` contains auth, organizer event, public, upload, photo, and admin flows.
+- `src/routes/` contains auth, organizer event, public event, public host, upload, photo, and admin flows. Public host pages are isolated in `public-hosts.js`; guest event/RSVP flows remain in `public.js`.
 - `src/lib/` contains sessions, mailer, calendar, Cloudinary, Unsplash, CSV, escaping, and validation helpers.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.
 - Templates use string replacement of escaped `{{PLACEHOLDER}}` values. Follow the existing escaping and safe-URL helpers; do not interpolate host input directly into HTML.
@@ -79,7 +79,9 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 65 focused tests. Before deploying, run it in full plus `git diff --check`. Add focused tests for presentation-mode isolation, privacy, authorization, validation, or email behavior whenever those areas change.
+`npm test` currently runs 68 tests: 64 focused unit/source-contract tests and 4 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+
+`npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 
 For UI changes, test desktop and mobile. For changes involving RSVP or email, verify the existing flow rather than creating parallel logic.
 
@@ -101,7 +103,7 @@ Replacing an asset at an existing URL updates every live event using it. Prefer 
 Production is live at https://silvergliderevents.com and the direct Railway service is https://silver-glider-events-production.up.railway.app.
 
 1. Inspect the diff and preserve unrelated work.
-2. Run `git diff --check` and `npm test`.
+2. Run `git diff --check` and `npm run check`.
 3. Commit the intended files. Do not stage the deployment-only `.git-sha` modification.
 4. Attempt the requested GitHub push if credentials are available.
 5. Write the commit SHA to `.git-sha` and deploy directly:
