@@ -35,6 +35,14 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.
 - Templates use string replacement of escaped `{{PLACEHOLDER}}` values. Follow the existing escaping and safe-URL helpers; do not interpolate host input directly into HTML.
 
+## Responsive organizer workspaces
+
+- Mobile remains the baseline and must not regress. Desktop enhancements begin at the existing large-screen breakpoints rather than replacing the mobile DOM or interaction flow.
+- Home, My Events, Settings, create/edit, and event management expand into wider desktop compositions. My Events uses a two-column upcoming-event grid; the event editor separates Page Design from Event Information; the Secret Show prompt spans the editor; and event management pairs artwork with a structured action panel above the full-width guest list.
+- The Standard editor keeps background choices visible after a cover is selected. Local upload and free-photo browsing remain separate actions.
+- On desktop, keep **Create Event** in the My Events page header. The event-management promotion panel uses descriptive action rows and a distinct editorial-opportunity block rather than an undifferentiated pill group.
+- Free-photo modals must sit above native date/time controls and other form UI. Preserve the corrected stacking and modal isolation.
+
 ## Public presentation modes
 
 Keep Standard and Flyer behavior isolated.
@@ -66,6 +74,16 @@ Keep Standard and Flyer behavior isolated.
 - Named guests, visible first names, and comments are opt-in private-event features.
 - Host pages live at `/h/:hostSlug`; public attribution links back to them.
 - Public event pages do not show a QR code; QR download belongs in the organizer promotion area.
+
+## RSVP confirmation email
+
+- `src/lib/mailer.js` renders RSVP confirmations with a dedicated, table-based 620px layout. Shared reminder and activation-email layouts remain separate.
+- The small Silver Glider mark is a platform signature. Event artwork is the primary visual and spans up to 620px; text/details retain readable inner gutters.
+- Managed Cloudinary landscape artwork uses a derived JPEG with predominant-color padding (`b_auto` + `c_pad`) on a 620×560 canvas. The original composition is contained without cropping. Portrait artwork remains uncropped and keeps its natural aspect ratio.
+- The selected `background_theme` supplies a dark, email-safe outer tint. Disco, Fog, Kraft paper, and After Hours Saloon use static poster imagery only when an event has no cover/flyer artwork. Never put video, MP4, animated GIF, CSS motion, or critical background images into confirmation email markup.
+- Title and optional linked host attribution sit outside the details card. A valid `event_vibe_url` adds **Listen here**. Date, time, venue, maps, host, vibe, and artwork rows are omitted when unavailable.
+- Keep the CTA at least 48px high and full-width on mobile. Preserve inline critical styles, nested presentation tables, Outlook's conditional 620px wrapper, system-font fallbacks, high contrast, and safe HTTP(S) URL validation.
+- RSVP sending, resend limits, calendar attachment, reminders, manage link, and attendee/event URL logic must remain unchanged unless a task explicitly targets them. Previously delivered email cannot change when an event is edited; a new confirmation/resend renders the current event data.
 
 ## Security invariants
 

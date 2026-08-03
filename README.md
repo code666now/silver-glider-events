@@ -40,11 +40,12 @@ Never use the Railway production database for development or tests.
 
 - Passwordless host authentication with 30-day sliding sessions
 - Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and promotion tools
+- Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
 - Flyer events with a centered, uncropped poster-first public layout
 - Free RSVP and external paid-ticket links; no native payment processing
 - Progressive RSVP form, mobile docked CTA, capacity enforcement, cancellation links, and confirmation resends
-- Confirmation and reminder emails with calendar attachments
+- Artwork-led RSVP confirmation emails with adaptive color treatment, linked host/vibe identity, conditional details, and calendar attachments; separate day-before/day-of reminders
 - Public and Private—Link Only visibility
 - Optional named guest, first-name-only guest list, and verified-attendee comments for private events
 - Optional six-character Secret Show gate
@@ -65,13 +66,17 @@ Standard and Flyer public pages are intentionally isolated:
 
 Standard pages retain their existing animated gradients and cover-derived adaptive palette. Flyer pages skip adaptive palette extraction and, unless an explicit effect is selected, use the fixed darkened plaster background at `public/images/flyer-plaster-wall.jpg`. This keeps Flyer pages tactile and poster-like without changing Standard events.
 
+Organizer pages remain mobile-first but expand at desktop widths: My Events can present upcoming events two-up, create/edit separates Page Design from Event Information, and event management places artwork beside a structured actions/promotions panel before the full-width guest list. The Standard editor keeps background choices available after cover selection.
+
+RSVP confirmations use a separate, table-based 620px email layout in `src/lib/mailer.js`. Event artwork is full-width and uncropped; Cloudinary-hosted landscape images receive a predominant-color padded 620×560 JPEG canvas while portrait images preserve their natural ratio. The selected event theme supplies a dark outer tint. Static effect posters are used only when no artwork exists, and email markup never embeds motion. Title, host, listening link, and date/time/venue rows are conditional; reminder timing, RSVP logic, calendar attachments, manage links, and event URLs are unchanged.
+
 ## Project layout
 
 ```text
 src/index.js                 bootstrap, routes, health check, reminder cron
 src/db/migrations/           numbered SQL migrations (currently 001–016)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
-src/lib/                     mailer, sessions, calendar, CSV, Cloudinary, Unsplash, escaping
+src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/reminders.js        idempotent day-before and day-of reminder job
 src/views/                   server-rendered HTML templates
 public/css/                  brand and page styles
