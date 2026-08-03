@@ -4,6 +4,7 @@ const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
 let admissionType = 'free_rsvp';
 let presentationMode = 'standard';
+let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
 
 const $ = id => document.getElementById(id);
@@ -237,6 +238,21 @@ let currentPhotoTotalPages = 1;
 let photoLoading = false;
 let photoScrollBound = false;
 let lastPhotoLoadAt = 0;
+
+function setCoverFitMode(mode) {
+  coverFitMode = ['contain', 'cover'].includes(mode) ? mode : 'auto';
+  $('cover-fit-contain').checked = coverFitMode === 'contain';
+  $('cover-fit-cover').checked = coverFitMode === 'cover';
+  drop.classList.toggle('fit-contain', coverFitMode === 'contain');
+}
+
+function defaultCoverFitFromImage(img) {
+  if (coverFitMode !== 'auto' || !img.naturalWidth || !img.naturalHeight) return;
+  setCoverFitMode(img.naturalHeight > img.naturalWidth ? 'contain' : 'cover');
+}
+
+$('cover-fit-contain').addEventListener('change', () => setCoverFitMode('contain'));
+$('cover-fit-cover').addEventListener('change', () => setCoverFitMode('cover'));
 const IMAGE_BG_CLASSES = [];
 let pickerBgTimer;
 
@@ -364,18 +380,25 @@ async function applySelectedImagePalette(url) {
   }
 }
 
-function setCover(url, creditName, creditLink) {
+function setCover(url, creditName, creditLink, { preserveFit = false } = {}) {
+  if (!preserveFit) setCoverFitMode('auto');
   $('cover_image_url').value = url || '';
   $('cover_credit_name').value = creditName || '';
   $('cover_credit_link').value = creditLink || '';
   const img = $('cover-preview');
   if (url) {
+    $('cover-fit-control').hidden = false;
+    img.onload = () => defaultCoverFitFromImage(img);
     img.src = url;
     img.style.display = 'block';
     drop.classList.add('has-image');
     $('btn-clear-cover').style.display = '';
     markSelectedPhoto(url);
+    if (img.complete) defaultCoverFitFromImage(img);
   } else {
+    $('cover-fit-control').hidden = true;
+    img.onload = null;
+    setCoverFitMode('auto');
     img.style.display = 'none';
     drop.classList.remove('has-image');
     $('btn-clear-cover').style.display = 'none';
@@ -706,6 +729,7 @@ function collect() {
     description: $('description').value.trim(),
     event_vibe_url: $('event_vibe_url').value.trim() || null,
     cover_image_url: $('cover_image_url').value || null,
+    cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
     flyer_image_url: $('flyer_image_url').value || null,
     event_date: $('event_date').value,
@@ -770,12 +794,13 @@ if (editId) {
     }
     setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
     setPresentationMode(event.presentation_mode === 'flyer' ? 'flyer' : 'standard');
+    setCoverFitMode(event.cover_fit_mode || 'auto');
     if (event.flyer_image_url) setFlyer(event.flyer_image_url);
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
     if (event.cover_image_url) {
-      setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link);
+      setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link, { preserveFit: true });
     }
   }).catch(err => showError(err.message));
 }

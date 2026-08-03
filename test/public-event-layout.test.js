@@ -62,6 +62,23 @@ test('host and Silver Glider attribution center only on mobile', () => {
   assert.match(view, /@media \(min-width: 880px\)/);
 });
 
+test('Standard mobile artwork preserves portrait covers while desktop and Flyer rendering stay unchanged', () => {
+  const view = source('src/views/event-public.html');
+  const flyerView = source('src/views/event-public-flyer.html');
+  const client = source('public/js/public-event.js');
+  const route = source('src/routes/public.js');
+
+  assert.match(route, /coverFitMode = \['contain', 'cover'\]\.includes\(event\.cover_fit_mode\)/);
+  assert.match(route, /standard-hero cover-fit-\$\{coverFitMode\}/);
+  assert.match(view, /@media \(max-width: 879px\)[\s\S]*cover-fit-auto:not\(\.cover-fit-resolved-cover\)[\s\S]*object-fit: contain/);
+  assert.match(view, /cover-fit-contain\.cover-image-portrait[\s\S]*aspect-ratio: 4 \/ 5/);
+  assert.match(view, /@media \(min-width: 880px\)[\s\S]*\.hero \{[\s\S]*aspect-ratio: 4 \/ 5/);
+  assert.match(client, /function applyStandardMobileCoverFit\(\)/);
+  assert.match(client, /const isPortrait = img\.naturalHeight > img\.naturalWidth/);
+  assert.match(client, /hero\.style\.setProperty\('--hero-bg-a'/);
+  assert.doesNotMatch(flyerView, /cover-fit-contain|cover-fit-auto|standard-hero/);
+});
+
 test('legal footer mounts inside both isolated public event presentations', () => {
   const client = source('public/js/legal-footer.js');
   assert.match(client, /document\.querySelector\('\.col-details \.wrap'\) \|\| document\.querySelector\('\.flyer-details'\)/);

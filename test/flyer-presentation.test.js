@@ -33,12 +33,15 @@ const rsvp = {
 
 test('migration safely defaults and constrains flyer presentation on the existing events table', () => {
   const migration = read('src/db/migrations/016_flyer_presentation_mode.sql');
+  const coverFitMigration = read('src/db/migrations/017_standard_mobile_cover_fit.sql');
   assert.match(migration, /ALTER TABLE events/);
   assert.match(migration, /presentation_mode TEXT NOT NULL DEFAULT 'standard'/);
   assert.match(migration, /flyer_image_url TEXT/);
   assert.match(migration, /presentation_mode IN \('standard', 'flyer'\)/);
   assert.match(migration, /presentation_mode <> 'flyer'/);
   assert.match(migration, /SET presentation_mode = 'standard'/);
+  assert.match(coverFitMigration, /cover_fit_mode TEXT NOT NULL DEFAULT 'auto'/);
+  assert.match(coverFitMigration, /cover_fit_mode IN \('auto', 'contain', 'cover'\)/);
 });
 
 test('flyer uploads and event writes reuse authenticated, size-limited infrastructure', () => {
@@ -53,6 +56,8 @@ test('flyer uploads and event writes reuse authenticated, size-limited infrastru
   assert.match(events, /isManagedFlyerUrl/);
   assert.match(events, /presentation_mode, flyer_image_url/);
   assert.match(events, /e\.presentation_mode \|\| 'standard', e\.flyer_image_url \|\| null/);
+  assert.match(events, /cover_fit_mode/);
+  assert.match(events, /e\.cover_fit_mode \|\| 'auto'/);
 });
 
 test('create and edit form default to Standard and require an uploaded flyer in Flyer mode', () => {
@@ -62,9 +67,14 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(html, /type="radio" name="presentation_mode" id="presentation-standard" value="standard" checked/);
   assert.match(html, /type="radio" name="presentation_mode" id="presentation-flyer" value="flyer"/);
   assert.match(html, /id="page-style-help"/);
+  assert.match(html, /id="cover-fit-control" hidden/);
+  assert.match(html, /Show full flyer/);
+  assert.match(html, /Fill the space/);
   assert.match(html, /id="flyer-input"[^>]+image\/jpeg,image\/png,image\/webp,image\/gif/);
   assert.match(js, /xhr\.open\('POST', '\/api\/uploads\/flyer'\)/);
   assert.match(js, /presentation_mode: presentationMode/);
+  assert.match(js, /cover_fit_mode: coverFitMode/);
+  assert.match(js, /img\.naturalHeight > img\.naturalWidth \? 'contain' : 'cover'/);
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);
   assert.match(js, /Upload a flyer before publishing this event/);
@@ -124,6 +134,9 @@ test('flyer public rendering uses an isolated poster-first template without repl
   assert.match(flyerStyles, /\.hero\.flyer-hero img[\s\S]*height: auto;[\s\S]*object-fit: contain/);
   assert.doesNotMatch(flyerStyles, /\.flyer-layout\s*\{[^}]*grid-template-columns/);
   assert.match(standardTemplate, /grid-template-columns: minmax\(0, 5fr\) minmax\(0, 6fr\)/);
+  assert.match(route, /standard-hero cover-fit-\$\{coverFitMode\}/);
+  assert.match(standardTemplate, /@media \(max-width: 879px\)[\s\S]*cover-fit-contain[\s\S]*object-fit: contain/);
+  assert.match(standardTemplate, /@media \(min-width: 880px\)[\s\S]*\.hero[\s\S]*aspect-ratio: 4 \/ 5/);
 
   const markers = [
     '{{HERO}}',

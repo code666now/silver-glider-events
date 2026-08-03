@@ -210,6 +210,27 @@
     /* Surface placeholder only for photo heroes; no-image heroes show the theme gradient */
     .hero:has(img) { background: var(--sg-surface); }
     .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    @media (max-width: 879px) {
+      .hero.standard-hero.cover-fit-contain,
+      .hero.standard-hero.cover-fit-auto:not(.cover-fit-resolved-cover) {
+        --hero-bg-a: rgba(28,197,190,.42);
+        --hero-bg-b: rgba(52,60,98,.38);
+        --hero-bg-c: rgba(18,18,20,.92);
+        background:
+          radial-gradient(circle at 14% 18%, var(--hero-bg-a), transparent 48%),
+          radial-gradient(circle at 88% 80%, var(--hero-bg-b), transparent 52%),
+          linear-gradient(145deg, var(--hero-bg-c), var(--sg-surface));
+      }
+      .hero.standard-hero.cover-fit-contain.cover-image-portrait,
+      .hero.standard-hero.cover-fit-auto.cover-image-portrait {
+        aspect-ratio: 4 / 5;
+      }
+      .hero.standard-hero.cover-fit-contain img,
+      .hero.standard-hero.cover-fit-auto:not(.cover-fit-resolved-cover) img {
+        object-fit: contain;
+        object-position: center;
+      }
+    }
     .hero::after {
       content: '';
       position: absolute; inset: 0;

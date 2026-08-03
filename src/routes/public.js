@@ -382,12 +382,13 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"></div>`
       : '';
     const isFlyerPresentation = event.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
+    const coverFitMode = ['contain', 'cover'].includes(event.cover_fit_mode) ? event.cover_fit_mode : 'auto';
     const flyerImageUrl = isFlyerPresentation ? event.flyer_image_url : null;
     const primaryImageUrl = flyerImageUrl || event.cover_image_url;
     const heroHtml = flyerImageUrl
       ? `<div class="hero flyer-hero" id="hero"><img src="${esc(flyerImageUrl)}" alt="${esc(event.title)} flyer" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
       : event.cover_image_url
-      ? `<div class="hero" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
+      ? `<div class="hero standard-hero cover-fit-${coverFitMode}" id="hero"><img src="${esc(event.cover_image_url)}" alt="" onerror="this.parentElement.classList.add('no-image'${isEffect ? '' : `,'bg-theme','bg-${theme}'`});this.remove()"></div>`
       : (isEffect
           ? `<div class="hero no-image" id="hero"></div>`
           : `<div class="hero no-image bg-theme bg-${theme}" id="hero"></div>`);
@@ -404,6 +405,7 @@ router.get('/e/:slug', async (req, res, next) => {
       isFull,
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
       coverImageUrl: primaryImageUrl || null,
+      coverFitMode,
       bgEffect: isEffect ? theme : null
     };
 

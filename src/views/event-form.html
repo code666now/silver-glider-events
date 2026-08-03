@@ -24,6 +24,13 @@
     }
     .cover-drop:hover, .cover-drop.dragover { border-color: var(--sg-accent); }
     .cover-drop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .cover-drop.fit-contain {
+      background:
+        radial-gradient(circle at 16% 20%, rgba(28,197,190,.24), transparent 45%),
+        radial-gradient(circle at 86% 82%, rgba(71,78,126,.25), transparent 48%),
+        var(--sg-surface);
+    }
+    .cover-drop.fit-contain img { object-fit: contain; }
     .cover-drop .hint { color: var(--sg-text-faint); font-size: 13px; text-align: center; padding: 0 20px; z-index: 1; }
     .cover-drop.has-image .hint { display: none; }
     .cover-progress {
@@ -62,6 +69,32 @@
     .page-style-option input:focus-visible + span { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
     .page-style-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
     .media-panel[hidden] { display: none; }
+    .cover-fit-control { margin: -4px 0 24px; padding: 0; border: 0; }
+    .cover-fit-control[hidden] { display: none; }
+    .cover-fit-control legend { margin-bottom: 9px; }
+    .cover-fit-segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 3px;
+      border: 1px solid var(--sg-border);
+      border-radius: 16px;
+      background: rgba(19,19,22,.72);
+    }
+    .cover-fit-option { position: relative; cursor: pointer; }
+    .cover-fit-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .cover-fit-option span {
+      display: block;
+      min-height: 44px;
+      padding: 12px 10px;
+      border-radius: 13px;
+      color: var(--sg-text-dim);
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .cover-fit-option input:checked + span { background: rgba(28,197,190,.14); color: var(--sg-accent); }
+    .cover-fit-option input:focus-visible + span { outline: 2px solid var(--sg-accent); outline-offset: 1px; }
+    .cover-fit-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
     .flyer-drop {
       position: relative;
       min-height: 280px;
@@ -617,6 +650,15 @@
       <input type="hidden" id="cover_image_url">
       <input type="hidden" id="cover_credit_name">
       <input type="hidden" id="cover_credit_link">
+
+      <fieldset class="cover-fit-control" id="cover-fit-control" hidden>
+        <legend>Mobile image display</legend>
+        <div class="cover-fit-segmented">
+          <label class="cover-fit-option"><input type="radio" name="cover_fit_mode" id="cover-fit-contain" value="contain"><span>Show full flyer</span></label>
+          <label class="cover-fit-option"><input type="radio" name="cover_fit_mode" id="cover-fit-cover" value="cover"><span>Fill the space</span></label>
+        </div>
+        <p class="cover-fit-help">Portrait artwork starts with the full flyer visible. This only changes Standard pages on phones.</p>
+      </fieldset>
 
       <div class="sg-field" id="background-field">
         <label>Background <span style="opacity:.5;text-transform:none;letter-spacing:0">— color or moving effect behind your page</span></label>

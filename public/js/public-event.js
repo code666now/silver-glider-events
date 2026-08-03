@@ -69,10 +69,17 @@ async function extractCoverPalette(url) {
 
 async function applyCoverPalette() {
   if (document.body.classList.contains('flyer-public-page')) return;
-  if (EVENT.bgEffect) return;   // an explicit effect overrides image-derived colors
   if (!EVENT.coverImageUrl) return;
   try {
     const colors = await extractCoverPalette(EVENT.coverImageUrl);
+    const hero = $('hero');
+    if (hero) {
+      hero.style.setProperty('--hero-bg-a', rgba(colors[0], .76));
+      hero.style.setProperty('--hero-bg-b', rgba(colors[1], .62));
+      hero.style.setProperty('--hero-bg-c', rgba(colors[2] || colors[0], .54));
+      hero.classList.add('image-palette');
+    }
+    if (EVENT.bgEffect) return;   // an explicit effect still overrides the page background
     const bg = document.querySelector('.event-bg');
     if (!bg) return;
     bg.style.setProperty('--event-bg-a', rgba(colors[0], .82));
@@ -84,6 +91,24 @@ async function applyCoverPalette() {
   }
 }
 
+function applyStandardMobileCoverFit() {
+  if (document.body.classList.contains('flyer-public-page')) return;
+  const hero = $('hero');
+  const img = hero && hero.querySelector('img');
+  if (!img) return;
+  const resolve = () => {
+    if (!img.naturalWidth || !img.naturalHeight) return;
+    const isPortrait = img.naturalHeight > img.naturalWidth;
+    hero.classList.toggle('cover-image-portrait', isPortrait);
+    if (EVENT.coverFitMode === 'auto') {
+      hero.classList.toggle('cover-fit-resolved-cover', !isPortrait);
+    }
+  };
+  if (img.complete) resolve();
+  else img.addEventListener('load', resolve, { once: true });
+}
+
+applyStandardMobileCoverFit();
 applyCoverPalette();
 
 // TV static — a small canvas of noise, scaled up (chunky/retro) and redrawn ~15fps.
