@@ -104,6 +104,9 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   assert.match(js, /\$\('btn-search'\)\.addEventListener\('click', openImageModal\)/);
   assert.doesNotMatch(js, /drop\.addEventListener\('click', openImageModal\)/);
   assert.doesNotMatch(js, /\$\('btn-upload'\)\.addEventListener\('click', openImageModal\)/);
+  assert.match(html, /id="background-field"/);
+  const setCoverSource = js.slice(js.indexOf('function setCover'), js.indexOf('function openImageModal'));
+  assert.doesNotMatch(setCoverSource, /background[^\n]*style\.display|fallback-background-field/);
 });
 
 test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {
