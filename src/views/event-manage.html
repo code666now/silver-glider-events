@@ -46,11 +46,47 @@
       margin: 0 0 32px;
     }
     .promotion-card h2 { font-size: 22px; margin-bottom: 6px; }
-    .promotion-card > p { color: var(--sg-text-dim); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
-    .promotion-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    .promotion-actions .sg-btn { padding: 10px 20px; font-size: 13px; }
-    .line-status { margin-top: 12px; color: var(--sg-text-faint); font-size: 11px; }
-    .line-status strong { color: var(--sg-text-dim); }
+    .promotion-card > p { color: var(--sg-text-dim); font-size: 13px; line-height: 1.6; margin-bottom: 18px; }
+    .promotion-group-label {
+      margin-bottom:6px;color:var(--sg-text-faint);font-size:10px;font-weight:800;
+      letter-spacing:.14em;text-transform:uppercase;
+    }
+    .promotion-action-list { border-top:1px solid var(--sg-border-soft); }
+    .promotion-action {
+      width:100%;min-height:66px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;
+      gap:12px;align-items:center;padding:12px 8px;border:0;border-bottom:1px solid var(--sg-border-soft);
+      border-radius:0;background:transparent;color:var(--sg-text);font-family:var(--sg-font-body);
+      text-align:left;cursor:pointer;transition:background .16s ease,color .16s ease;
+    }
+    .promotion-action:hover { background:rgba(255,255,255,.035); }
+    .promotion-action:focus-visible { outline:2px solid var(--sg-accent);outline-offset:-2px; }
+    .promotion-action:disabled { cursor:not-allowed;opacity:.55; }
+    .promotion-action-icon {
+      width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(28,197,190,.18);
+      border-radius:12px;background:rgba(28,197,190,.07);color:var(--sg-accent);
+    }
+    .promotion-action-icon svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+    .promotion-action-copy { min-width:0;display:block; }
+    .promotion-action-title { display:block;margin-bottom:2px;font-size:13px;font-weight:800;line-height:1.25; }
+    .promotion-action-description { display:block;color:var(--sg-text-faint);font-size:11px;line-height:1.4; }
+    .promotion-action-arrow { color:var(--sg-text-faint);font-size:18px;transition:transform .16s ease,color .16s ease; }
+    .promotion-action:hover .promotion-action-arrow { color:var(--sg-accent);transform:translateX(2px); }
+    .line-feature {
+      margin-top:18px;padding:16px;border:1px solid rgba(28,197,190,.18);border-radius:16px;
+      background:linear-gradient(145deg,rgba(28,197,190,.065),rgba(255,255,255,.015));
+    }
+    .line-feature-head { display:grid;grid-template-columns:38px minmax(0,1fr);gap:12px;align-items:start; }
+    .line-feature h3 { margin:1px 0 4px;font-size:16px; }
+    .line-feature-copy { color:var(--sg-text-dim);font-size:11px;line-height:1.5; }
+    .line-submit {
+      width:100%;min-height:42px;margin-top:14px;padding:10px 14px;border:1px solid rgba(28,197,190,.38);
+      border-radius:12px;background:rgba(28,197,190,.09);color:var(--sg-accent);
+      font:800 12px var(--sg-font-body);cursor:pointer;transition:background .16s ease,border-color .16s ease;
+    }
+    .line-submit::after { content:'  →'; }
+    .line-submit:hover { border-color:var(--sg-accent);background:rgba(28,197,190,.14); }
+    .line-submit:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
+    .line-submit:disabled { cursor:not-allowed;opacity:.58; }
     .guest-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
     .guest-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1; }
     .guest-tools .sg-btn { padding: 10px 17px; font-size: 12px; white-space: nowrap; }
@@ -128,10 +164,6 @@
       .toolbar .more-menu { grid-column:1/-1; }
       .more-menu-panel { width:100%;min-width:210px; }
       .promotion-card { margin:0;padding:20px;background:rgba(255,255,255,.022); }
-      .promotion-actions { display:grid;grid-template-columns:1fr 1fr; }
-      .promotion-actions .sg-btn { width:100%;padding:10px 12px; }
-      .promotion-actions #announce,
-      .promotion-actions #submit-line { grid-column:1/-1; }
       .manage-guest-section {
         padding:26px;
         border:1px solid var(--sg-border-soft);
@@ -213,14 +245,32 @@
 
     <section class="promotion-card" id="line-card">
       <h2>Promote your event</h2>
-      <p id="promotion-copy">Share the event directly, invite followers, or submit for a chance to be featured on The Line.</p>
-      <div class="promotion-actions">
-        <button class="sg-btn sg-btn-ghost" id="share-event">Share Event</button>
-        <button class="sg-btn sg-btn-ghost" id="download-qr">Download QR Code</button>
-        <button class="sg-btn sg-btn-ghost" id="announce" style="display:none">Email my followers</button>
-        <button class="sg-btn sg-btn-ghost" id="submit-line">Submit to The Line</button>
+      <p id="promotion-copy">Choose how you want to get the word out.</p>
+      <p class="promotion-group-label">Get the word out</p>
+      <div class="promotion-action-list">
+        <button class="promotion-action" id="share-event" type="button">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v8h14v-8"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Share event</strong><span class="promotion-action-description">Send or post your event link.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
+        <button class="promotion-action" id="download-qr" type="button">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M15 14h2v2h-2zm3 3h2v3h-3v-2h-2v2h-2v-4h2"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Download QR code</strong><span class="promotion-action-description">Use it on posters, flyers, and print.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">↓</span>
+        </button>
+        <button class="promotion-action" id="announce" type="button" style="display:none">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 10a2.5 2.5 0 0 1 2 4M6 10a2.5 2.5 0 0 0-2 4"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="announce-title">Email my followers</strong><span class="promotion-action-description" id="announce-copy">Send this event once to people following your host page.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
       </div>
-      <p class="line-status" id="line-status"><strong id="line-title">The Line</strong> · <span id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</span></p>
+      <section class="line-feature" id="line-feature" aria-label="The Line editorial opportunity">
+        <div class="line-feature-head">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h2m3-4v8m4-11v14m4-9v4m3-2h-1"/></svg></span>
+          <div><p class="promotion-group-label">Editorial opportunity</p><h3 id="line-title">The Line</h3><p class="line-feature-copy" id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</p></div>
+        </div>
+        <button class="line-submit" id="submit-line" type="button">Submit to The Line</button>
+      </section>
     </section>
     </section>
     </div>

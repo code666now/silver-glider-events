@@ -68,8 +68,7 @@ async function loadEvent() {
     $('line-card').style.display = 'none';
   } else if (event.visibility === 'private') {
     $('promotion-copy').textContent = 'Share your private event link or download its QR code.';
-    $('submit-line').style.display = 'none';
-    $('line-status').style.display = 'none';
+    $('line-feature').style.display = 'none';
   }
 }
 
@@ -186,13 +185,15 @@ async function loadFollowers() {
     if (announcedAt && announcedCount > 0) {
       btn.style.display = '';
       btn.disabled = true;
-      btn.textContent = `${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'} invited`;
+      $('announce-title').textContent = `${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'} invited`;
+      $('announce-copy').textContent = 'Invitation sent. This action can only be used once.';
       return;
     }
     if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
     btn.style.display = '';
     btn.dataset.count = count;
-    btn.textContent = `Invite ${count} ${count === 1 ? 'follower' : 'followers'}`;
+    $('announce-title').textContent = `Invite ${count} ${count === 1 ? 'follower' : 'followers'}`;
+    $('announce-copy').textContent = 'Send this event once to people following your host page.';
   } catch (_) {}
 }
 
@@ -200,11 +201,13 @@ $('announce').addEventListener('click', async () => {
   const count = $('announce').dataset.count || 'your';
   if (!confirm(`Send this event to ${count} ${count === '1' ? 'follower' : 'followers'} who asked to hear about future events? This can only be done once.`)) return;
   $('announce').disabled = true;
-  $('announce').textContent = 'Sending…';
+  $('announce-title').textContent = 'Sending…';
+  $('announce-copy').textContent = 'Emailing your followers.';
   try {
     const { sent } = await api(`/api/events/${eventId}/announce`, { method: 'POST' });
     toast(`${sent} ${sent === 1 ? 'follower' : 'followers'} invited`);
-    $('announce').textContent = `${sent} ${sent === 1 ? 'follower' : 'followers'} invited`;
+    $('announce-title').textContent = `${sent} ${sent === 1 ? 'follower' : 'followers'} invited`;
+    $('announce-copy').textContent = 'Invitation sent. This action can only be used once.';
   } catch (err) {
     toast(err.message);
     $('announce').disabled = false;

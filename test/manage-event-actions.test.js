@@ -19,18 +19,25 @@ test('event management and promotion actions remain clearly separated', () => {
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
   for (const label of ['Copy event link', 'View page', 'Edit', 'Event actions']) {
-    assert.match(toolbar, new RegExp(label));
-    assert.doesNotMatch(promotion, new RegExp(label));
+    assert.match(toolbar, new RegExp(`\\b${label}\\b`));
+    assert.doesNotMatch(promotion, new RegExp(`\\b${label}\\b`));
   }
-  for (const label of ['Share Event', 'Download QR Code', 'Submit to The Line']) {
+  for (const label of ['Share event', 'Download QR code', 'Submit to The Line']) {
     assert.match(promotion, new RegExp(label));
     assert.doesNotMatch(toolbar, new RegExp(label));
   }
   assert.match(promotion, /id="announce"/);
+  assert.match(promotion, /class="promotion-action-list"/);
+  assert.match(promotion, /Send or post your event link/);
+  assert.match(promotion, /Use it on posters, flyers, and print/);
+  assert.match(promotion, /class="line-feature" id="line-feature"/);
+  assert.match(promotion, /Editorial opportunity/);
+  assert.doesNotMatch(promotion, /class="promotion-actions"/);
   assert.doesNotMatch(view, /Show QR code/);
   assert.ok(promotion.indexOf('share-event') < promotion.indexOf('download-qr'));
   assert.ok(promotion.indexOf('download-qr') < promotion.indexOf('announce'));
-  assert.ok(promotion.indexOf('announce') < promotion.indexOf('submit-line'));
+  assert.ok(promotion.indexOf('announce') < promotion.indexOf('line-feature'));
+  assert.ok(promotion.indexOf('line-feature') < promotion.indexOf('submit-line'));
 });
 
 test('promotion actions share the event and download its existing QR endpoint', () => {
@@ -38,7 +45,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /navigator\.share\(shareData\)/);
   assert.match(client, /fetch\(`\/e\/\$\{eventData\.slug\}\/qr\.png`\)/);
   assert.match(client, /link\.download = `\$\{eventData\.slug\}-qr-code\.png`/);
-  assert.match(client, /\$\('submit-line'\)\.style\.display = 'none'/);
+  assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];
   assert.doesNotMatch(privateBranch, /line-card/);
 });
