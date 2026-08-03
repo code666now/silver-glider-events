@@ -7,6 +7,25 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function emailSafeImageUrl(value) {
+  const safeUrl = safeHttpUrl(value);
+  if (!safeUrl) return '';
+  const url = new URL(safeUrl);
+  if (url.protocol === 'https:' && url.hostname === 'res.cloudinary.com' && url.pathname.includes('/image/upload/')) {
+    url.pathname = url.pathname.replace('/image/upload/', '/image/upload/f_jpg,q_auto,w_1120,c_limit/');
+  }
+  return url.toString();
+}
+
 // Shared premium dark layout. Emails use a system font stack — webfonts are unreliable in clients.
 function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml, footerBrand = 'Silver Glider Events' }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
@@ -55,8 +74,12 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml, foot
 
 // RSVP confirmations use the same dark, spacious visual language as Silver
 // Glider's activation emails without changing the shared transactional layout.
-function rsvpConfirmationLayout({ headline, sub, bodyHtml, cta, ctaUrl, secondaryHtml, footerBrand = 'Silver Glider Events' }) {
+function rsvpConfirmationLayout({ event, sub, bodyHtml, cta, ctaUrl, secondaryHtml, footerBrand = 'Powered by Silver Glider' }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const artworkRow = confirmationArtworkRow(event);
+  const hasArtwork = Boolean(artworkRow);
+  const hostHtml = confirmationHostHtml(event, baseUrl);
+  const listeningHtml = confirmationListeningHtml(event);
   return `
 <!DOCTYPE html>
 <html>
@@ -67,37 +90,111 @@ function rsvpConfirmationLayout({ headline, sub, bodyHtml, cta, ctaUrl, secondar
   <meta name="supported-color-schemes" content="dark">
   <style>
     @media only screen and (max-width:620px) {
-      .sg-email-shell { padding:36px 20px 28px !important; }
-      .sg-email-brand { padding-bottom:42px !important; }
-      .sg-email-headline { font-size:39px !important; }
-      .sg-email-sub { font-size:17px !important; }
+      .sg-email-pad { padding-left:20px !important;padding-right:20px !important; }
+      .sg-email-brand { padding-left:20px !important;padding-right:20px !important;padding-top:28px !important; }
+      .sg-email-headline { font-size:38px !important; }
+      .sg-event-title { font-size:30px !important;line-height:1.12 !important; }
+      .sg-email-sub,.sg-email-secondary,.sg-detail-label,.sg-detail-value,.sg-map-link { font-size:16px !important; }
+      .sg-event-artwork { width:100% !important;max-width:560px !important;height:auto !important; }
+      .sg-email-cta { width:100% !important; }
     }
   </style>
 </head>
-<body style="background:#080808;color:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:0">
+<body style="background:#080808;color:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;margin:0;padding:0">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#080808" style="width:100%;background:#080808">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-shell" style="width:100%;max-width:640px;margin:0 auto;padding:56px 28px 36px">
-        <tr><td align="center" class="sg-email-brand" style="padding:0 0 54px">
-          <img src="${esc(baseUrl)}/logo.png" width="88" height="88" alt="Silver Glider Events" style="display:block;width:88px;height:88px;border:0;outline:none;text-decoration:none;margin:0 auto">
-          <p style="color:#6f6f6f;font-size:10px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;margin:12px 0 0">Silver Glider Events</p>
+      <!--[if mso]><table role="presentation" width="620" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-container" bgcolor="#080808" style="width:100%;max-width:620px;margin:0 auto;background:#080808">
+        <tr><td align="center" class="sg-email-brand" style="padding:34px 30px ${hasArtwork ? '18px' : '44px'}">
+          <img src="${esc(baseUrl)}/logo.png" width="34" height="34" alt="Silver Glider Events" style="display:block;width:34px;height:34px;border:0;outline:none;text-decoration:none;margin:0 auto">
+          <p style="color:#777777;font-size:9px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin:9px 0 0">Silver Glider Events</p>
         </td></tr>
-        <tr><td>
+        ${artworkRow}
+        <tr><td class="sg-email-pad" style="padding:${hasArtwork ? '32px' : '0'} 30px 0">
           <p style="font-size:13px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">RSVP Confirmed</p>
-          <h1 class="sg-email-headline" style="font-size:48px;font-weight:800;margin:0 0 20px;color:#f4f4f4;letter-spacing:-.035em;line-height:1.04">${esc(headline)}</h1>
-          <p class="sg-email-sub" style="color:#9a9a9a;font-size:19px;line-height:1.58;margin:0 0 38px">${esc(sub)}</p>
+          <h1 class="sg-email-headline" style="font-size:44px;font-weight:800;margin:0 0 22px;color:#f4f4f4;letter-spacing:-.035em;line-height:1.05">You're on the list.</h1>
+          <h2 class="sg-event-title" style="font-size:36px;font-weight:800;margin:0 0 ${hostHtml || listeningHtml ? '10px' : '16px'};color:#f4f4f4;letter-spacing:-.025em;line-height:1.12;overflow-wrap:anywhere;word-break:break-word">${esc(event.title)}</h2>
+          ${hostHtml}
+          ${listeningHtml}
+          <p class="sg-email-sub" style="color:#a7a7a7;font-size:17px;line-height:1.55;margin:18px 0 30px">${esc(sub)}</p>
           ${bodyHtml || ''}
-          <a href="${esc(ctaUrl)}" style="display:block;background:#1CC5BE;color:#080808;text-align:center;padding:18px 20px;border-radius:999px;text-decoration:none;font-weight:800;font-size:17px;margin:34px 0 28px">${esc(cta)}</a>
+          <div style="height:32px;line-height:32px">&nbsp;</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-cta" style="width:100%">
+            <tr><td align="center" height="52" bgcolor="#1CC5BE" style="height:52px;background:#1CC5BE;border-radius:12px">
+              <a href="${esc(ctaUrl)}" style="display:block;color:#080808;text-align:center;line-height:52px;text-decoration:none;font-weight:800;font-size:17px">${esc(cta)}</a>
+            </td></tr>
+          </table>
+          <div style="height:26px;line-height:26px">&nbsp;</div>
           ${secondaryHtml || ''}
         </td></tr>
-        <tr><td style="border-top:1px solid #202020;padding:34px 0 8px;text-align:center">
-          <p style="color:#585858;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p>
+        <tr><td class="sg-email-pad" style="padding:0 30px 36px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-top:1px solid #242424">
+            <tr><td align="center" style="padding:30px 0 0"><p style="color:#686868;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p></td></tr>
+          </table>
         </td></tr>
       </table>
+      <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>
   </table>
 </body>
 </html>`;
+}
+
+function confirmationArtworkRow(event) {
+  const source = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
+  const imageUrl = emailSafeImageUrl(source);
+  if (!imageUrl) return '';
+  return `<tr><td align="center" class="sg-email-pad" style="padding:0 30px">
+    <img class="sg-event-artwork" src="${esc(imageUrl)}" width="560" alt="${esc(event.title)} artwork" style="width:100%;max-width:560px;height:auto;display:block;margin:0 auto;border:0;border-radius:12px;outline:none;text-decoration:none">
+  </td></tr>`;
+}
+
+function confirmationHostHtml(event, baseUrl) {
+  const hostName = String(event.org_name || event.presenter_name || '').trim();
+  if (!hostName) return '';
+  const hostUrl = event.organizer_public_slug
+    ? `${baseUrl}/h/${encodeURIComponent(event.organizer_public_slug)}`
+    : '';
+  const identity = hostUrl
+    ? `<a href="${esc(hostUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">${esc(hostName)}</a>`
+    : `<strong style="color:#d7d7d7;font-weight:700">${esc(hostName)}</strong>`;
+  return `<p style="color:#8e8e8e;font-size:16px;line-height:1.5;margin:0">Presented by ${identity}</p>`;
+}
+
+function confirmationListeningHtml(event) {
+  const listeningUrl = safeHttpUrl(event.event_vibe_url);
+  if (!listeningUrl) return '';
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px"><tr><td>
+    <a href="${esc(listeningUrl)}" style="display:inline-block;color:#1CC5BE;font-size:16px;line-height:1.5;text-decoration:none;font-weight:700">Listen here →</a>
+  </td></tr></table>`;
+}
+
+function confirmationDetailsCard(event) {
+  const rows = [];
+  if (event.event_date) {
+    const date = new Date(event.event_date);
+    if (!Number.isNaN(date.getTime())) {
+      rows.push(['Date', date.toLocaleDateString('en-US',
+        { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })]);
+    }
+  }
+  if (event.start_time && /^\d{1,2}:\d{2}/.test(String(event.start_time))) rows.push(['Time', formatTime(event.start_time)]);
+  const venue = String(event.venue_name || event.venue_address || '').trim();
+  if (venue) rows.push(['Venue', venue]);
+  if (!rows.length) return '';
+
+  const rowHtml = rows.map(([label, value], index) => `${index ? '<tr><td colspan="2" height="1" bgcolor="#242424" style="height:1px;line-height:1px;font-size:1px">&nbsp;</td></tr>' : ''}
+    <tr>
+      <td class="sg-detail-label" width="32%" valign="top" style="width:32%;padding:14px 16px;color:#8c8c8c;font-size:15px;line-height:1.45">${esc(label)}</td>
+      <td class="sg-detail-value" width="68%" valign="top" align="right" style="width:68%;padding:14px 16px;color:#f0f0f0;font-size:15px;font-weight:700;line-height:1.45;overflow-wrap:anywhere;word-break:break-word">${esc(value)}</td>
+    </tr>`).join('');
+  const location = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+  const mapsHtml = location
+    ? `<p style="margin:10px 0 0;text-align:right"><a class="sg-map-link" href="https://maps.google.com/?q=${encodeURIComponent(location)}" style="display:inline-block;color:#1CC5BE;font-size:15px;line-height:1.6;text-decoration:none;font-weight:700">Open in Maps →</a></p>`
+    : '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
+    ${rowHtml}
+  </table>${mapsHtml}`;
 }
 
 function eventCard(event) {
@@ -150,7 +247,7 @@ function flyerArtwork(event) {
   </div>`;
 }
 
-function flyerSecondaryLinks(event, rsvp, { includeManage = true } = {}) {
+function flyerSecondaryLinks(event, rsvp, { includeManage = true, includeHost = true } = {}) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const calendarUrl = `${baseUrl}/r/${rsvp.manage_token}/calendar.ics`;
   const manageUrl = `${baseUrl}/r/${rsvp.manage_token}`;
@@ -159,22 +256,22 @@ function flyerSecondaryLinks(event, rsvp, { includeManage = true } = {}) {
     `<a href="${esc(calendarUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Add to Calendar</a>`
   ];
   if (includeManage) links.push(`<a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>`);
-  if (hostUrl && event.org_name) links.push(`<a href="${esc(hostUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">${esc(event.org_name)}</a>`);
-  return `<p style="color:#777;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.9">${links.join('<span style="color:#444"> &nbsp;·&nbsp; </span>')}</p>`;
+  if (includeHost && hostUrl && event.org_name) links.push(`<a href="${esc(hostUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">${esc(event.org_name)}</a>`);
+  return `<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.9">${links.join('<span style="color:#444"> &nbsp;·&nbsp; </span>')}</p>`;
 }
 
 function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
-  const greeting = rsvp.first_name ? `${rsvp.first_name}, your RSVP` : 'Your RSVP';
+  const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   const reminderHtml = rsvp.wants_reminders
-    ? '<p style="color:#777;font-size:12px;text-align:center;margin:-18px 0 28px">We’ll send one reminder the day before.</p>'
+    ? '<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:-18px 0 28px;line-height:1.6">We’ll send one reminder the day before.</p>'
     : '';
   return rsvpConfirmationLayout({
-    headline: 'See you there.',
-    sub: `${greeting} for ${event.title} is confirmed.`,
-    bodyHtml: `${flyerArtwork(event)}${eventCard(event)}`,
+    event,
+    sub: `${greeting} is confirmed.`,
+    bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${flyerSecondaryLinks(event, rsvp)}${reminderHtml}`,
+    secondaryHtml: `${flyerSecondaryLinks(event, rsvp, { includeHost: false })}${reminderHtml}`,
     footerBrand: 'Powered by Silver Glider'
   });
 }
@@ -214,17 +311,17 @@ async function sendMagicLink({ to, link }) {
 function renderRsvpConfirmationEmail({ event, rsvp }) {
   if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp });
   const manageUrl = `${process.env.APP_URL}/r/${rsvp.manage_token}`;
-  const greeting = rsvp.first_name ? `${rsvp.first_name}, your` : 'Your';
+  const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   const reminderHtml = rsvp.wants_reminders
     ? '<br>We’ll send one reminder the day before.'
     : '';
   return rsvpConfirmationLayout({
-    headline: "You're on the list.",
-    sub: `${greeting} spot for ${event.title} is confirmed.`,
-    bodyHtml: eventCard(event),
+    event,
+    sub: `${greeting} is confirmed.`,
+    bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `<p style="color:#777;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.75">A calendar invite is attached.${reminderHtml}<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>.</p>`
+    secondaryHtml: `<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.75">A calendar invite is attached.${reminderHtml}<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>.</p>`
   });
 }
 
