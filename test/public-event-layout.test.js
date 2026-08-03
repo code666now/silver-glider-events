@@ -101,6 +101,7 @@ test('expanded RSVP forms can be collapsed without resetting the shared form', (
 test('mobile primary-action dock reuses the active Flyer action and avoids the footer', () => {
   const client = source('public/js/public-event.js');
   const route = source('src/routes/public.js');
+  const flyerStyles = source('public/css/event-public-flyer.css');
 
   const standardView = source('src/views/event-public.html');
   const flyerView = source('src/views/event-public-flyer.html');
@@ -120,6 +121,9 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(client, /activeRsvpState === 'cta-state'/);
   assert.match(client, /openRsvpForm\(\{ scrollToForm: trigger === mobileRsvpCta, trigger \}\)/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
+  assert.match(flyerStyles, /body\.flyer-public-page,[\s\S]*padding-bottom: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(flyerStyles, /\.mobile-rsvp-dock \{[\s\S]*background: rgba\(8,8,8,\.97\);[\s\S]*backdrop-filter: none;[\s\S]*contain: paint/);
+  assert.match(flyerStyles, /\.vibe-embed \{ touch-action: pan-y; \}/);
 });
 
 test('public RSVP success state clearly confirms the RSVP without implying guest-list access', () => {
