@@ -14,7 +14,8 @@ const event = {
   comments_enabled: true,
   org_name: 'The Night Archive',
   organizer_public_slug: 'the-night-archive',
-  event_vibe_url: 'https://bandcamp.com/album/midnight-listening-party'
+  event_vibe_url: 'https://bandcamp.com/album/midnight-listening-party',
+  background_theme: 'ocean'
 };
 
 const rsvp = {
@@ -85,10 +86,20 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.match(html, /\[if mso\][\s\S]*width="620"/);
   assert.match(html, /class="sg-email-headline"/);
   assert.match(html, /width="34" height="34" alt="Silver Glider Events"/);
-  assert.match(html, /class="sg-event-artwork"[\s\S]*width="560"[\s\S]*width:100%;max-width:560px;height:auto;display:block/);
-  assert.match(html, /f_jpg,q_auto,w_1120,c_limit/);
+  assert.match(html, /bgcolor="#071522"/);
+  assert.match(html, /class="sg-event-artwork"[\s\S]*width="620"[\s\S]*width:100%;max-width:620px;height:auto;display:block/);
+  assert.match(html, /if_ar_gt_1\.15[\s\S]*b_auto,c_pad,h_560,w_620[\s\S]*f_jpg,q_auto/);
   assert.match(html, /padding-left:20px !important;padding-right:20px !important/);
   assert.match(html, /height="52" bgcolor="#1CC5BE"/);
   assert.match(html, /overflow-wrap:anywhere;word-break:break-word/);
   assert.doesNotMatch(html, /float:right|display:grid|display:flex|position:absolute/);
+  assert.doesNotMatch(html, /<video|\.mp4|\.gif/);
+
+  const effectFallbackHtml = renderRsvpConfirmationEmail({
+    event: { ...event, cover_image_url: null, background_theme: 'fog' },
+    rsvp
+  });
+  assert.match(effectFallbackHtml, /video\/upload\/so_0,f_jpg,q_auto,w_1240,c_limit\/sg-events\/effects\/fog\.jpg/);
+  assert.match(effectFallbackHtml, /bgcolor="#100B18"/);
+  assert.doesNotMatch(effectFallbackHtml, /<video|\.mp4|\.gif/);
 });

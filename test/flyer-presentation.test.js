@@ -194,7 +194,8 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
   assert.match(flyerHtml, /Night Garden artwork/);
   assert.match(flyerHtml, /class="sg-event-title"/);
   assert.match(flyerHtml, /Presented by/);
-  assert.match(flyerHtml, /width="560"/);
+  assert.match(flyerHtml, /width="620"/);
+  assert.match(flyerHtml, /b_auto,c_pad,h_560,w_620/);
   assert.match(flyerHtml, /height:auto/);
   assert.match(flyerHtml, /Add to Calendar/);
   assert.match(flyerHtml, /View event &amp; comments/);

@@ -16,12 +16,40 @@ function safeHttpUrl(value) {
   }
 }
 
-function emailSafeImageUrl(value) {
+const EMAIL_THEME_BACKGROUNDS = Object.freeze({
+  midnight: '#111117',
+  aurora: '#071817',
+  sunset: '#1E0D0A',
+  ocean: '#071522',
+  violet: '#130D20',
+  ember: '#200B10',
+  static: '#111111',
+  paper: '#18130E',
+  disco: '#130B20',
+  fog: '#100B18',
+  saloon: '#21130C'
+});
+
+const EMAIL_EFFECT_POSTERS = Object.freeze({
+  paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/textures/kraft-paper.jpg',
+  disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/disco.jpg',
+  fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/fog.jpg',
+  saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/backgrounds/after-hours-saloon.png'
+});
+
+function emailThemeBackground(event) {
+  return EMAIL_THEME_BACKGROUNDS[String(event?.background_theme || '').toLowerCase()] || '#080808';
+}
+
+function emailSafeImageUrl(value, { adaptiveCanvas = false } = {}) {
   const safeUrl = safeHttpUrl(value);
   if (!safeUrl) return '';
   const url = new URL(safeUrl);
   if (url.protocol === 'https:' && url.hostname === 'res.cloudinary.com' && url.pathname.includes('/image/upload/')) {
-    url.pathname = url.pathname.replace('/image/upload/', '/image/upload/f_jpg,q_auto,w_1120,c_limit/');
+    const transformation = adaptiveCanvas
+      ? 'if_ar_gt_1.15/b_auto,c_pad,h_560,w_620/if_else/c_limit,w_620/if_end/f_jpg,q_auto'
+      : 'f_jpg,q_auto,w_1240,c_limit';
+    url.pathname = url.pathname.replace('/image/upload/', `/image/upload/${transformation}/`);
   }
   return url.toString();
 }
@@ -76,6 +104,7 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml, foot
 // Glider's activation emails without changing the shared transactional layout.
 function rsvpConfirmationLayout({ event, sub, bodyHtml, cta, ctaUrl, secondaryHtml, footerBrand = 'Powered by Silver Glider' }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const outerBackground = emailThemeBackground(event);
   const artworkRow = confirmationArtworkRow(event);
   const hasArtwork = Boolean(artworkRow);
   const hostHtml = confirmationHostHtml(event, baseUrl);
@@ -100,8 +129,8 @@ function rsvpConfirmationLayout({ event, sub, bodyHtml, cta, ctaUrl, secondaryHt
     }
   </style>
 </head>
-<body style="background:#080808;color:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;margin:0;padding:0">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#080808" style="width:100%;background:#080808">
+<body style="background:${outerBackground};color:#f4f4f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;margin:0;padding:0">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${outerBackground}" style="width:100%;background:${outerBackground}">
     <tr><td align="center">
       <!--[if mso]><table role="presentation" width="620" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-container" bgcolor="#080808" style="width:100%;max-width:620px;margin:0 auto;background:#080808">
@@ -141,11 +170,14 @@ function rsvpConfirmationLayout({ event, sub, bodyHtml, cta, ctaUrl, secondaryHt
 }
 
 function confirmationArtworkRow(event) {
-  const source = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
-  const imageUrl = emailSafeImageUrl(source);
+  const eventArtwork = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
+  const effectPoster = eventArtwork ? '' : EMAIL_EFFECT_POSTERS[event.background_theme];
+  const source = eventArtwork || effectPoster;
+  const imageUrl = emailSafeImageUrl(source, { adaptiveCanvas: Boolean(eventArtwork) });
   if (!imageUrl) return '';
-  return `<tr><td align="center" class="sg-email-pad" style="padding:0 30px">
-    <img class="sg-event-artwork" src="${esc(imageUrl)}" width="560" alt="${esc(event.title)} artwork" style="width:100%;max-width:560px;height:auto;display:block;margin:0 auto;border:0;border-radius:12px;outline:none;text-decoration:none">
+  const alt = eventArtwork ? `${event.title} artwork` : '';
+  return `<tr><td align="center" style="padding:0">
+    <img class="sg-event-artwork" src="${esc(imageUrl)}" width="620" alt="${esc(alt)}" style="width:100%;max-width:620px;height:auto;display:block;margin:0 auto;border:0;border-radius:12px;outline:none;text-decoration:none">
   </td></tr>`;
 }
 
