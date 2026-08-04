@@ -49,11 +49,14 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   for (let index = 1; index < markers.length; index += 1) {
     assert.ok(html.indexOf(markers[index - 1]) < html.indexOf(markers[index]), `${markers[index - 1]} should precede ${markers[index]}`);
   }
-  assert.ok((html.match(new RegExp(`color:${theme.accentColor}`, 'g')) || []).length >= 5);
   assert.match(html, new RegExp(`height="52" bgcolor="${theme.accentColor}"`));
   assert.match(html, new RegExp(`background:${theme.accentColor};border-radius:12px`));
   assert.match(html, new RegExp(`color:${theme.accentTextColor};text-align:center`));
-  assert.match(html, /bgcolor="#080808"/);
+  assert.equal((html.match(new RegExp(theme.accentColor, 'g')) || []).length, 2);
+  assert.ok((html.match(/color:#1CC5BE/g) || []).length >= 5);
+  assert.equal((html.match(/bgcolor="#080808"/g) || []).length, 2);
+  assert.match(html, /<body style="background:#080808/);
+  assert.match(html, /width:100%;background:#080808/);
   assert.match(html, /background:#111111;border:1px solid #292929/);
   assert.doesNotMatch(html, /var\(--|gradient\(/);
   assert.equal((html.match(/Midnight Listening Party<\/h2>/g) || []).length, 1);
@@ -97,7 +100,7 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.match(html, /\[if mso\][\s\S]*width="620"/);
   assert.match(html, /class="sg-email-headline"/);
   assert.match(html, /width="34" height="34" alt="Silver Glider Events"/);
-  assert.match(html, /bgcolor="#071522"/);
+  assert.doesNotMatch(html, /bgcolor="#071522"|background:#071522/);
   assert.match(html, /class="sg-event-artwork"[\s\S]*width="620"[\s\S]*width:100%;max-width:620px;height:auto;display:block/);
   assert.match(html, /if_ar_gt_1\.15[\s\S]*b_auto,c_pad,h_560,w_620[\s\S]*f_jpg,q_auto/);
   assert.match(html, /padding-left:20px !important;padding-right:20px !important/);
@@ -111,6 +114,7 @@ test('RSVP confirmation remains responsive and dark', () => {
     rsvp
   });
   assert.match(effectFallbackHtml, /video\/upload\/so_0,f_jpg,q_auto,w_1240,c_limit\/sg-events\/effects\/fog\.jpg/);
-  assert.match(effectFallbackHtml, /bgcolor="#100B18"/);
+  assert.equal((effectFallbackHtml.match(/bgcolor="#080808"/g) || []).length, 2);
+  assert.doesNotMatch(effectFallbackHtml, /bgcolor="#100B18"|background:#100B18/);
   assert.doesNotMatch(effectFallbackHtml, /<video|\.mp4|\.gif/);
 });
