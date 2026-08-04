@@ -8,6 +8,54 @@ let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
 
 const $ = id => document.getElementById(id);
+const ArtworkColor = window.SGArtworkColor;
+const artworkAccents = new Map();
+let artworkAccentPromise = Promise.resolve(null);
+
+function activeArtworkUrl() {
+  return presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
+}
+
+function queueArtworkPalette(artworkUrl, { sampleUrl = artworkUrl, knownAccent = null, updatePicker = false } = {}) {
+  if (!artworkUrl) {
+    artworkAccentPromise = Promise.resolve(null);
+    return artworkAccentPromise;
+  }
+  const saved = ArtworkColor.normalizeHex(knownAccent);
+  if (saved) {
+    artworkAccents.set(artworkUrl, saved);
+    if (!updatePicker) {
+      artworkAccentPromise = Promise.resolve(saved);
+      return artworkAccentPromise;
+    }
+  }
+  const existing = artworkAccents.get(artworkUrl);
+  if (existing && !updatePicker) {
+    artworkAccentPromise = Promise.resolve(existing);
+    return artworkAccentPromise;
+  }
+  artworkAccentPromise = ArtworkColor.extractPalette(sampleUrl).then(candidates => {
+    const accent = saved || ArtworkColor.selectAccentColor(candidates, { fallback: null });
+    if (accent) artworkAccents.set(artworkUrl, accent);
+    if (updatePicker) {
+      const colors = ArtworkColor.paletteForBackground(candidates, { darken: 0.56, desaturate: 0.34 })
+        .map(ArtworkColor.rgbToHex);
+      applyPickerBackground({ colors: [colors[0], colors[1], colors[2] || colors[0]] }, 'picker-bg-photo');
+    }
+    return accent;
+  }).catch(() => {
+    if (updatePicker) {
+      const fallback = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
+      applyPickerBackground(fallback);
+    }
+    return artworkAccents.get(artworkUrl) || null;
+  });
+  return artworkAccentPromise;
+}
+
+function refreshActiveArtworkAccent(options = {}) {
+  return queueArtworkPalette(activeArtworkUrl(), options);
+}
 
 function setPresentationMode(mode) {
   presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
@@ -19,6 +67,7 @@ function setPresentationMode(mode) {
     : 'Put your uploaded flyer first and keep the page focused.';
   $('standard-media').hidden = !standard;
   $('flyer-media').hidden = standard;
+  refreshActiveArtworkAccent();
 }
 
 $('presentation-standard').addEventListener('change', () => setPresentationMode('standard'));
@@ -306,81 +355,9 @@ function applyPickerBackground(item, className = item.bgClass) {
   }
 }
 
-function softenRgb({ r, g, b }) {
-  const darken = 0.56;
-  const desaturate = 0.34;
-  const avg = (r + g + b) / 3;
-  return {
-    r: Math.round((avg * desaturate + r * (1 - desaturate)) * darken),
-    g: Math.round((avg * desaturate + g * (1 - desaturate)) * darken),
-    b: Math.round((avg * desaturate + b * (1 - desaturate)) * darken)
-  };
-}
-
-function rgbToHex({ r, g, b }) {
-  return '#' + [r, g, b].map(value => value.toString(16).padStart(2, '0')).join('');
-}
-
-function loadImageForPalette(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-async function extractImagePalette(url) {
-  const img = await loadImageForPalette(url);
-  const canvas = document.createElement('canvas');
-  const size = 36;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, size, size);
-  const data = ctx.getImageData(0, 0, size, size).data;
-  const buckets = new Map();
-  for (let i = 0; i < data.length; i += 16) {
-    const alpha = data[i + 3];
-    if (alpha < 128) continue;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    if (luminance < 0.08 || luminance > 0.93) continue;
-    const key = [r, g, b].map(value => Math.round(value / 32) * 32).join(',');
-    const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0 };
-    bucket.r += r;
-    bucket.g += g;
-    bucket.b += b;
-    bucket.count += 1;
-    buckets.set(key, bucket);
-  }
-  const swatches = [...buckets.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3)
-    .map(bucket => softenRgb({
-      r: Math.round(bucket.r / bucket.count),
-      g: Math.round(bucket.g / bucket.count),
-      b: Math.round(bucket.b / bucket.count)
-    }))
-    .map(rgbToHex);
-  if (swatches.length < 2) throw new Error('Not enough image color data');
-  return swatches;
-}
-
-async function applySelectedImagePalette(url) {
-  try {
-    const colors = await extractImagePalette(url);
-    applyPickerBackground({ colors: [colors[0], colors[1], colors[2] || colors[0]] }, 'picker-bg-photo');
-  } catch (_) {
-    const fallback = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
-    applyPickerBackground(fallback);
-  }
-}
-
 function setCover(url, creditName, creditLink, { preserveFit = false } = {}) {
+  const previousUrl = $('cover_image_url').value;
+  if (previousUrl && previousUrl !== url) artworkAccents.delete(previousUrl);
   if (!preserveFit) setCoverFitMode('auto');
   $('cover_image_url').value = url || '';
   $('cover_credit_name').value = creditName || '';
@@ -471,7 +448,7 @@ function uploadCover(file) {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
       setCover(data.url); // own upload → no credit
-      applySelectedImagePalette(data.url);
+      queueArtworkPalette(data.url, { knownAccent: data.accentColor, updatePicker: true });
       closeImageModal();
     } catch (err) {
       showError(err.message);
@@ -485,6 +462,8 @@ const flyerDrop = $('flyer-drop');
 const flyerInput = $('flyer-input');
 
 function setFlyer(url) {
+  const previousUrl = $('flyer_image_url').value;
+  if (previousUrl && previousUrl !== url) artworkAccents.delete(previousUrl);
   $('flyer_image_url').value = url || '';
   const preview = $('flyer-preview');
   if (url) {
@@ -514,6 +493,7 @@ function uploadFlyer(file) {
       const data = JSON.parse(xhr.responseText);
       if (xhr.status !== 200) throw new Error(data.error || 'Upload failed');
       setFlyer(data.url);
+      queueArtworkPalette(data.url, { knownAccent: data.accentColor });
     } catch (err) {
       showError(err.message);
     }
@@ -710,7 +690,7 @@ $('unsplash-q').addEventListener('input', e => {
 
 function pickPhoto(photo) {
   setCover(photo.full, photo.credit_name, photo.credit_link);
-  applySelectedImagePalette(photo.thumb || photo.full);
+  queueArtworkPalette(photo.full, { sampleUrl: photo.thumb || photo.full, updatePicker: true });
   closeImageModal();
   // Required by Unsplash: register the download when a photo is chosen
   api('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
@@ -732,6 +712,7 @@ function collect() {
     cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
     flyer_image_url: $('flyer_image_url').value || null,
+    artwork_accent_color: artworkAccents.get(activeArtworkUrl()) || null,
     event_date: $('event_date').value,
     start_time: $('start_time').value,
     venue_name: $('venue_name').value.trim(),
@@ -802,6 +783,7 @@ if (editId) {
     if (event.cover_image_url) {
       setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link, { preserveFit: true });
     }
+    refreshActiveArtworkAccent({ knownAccent: event.artwork_accent_color });
   }).catch(err => showError(err.message));
 }
 
@@ -815,6 +797,7 @@ $('event-form').addEventListener('submit', async e => {
     if (presentationMode === 'flyer' && !$('flyer_image_url').value) {
       throw new Error('Upload a flyer before publishing this event');
     }
+    await refreshActiveArtworkAccent();
     const body = collect();
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })

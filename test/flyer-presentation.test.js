@@ -34,6 +34,7 @@ const rsvp = {
 test('migration safely defaults and constrains flyer presentation on the existing events table', () => {
   const migration = read('src/db/migrations/016_flyer_presentation_mode.sql');
   const coverFitMigration = read('src/db/migrations/017_standard_mobile_cover_fit.sql');
+  const accentMigration = read('src/db/migrations/018_event_artwork_accent.sql');
   assert.match(migration, /ALTER TABLE events/);
   assert.match(migration, /presentation_mode TEXT NOT NULL DEFAULT 'standard'/);
   assert.match(migration, /flyer_image_url TEXT/);
@@ -42,6 +43,8 @@ test('migration safely defaults and constrains flyer presentation on the existin
   assert.match(migration, /SET presentation_mode = 'standard'/);
   assert.match(coverFitMigration, /cover_fit_mode TEXT NOT NULL DEFAULT 'auto'/);
   assert.match(coverFitMigration, /cover_fit_mode IN \('auto', 'contain', 'cover'\)/);
+  assert.match(accentMigration, /artwork_accent_color TEXT/);
+  assert.match(accentMigration, /events_artwork_accent_color_check/);
 });
 
 test('flyer uploads and event writes reuse authenticated, size-limited infrastructure', () => {
@@ -51,6 +54,7 @@ test('flyer uploads and event writes reuse authenticated, size-limited infrastru
   assert.match(uploads, /router\.post\('\/api\/uploads\/flyer', requireOrganizer, handleUpload/);
   assert.match(uploads, /fileSize: 5 \* 1024 \* 1024/);
   assert.match(cloudinary, /folder: flyerFolder/);
+  assert.equal((cloudinary.match(/colors: true/g) || []).length, 2);
   assert.match(cloudinary, /crop: 'limit'/);
   assert.match(events, /A flyer image is required for Flyer presentation/);
   assert.match(events, /isManagedFlyerUrl/);
@@ -58,6 +62,7 @@ test('flyer uploads and event writes reuse authenticated, size-limited infrastru
   assert.match(events, /e\.presentation_mode \|\| 'standard', e\.flyer_image_url \|\| null/);
   assert.match(events, /cover_fit_mode/);
   assert.match(events, /e\.cover_fit_mode \|\| 'auto'/);
+  assert.match(events, /artwork_accent_color/);
 });
 
 test('create and edit form default to Standard and require an uploaded flyer in Flyer mode', () => {
@@ -74,6 +79,8 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /xhr\.open\('POST', '\/api\/uploads\/flyer'\)/);
   assert.match(js, /presentation_mode: presentationMode/);
   assert.match(js, /cover_fit_mode: coverFitMode/);
+  assert.match(js, /artwork_accent_color: artworkAccents\.get\(activeArtworkUrl\(\)\) \|\| null/);
+  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
   assert.match(js, /img\.naturalHeight > img\.naturalWidth \? 'contain' : 'cover'/);
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);
@@ -174,6 +181,7 @@ test('Flyer pages use a fixed plaster background while Standard pages retain ada
   const flyerTemplate = read('src/views/event-public-flyer.html');
   const flyerStyles = read('public/css/event-public-flyer.css');
   const publicClient = read('public/js/public-event.js');
+  const artworkColor = read('public/js/artwork-color.js');
 
   assert.doesNotMatch(flyerTemplate, /flyer-print-texture|has-adaptive-print/);
   assert.match(flyerStyles, /url\('\/images\/flyer-plaster-wall\.jpg'\)/);
@@ -183,6 +191,10 @@ test('Flyer pages use a fixed plaster background while Standard pages retain ada
   assert.match(publicClient, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
   assert.match(publicClient, /bg\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /if \(EVENT\.bgEffect\) return/);
+  assert.match(publicClient, /ArtworkColor\.extractPalette/);
+  assert.match(artworkColor, /function selectAccentColor/);
+  assert.doesNotMatch(publicClient, /function extractCoverPalette/);
+  assert.doesNotMatch(read('public/js/event-form.js'), /function extractImagePalette/);
 });
 
 test('locked Secret Shows do not render or query flyer assets before unlock', () => {

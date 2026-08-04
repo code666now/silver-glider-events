@@ -10,6 +10,7 @@ const { signOptout } = require('../lib/followers');
 const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
+const { normalizeHex } = require('../../public/js/artwork-color');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -96,6 +97,7 @@ function validateEventBody(body, { partial = false } = {}) {
     cover_fit_mode: v => (COVER_FIT_MODES.includes(v) ? v : 'auto'),
     presentation_mode: v => (PRESENTATION_MODES.includes(v) ? v : 'standard'),
     flyer_image_url: cleanFlyerUrl,
+    artwork_accent_color: normalizeHex,
     cover_credit_name: v => (v ? String(v).trim().slice(0, 120) : null),
     cover_credit_link: v => (v ? String(v).trim().slice(0, 300) : null),
     event_date:      v => String(v).trim(),
@@ -238,8 +240,9 @@ router.post('/api/events', async (req, res, next) => {
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
-                               show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+                               show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
+                               artwork_accent_color)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.cover_fit_mode, out.presentation_mode, out.flyer_image_url, out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
@@ -249,7 +252,7 @@ router.post('/api/events', async (req, res, next) => {
            out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
            out.google_place_id || null, out.event_vibe_url || null,
            out.show_guest_list, out.allow_guests, out.comments_enabled,
-           secretShowEnabled, secretShowEnabled ? 1 : 0]
+           secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null]
         );
         if (secretShowEnabled) {
           await client.query(
@@ -394,8 +397,8 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
                                background_theme, cover_credit_name, cover_credit_link,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
-                               show_guest_list, allow_guests, comments_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'draft',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+                               show_guest_list, allow_guests, comments_enabled, artwork_accent_color)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'draft',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url,
            e.cover_fit_mode || 'auto', e.presentation_mode || 'standard', e.flyer_image_url || null, e.event_date,
@@ -404,7 +407,8 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
            e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
            e.venue_city || null, e.venue_state || null, e.venue_latitude, e.venue_longitude,
            e.google_place_id || null, e.event_vibe_url || null,
-           e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true]
+           e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true,
+           e.artwork_accent_color || null]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {

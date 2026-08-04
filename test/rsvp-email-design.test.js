@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { renderRsvpConfirmationEmail } = require('../src/lib/mailer');
+const { createEmailTheme } = require('../public/js/artwork-color');
 
 const event = {
   title: 'Midnight Listening Party',
@@ -15,6 +16,7 @@ const event = {
   org_name: 'The Night Archive',
   organizer_public_slug: 'the-night-archive',
   event_vibe_url: 'https://bandcamp.com/album/midnight-listening-party',
+  artwork_accent_color: '#E72D88',
   background_theme: 'ocean'
 };
 
@@ -26,6 +28,7 @@ const rsvp = {
 
 test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   const html = renderRsvpConfirmationEmail({ event, rsvp });
+  const theme = createEmailTheme(event.artwork_accent_color);
   const markers = [
     'logo.png',
     'class="sg-event-artwork"',
@@ -46,7 +49,13 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   for (let index = 1; index < markers.length; index += 1) {
     assert.ok(html.indexOf(markers[index - 1]) < html.indexOf(markers[index]), `${markers[index - 1]} should precede ${markers[index]}`);
   }
-  assert.equal((html.match(/background:#1CC5BE/g) || []).length, 1);
+  assert.ok((html.match(new RegExp(`color:${theme.accentColor}`, 'g')) || []).length >= 5);
+  assert.match(html, new RegExp(`height="52" bgcolor="${theme.accentColor}"`));
+  assert.match(html, new RegExp(`background:${theme.accentColor};border-radius:12px`));
+  assert.match(html, new RegExp(`color:${theme.accentTextColor};text-align:center`));
+  assert.match(html, /bgcolor="#080808"/);
+  assert.match(html, /background:#111111;border:1px solid #292929/);
+  assert.doesNotMatch(html, /var\(--|gradient\(/);
   assert.equal((html.match(/Midnight Listening Party<\/h2>/g) || []).length, 1);
 });
 
@@ -69,13 +78,15 @@ test('RSVP email preserves event information, management, and calendar messaging
       venue_address: null,
       org_name: null,
       organizer_public_slug: null,
-      event_vibe_url: null
+      event_vibe_url: null,
+      artwork_accent_color: null
     },
     rsvp
   });
   assert.doesNotMatch(fallbackHtml, /<img class="sg-event-artwork"/);
   assert.doesNotMatch(fallbackHtml, />Presented by |Listen here →|<td class="sg-detail-label"|>Open in Maps →/);
   assert.match(fallbackHtml, /class="sg-event-title"/);
+  assert.match(fallbackHtml, /height="52" bgcolor="#1CC5BE"/);
 });
 
 test('RSVP confirmation remains responsive and dark', () => {
@@ -90,7 +101,7 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.match(html, /class="sg-event-artwork"[\s\S]*width="620"[\s\S]*width:100%;max-width:620px;height:auto;display:block/);
   assert.match(html, /if_ar_gt_1\.15[\s\S]*b_auto,c_pad,h_560,w_620[\s\S]*f_jpg,q_auto/);
   assert.match(html, /padding-left:20px !important;padding-right:20px !important/);
-  assert.match(html, /height="52" bgcolor="#1CC5BE"/);
+  assert.match(html, /height="52" bgcolor="#E72D88"/);
   assert.match(html, /overflow-wrap:anywhere;word-break:break-word/);
   assert.doesNotMatch(html, /float:right|display:grid|display:flex|position:absolute/);
   assert.doesNotMatch(html, /<video|\.mp4|\.gif/);

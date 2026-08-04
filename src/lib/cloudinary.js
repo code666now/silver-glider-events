@@ -28,6 +28,7 @@ async function uploadCover(buffer) {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: coverFolder,
+        colors: true,
         transformation: [{ width: 1600, height: 900, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
       },
       (error, result) => { if (error) reject(error); else resolve(result); }
@@ -42,6 +43,7 @@ async function uploadFlyer(buffer) {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: flyerFolder,
+        colors: true,
         transformation: [{ width: 2000, height: 2600, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
       },
       (error, result) => { if (error) reject(error); else resolve(result); }

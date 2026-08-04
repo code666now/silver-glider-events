@@ -4,6 +4,7 @@ const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
 const pool = require('../config/db');
 const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, configured } = require('../lib/cloudinary');
+const { selectAccentColor } = require('../../public/js/artwork-color');
 
 const router = express.Router();
 
@@ -31,7 +32,7 @@ router.post('/api/uploads/cover', requireOrganizer, handleUpload, async (req, re
   if (!req.file) return res.status(400).json({ error: 'Choose an image (JPG, PNG, or WebP, max 5 MB)' });
   try {
     const result = await uploadCover(req.file.buffer);
-    res.json({ url: result.secure_url });
+    res.json({ url: result.secure_url, accentColor: selectAccentColor(result.colors, { fallback: null }) });
   } catch (err) {
     console.error('[upload:cover]', err.name, err.http_code || '', err.message);
     // Surface a useful message instead of a generic 500
@@ -47,7 +48,7 @@ router.post('/api/uploads/flyer', requireOrganizer, handleUpload, async (req, re
   if (!req.file) return res.status(400).json({ error: 'Choose a flyer (JPG, PNG, WebP, or GIF, max 5 MB)' });
   try {
     const result = await uploadFlyer(req.file.buffer);
-    res.json({ url: result.secure_url });
+    res.json({ url: result.secure_url, accentColor: selectAccentColor(result.colors, { fallback: null }) });
   } catch (err) {
     console.error('[upload:flyer]', err.name, err.http_code || '', err.message);
     const msg = /certificate|self.signed|ECONN|ETIMEDOUT|ENOTFOUND/i.test(err.message)

@@ -1,90 +1,29 @@
 const EVENT = JSON.parse(document.getElementById('event-data').textContent);
 const $ = id => document.getElementById(id);
+const ArtworkColor = window.SGArtworkColor;
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
-
-function softenRgb({ r, g, b }) {
-  const darken = 0.66;
-  const desaturate = 0.18;
-  const avg = (r + g + b) / 3;
-  return {
-    r: Math.round((avg * desaturate + r * (1 - desaturate)) * darken),
-    g: Math.round((avg * desaturate + g * (1 - desaturate)) * darken),
-    b: Math.round((avg * desaturate + b * (1 - desaturate)) * darken)
-  };
-}
-
-function rgba({ r, g, b }, alpha) {
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function loadImageForPalette(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-async function extractCoverPalette(url) {
-  const img = await loadImageForPalette(url);
-  const canvas = document.createElement('canvas');
-  const size = 40;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, size, size);
-  const data = ctx.getImageData(0, 0, size, size).data;
-  const buckets = new Map();
-  for (let i = 0; i < data.length; i += 16) {
-    const alpha = data[i + 3];
-    if (alpha < 128) continue;
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    if (luminance < 0.06 || luminance > 0.95) continue;
-    const key = [r, g, b].map(value => Math.round(value / 32) * 32).join(',');
-    const bucket = buckets.get(key) || { r: 0, g: 0, b: 0, count: 0 };
-    bucket.r += r;
-    bucket.g += g;
-    bucket.b += b;
-    bucket.count += 1;
-    buckets.set(key, bucket);
-  }
-  const swatches = [...buckets.values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3)
-    .map(bucket => softenRgb({
-      r: Math.round(bucket.r / bucket.count),
-      g: Math.round(bucket.g / bucket.count),
-      b: Math.round(bucket.b / bucket.count)
-    }));
-  if (swatches.length < 2) throw new Error('Not enough cover color data');
-  return swatches;
-}
 
 async function applyCoverPalette() {
   if (document.body.classList.contains('flyer-public-page')) return;
   if (!EVENT.coverImageUrl) return;
   try {
-    const colors = await extractCoverPalette(EVENT.coverImageUrl);
+    const candidates = await ArtworkColor.extractPalette(EVENT.coverImageUrl);
+    const colors = ArtworkColor.paletteForBackground(candidates);
     const hero = $('hero');
     if (hero) {
-      hero.style.setProperty('--hero-bg-a', rgba(colors[0], .76));
-      hero.style.setProperty('--hero-bg-b', rgba(colors[1], .62));
-      hero.style.setProperty('--hero-bg-c', rgba(colors[2] || colors[0], .54));
+      hero.style.setProperty('--hero-bg-a', ArtworkColor.rgba(colors[0], .76));
+      hero.style.setProperty('--hero-bg-b', ArtworkColor.rgba(colors[1], .62));
+      hero.style.setProperty('--hero-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .54));
       hero.classList.add('image-palette');
     }
     if (EVENT.bgEffect) return;   // an explicit effect still overrides the page background
     const bg = document.querySelector('.event-bg');
     if (!bg) return;
-    bg.style.setProperty('--event-bg-a', rgba(colors[0], .82));
-    bg.style.setProperty('--event-bg-b', rgba(colors[1], .68));
-    bg.style.setProperty('--event-bg-c', rgba(colors[2] || colors[0], .52));
+    bg.style.setProperty('--event-bg-a', ArtworkColor.rgba(colors[0], .82));
+    bg.style.setProperty('--event-bg-b', ArtworkColor.rgba(colors[1], .68));
+    bg.style.setProperty('--event-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
     bg.classList.add('image-palette');
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
