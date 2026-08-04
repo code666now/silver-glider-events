@@ -37,12 +37,14 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
     'class="sg-event-title"',
     'Presented by',
     '/h/the-night-archive',
-    'Listen here →',
+    'Music vibe',
     'Avery, your spot is confirmed.',
     'class="sg-detail-label"',
     'View event &amp; comments',
+    'Add to Calendar',
+    'Open in Maps',
+    'Manage RSVP',
     'A calendar invite is attached.',
-    'Manage your RSVP',
     'Powered by Silver Glider'
   ];
 
@@ -60,11 +62,17 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.match(html, /background:#111111;border:1px solid #292929/);
   assert.doesNotMatch(html, /var\(--|gradient\(/);
   assert.equal((html.match(/Midnight Listening Party<\/h2>/g) || []).length, 1);
+  for (const icon of ['music.png', 'calendar.png', 'map.png', 'manage.png']) {
+    assert.match(html, new RegExp(`/images/email/${icon.replace('.', '\\.')}`));
+  }
+  assert.match(html, /Check out the music vibe for this event\./);
+  assert.match(html, /class="sg-email-actions"/);
+  assert.match(html, /border-left:1px solid #242424/);
 });
 
 test('RSVP email preserves event information, management, and calendar messaging', () => {
   const html = renderRsvpConfirmationEmail({ event, rsvp });
-  for (const value of ['Midnight Listening Party', 'Saturday, August 22, 2026', '8:30 PM', 'The Silver Room', 'Open in Maps →']) {
+  for (const value of ['Midnight Listening Party', 'Saturday, August 22, 2026', '8:30 PM', 'The Silver Room', 'Open in Maps']) {
     assert.match(html, new RegExp(value));
   }
   assert.match(html, /\/r\/private-manage-token\/event/);
@@ -87,9 +95,11 @@ test('RSVP email preserves event information, management, and calendar messaging
     rsvp
   });
   assert.doesNotMatch(fallbackHtml, /<img class="sg-event-artwork"/);
-  assert.doesNotMatch(fallbackHtml, />Presented by |Listen here →|<td class="sg-detail-label"|>Open in Maps →/);
+  assert.doesNotMatch(fallbackHtml, />Presented by |Music vibe|<td class="sg-detail-label"|Open in Maps/);
   assert.match(fallbackHtml, /class="sg-event-title"/);
   assert.match(fallbackHtml, /height="52" bgcolor="#1CC5BE"/);
+  assert.match(fallbackHtml, /Add to Calendar/);
+  assert.match(fallbackHtml, /Manage RSVP/);
 });
 
 test('RSVP confirmation remains responsive and dark', () => {

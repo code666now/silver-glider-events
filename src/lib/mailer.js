@@ -91,7 +91,7 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
   const artworkRow = confirmationArtworkRow(event);
   const hasArtwork = Boolean(artworkRow);
   const hostHtml = confirmationHostHtml(event, baseUrl);
-  const listeningHtml = confirmationListeningHtml(event);
+  const listeningHtml = confirmationListeningHtml(event, baseUrl);
   return `
 <!DOCTYPE html>
 <html>
@@ -106,7 +106,7 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
       .sg-email-brand { padding-left:20px !important;padding-right:20px !important;padding-top:28px !important; }
       .sg-email-headline { font-size:38px !important; }
       .sg-event-title { font-size:30px !important;line-height:1.12 !important; }
-      .sg-email-sub,.sg-email-secondary,.sg-detail-label,.sg-detail-value,.sg-map-link { font-size:16px !important; }
+      .sg-email-sub,.sg-email-secondary,.sg-detail-label,.sg-detail-value,.sg-map-link,.sg-email-action-label { font-size:16px !important; }
       .sg-event-artwork { width:100% !important;max-width:560px !important;height:auto !important; }
       .sg-email-cta { width:100% !important; }
     }
@@ -176,12 +176,23 @@ function confirmationHostHtml(event, baseUrl) {
   return `<p style="color:#8e8e8e;font-size:16px;line-height:1.5;margin:0">Presented by ${identity}</p>`;
 }
 
-function confirmationListeningHtml(event) {
+function confirmationListeningHtml(event, baseUrl) {
   const listeningUrl = safeHttpUrl(event.event_vibe_url);
   if (!listeningUrl) return '';
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px"><tr><td>
-    <a href="${esc(listeningUrl)}" style="display:inline-block;color:#1CC5BE;font-size:16px;line-height:1.5;text-decoration:none;font-weight:700">Listen here →</a>
-  </td></tr></table>`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:20px 0 0;border-top:1px solid #242424;border-bottom:1px solid #242424">
+    <tr>
+      <td width="68" valign="middle" style="width:68px;padding:16px 12px 16px 0">
+        <a href="${esc(listeningUrl)}" style="display:block;text-decoration:none"><img src="${esc(baseUrl)}/images/email/music.png" width="52" height="52" alt="" style="display:block;width:52px;height:52px;border:0;outline:none;text-decoration:none"></a>
+      </td>
+      <td valign="middle" style="padding:16px 8px">
+        <a href="${esc(listeningUrl)}" style="display:block;color:#1CC5BE;font-size:17px;line-height:1.35;text-decoration:none;font-weight:800">Music vibe</a>
+        <p style="color:#969696;font-size:15px;line-height:1.45;margin:3px 0 0">Check out the music vibe for this event.</p>
+      </td>
+      <td width="38" valign="middle" align="right" style="width:38px;padding:16px 0 16px 8px">
+        <a href="${esc(listeningUrl)}" aria-label="Open music vibe" style="display:block;color:#1CC5BE;font-size:34px;line-height:1;text-decoration:none;font-weight:400">→</a>
+      </td>
+    </tr>
+  </table>`;
 }
 
 function confirmationDetailsCard(event) {
@@ -203,13 +214,46 @@ function confirmationDetailsCard(event) {
       <td class="sg-detail-label" width="32%" valign="top" style="width:32%;padding:14px 16px;color:#8c8c8c;font-size:15px;line-height:1.45">${esc(label)}</td>
       <td class="sg-detail-value" width="68%" valign="top" align="right" style="width:68%;padding:14px 16px;color:#f0f0f0;font-size:15px;font-weight:700;line-height:1.45;overflow-wrap:anywhere;word-break:break-word">${esc(value)}</td>
     </tr>`).join('');
-  const location = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
-  const mapsHtml = location
-    ? `<p style="margin:10px 0 0;text-align:right"><a class="sg-map-link" href="https://maps.google.com/?q=${encodeURIComponent(location)}" style="display:inline-block;color:#1CC5BE;font-size:15px;line-height:1.6;text-decoration:none;font-weight:700">Open in Maps →</a></p>`
-    : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
     ${rowHtml}
-  </table>${mapsHtml}`;
+  </table>`;
+}
+
+function confirmationActionLinks(event, rsvp) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const location = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+  const actions = [
+    {
+      label: 'Add to Calendar',
+      url: `${baseUrl}/r/${rsvp.manage_token}/calendar.ics`,
+      icon: 'calendar.png'
+    }
+  ];
+  if (location) {
+    actions.push({
+      label: 'Open in Maps',
+      url: `https://maps.google.com/?q=${encodeURIComponent(location)}`,
+      icon: 'map.png'
+    });
+  }
+  actions.push({
+    label: 'Manage RSVP',
+    url: `${baseUrl}/r/${rsvp.manage_token}`,
+    icon: 'manage.png'
+  });
+  const width = Math.floor(100 / actions.length);
+  const cells = actions.map((action, index) => `<td width="${width}%" valign="top" align="center" style="width:${width}%;padding:12px 6px 4px;${index ? 'border-left:1px solid #242424;' : ''}">
+    <a href="${esc(action.url)}" style="display:block;text-decoration:none">
+      <img src="${esc(baseUrl)}/images/email/${action.icon}" width="36" height="36" alt="" style="display:block;width:36px;height:36px;margin:0 auto 9px;border:0;outline:none;text-decoration:none">
+      <span class="sg-email-action-label" style="display:block;color:#1CC5BE;font-size:14px;line-height:1.35;font-weight:500">${esc(action.label)}</span>
+    </a>
+  </td>`).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-actions" style="width:100%;margin:0 0 24px"><tr>${cells}</tr></table>`;
+}
+
+function confirmationFooterNote(rsvp) {
+  const reminder = rsvp.wants_reminders ? '<br>We’ll send one reminder the day before.' : '';
+  return `<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.65">A calendar invite is attached.${reminder}</p>`;
 }
 
 function eventCard(event) {
@@ -278,9 +322,6 @@ function flyerSecondaryLinks(event, rsvp, { includeManage = true, includeHost = 
 function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
   const theme = createEmailTheme(event.artwork_accent_color);
   const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
-  const reminderHtml = rsvp.wants_reminders
-    ? '<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:-18px 0 28px;line-height:1.6">We’ll send one reminder the day before.</p>'
-    : '';
   return rsvpConfirmationLayout({
     event,
     theme,
@@ -288,7 +329,7 @@ function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${flyerSecondaryLinks(event, rsvp, { includeHost: false })}${reminderHtml}`,
+    secondaryHtml: `${confirmationActionLinks(event, rsvp)}${confirmationFooterNote(rsvp)}`,
     footerBrand: 'Powered by Silver Glider'
   });
 }
@@ -328,11 +369,7 @@ async function sendMagicLink({ to, link }) {
 function renderRsvpConfirmationEmail({ event, rsvp }) {
   if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp });
   const theme = createEmailTheme(event.artwork_accent_color);
-  const manageUrl = `${process.env.APP_URL}/r/${rsvp.manage_token}`;
   const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
-  const reminderHtml = rsvp.wants_reminders
-    ? '<br>We’ll send one reminder the day before.'
-    : '';
   return rsvpConfirmationLayout({
     event,
     theme,
@@ -340,7 +377,7 @@ function renderRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.75">A calendar invite is attached.${reminderHtml}<br>Can't make it? <a href="${esc(manageUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">Manage your RSVP</a>.</p>`
+    secondaryHtml: `${confirmationActionLinks(event, rsvp)}${confirmationFooterNote(rsvp)}`
   });
 }
 

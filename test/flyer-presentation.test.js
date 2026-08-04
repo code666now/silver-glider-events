@@ -223,6 +223,9 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
   assert.match(flyerHtml, /b_auto,c_pad,h_560,w_620/);
   assert.match(flyerHtml, /height:auto/);
   assert.match(flyerHtml, /Add to Calendar/);
+  assert.match(flyerHtml, /Open in Maps/);
+  assert.match(flyerHtml, /Manage RSVP/);
+  assert.match(flyerHtml, /class="sg-email-actions"/);
   assert.match(flyerHtml, /View event &amp; comments/);
   assert.match(flyerHtml, /Heat Wave Booking/);
   assert.match(flyerHtml, /Powered by Silver Glider/);
