@@ -148,9 +148,8 @@ test('flyer public rendering uses an isolated poster-first template without repl
   const markers = [
     '{{HERO}}',
     '{{TITLE}}',
-    '{{HOST_IDENTITY_HTML}}',
     '{{DATE_STR}}',
-    '{{VENUE_SUMMARY_HTML}}',
+    '{{FLYER_VENUE_HTML}}',
     '<div class="rsvp-zone">',
     '{{PRIMARY_ACTION_HTML}}',
     '{{ADDITIONAL_DETAILS_HTML}}',
@@ -171,6 +170,12 @@ test('flyer public rendering uses an isolated poster-first template without repl
   for (const existingPart of ['id="rsvp-form"', '{{GUEST_LIST_HTML}}', '{{COMMENTS_HTML}}', 'id="cal-btn"', '{{PRESENTER_HTML}}', 'Powered by']) {
     assert.match(flyerTemplate, new RegExp(existingPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+  assert.equal((flyerTemplate.match(/\{\{PRESENTER_HTML\}\}/g) || []).length, 1);
+  assert.doesNotMatch(flyerTemplate, /HOST_IDENTITY_HTML|Hosted by/);
+  assert.doesNotMatch(route, /hostIdentityHtml|Hosted by/);
+  assert.match(route, /const flyerVenueHtml = `<div class="flyer-venue">/);
+  assert.doesNotMatch(route, /detailParts\.push\(`<div class="detail-location">/);
+  assert.doesNotMatch(flyerStyles, /venue-summary|detail-location/);
   assert.doesNotMatch(flyerTemplate, /<p class="sg-label cat">/);
   assert.match(route, /flyerPrimaryAction\(event\)/);
   assert.match(route, /const flyerAction = flyerPrimaryAction\(event\)/);

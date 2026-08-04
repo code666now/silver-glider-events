@@ -311,7 +311,6 @@ router.get('/e/:slug', async (req, res, next) => {
     }
 
     const isFull = event.capacity != null && event.total_attendance >= event.capacity;
-    const organizerLabel = event.org_name || event.organizer_name || 'Silver Glider Events';
     const presenterHtml = event.org_name
       ? `<div class="host-attribution">
           ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
@@ -339,22 +338,12 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
-    const hostIdentityHtml = organizerLabel
-      ? `<div class="flyer-host-identity">
-          ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
-          <p><span>Hosted by</span>${event.organizer_public_slug
-            ? `<a href="/h/${encodeURIComponent(event.organizer_public_slug)}">${esc(organizerLabel)}</a>`
-            : `<strong>${esc(organizerLabel)}</strong>`}</p>
-        </div>`
-      : '';
     const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
-    const venueSummaryHtml = `<div class="venue-summary"><strong>${esc(event.venue_name)}</strong>${venueSummary ? `<span>${esc(venueSummary)}</span>` : ''}</div>`;
     const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`;
+    const flyerVenueText = event.venue_address || venueSummary;
+    const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(event.venue_name)}</strong>${flyerVenueText ? `<span>${esc(flyerVenueText)}</span>` : ''}<a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`;
     const detailParts = [];
     if (event.category) detailParts.push(`<p class="detail-category"><span>Category</span><strong>${esc(event.category)}</strong></p>`);
-    if (event.venue_address) {
-      detailParts.push(`<div class="detail-location"><span>Location</span><p>${esc(event.venue_address)}</p><a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`);
-    }
     if (event.description) detailParts.push(`<div class="desc">${esc(event.description).replace(/\n/g, '<br>')}</div>`);
     if (vibeHtml) detailParts.push(vibeHtml);
     const flyerAdditionalDetailsHtml = detailParts.length
@@ -435,8 +424,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, 'RSVP')
-      .replace(/{{HOST_IDENTITY_HTML}}/g, hostIdentityHtml)
-      .replace(/{{VENUE_SUMMARY_HTML}}/g, venueSummaryHtml)
+      .replace(/{{FLYER_VENUE_HTML}}/g, flyerVenueHtml)
       .replace(/{{PRIMARY_ACTION_HTML}}/g, flyerPrimaryActionHtml)
       .replace(/{{PRIMARY_ACTION_SUPPORT_HTML}}/g, flyerActionSupportHtml)
       .replace(/{{SECONDARY_ACTION_HTML}}/g, flyerSecondaryActionHtml)

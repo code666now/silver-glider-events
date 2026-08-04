@@ -133,35 +133,13 @@
   font-size: clamp(34px, 7vw, 48px);
   letter-spacing: -.02em;
 }
-.flyer-host-identity {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 24px;
-}
-.flyer-host-identity img {
-  width: 36px;
-  height: 36px;
-  object-fit: contain;
-  border: 1px solid var(--sg-border);
-  border-radius: 10px;
-  background: rgba(255,255,255,.05);
-}
-.flyer-host-identity p { color: var(--sg-text-faint); font-size: 12px; line-height: 1.35; }
-.flyer-host-identity span { margin-right: 4px; }
-.flyer-host-identity strong,
-.flyer-host-identity a { color: var(--sg-text); font-weight: 700; }
-.flyer-essentials {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, .75fr);
-  gap: 10px;
-  margin-bottom: 18px;
-}
 .when {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 20px;
   padding: 13px 15px;
   border: 1px solid var(--sg-border-soft);
   border-radius: 14px;
@@ -170,26 +148,20 @@
   font-weight: 700;
 }
 .when .dot { color: var(--sg-accent); }
-.venue-summary {
+.flyer-venue {
   display: grid;
-  align-content: center;
-  min-width: 0;
-  padding: 12px 15px;
-  border: 1px solid var(--sg-border-soft);
-  border-radius: 14px;
-  background: rgba(17,17,17,.62);
+  gap: 3px;
+  margin: 0 0 26px;
 }
-.venue-summary strong {
+.flyer-venue strong {
   color: var(--sg-text);
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 16px;
 }
-.venue-summary span {
+.flyer-venue span {
   color: var(--sg-text-dim);
-  font-size: 11px;
+  font-size: 14px;
 }
+.flyer-venue a { width: fit-content; margin-top: 3px; font-size: 13px; font-weight: 700; }
 .ticket-note {
   display: flex;
   align-items: center;
@@ -414,10 +386,8 @@
   background: rgba(17,17,17,.5);
 }
 .additional-details > h2 { margin-bottom: 16px; font-size: 20px; }
-.detail-category,
-.detail-location { margin-bottom: 16px; }
-.detail-category span,
-.detail-location > span {
+.detail-category { margin-bottom: 16px; }
+.detail-category span {
   display: block;
   margin-bottom: 4px;
   color: var(--sg-text-faint);
@@ -427,8 +397,6 @@
   text-transform: uppercase;
 }
 .detail-category strong { color: var(--sg-text-dim); font-size: 13px; }
-.detail-location p { color: var(--sg-text-dim); font-size: 13px; }
-.detail-location a { font-size: 12px; font-weight: 700; }
 .additional-details .vibe-section { margin: 18px 0 0; }
 .vibe-section {
   margin: -4px 0 34px;
@@ -645,10 +613,8 @@
   -webkit-text-stroke: .4px rgba(0,0,0,.55);
 }
 .event-bg.fx-static ~ .flyer-layout .when,
-.event-bg.fx-static ~ .flyer-layout .venue-summary strong,
-.event-bg.fx-static ~ .flyer-layout .flyer-host-identity a,
-.event-bg.fx-static ~ .flyer-layout .flyer-host-identity strong,
-.event-bg.fx-static ~ .flyer-layout .detail-location a,
+.event-bg.fx-static ~ .flyer-layout .flyer-venue strong,
+.event-bg.fx-static ~ .flyer-layout .flyer-venue a,
 .event-bg.fx-static ~ .flyer-layout .detail-category strong,
 .event-bg.fx-static ~ .flyer-layout .ticket-note span,
 .event-bg.fx-static ~ .flyer-layout .ticket-note a,
@@ -659,10 +625,8 @@
   font-weight: 700;
   text-shadow: var(--flyer-static-shadow);
 }
-.event-bg.fx-static ~ .flyer-layout .venue-summary span,
-.event-bg.fx-static ~ .flyer-layout .flyer-host-identity p,
+.event-bg.fx-static ~ .flyer-layout .flyer-venue span,
 .event-bg.fx-static ~ .flyer-layout .primary-action-support,
-.event-bg.fx-static ~ .flyer-layout .detail-location p,
 .event-bg.fx-static ~ .flyer-layout .ticket-note em,
 .event-bg.fx-static ~ .flyer-layout .desc,
 .event-bg.fx-static ~ .flyer-layout .host-attribution p,
@@ -676,8 +640,7 @@
 .event-bg.fx-static ~ .flyer-layout .flyer-primary-cta { font-weight: 800; }
 
 .event-bg.fx-saloon ~ .flyer-layout .desc,
-.event-bg.fx-saloon ~ .flyer-layout .venue-summary span,
-.event-bg.fx-saloon ~ .flyer-layout .flyer-host-identity p,
+.event-bg.fx-saloon ~ .flyer-layout .flyer-venue span,
 .event-bg.fx-saloon ~ .flyer-layout .primary-action-support,
 .event-bg.fx-saloon ~ .flyer-layout .host-attribution p,
 .event-bg.fx-saloon ~ .flyer-layout .powered-by,
@@ -697,13 +660,11 @@
   .hero.flyer-hero { border-radius: 12px; }
   .flyer-details { padding-top: 30px; }
   .event-title { font-size: clamp(32px, 11vw, 44px); }
-  .flyer-essentials { grid-template-columns: 1fr; }
   .when {
     max-width: 100%;
     padding: 9px 14px;
     font-size: 12px;
   }
-  .venue-summary { padding: 11px 14px; }
   .actions { gap: 8px; }
   .actions .sg-btn { padding-inline: 10px; }
   #rsvp-form-box,
