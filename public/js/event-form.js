@@ -12,6 +12,37 @@ const ArtworkColor = window.SGArtworkColor;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
 
+function setSecondVibeVisible(visible) {
+  const singleLink = $('vibe-single-link');
+  const firstChoice = $('vibe-choice-one');
+  const secondChoice = $('vibe-choice-two');
+  if (visible) {
+    $('event_vibe_url_labeled').value = $('event_vibe_url_labeled').value || $('event_vibe_url').value;
+    singleLink.hidden = true;
+    firstChoice.hidden = false;
+    secondChoice.hidden = false;
+    $('add-vibe-choice').hidden = true;
+    $('remove-vibe-choice').hidden = false;
+  } else {
+    $('event_vibe_url').value = $('event_vibe_url_labeled').value || $('event_vibe_url').value;
+    $('event_vibe_label').value = '';
+    $('event_vibe_url_labeled').value = '';
+    $('event_vibe_label_2').value = '';
+    $('event_vibe_url_2').value = '';
+    singleLink.hidden = false;
+    firstChoice.hidden = true;
+    secondChoice.hidden = true;
+    $('add-vibe-choice').hidden = false;
+    $('remove-vibe-choice').hidden = true;
+  }
+}
+
+$('add-vibe-choice').addEventListener('click', () => {
+  setSecondVibeVisible(true);
+  $('event_vibe_label').focus();
+});
+$('remove-vibe-choice').addEventListener('click', () => setSecondVibeVisible(false));
+
 function activeArtworkUrl() {
   return presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
 }
@@ -704,10 +735,14 @@ function showError(msg) {
 }
 
 function collect() {
+  const hasSecondVibe = !$('vibe-choice-two').hidden;
   const body = {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
-    event_vibe_url: $('event_vibe_url').value.trim() || null,
+    event_vibe_url: (hasSecondVibe ? $('event_vibe_url_labeled') : $('event_vibe_url')).value.trim() || null,
+    event_vibe_label: hasSecondVibe ? ($('event_vibe_label').value.trim() || null) : null,
+    event_vibe_url_2: hasSecondVibe ? ($('event_vibe_url_2').value.trim() || null) : null,
+    event_vibe_label_2: hasSecondVibe ? ($('event_vibe_label_2').value.trim() || null) : null,
     cover_image_url: $('cover_image_url').value || null,
     cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
@@ -753,6 +788,13 @@ if (editId) {
     $('title').value = event.title;
     $('description').value = event.description || '';
     $('event_vibe_url').value = event.event_vibe_url || '';
+    if (event.event_vibe_url_2) {
+      setSecondVibeVisible(true);
+      $('event_vibe_label').value = event.event_vibe_label || '';
+      $('event_vibe_url_labeled').value = event.event_vibe_url || '';
+      $('event_vibe_label_2').value = event.event_vibe_label_2 || '';
+      $('event_vibe_url_2').value = event.event_vibe_url_2 || '';
+    }
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
     $('venue_name').value = event.venue_name;

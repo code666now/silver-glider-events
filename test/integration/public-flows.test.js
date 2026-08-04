@@ -161,6 +161,34 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
 });
 
+test('serves two labeled Event Vibe choices in both public presentations', async () => {
+  const vibeFields = {
+    event_vibe_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    event_vibe_label: 'Fire in the Sky',
+    event_vibe_url_2: 'https://www.youtube.com/watch?v=9bZkp7q19f0',
+    event_vibe_label_2: 'TL Tramps'
+  };
+  await createEvent({ slug: 'standard-vibe', ...vibeFields });
+  await createEvent({
+    slug: 'flyer-vibe',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/flyers/vibe.jpg',
+    ...vibeFields
+  });
+
+  for (const slug of ['standard-vibe', 'flyer-vibe']) {
+    const response = await fetch(`${baseUrl}/e/${slug}`);
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /data-vibe-switcher/);
+    assert.match(html, /role="tablist" aria-label="Choose an artist"/);
+    assert.match(html, />Fire in the Sky<\/button>/);
+    assert.match(html, />TL Tramps<\/button>/);
+    assert.equal((html.match(/data-vibe-player/g) || []).length, 1);
+    assert.equal((html.match(/data-vibe-template=/g) || []).length, 2);
+  }
+});
+
 test('keeps Secret Show details out of locked responses and reveals them after unlock', async () => {
   const event = await createEvent({
     slug: 'secret-night',

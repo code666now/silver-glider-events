@@ -5,6 +5,47 @@ const ArtworkColor = window.SGArtworkColor;
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
 
+function mountVibeSwitchers() {
+  document.querySelectorAll('[data-vibe-switcher]').forEach(section => {
+    const buttons = Array.from(section.querySelectorAll('[data-vibe-choice]'));
+    const player = section.querySelector('[data-vibe-player]');
+    let activeIndex = 0;
+    if (!buttons.length || !player) return;
+
+    const activate = index => {
+      const button = buttons[index];
+      const template = section.querySelector(`[data-vibe-template="${index}"]`);
+      if (!button || !template) return;
+      buttons.forEach((choice, choiceIndex) => {
+        const selected = choiceIndex === index;
+        choice.classList.toggle('is-active', selected);
+        choice.setAttribute('aria-selected', String(selected));
+        choice.tabIndex = selected ? 0 : -1;
+      });
+      player.setAttribute('aria-labelledby', button.id);
+      if (index !== activeIndex) player.innerHTML = template.innerHTML;
+      activeIndex = index;
+    };
+
+    buttons.forEach((button, index) => {
+      button.addEventListener('click', () => activate(index));
+      button.addEventListener('keydown', event => {
+        let nextIndex = index;
+        if (event.key === 'ArrowRight') nextIndex = (index + 1) % buttons.length;
+        else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + buttons.length) % buttons.length;
+        else if (event.key === 'Home') nextIndex = 0;
+        else if (event.key === 'End') nextIndex = buttons.length - 1;
+        else return;
+        event.preventDefault();
+        activate(nextIndex);
+        buttons[nextIndex].focus();
+      });
+    });
+  });
+}
+
+mountVibeSwitchers();
+
 async function applyCoverPalette() {
   if (document.body.classList.contains('flyer-public-page')) return;
   if (!EVENT.coverImageUrl) return;

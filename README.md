@@ -43,6 +43,7 @@ Never use the Railway production database for development or tests.
 - Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
 - Flyer events with a centered, uncropped poster-first public layout
+- Optional Event Vibe with one link or two labeled artist choices sharing a single active player
 - Free RSVP and external paid-ticket links; no native payment processing
 - Progressive RSVP form, mobile docked CTA, capacity enforcement, cancellation links, and confirmation resends
 - Artwork-led RSVP confirmation emails with adaptive color treatment, linked host/vibe identity, conditional details, and calendar attachments; separate day-before/day-of reminders
@@ -74,7 +75,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, reminder cron
-src/db/migrations/           numbered SQL migrations (currently 001–018)
+src/db/migrations/           numbered SQL migrations (currently 001–019)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/reminders.js        idempotent day-before and day-of reminder job
@@ -91,6 +92,7 @@ test/                        focused Node test suite
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
+- **Event Vibe:** one supported music/media link keeps the original simple embed. Hosts can optionally add a second labeled artist; Standard and Flyer pages show compact accessible tabs above one active player, and the inactive embed is not loaded.
 - **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited.
 
 ## Tests
@@ -100,7 +102,7 @@ npm test
 npm run check:static
 ```
 
-As of August 3, 2026, the suite contains 71 tests. The 67 focused tests cover Flyer/Standard isolation, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Four HTTP/PostgreSQL integration tests exercise authenticated event creation, Standard/Flyer/host rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
+As of August 4, 2026, the suite contains 74 tests. The 69 focused tests cover Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Five HTTP/PostgreSQL integration tests exercise authenticated event creation, Standard/Flyer/host and two-artist Event Vibe rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

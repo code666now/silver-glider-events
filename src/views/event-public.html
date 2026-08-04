@@ -316,6 +316,33 @@
       font-size: 22px;
       margin-bottom: 12px;
     }
+    .vibe-choice-tabs {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 12px;
+      padding: 0 0 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .vibe-choice-tabs::-webkit-scrollbar { display: none; }
+    .vibe-choice-tab {
+      min-height: 44px;
+      padding: 10px 16px;
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      background: rgba(0,0,0,.16);
+      color: var(--sg-text-dim);
+      font: 700 13px/1.2 var(--sg-font-body);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .vibe-choice-tab.is-active {
+      border-color: rgba(28,197,190,.58);
+      background: rgba(28,197,190,.12);
+      color: var(--sg-accent);
+    }
+    .vibe-choice-tab:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
+    .vibe-player { min-width: 0; }
     .vibe-embed {
       display: block;
       width: 100%;

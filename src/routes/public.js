@@ -130,10 +130,25 @@ function vibeEmbed(urlString) {
   return '';
 }
 
-function renderVibe(url) {
-  const embed = vibeEmbed(url);
-  if (!embed) return '';
-  return `<section class="vibe-section"><h2>Event Vibe</h2>${embed}</section>`;
+function renderVibe(event) {
+  const firstEmbed = vibeEmbed(event.event_vibe_url);
+  if (!firstEmbed) return '';
+  const secondEmbed = vibeEmbed(event.event_vibe_url_2);
+  const firstLabel = String(event.event_vibe_label || '').trim();
+  const secondLabel = String(event.event_vibe_label_2 || '').trim();
+  if (!secondEmbed || !firstLabel || !secondLabel) {
+    return `<section class="vibe-section"><h2>Event Vibe</h2>${firstEmbed}</section>`;
+  }
+  return `<section class="vibe-section" data-vibe-switcher>
+    <h2>Event Vibe</h2>
+    <div class="vibe-choice-tabs" role="tablist" aria-label="Choose an artist">
+      <button class="vibe-choice-tab is-active" type="button" role="tab" id="vibe-choice-0" aria-controls="vibe-player" aria-selected="true" tabindex="0" data-vibe-choice="0">${esc(firstLabel)}</button>
+      <button class="vibe-choice-tab" type="button" role="tab" id="vibe-choice-1" aria-controls="vibe-player" aria-selected="false" tabindex="-1" data-vibe-choice="1">${esc(secondLabel)}</button>
+    </div>
+    <div class="vibe-player" id="vibe-player" role="tabpanel" aria-labelledby="vibe-choice-0" data-vibe-player>${firstEmbed}</div>
+    <template data-vibe-template="0">${firstEmbed}</template>
+    <template data-vibe-template="1">${secondEmbed}</template>
+  </section>`;
 }
 
 async function loadEventBySlug(slug) {
@@ -323,7 +338,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const ticketHtml = isPaid
       ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
-    const vibeHtml = renderVibe(event.event_vibe_url);
+    const vibeHtml = renderVibe(event);
     const flyerAction = flyerPrimaryAction(event);
     const flyerPrimaryActionHtml = flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`

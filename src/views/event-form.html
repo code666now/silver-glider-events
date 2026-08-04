@@ -119,6 +119,25 @@
     .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
     .row2 > * { min-width: 0; }
     .row2 .sg-input { min-width: 0; width: 100%; }
+    .vibe-editor {
+      padding: 16px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 16px;
+      background: rgba(255,255,255,.025);
+    }
+    .vibe-editor [hidden] { display: none !important; }
+    .vibe-editor .sg-field { margin-bottom: 12px; }
+    .vibe-editor .sg-field:last-child { margin-bottom: 0; }
+    .vibe-choice-fields {
+      display: grid;
+      grid-template-columns: minmax(140px,.42fr) minmax(0,1fr);
+      gap: 10px;
+      align-items: end;
+    }
+    .vibe-choice-fields[hidden] { display: none; }
+    .vibe-editor-actions { display: flex; justify-content: flex-start; gap: 10px; margin-top: 10px; }
+    .vibe-editor-actions .sg-btn { padding: 9px 14px; font-size: 12px; }
+    .vibe-editor-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
     .vis-toggle { display: flex; gap: 10px; }
     .vis-toggle button {
       flex: 1; padding: 12px; border-radius: 999px; font-family: var(--sg-font-body);
@@ -573,6 +592,8 @@
       }
     }
     @media (max-width: 640px) {
+      .vibe-choice-fields { grid-template-columns: 1fr; gap: 0; }
+      .vibe-editor-actions { align-items: stretch; flex-direction: column; }
       .secret-shortcut { align-items:flex-start;flex-direction:column; }
       .secret-code-fields { grid-template-columns:1fr; }
       .secret-code-help { grid-column:1; }
@@ -716,7 +737,36 @@
 
       <div class="sg-field">
         <label for="event_vibe_url">What does this event sound like? <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link.">
+        <div class="vibe-editor">
+          <div class="sg-field" id="vibe-single-link">
+            <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link." aria-label="Event Vibe link">
+          </div>
+          <div class="vibe-choice-fields" id="vibe-choice-one" hidden>
+            <div class="sg-field">
+              <label for="event_vibe_label">Artist name</label>
+              <input class="sg-input" id="event_vibe_label" maxlength="80" placeholder="Fire in the Sky">
+            </div>
+            <div class="sg-field">
+              <label for="event_vibe_url_labeled">Artist link</label>
+              <input class="sg-input" id="event_vibe_url_labeled" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp">
+            </div>
+          </div>
+          <div class="vibe-choice-fields" id="vibe-choice-two" hidden>
+            <div class="sg-field">
+              <label for="event_vibe_label_2">Second artist</label>
+              <input class="sg-input" id="event_vibe_label_2" maxlength="80" placeholder="TL Tramps">
+            </div>
+            <div class="sg-field">
+              <label for="event_vibe_url_2">Artist link</label>
+              <input class="sg-input" id="event_vibe_url_2" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp">
+            </div>
+          </div>
+          <div class="vibe-editor-actions">
+            <button class="sg-btn sg-btn-ghost" id="add-vibe-choice" type="button">+ Add another artist</button>
+            <button class="sg-btn sg-btn-ghost" id="remove-vibe-choice" type="button" hidden>Remove second artist</button>
+          </div>
+          <p class="vibe-editor-help" id="vibe-editor-help">Add one link for a simple Event Vibe, or offer guests a choice between two artists.</p>
+        </div>
       </div>
 
       <p class="event-editor-group-heading">When &amp; where</p>
