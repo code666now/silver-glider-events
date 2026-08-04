@@ -715,6 +715,30 @@
 }
 
 @media (max-width: 767px) {
+  /* Mobile browser chrome changes the visual viewport height while scrolling.
+     Keep the fixed artwork and veil on the stable large viewport so Safari
+     does not resize and repaint both layers mid-gesture. */
+  .flyer-public-page > .event-bg,
+  .flyer-public-page > .fx-veil {
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100lvh;
+    contain: paint;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  /* Blurring cards against a fixed full-screen image forces expensive
+     per-frame compositing on iOS. The opaque mobile cards read the same
+     without that repaint cost. */
+  .public-guest-list,
+  .event-wall {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   /* Keep the dock's space reserved even while it is hidden. Toggling this
      padding changed the document height by 78px mid-scroll and made iOS
      Safari jump when the inline CTA crossed the viewport. */

@@ -141,6 +141,8 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(flyerStyles, /body\.flyer-public-page,[\s\S]*padding-bottom: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(flyerStyles, /\.mobile-rsvp-dock \{[\s\S]*background: rgba\(8,8,8,\.97\);[\s\S]*backdrop-filter: none;[\s\S]*contain: paint/);
   assert.match(flyerStyles, /\.vibe-embed \{ touch-action: pan-y; \}/);
+  assert.match(flyerStyles, /\.flyer-public-page > \.event-bg,[\s\S]*\.flyer-public-page > \.fx-veil[\s\S]*height: 100lvh;[\s\S]*contain: paint/);
+  assert.match(flyerStyles, /\.public-guest-list,[\s\S]*\.event-wall \{[\s\S]*backdrop-filter: none;/);
 });
 
 test('public RSVP success state clearly confirms the RSVP without implying guest-list access', () => {
