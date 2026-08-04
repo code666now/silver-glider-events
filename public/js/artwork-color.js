@@ -196,6 +196,18 @@
     });
   }
 
+  function readableSecondaryAccent(accentColor, { background = '#080808', minimumContrast = 4.5 } = {}) {
+    const normalized = normalizeHex(accentColor) || DEFAULT_ACCENT;
+    if (normalized === DEFAULT_ACCENT) return DEFAULT_ACCENT;
+    const hsl = rgbToHsl(hexToRgb(normalized));
+    const saturation = clamp(hsl.s, 0.56, 0.88);
+    for (let lightness = Math.max(hsl.l, 0.62); lightness <= 0.86; lightness += 0.02) {
+      const candidate = rgbToHex(hslToRgb({ h: hsl.h, s: saturation, l: lightness }));
+      if (contrastRatio(candidate, background) >= minimumContrast) return candidate;
+    }
+    return DEFAULT_ACCENT;
+  }
+
   function createEmailTheme(savedAccent) {
     const normalized = normalizeHex(savedAccent);
     const selected = normalized ? selectAccentColor([[normalized, 1]], { fallback: DEFAULT_ACCENT }) : DEFAULT_ACCENT;
@@ -206,6 +218,7 @@
     return {
       accentColor,
       accentTextColor,
+      secondaryAccentColor: readableSecondaryAccent(accentColor),
       mutedAccentColor: blendHex(accentColor, '#111111', 0.18),
       borderColor: '#292929'
     };
@@ -223,6 +236,7 @@
     paletteForBackground,
     rgba,
     extractPalette,
+    readableSecondaryAccent,
     createEmailTheme
   };
 });

@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { PNG } = require('pngjs');
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://localhost:5432/sge_test';
 if (!/(?:^|\/)sge_test(?:\?|$)/.test(TEST_DATABASE_URL)) {
@@ -129,6 +130,26 @@ test('creates an event only for an authenticated organizer and publishes its pag
   const publicPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
   assert.equal(publicPage.status, 200);
   assert.match(await publicPage.text(), /Created Through HTTP/);
+});
+
+test('serves email-safe adaptive icon PNGs with immutable caching', async () => {
+  const response = await fetch(`${baseUrl}/images/email/music/637CDA.png`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('content-type'), 'image/png');
+  assert.match(response.headers.get('cache-control') || '', /max-age=31536000, immutable/);
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  const decoded = PNG.sync.read(bytes);
+  let recoloredPixels = 0;
+  for (let index = 0; index < decoded.data.length; index += 4) {
+    if (decoded.data[index] === 99 && decoded.data[index + 1] === 124 && decoded.data[index + 2] === 218 && decoded.data[index + 3] > 0) {
+      recoloredPixels += 1;
+    }
+  }
+  assert.ok(recoloredPixels > 100, 'adaptive icon should contain the requested accent color');
+
+  const invalid = await fetch(`${baseUrl}/images/email/music/not-a-color.png`);
+  assert.equal(invalid.status, 404);
 });
 
 test('serves Standard and Flyer events through their isolated templates', async () => {

@@ -1,5 +1,5 @@
 const { Resend } = require('resend');
-const { createEmailTheme } = require('../../public/js/artwork-color');
+const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -90,8 +90,8 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
   const outerBackground = '#080808';
   const artworkRow = confirmationArtworkRow(event);
   const hasArtwork = Boolean(artworkRow);
-  const hostHtml = confirmationHostHtml(event, baseUrl);
-  const listeningHtml = confirmationListeningHtml(event, baseUrl);
+  const hostHtml = confirmationHostHtml(event, baseUrl, theme);
+  const listeningHtml = confirmationListeningHtml(event, baseUrl, theme);
   return `
 <!DOCTYPE html>
 <html>
@@ -123,7 +123,7 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
         </td></tr>
         ${artworkRow}
         <tr><td class="sg-email-pad" style="padding:${hasArtwork ? '32px' : '0'} 30px 0">
-          <p style="font-size:13px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">RSVP Confirmed</p>
+          <p style="font-size:13px;font-weight:800;color:${theme.secondaryAccentColor};letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">RSVP Confirmed</p>
           <h1 class="sg-event-title" style="font-size:36px;font-weight:800;margin:0 0 ${hostHtml || listeningHtml ? '10px' : '16px'};color:#f4f4f4;letter-spacing:-.025em;line-height:1.12;overflow-wrap:anywhere;word-break:break-word">${esc(event.title)}</h1>
           ${hostHtml}
           ${listeningHtml}
@@ -163,32 +163,37 @@ function confirmationArtworkRow(event) {
   </td></tr>`;
 }
 
-function confirmationHostHtml(event, baseUrl) {
+function confirmationHostHtml(event, baseUrl, theme) {
   const hostName = String(event.org_name || event.presenter_name || '').trim();
   if (!hostName) return '';
   const hostUrl = event.organizer_public_slug
     ? `${baseUrl}/h/${encodeURIComponent(event.organizer_public_slug)}`
     : '';
   const identity = hostUrl
-    ? `<a href="${esc(hostUrl)}" style="color:#1CC5BE;text-decoration:none;font-weight:700">${esc(hostName)}</a>`
+    ? `<a href="${esc(hostUrl)}" style="color:${theme.secondaryAccentColor};text-decoration:none;font-weight:700">${esc(hostName)}</a>`
     : `<strong style="color:#d7d7d7;font-weight:700">${esc(hostName)}</strong>`;
   return `<p style="color:#8e8e8e;font-size:16px;line-height:1.5;margin:0">Presented by ${identity}</p>`;
 }
 
-function confirmationListeningHtml(event, baseUrl) {
+function confirmationIconUrl(baseUrl, icon, theme) {
+  if (theme.secondaryAccentColor === DEFAULT_ACCENT) return `${baseUrl}/images/email/${icon}.png`;
+  return `${baseUrl}/images/email/${icon}/${theme.secondaryAccentColor.slice(1)}.png`;
+}
+
+function confirmationListeningHtml(event, baseUrl, theme) {
   const listeningUrl = safeHttpUrl(event.event_vibe_url);
   if (!listeningUrl) return '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:20px 0 0;border-top:1px solid #242424;border-bottom:1px solid #242424">
     <tr>
       <td width="68" valign="middle" style="width:68px;padding:16px 12px 16px 0">
-        <a href="${esc(listeningUrl)}" style="display:block;text-decoration:none"><img src="${esc(baseUrl)}/images/email/music.png" width="52" height="52" alt="" style="display:block;width:52px;height:52px;border:0;outline:none;text-decoration:none"></a>
+        <a href="${esc(listeningUrl)}" style="display:block;text-decoration:none"><img src="${esc(confirmationIconUrl(baseUrl, 'music', theme))}" width="52" height="52" alt="" style="display:block;width:52px;height:52px;border:0;outline:none;text-decoration:none"></a>
       </td>
       <td valign="middle" style="padding:16px 8px">
-        <a href="${esc(listeningUrl)}" style="display:block;color:#1CC5BE;font-size:17px;line-height:1.35;text-decoration:none;font-weight:800">Music vibe</a>
+        <a href="${esc(listeningUrl)}" style="display:block;color:${theme.secondaryAccentColor};font-size:17px;line-height:1.35;text-decoration:none;font-weight:800">Music vibe</a>
         <p style="color:#969696;font-size:15px;line-height:1.45;margin:3px 0 0">Check out the music vibe for this event.</p>
       </td>
       <td width="38" valign="middle" align="right" style="width:38px;padding:16px 0 16px 8px">
-        <a href="${esc(listeningUrl)}" aria-label="Open music vibe" style="display:block;color:#1CC5BE;font-size:34px;line-height:1;text-decoration:none;font-weight:400">→</a>
+        <a href="${esc(listeningUrl)}" aria-label="Open music vibe" style="display:block;color:${theme.secondaryAccentColor};font-size:34px;line-height:1;text-decoration:none;font-weight:400">→</a>
       </td>
     </tr>
   </table>`;
@@ -218,7 +223,7 @@ function confirmationDetailsCard(event) {
   </table>`;
 }
 
-function confirmationActionLinks(event, rsvp) {
+function confirmationActionLinks(event, rsvp, theme) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const location = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
   const actions = [
@@ -243,8 +248,8 @@ function confirmationActionLinks(event, rsvp) {
   const width = Math.floor(100 / actions.length);
   const cells = actions.map((action, index) => `<td width="${width}%" valign="top" align="center" style="width:${width}%;padding:12px 6px 4px;${index ? 'border-left:1px solid #242424;' : ''}">
     <a href="${esc(action.url)}" style="display:block;text-decoration:none">
-      <img src="${esc(baseUrl)}/images/email/${action.icon}" width="36" height="36" alt="" style="display:block;width:36px;height:36px;margin:0 auto 9px;border:0;outline:none;text-decoration:none">
-      <span class="sg-email-action-label" style="display:block;color:#1CC5BE;font-size:14px;line-height:1.35;font-weight:500">${esc(action.label)}</span>
+      <img src="${esc(confirmationIconUrl(baseUrl, action.icon.replace(/\.png$/, ''), theme))}" width="36" height="36" alt="" style="display:block;width:36px;height:36px;margin:0 auto 9px;border:0;outline:none;text-decoration:none">
+      <span class="sg-email-action-label" style="display:block;color:${theme.secondaryAccentColor};font-size:14px;line-height:1.35;font-weight:500">${esc(action.label)}</span>
     </a>
   </td>`).join('');
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-actions" style="width:100%;margin:0 0 24px"><tr>${cells}</tr></table>`;
@@ -328,7 +333,7 @@ function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp)}${confirmationFooterNote(rsvp)}`,
+    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationFooterNote(rsvp)}`,
     footerBrand: 'Powered by Silver Glider'
   });
 }
@@ -376,7 +381,7 @@ function renderRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp)}${confirmationFooterNote(rsvp)}`
+    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationFooterNote(rsvp)}`
   });
 }
 

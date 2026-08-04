@@ -54,7 +54,8 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.match(html, new RegExp(`background:${theme.accentColor};border-radius:12px`));
   assert.match(html, new RegExp(`color:${theme.accentTextColor};text-align:center`));
   assert.equal((html.match(new RegExp(theme.accentColor, 'g')) || []).length, 2);
-  assert.ok((html.match(/color:#1CC5BE/g) || []).length >= 5);
+  assert.ok((html.match(new RegExp(`color:${theme.secondaryAccentColor}`, 'g')) || []).length >= 7);
+  assert.doesNotMatch(html, /color:#1CC5BE/);
   assert.equal((html.match(/bgcolor="#080808"/g) || []).length, 2);
   assert.match(html, /<body style="background:#080808/);
   assert.match(html, /width:100%;background:#080808/);
@@ -63,8 +64,8 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.equal((html.match(/Midnight Listening Party<\/h1>/g) || []).length, 1);
   assert.doesNotMatch(html, /You(?:'|’)re on the list/);
   assert.equal(rsvpConfirmationSubject(event), 'RSVP confirmed for Midnight Listening Party');
-  for (const icon of ['music.png', 'calendar.png', 'map.png', 'manage.png']) {
-    assert.match(html, new RegExp(`/images/email/${icon.replace('.', '\\.')}`));
+  for (const icon of ['music', 'calendar', 'map', 'manage']) {
+    assert.match(html, new RegExp(`/images/email/${icon}/${theme.secondaryAccentColor.slice(1)}\\.png`));
   }
   assert.match(html, /Check out the music vibe for this event\./);
   assert.match(html, /class="sg-email-actions"/);
@@ -99,6 +100,10 @@ test('RSVP email preserves event information, management, and calendar messaging
   assert.doesNotMatch(fallbackHtml, />Presented by |Music vibe|<td class="sg-detail-label"|Open in Maps/);
   assert.match(fallbackHtml, /class="sg-event-title"/);
   assert.match(fallbackHtml, /height="52" bgcolor="#1CC5BE"/);
+  assert.ok((fallbackHtml.match(/color:#1CC5BE/g) || []).length >= 3);
+  for (const icon of ['calendar.png', 'manage.png']) {
+    assert.match(fallbackHtml, new RegExp(`/images/email/${icon.replace('.', '\\.')}`));
+  }
   assert.match(fallbackHtml, /Add to Calendar/);
   assert.match(fallbackHtml, /Manage RSVP/);
 });

@@ -80,7 +80,7 @@ Keep Standard and Flyer behavior isolated.
 - `src/lib/mailer.js` renders RSVP confirmations with a dedicated, table-based 620px layout. Shared reminder and activation-email layouts remain separate.
 - The small Silver Glider mark is a platform signature. Event artwork is the primary visual and spans up to 620px; text/details retain readable inner gutters.
 - Managed Cloudinary landscape artwork uses a derived JPEG with predominant-color padding (`b_auto` + `c_pad`) on a 620×560 canvas. The original composition is contained without cropping. Portrait artwork remains uncropped and keeps its natural aspect ratio.
-- The selected `background_theme` supplies a dark, email-safe outer tint. Disco, Fog, Kraft paper, and After Hours Saloon use static poster imagery only when an event has no cover/flyer artwork. Never put video, MP4, animated GIF, CSS motion, or critical background images into confirmation email markup.
+- The email shell remains fixed black with neutral dark cards. The saved artwork accent colors the primary CTA; a lighter contrast-safe tint from the same hue colors confirmation status, linked identity, Music vibe, and secondary action labels/icons. Invalid or unusable accents fall back to Silver Glider teal. Disco, Fog, Kraft paper, and After Hours Saloon use static poster imagery only when an event has no cover/flyer artwork. Never put video, MP4, animated GIF, CSS motion, or critical background images into confirmation email markup.
 - Title and optional linked host attribution sit outside the details card. A valid `event_vibe_url` adds **Listen here**. Date, time, venue, maps, host, vibe, and artwork rows are omitted when unavailable.
 - Keep the CTA at least 48px high and full-width on mobile. Preserve inline critical styles, nested presentation tables, Outlook's conditional 620px wrapper, system-font fallbacks, high contrast, and safe HTTP(S) URL validation.
 - RSVP sending, resend limits, calendar attachment, reminders, manage link, and attendee/event URL logic must remain unchanged unless a task explicitly targets them. Previously delivered email cannot change when an event is edited; a new confirmation/resend renders the current event data.
@@ -97,7 +97,7 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 74 tests: 69 focused unit/source-contract tests and 5 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 75 tests: 69 focused unit/source-contract tests and 6 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 

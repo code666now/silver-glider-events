@@ -25,9 +25,17 @@ test('artwork accents prefer recognizable color, reject neutrals, and remain acc
   const theme = createEmailTheme(accent);
   assert.equal(theme.accentColor, accent);
   assert.ok(contrastRatio(theme.accentColor, theme.accentTextColor) >= 4.5);
+  assert.equal(theme.secondaryAccentColor, '#EB519C');
+  assert.ok(contrastRatio(theme.secondaryAccentColor, '#080808') >= 4.5);
   assert.equal(theme.borderColor, '#292929');
+
+  const blueTheme = createEmailTheme('#2F4FC4');
+  assert.equal(blueTheme.accentColor, '#2F4FC4');
+  assert.notEqual(blueTheme.secondaryAccentColor, blueTheme.accentColor);
+  assert.ok(contrastRatio(blueTheme.secondaryAccentColor, '#080808') >= 4.5);
 
   const invalidTheme = createEmailTheme('not-a-color');
   assert.equal(invalidTheme.accentColor, DEFAULT_ACCENT);
+  assert.equal(invalidTheme.secondaryAccentColor, DEFAULT_ACCENT);
   assert.ok(contrastRatio(invalidTheme.accentColor, invalidTheme.accentTextColor) >= 4.5);
 });
