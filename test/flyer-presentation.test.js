@@ -211,11 +211,13 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
     event: { ...flyerEvent, presentation_mode: 'standard' },
     rsvp
   });
-  assert.match(standardHtml, /You're on the list\./);
+  assert.doesNotMatch(standardHtml, /You(?:'|’)re on the list/);
+  assert.match(standardHtml, /RSVP Confirmed/);
   assert.doesNotMatch(standardHtml, /<img class="sg-event-artwork"/);
 
   const flyerHtml = renderRsvpConfirmationEmail({ event: flyerEvent, rsvp });
-  assert.match(flyerHtml, /You're on the list\./);
+  assert.doesNotMatch(flyerHtml, /You(?:'|’)re on the list/);
+  assert.match(flyerHtml, /RSVP Confirmed/);
   assert.match(flyerHtml, /Night Garden artwork/);
   assert.match(flyerHtml, /class="sg-event-title"/);
   assert.match(flyerHtml, /Presented by/);

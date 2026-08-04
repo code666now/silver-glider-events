@@ -124,8 +124,7 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
         ${artworkRow}
         <tr><td class="sg-email-pad" style="padding:${hasArtwork ? '32px' : '0'} 30px 0">
           <p style="font-size:13px;font-weight:800;color:#1CC5BE;letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">RSVP Confirmed</p>
-          <h1 class="sg-email-headline" style="font-size:44px;font-weight:800;margin:0 0 22px;color:#f4f4f4;letter-spacing:-.035em;line-height:1.05">You're on the list.</h1>
-          <h2 class="sg-event-title" style="font-size:36px;font-weight:800;margin:0 0 ${hostHtml || listeningHtml ? '10px' : '16px'};color:#f4f4f4;letter-spacing:-.025em;line-height:1.12;overflow-wrap:anywhere;word-break:break-word">${esc(event.title)}</h2>
+          <h1 class="sg-event-title" style="font-size:36px;font-weight:800;margin:0 0 ${hostHtml || listeningHtml ? '10px' : '16px'};color:#f4f4f4;letter-spacing:-.025em;line-height:1.12;overflow-wrap:anywhere;word-break:break-word">${esc(event.title)}</h1>
           ${hostHtml}
           ${listeningHtml}
           <p class="sg-email-sub" style="color:#a7a7a7;font-size:17px;line-height:1.55;margin:18px 0 30px">${esc(sub)}</p>
@@ -397,12 +396,16 @@ function renderFlyerReminderEmail({ event, rsvp, kicker, headline }) {
 async function sendRsvpConfirmation({ to, event, rsvp, icsContent }) {
   return send({
     to,
-    subject: `You're on the list — ${event.title}`,
+    subject: rsvpConfirmationSubject(event),
     html: renderRsvpConfirmationEmail({ event, rsvp }),
     attachments: icsContent
       ? [{ filename: 'event.ics', content: Buffer.from(icsContent).toString('base64') }]
       : undefined
   });
+}
+
+function rsvpConfirmationSubject(event) {
+  return `RSVP confirmed for ${event.title}`;
 }
 
 async function sendDayBeforeReminder({ to, event, rsvp }) {
@@ -459,5 +462,5 @@ module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventAnnouncement, formatTime, renderRsvpConfirmationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
-  renderSharedEmailLayout: layout
+  renderSharedEmailLayout: layout, rsvpConfirmationSubject
 };

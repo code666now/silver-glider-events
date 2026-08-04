@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderRsvpConfirmationEmail } = require('../src/lib/mailer');
+const { renderRsvpConfirmationEmail, rsvpConfirmationSubject } = require('../src/lib/mailer');
 const { createEmailTheme } = require('../public/js/artwork-color');
 
 const event = {
@@ -33,7 +33,6 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
     'logo.png',
     'class="sg-event-artwork"',
     'RSVP Confirmed',
-    "You're on the list.",
     'class="sg-event-title"',
     'Presented by',
     '/h/the-night-archive',
@@ -61,7 +60,9 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.match(html, /width:100%;background:#080808/);
   assert.match(html, /background:#111111;border:1px solid #292929/);
   assert.doesNotMatch(html, /var\(--|gradient\(/);
-  assert.equal((html.match(/Midnight Listening Party<\/h2>/g) || []).length, 1);
+  assert.equal((html.match(/Midnight Listening Party<\/h1>/g) || []).length, 1);
+  assert.doesNotMatch(html, /You(?:'|’)re on the list/);
+  assert.equal(rsvpConfirmationSubject(event), 'RSVP confirmed for Midnight Listening Party');
   for (const icon of ['music.png', 'calendar.png', 'map.png', 'manage.png']) {
     assert.match(html, new RegExp(`/images/email/${icon.replace('.', '\\.')}`));
   }
@@ -108,7 +109,7 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.match(html, /bgcolor="#080808"/);
   assert.match(html, /max-width:620px/);
   assert.match(html, /\[if mso\][\s\S]*width="620"/);
-  assert.match(html, /class="sg-email-headline"/);
+  assert.doesNotMatch(html, /You(?:'|’)re on the list/);
   assert.match(html, /width="34" height="34" alt="Silver Glider Events"/);
   assert.doesNotMatch(html, /bgcolor="#071522"|background:#071522/);
   assert.match(html, /class="sg-event-artwork"[\s\S]*width="620"[\s\S]*width:100%;max-width:620px;height:auto;display:block/);
