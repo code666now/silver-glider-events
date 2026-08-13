@@ -104,6 +104,9 @@ router.get('/h/:slug', async (req, res, next) => {
     const appUrl = String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
     const session = parseSession(readSessionCookie(req));
     const isOwnHost = Number(session?.id) === Number(host.id);
+    const ownerNavHtml = isOwnHost
+      ? '<a class="host-owner-dashboard" href="/dashboard" aria-label="Return to Dashboard">← Dashboard</a>'
+      : '';
     const following = !isOwnHost && session
       ? await isFollowingHost(pool, session.id, host.id)
       : false;
@@ -120,6 +123,7 @@ router.get('/h/:slug', async (req, res, next) => {
       .replace(/{{HOST_BIO}}/g, bioHtml)
       .replace(/{{HOST_LINKS}}/g, hostSocialLinks(host))
       .replace(/{{HOST_FOLLOW}}/g, followHtml)
+      .replace(/{{OWNER_NAV}}/g, ownerNavHtml)
       .replace(/{{UPCOMING_EVENT_CARDS}}/g, upcomingHtml)
       .replace(/{{PAST_EVENT_CARDS}}/g, pastHtml)
       .replace(/{{OG_URL}}/g, esc(`${appUrl}/h/${host.public_slug}`))

@@ -182,6 +182,35 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
 });
 
+test('renders the Host Page Dashboard control only for its authenticated owner', async () => {
+  const publicPage = await fetch(`${baseUrl}/h/test-host`);
+  const publicHtml = await publicPage.text();
+  assert.equal(publicPage.status, 200);
+  assert.doesNotMatch(publicHtml, /<a class="host-owner-dashboard"/);
+  assert.doesNotMatch(publicHtml, /← Dashboard/);
+
+  const ownerPage = await fetch(`${baseUrl}/h/test-host`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  const ownerHtml = await ownerPage.text();
+  assert.equal(ownerPage.status, 200);
+  assert.match(ownerHtml, /class="host-owner-dashboard" href="\/dashboard"/);
+  assert.match(ownerHtml, /← Dashboard<\/a>/);
+  assert.doesNotMatch(ownerHtml, /<div class="host-follow" data-host-follow/);
+
+  const visitorId = (await pool.query(
+    `INSERT INTO organizers (email, name)
+     VALUES ('host-page-visitor@example.test', 'Host Page Visitor') RETURNING id`
+  )).rows[0].id;
+  const visitorPage = await fetch(`${baseUrl}/h/test-host`, {
+    headers: { cookie: `sge_session=${signSession(visitorId)}` }
+  });
+  const visitorHtml = await visitorPage.text();
+  assert.equal(visitorPage.status, 200);
+  assert.doesNotMatch(visitorHtml, /<a class="host-owner-dashboard"/);
+  assert.match(visitorHtml, /<div class="host-follow" data-host-follow/);
+});
+
 test('completes logged-in and magic-link Host follows without creating Host Pages', async () => {
   const secondHostId = (await pool.query(
     `INSERT INTO organizers (email, org_name, public_slug)
