@@ -108,7 +108,7 @@ router.get('/h/:slug', async (req, res, next) => {
       ? await isFollowingHost(pool, session.id, host.id)
       : false;
     const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-following="${following ? 'true' : 'false'}">
-      <button class="host-follow-button${following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${following ? 'true' : 'false'}">${following ? 'Following <span aria-hidden="true">✓</span>' : `Follow ${esc(host.org_name)}`}</button>
+      <button class="host-follow-button${following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${following ? 'true' : 'false'}">${following ? 'Following <span aria-hidden="true">✓</span>' : 'Follow'}</button>
       <p>Save this host and see their upcoming shows in Following.</p>
     </div>`;
 

@@ -170,7 +170,7 @@
       function render() {
         button.classList.toggle('following', following);
         button.setAttribute('aria-pressed', String(following));
-        button.textContent = following ? 'Following ✓' : `Follow ${hostName}`;
+        button.textContent = following ? 'Following ✓' : 'Follow';
       }
       function openModal() {
         priorFocus = document.activeElement;
