@@ -41,7 +41,7 @@ test('public Host Page offers an explicit accessible follow flow without replaci
   assert.match(view, /intent: 'follow_host'/);
   assert.match(view, /method: following \? 'DELETE' : 'POST'/);
   assert.match(view, /event\.key === 'Escape'/);
-  assert.match(route, /Save this host and see their upcoming shows in Following\./);
+  assert.match(route, /Don't miss the next show\. Save this host to Following\./);
   assert.match(route, /: 'Follow'/);
   assert.match(route, /Following <span aria-hidden="true">✓<\/span>/);
   assert.match(view, /Upcoming Events/);

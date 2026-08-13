@@ -109,7 +109,7 @@ router.get('/h/:slug', async (req, res, next) => {
       : false;
     const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-following="${following ? 'true' : 'false'}">
       <button class="host-follow-button${following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${following ? 'true' : 'false'}">${following ? 'Following <span aria-hidden="true">✓</span>' : 'Follow'}</button>
-      <p>Save this host and see their upcoming shows in Following.</p>
+      <p>Don't miss the next show. Save this host to Following.</p>
     </div>`;
 
     res.send(hostTemplate
