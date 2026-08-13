@@ -4,6 +4,7 @@ const pool = require('../config/db');
 const { sendMagicLink } = require('../lib/mailer');
 const { setSessionCookie, clearSessionCookie } = require('../lib/session');
 const requireOrganizer = require('../middleware/requireOrganizer');
+const { findPublicHost, followHost } = require('../lib/host-follows');
 
 const router = express.Router();
 
@@ -50,13 +51,26 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    const nextPath = safeNext(req.body.next);
+    const requestedIntent = String(req.body.intent || '').trim();
+    const intent = requestedIntent === 'follow_host' ? 'follow_host' : 'sign_in';
+    let targetOrganizerId = null;
+    let returnPath = safeNext(req.body.next);
+    let followHostName = '';
+    if (intent === 'follow_host') {
+      const host = await findPublicHost(pool, req.body.host_slug);
+      if (!host) return res.status(404).json({ error: 'Host Page not found' });
+      targetOrganizerId = host.id;
+      followHostName = host.org_name;
+      returnPath = `/h/${encodeURIComponent(host.public_slug)}`;
+    }
     await pool.query(
-      `INSERT INTO magic_link_tokens (token, email, expires_at) VALUES ($1, $2, NOW() + INTERVAL '15 minutes')`,
-      [token, email]
+      `INSERT INTO magic_link_tokens
+         (token, email, expires_at, intent, target_organizer_id, return_path)
+       VALUES ($1, $2, NOW() + INTERVAL '15 minutes', $3, $4, $5)`,
+      [token, email, intent, targetOrganizerId, returnPath || null]
     );
-    const link = `${process.env.APP_URL}/auth/verify?token=${token}${nextPath ? `&next=${encodeURIComponent(nextPath)}` : ''}`;
-    await sendMagicLink({ to: email, link });
+    const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+    await sendMagicLink({ to: email, link, followHostName });
     await pool.query(
       `INSERT INTO message_log (recipient, message_type, channel, status, sent_at) VALUES ($1, 'magic_link', 'email', 'sent', NOW())`,
       [email]
@@ -69,32 +83,58 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
 
 // GET /auth/verify?token= — burn token, upsert organizer, set cookie
 router.get('/auth/verify', async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const token = String(req.query.token || '').trim();
-    if (!token) return res.redirect('/login?error=expired');
+    if (!token) {
+      return res.redirect('/login?error=expired');
+    }
 
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE magic_link_tokens SET used_at=NOW()
        WHERE token=$1 AND used_at IS NULL AND expires_at > NOW()
-       RETURNING email`,
+       RETURNING email, intent, target_organizer_id, return_path`,
       [token]
     );
-    if (!rows.length) return res.redirect('/login?error=expired');
-    const email = rows[0].email;
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.redirect('/login?error=expired');
+    }
+    const pending = rows[0];
+    const email = pending.email;
 
-    let organizer = (await pool.query('SELECT * FROM organizers WHERE LOWER(email)=LOWER($1)', [email])).rows[0];
+    let organizer = (await client.query('SELECT * FROM organizers WHERE LOWER(email)=LOWER($1)', [email])).rows[0];
     if (organizer) {
-      await pool.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [organizer.id]);
+      await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [organizer.id]);
     } else {
-      organizer = (await pool.query(
+      organizer = (await client.query(
         'INSERT INTO organizers (email, last_login_at) VALUES ($1, NOW()) RETURNING *', [email]
       )).rows[0];
     }
 
+    if (pending.intent === 'follow_host') {
+      const { rows: targetRows } = await client.query(
+        `SELECT id FROM organizers
+          WHERE id=$1 AND org_name IS NOT NULL AND public_slug IS NOT NULL`,
+        [pending.target_organizer_id]
+      );
+      if (!targetRows.length) throw new Error('Follow target is no longer available');
+      if (Number(organizer.id) !== Number(pending.target_organizer_id)) {
+        await followHost(client, organizer.id, pending.target_organizer_id);
+      }
+    }
+
+    await client.query('COMMIT');
     setSessionCookie(res, organizer.id);
-    res.redirect(safeNext(req.query.next) || '/dashboard');
+    const storedReturn = safeNext(pending.return_path);
+    const legacyReturn = safeNext(req.query.next);
+    res.redirect(storedReturn || legacyReturn || '/dashboard');
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
   }
 });
 

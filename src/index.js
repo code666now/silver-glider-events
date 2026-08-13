@@ -27,6 +27,7 @@ app.use(require('./routes/uploads'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
 app.use(require('./routes/invites'));
+app.use(require('./routes/follows'));
 app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
@@ -52,6 +53,7 @@ app.get('/login', (req, res) => {
 // Protected app pages — logged-out users are redirected to /login before the page loads
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
+app.get('/following', requireOrganizer, view('following.html'));
 app.get('/events/new', requireOrganizer, async (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
   if (!invitationToken) return res.sendFile(path.join(VIEWS, 'event-form.html'));

@@ -182,6 +182,103 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
 });
 
+test('completes logged-in and magic-link Host follows without creating Host Pages', async () => {
+  const secondHostId = (await pool.query(
+    `INSERT INTO organizers (email, org_name, public_slug)
+     VALUES ('second-host@example.test', 'Second Host', 'second-host') RETURNING id`
+  )).rows[0].id;
+  await pool.query(
+    `INSERT INTO events (organizer_id, slug, title, event_date, start_time, venue_name, visibility, status)
+     VALUES ($1, 'second-host-public', 'Second Public Show', '2030-10-10', '20:00', 'Public Hall', 'public', 'published'),
+            ($1, 'second-host-private', 'Second Private Show', '2030-10-11', '20:00', 'Private Hall', 'private', 'published')`,
+    [secondHostId]
+  );
+
+  const signedInFollow = await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
+    method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(signedInFollow.status, 200);
+  assert.deepEqual(await signedInFollow.json(), { following: true });
+  await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
+    method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  let count = (await pool.query(
+    'SELECT COUNT(*)::int AS count FROM host_follows WHERE follower_organizer_id=$1 AND host_organizer_id=$2',
+    [organizerId, secondHostId]
+  )).rows[0].count;
+  assert.equal(count, 1, 'repeated follows should reuse one relationship row');
+
+  const following = await fetch(`${baseUrl}/api/following`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  const followingPayload = await following.json();
+  assert.equal(followingPayload.hosts[0].org_name, 'Second Host');
+  assert.equal(followingPayload.hosts[0].upcoming_count, 1, 'private events must not count');
+
+  const unfollow = await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
+    method: 'DELETE', headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.deepEqual(await unfollow.json(), { following: false });
+  await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
+    method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  count = (await pool.query(
+    'SELECT COUNT(*)::int AS count FROM host_follows WHERE follower_organizer_id=$1 AND host_organizer_id=$2',
+    [organizerId, secondHostId]
+  )).rows[0].count;
+  assert.equal(count, 1, 'refollow should reactivate rather than duplicate');
+
+  const magicRequest = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'new-follower@example.test', intent: 'follow_host', host_slug: 'test-host' })
+  });
+  assert.equal(magicRequest.status, 200);
+  const pending = (await pool.query(
+    `SELECT token, intent, target_organizer_id, return_path
+       FROM magic_link_tokens WHERE email='new-follower@example.test' ORDER BY id DESC LIMIT 1`
+  )).rows[0];
+  assert.equal(pending.intent, 'follow_host');
+  assert.equal(pending.target_organizer_id, organizerId);
+  assert.equal(pending.return_path, '/h/test-host');
+
+  const verify = await fetch(`${baseUrl}/auth/verify?token=${pending.token}&next=%2Fdashboard`, { redirect: 'manual' });
+  assert.equal(verify.status, 302);
+  assert.equal(verify.headers.get('location'), '/h/test-host', 'stored intent return must win over URL tampering');
+  const follower = (await pool.query(
+    `SELECT id, org_name, public_slug FROM organizers WHERE email='new-follower@example.test'`
+  )).rows[0];
+  assert.equal(follower.org_name, null);
+  assert.equal(follower.public_slug, null);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_follows
+      WHERE follower_organizer_id=$1 AND host_organizer_id=$2 AND unsubscribed_at IS NULL`,
+    [follower.id, organizerId]
+  )).rows[0].count, 1);
+});
+
+test('keeps ordinary Create Event magic-link destinations unchanged', async () => {
+  const request = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'creator-flow@example.test', next: '/events/new' })
+  });
+  assert.equal(request.status, 200);
+  const pending = (await pool.query(
+    `SELECT token, intent, target_organizer_id, return_path
+       FROM magic_link_tokens WHERE email='creator-flow@example.test' ORDER BY id DESC LIMIT 1`
+  )).rows[0];
+  assert.equal(pending.intent, 'sign_in');
+  assert.equal(pending.target_organizer_id, null);
+  assert.equal(pending.return_path, '/events/new');
+  const verify = await fetch(`${baseUrl}/auth/verify?token=${pending.token}`, { redirect: 'manual' });
+  assert.equal(verify.status, 302);
+  assert.equal(verify.headers.get('location'), '/events/new');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_follows hf
+      JOIN organizers o ON o.id=hf.follower_organizer_id
+     WHERE o.email='creator-flow@example.test'`
+  )).rows[0].count, 0);
+});
+
 test('serves two labeled Event Vibe choices in both public presentations', async () => {
   const vibeFields = {
     event_vibe_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',

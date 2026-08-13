@@ -29,7 +29,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - CommonJS Node.js + Express 5, raw SQL via `pg`, server-rendered HTML, vanilla JavaScript/CSS.
 - No build step and no frontend framework.
 - `src/index.js` mounts routes, runs migrations, exposes `/health`, and starts reminder jobs.
-- `src/db/migrations/` contains ordered migrations, currently `001` through `019_event_vibe_choices.sql`.
+- `src/db/migrations/` contains ordered migrations, currently `001` through `020_follow_host_v1.sql`.
 - `src/routes/` contains auth, organizer event, public event, public host, upload, photo, and admin flows. Public host pages are isolated in `public-hosts.js`; guest event/RSVP flows remain in `public.js`.
 - `src/lib/` contains sessions, mailer, calendar, Cloudinary, Unsplash, CSV, escaping, and validation helpers.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.
@@ -73,6 +73,8 @@ Keep Standard and Flyer behavior isolated.
 - Secret Show pages must not query or render protected event details before a valid unlock.
 - Named guests, visible first names, and comments are opt-in private-event features.
 - Host pages live at `/h/:hostSlug`; public attribution links back to them.
+- Follow Host V1 reuses `organizers` as the shared authenticated identity. A follower-only row has no `org_name`/`public_slug`, so following never creates a Host Page. Signed-out follows use a server-stored `follow_host` magic-link intent; signed-in follows complete immediately. `/following` is an authenticated list only—no feed or recommendations.
+- Authenticated `host_follows` and legacy RSVP `organizer_optin` announcement recipients are deliberately separate in V1. Do not merge their consent, unsubscribe, or email behavior without an explicit product migration.
 - Public event pages do not show a QR code; QR download belongs in the organizer promotion area.
 
 ## RSVP confirmation email
@@ -97,7 +99,7 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 75 tests: 69 focused unit/source-contract tests and 6 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 82 tests: 74 focused unit/source-contract tests and 8 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 

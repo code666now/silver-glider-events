@@ -46,6 +46,22 @@
     }
     .host-link:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.4);transform:translateY(-1px); }
     .host-link svg { width:18px;height:18px; }
+    .host-follow { display:flex;align-items:center;gap:14px;margin-top:20px; }
+    .host-follow-button { min-height:46px;padding:11px 21px;border:1px solid var(--sg-accent);border-radius:999px;background:var(--sg-accent);color:#080808;font:800 13px var(--sg-font-body);cursor:pointer;transition:transform .16s ease,background .16s ease,color .16s ease; }
+    .host-follow-button:hover { transform:translateY(-1px);background:var(--sg-accent-press); }
+    .host-follow-button.following { background:rgba(28,197,190,.1);color:var(--sg-accent); }
+    .host-follow-button:disabled { cursor:wait;opacity:.62;transform:none; }
+    .host-follow p { max-width:330px;color:var(--sg-text-faint);font-size:11px;line-height:1.45; }
+    .follow-modal { position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72); }
+    .follow-modal.open { display:flex; }
+    .follow-modal-card { width:min(100%,410px);padding:25px;border:1px solid var(--sg-border);border-radius:24px;background:#151517;box-shadow:0 24px 80px rgba(0,0,0,.5); }
+    .follow-modal-head { display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:22px; }
+    .follow-modal-head h2 { font-size:27px;overflow-wrap:anywhere; }
+    .follow-modal-head p { margin-top:7px;color:var(--sg-text-dim);font-size:14px; }
+    .follow-modal-close { width:38px;height:38px;flex:0 0 auto;border:1px solid var(--sg-border);border-radius:50%;background:transparent;color:var(--sg-text-dim);font-size:22px;cursor:pointer; }
+    .follow-modal-error { display:none;margin:-6px 0 14px;color:var(--sg-danger);font-size:12px; }
+    .follow-modal-sent { display:none;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
+    body.follow-modal-open { overflow:hidden; }
     .host-section + .host-section { margin-top:72px; }
     .host-section-head { display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:18px; }
     .host-section-title { font-size:clamp(25px,4vw,34px); }
@@ -80,6 +96,8 @@
       .host-copy { padding:0; }
       .host-bio { margin:13px auto 0;font-size:15px; }
       .host-links { justify-content:center; }
+      .host-follow { align-items:center;flex-direction:column; }
+      .host-follow p { max-width:290px; }
       .host-event-grid,.host-event-grid.past { grid-template-columns:1fr; }
       .host-section + .host-section { margin-top:58px; }
       .host-footer { text-align:center; }
@@ -101,6 +119,7 @@
           <h1>{{HOST_NAME}}</h1>
           {{HOST_BIO}}
           {{HOST_LINKS}}
+          {{HOST_FOLLOW}}
         </div>
       </header>
 
@@ -117,5 +136,99 @@
       <footer class="host-footer">Powered by <a href="/">Silver Glider</a></footer>
     </div>
   </main>
+  <div class="follow-modal" id="follow-modal" role="dialog" aria-modal="true" aria-labelledby="follow-modal-title">
+    <div class="follow-modal-card">
+      <div class="follow-modal-head">
+        <div><h2 id="follow-modal-title">Follow {{HOST_NAME}}</h2><p>Enter your email to follow.</p></div>
+        <button class="follow-modal-close" id="follow-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <form id="follow-form">
+        <div class="sg-field"><label for="follow-email">Email address</label><input class="sg-input" id="follow-email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
+        <p class="follow-modal-error" id="follow-error"></p>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="follow-continue" type="submit">Continue</button>
+      </form>
+      <p class="follow-modal-sent" id="follow-sent">Check your email. Tap the link we sent to verify your address and follow {{HOST_NAME}}.</p>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const root = document.querySelector('[data-host-follow]');
+      if (!root) return;
+      const button = root.querySelector('[data-follow-button]');
+      const modal = document.getElementById('follow-modal');
+      const form = document.getElementById('follow-form');
+      const email = document.getElementById('follow-email');
+      const error = document.getElementById('follow-error');
+      const sent = document.getElementById('follow-sent');
+      const continueButton = document.getElementById('follow-continue');
+      const closeButton = document.getElementById('follow-modal-close');
+      const slug = root.dataset.hostSlug;
+      const hostName = root.dataset.hostName;
+      let following = root.dataset.following === 'true';
+      let priorFocus = null;
+
+      function render() {
+        button.classList.toggle('following', following);
+        button.setAttribute('aria-pressed', String(following));
+        button.textContent = following ? 'Following ✓' : `Follow ${hostName}`;
+      }
+      function openModal() {
+        priorFocus = document.activeElement;
+        error.style.display = 'none';
+        modal.classList.add('open');
+        document.body.classList.add('follow-modal-open');
+        requestAnimationFrame(() => email.focus());
+      }
+      function closeModal() {
+        modal.classList.remove('open');
+        document.body.classList.remove('follow-modal-open');
+        if (priorFocus) priorFocus.focus();
+      }
+
+      button.addEventListener('click', async () => {
+        if (following && !confirm(`Unfollow ${hostName}?`)) return;
+        button.disabled = true;
+        try {
+          const response = await fetch(`/api/hosts/${encodeURIComponent(slug)}/follow`, {
+            method: following ? 'DELETE' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (response.status === 401) return openModal();
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || 'Please try again.');
+          following = payload.following;
+          render();
+        } catch (err) {
+          alert(err.message);
+        } finally { button.disabled = false; }
+      });
+
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        error.style.display = 'none';
+        continueButton.disabled = true;
+        continueButton.textContent = 'Sending…';
+        try {
+          const response = await fetch('/api/auth/magic-link', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.value.trim(), intent: 'follow_host', host_slug: slug })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || 'Please try again.');
+          form.style.display = 'none';
+          sent.style.display = 'block';
+          closeButton.focus();
+        } catch (err) {
+          error.textContent = err.message;
+          error.style.display = 'block';
+        } finally { continueButton.disabled = false;continueButton.textContent = 'Continue'; }
+      });
+      closeButton.addEventListener('click', closeModal);
+      modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape' && modal.classList.contains('open')) closeModal(); });
+      render();
+    })();
+  </script>
 </body>
 </html>

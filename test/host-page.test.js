@@ -94,7 +94,7 @@ test('public host page separates upcoming and past public events in the requeste
   assert.ok(view.indexOf('Upcoming Events') < view.indexOf('Past Events'));
   assert.match(view, /<title>{{HOST_NAME}} events \| Silver Glider<\/title>/);
   assert.match(view, /Powered by <a href="\/">Silver Glider<\/a>/);
-  assert.doesNotMatch(view, /Follow Host|>Follow</);
+  assert.match(view, /data-host-follow/);
 });
 
 test('host social links are conditional, icon-only, accessible, and safe', () => {

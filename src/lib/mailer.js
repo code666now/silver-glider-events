@@ -350,19 +350,23 @@ async function send({ to, subject, html, attachments, replyTo }) {
   return result.data;
 }
 
-async function sendMagicLink({ to, link }) {
+async function sendMagicLink({ to, link, followHostName }) {
+  const hostName = String(followHostName || '').trim();
+  const isFollow = Boolean(hostName);
   if (!resend) {
     console.log(`[mailer:dev] MAGIC LINK for ${to}: ${link}`);
     return { dev: true };
   }
   return send({
     to,
-    subject: 'Your sign-in link — Silver Glider Events',
+    subject: isFollow ? `Follow ${hostName} — Silver Glider Events` : 'Your sign-in link — Silver Glider Events',
     html: layout({
       kicker: 'Magic link',
-      headline: 'Sign in',
-      sub: 'Tap the button below to sign in to Silver Glider Events. The link expires in 15 minutes.',
-      cta: 'Sign in',
+      headline: isFollow ? `Follow ${hostName}` : 'Sign in',
+      sub: isFollow
+        ? `Tap the button below to verify your email and follow ${hostName}. The link expires in 15 minutes.`
+        : 'Tap the button below to sign in to Silver Glider Events. The link expires in 15 minutes.',
+      cta: isFollow ? `Follow ${hostName}` : 'Sign in',
       ctaUrl: link,
       footerHtml: `<p style="color:#555;font-size:12px;line-height:1.7;margin:0">If the button doesn't work, paste this link into your browser:<br><a href="${esc(link)}" style="color:#1CC5BE;word-break:break-all">${esc(link)}</a></p>
       <p style="color:#555;font-size:12px;margin-top:14px">Didn't request this? You can safely ignore this email.</p>`

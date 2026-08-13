@@ -43,6 +43,7 @@ function renderNav(active) {
   const links = [
     ['dashboard', '/dashboard', 'Home'],
     ['events', '/events', 'My Events'],
+    ['following', '/following', 'Following'],
     ['settings', '/settings', 'Settings']
   ];
   el.className = 'sg-nav';

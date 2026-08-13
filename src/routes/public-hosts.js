@@ -5,6 +5,8 @@ const pool = require('../config/db');
 const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { formatTime } = require('../lib/mailer');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
+const { parseSession, readSessionCookie } = require('../lib/session');
+const { isFollowingHost } = require('../lib/host-follows');
 
 const router = express.Router();
 const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
@@ -100,6 +102,15 @@ router.get('/h/:slug', async (req, res, next) => {
     const bioHtml = host.bio ? `<p class="host-bio">${esc(host.bio)}</p>` : '';
     const description = String(host.bio || `Public events presented by ${host.org_name}.`).replace(/\s+/g, ' ').trim().slice(0, 160);
     const appUrl = String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    const session = parseSession(readSessionCookie(req));
+    const isOwnHost = Number(session?.id) === Number(host.id);
+    const following = !isOwnHost && session
+      ? await isFollowingHost(pool, session.id, host.id)
+      : false;
+    const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-following="${following ? 'true' : 'false'}">
+      <button class="host-follow-button${following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${following ? 'true' : 'false'}">${following ? 'Following <span aria-hidden="true">✓</span>' : `Follow ${esc(host.org_name)}`}</button>
+      <p>Save this host and see their upcoming shows in Following.</p>
+    </div>`;
 
     res.send(hostTemplate
       .replace(/{{HOST_NAME}}/g, esc(host.org_name))
@@ -108,6 +119,7 @@ router.get('/h/:slug', async (req, res, next) => {
       .replace(/{{HOST_AVATAR}}/g, avatarHtml)
       .replace(/{{HOST_BIO}}/g, bioHtml)
       .replace(/{{HOST_LINKS}}/g, hostSocialLinks(host))
+      .replace(/{{HOST_FOLLOW}}/g, followHtml)
       .replace(/{{UPCOMING_EVENT_CARDS}}/g, upcomingHtml)
       .replace(/{{PAST_EVENT_CARDS}}/g, pastHtml)
       .replace(/{{OG_URL}}/g, esc(`${appUrl}/h/${host.public_slug}`))

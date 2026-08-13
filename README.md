@@ -38,7 +38,7 @@ Never use the Railway production database for development or tests.
 
 ## Current product
 
-- Passwordless host authentication with 30-day sliding sessions
+- Passwordless shared identity authentication with 30-day sliding sessions
 - Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and promotion tools
 - Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
@@ -51,6 +51,7 @@ Never use the Railway production database for development or tests.
 - Optional named guest, first-name-only guest list, and verified-attendee comments for private events
 - Optional six-character Secret Show gate
 - Public host pages at `/h/:hostSlug`
+- Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
 - Feedback reporting and super-admin feedback inbox
 - Personalized host invitations and lightweight admin host tracking
 - Privacy Policy and Terms available throughout the app
@@ -75,7 +76,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, reminder cron
-src/db/migrations/           numbered SQL migrations (currently 001–019)
+src/db/migrations/           numbered SQL migrations (currently 001–020)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/reminders.js        idempotent day-before and day-of reminder job
@@ -88,7 +89,8 @@ test/                        focused Node test suite
 
 ## Key mechanics
 
-- **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. Attendees do not create accounts.
+- **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. The existing `organizers` row is the shared email identity; follower-only identities do not receive Host Page fields. RSVP remains a separate guest flow.
+- **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
@@ -102,7 +104,7 @@ npm test
 npm run check:static
 ```
 
-As of August 4, 2026, the suite contains 75 tests. The 69 focused tests cover Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Six HTTP/PostgreSQL integration tests exercise authenticated event creation, adaptive email-icon delivery, Standard/Flyer/host and two-artist Event Vibe rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
+As of August 12, 2026, the suite contains 82 tests. The 74 focused tests cover Follow Host contracts, Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Eight HTTP/PostgreSQL integration tests exercise signed-in and magic-link Host follows, unchanged creator magic-link destinations, authenticated event creation, adaptive email-icon delivery, Standard/Flyer/host and two-artist Event Vibe rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
