@@ -108,6 +108,12 @@ As of August 12, 2026, the suite contains 83 tests. The 74 focused tests cover F
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
+## Versioning
+
+Silver Glider Events uses semantic versions in the form `MAJOR.MINOR.PATCH`. The version in `package.json` is canonical, `package-lock.json` must match it, and every production release receives a matching `vMAJOR.MINOR.PATCH` Git tag. User-facing changes are recorded in [`CHANGELOG.md`](CHANGELOG.md). The `/health` response exposes both the application version and deployed commit SHA so a release can be verified without relying on the interface.
+
+For a release, update the package version and changelog, run `npm run check`, commit the release, create the matching annotated tag, deploy, and verify that `/health` reports the expected version and SHA.
+
 ## Admin
 
 Set `is_admin=TRUE` on the organizer row, then use:

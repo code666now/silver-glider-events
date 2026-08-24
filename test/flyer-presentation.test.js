@@ -260,6 +260,10 @@ test('flyer events remain in the existing dashboard, event list, host page, and 
   assert.match(dashboard, /id="rsvp-count"/);
   assert.match(dashboard, /id="event-count"/);
   assert.match(dashboard, /class="dashboard-empty"/);
+  assert.match(dashboard, /class="dashboard-empty" href="\/events\/new"/);
+  assert.match(dashboard, /class="dashboard-skeleton"/);
+  assert.match(dashboard, /aria-busy="true"/);
+  assert.match(dashboard, /Promise\.all\(\[/);
   assert.match(dashboard, /@media \(max-width: 520px\)/);
   const events = read('src/views/events.html');
   assert.match(events, /ev\.presentation_mode === 'flyer'/);

@@ -100,6 +100,41 @@
     .dashboard-desktop-only { display: none; }
     .dashboard-overview { display: none; }
     .dashboard-empty { display: none; }
+    .dashboard-skeleton {
+      overflow: hidden;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 28px;
+      background: rgba(17,17,17,.78);
+    }
+    .dashboard-skeleton-visual {
+      aspect-ratio: 16 / 10;
+      border-bottom: 1px solid var(--sg-border-soft);
+    }
+    .dashboard-skeleton-details {
+      display: grid;
+      gap: 12px;
+      padding: 22px;
+    }
+    .dashboard-skeleton-line,
+    .dashboard-stat-skeleton {
+      display: block;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255,255,255,.045) 20%, rgba(255,255,255,.105) 45%, rgba(255,255,255,.045) 70%);
+      background-size: 240% 100%;
+      animation: dashboard-shimmer 1.35s ease-in-out infinite;
+    }
+    .dashboard-skeleton .dashboard-skeleton-visual { border-radius: 0; }
+    .dashboard-skeleton-title { width: 48%; height: 24px; }
+    .dashboard-skeleton-meta { width: 66%; height: 13px; }
+    .dashboard-stat-skeleton { width: 38px; height: 32px; margin-bottom: 5px; }
+    @keyframes dashboard-shimmer {
+      from { background-position: 100% 0; }
+      to { background-position: -100% 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dashboard-skeleton-line,
+      .dashboard-stat-skeleton { animation: none; }
+    }
     @media (min-width: 1024px) {
       .dashboard-shell {
         max-width: 1260px;
@@ -151,6 +186,8 @@
       .dashboard-section-head a:hover { color: var(--sg-accent); }
       .next-card { border-radius: 24px; }
       .next-visual { aspect-ratio: 16 / 9; }
+      .dashboard-skeleton { border-radius: 24px; }
+      .dashboard-skeleton-visual { aspect-ratio: 16 / 9; }
       .next-details { padding: 24px 26px; }
       .dashboard-empty {
         min-height: 470px;
@@ -160,7 +197,19 @@
         border: 1px dashed rgba(28,197,190,.24);
         border-radius: 24px;
         background: linear-gradient(145deg, rgba(28,197,190,.045), rgba(255,255,255,.012));
+        color: var(--sg-text);
         text-align: center;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease, transform .15s ease;
+      }
+      .dashboard-empty:hover {
+        border-color: rgba(28,197,190,.5);
+        background: linear-gradient(145deg, rgba(28,197,190,.075), rgba(255,255,255,.018));
+        transform: translateY(-1px);
+      }
+      .dashboard-empty:focus-visible {
+        outline: 2px solid var(--sg-accent);
+        outline-offset: 4px;
       }
       .dashboard-empty-mark {
         width: 54px;
@@ -271,7 +320,15 @@
           <h2 id="next-up-heading">Next up</h2>
           <a href="/events">View all events →</a>
         </div>
-        <div id="next-event"></div>
+        <div id="next-event" aria-live="polite" aria-busy="true">
+          <div class="dashboard-skeleton" aria-hidden="true">
+            <div class="dashboard-skeleton-visual dashboard-skeleton-line"></div>
+            <div class="dashboard-skeleton-details">
+              <span class="dashboard-skeleton-line dashboard-skeleton-title"></span>
+              <span class="dashboard-skeleton-line dashboard-skeleton-meta"></span>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="dashboard-sidebar" aria-label="Event overview and actions">
@@ -280,10 +337,10 @@
             <h2 id="overview-heading">At a glance</h2>
             <span>All events</span>
           </div>
-          <div class="dashboard-stat-grid" aria-live="polite">
-            <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count">—</strong><span>Upcoming events</span></div>
-            <div class="dashboard-stat"><strong id="rsvp-count">—</strong><span>Total RSVPs</span></div>
-            <div class="dashboard-stat"><strong id="event-count">—</strong><span>Total events</span></div>
+          <div class="dashboard-stat-grid" aria-live="polite" aria-busy="true">
+            <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Upcoming events</span></div>
+            <div class="dashboard-stat"><strong id="rsvp-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Total RSVPs</span></div>
+            <div class="dashboard-stat"><strong id="event-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Total events</span></div>
           </div>
         </section>
 
@@ -315,23 +372,31 @@
   <script>
     renderNav('dashboard');
     (async () => {
-      const { organizer } = await api('/api/auth/me');
-      document.getElementById('greeting').textContent =
-        organizer.name ? `Welcome back, ${organizer.name.split(' ')[0]}` : 'Welcome';
+      const container = document.getElementById('next-event');
+      const statGrid = document.querySelector('.dashboard-stat-grid');
+      const finishLoading = () => {
+        container.setAttribute('aria-busy', 'false');
+        statGrid.setAttribute('aria-busy', 'false');
+      };
 
       try {
-        const { events } = await api('/api/events');
+        const [{ organizer }, { events }] = await Promise.all([
+          api('/api/auth/me'),
+          api('/api/events')
+        ]);
+        document.getElementById('greeting').textContent =
+          organizer.name ? `Welcome back, ${organizer.name.split(' ')[0]}` : 'Welcome';
         const upcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= new Date(new Date().toDateString()));
         const totalRsvps = events.reduce((sum, item) => sum + Number(item.rsvp_count || 0), 0);
         document.getElementById('upcoming-count').textContent = String(upcoming.length);
         document.getElementById('rsvp-count').textContent = String(totalRsvps);
         document.getElementById('event-count').textContent = String(events.length);
-        const container = document.getElementById('next-event');
         if (!upcoming.length) {
-          document.getElementById('sub').textContent = 'No upcoming events. Create one in under a minute.';
+          document.getElementById('sub').textContent = 'No upcoming events. Create one when you are ready.';
           document.getElementById('dashboard-stats').textContent =
             `${events.length} total event${events.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
-          container.innerHTML = '<div class="dashboard-empty"><div><div class="dashboard-empty-mark">+</div><h3>Your next event starts here.</h3><p>Create a polished event page in under a minute, then manage every RSVP from one place.</p></div></div>';
+          container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create your first event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Your next event starts here.</h3><p>Create a polished event page, then manage every RSVP from one place.</p></div></a>';
+          finishLoading();
           return;
         }
         const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
@@ -362,7 +427,14 @@
               </div>
             </div>
           </a>`;
-      } catch (_) { /* events API not fatal for the shell */ }
+        finishLoading();
+      } catch (_) {
+        document.getElementById('upcoming-count').textContent = '0';
+        document.getElementById('rsvp-count').textContent = '0';
+        document.getElementById('event-count').textContent = '0';
+        container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create an event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Create your next event.</h3><p>Your dashboard data could not be loaded, but event creation is still available.</p></div></a>';
+        finishLoading();
+      }
     })();
   </script>
 </body>

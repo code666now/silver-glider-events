@@ -6,6 +6,7 @@ const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const { renderLegalPage } = require('./lib/legal-pages');
+const { version: APP_VERSION } = require('../package.json');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -84,9 +85,9 @@ app.get('/health', async (req, res) => {
   try { sha = fs.readFileSync(path.join(__dirname, '..', '.git-sha'), 'utf8').trim(); } catch (_) {}
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', sha });
+    res.json({ status: 'ok', version: APP_VERSION, sha });
   } catch (err) {
-    res.status(500).json({ status: 'db_error', sha });
+    res.status(500).json({ status: 'db_error', version: APP_VERSION, sha });
   }
 });
 

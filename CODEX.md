@@ -123,18 +123,19 @@ Replacing an asset at an existing URL updates every live event using it. Prefer 
 Production is live at https://silvergliderevents.com and the direct Railway service is https://silver-glider-events-production.up.railway.app.
 
 1. Inspect the diff and preserve unrelated work.
-2. Run `git diff --check` and `npm run check`.
-3. Commit the intended files. Do not stage the deployment-only `.git-sha` modification.
-4. Attempt the requested GitHub push if credentials are available.
-5. Write the commit SHA to `.git-sha` and deploy directly:
+2. For a user-facing release, update the semantic version in `package.json` and `package-lock.json`, record it in `CHANGELOG.md`, and use the matching `vMAJOR.MINOR.PATCH` Git tag. The package version is canonical.
+3. Run `git diff --check` and `npm run check`.
+4. Commit the intended files. Do not stage the deployment-only `.git-sha` modification.
+5. Create the annotated release tag and attempt the requested GitHub push if credentials are available.
+6. Write the commit SHA to `.git-sha` and deploy directly:
 
 ```bash
 git rev-parse --short HEAD > .git-sha
 railway up --service silver-glider-events
 ```
 
-6. Poll the production health endpoint until its `sha` matches the local commit.
-7. Smoke-test the changed public asset/flow without mutating live user data.
+7. Poll the production health endpoint until its `version` and `sha` match the local release.
+8. Smoke-test the changed public asset/flow without mutating live user data.
 
 `.git-sha` is tracked and remaining modified after a deploy is expected.
 

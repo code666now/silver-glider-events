@@ -99,6 +99,25 @@ test.after(async () => {
 });
 
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
+  const health = await fetch(`${baseUrl}/health`);
+  assert.equal(health.status, 200);
+  assert.equal((await health.json()).version, '1.0.12');
+
+  const sessionCookie = `sge_session=${signSession(organizerId)}`;
+  const dashboard = await fetch(`${baseUrl}/dashboard`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(dashboard.status, 200);
+  const dashboardHtml = await dashboard.text();
+  assert.match(dashboardHtml, /href="\/events\/new"[^>]*>Create Event<\/a>/);
+  assert.match(dashboardHtml, /class="dashboard-skeleton"/);
+
+  const createPage = await fetch(`${baseUrl}/events/new`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(createPage.status, 200);
+  assert.match(await createPage.text(), /<title>Create Event/);
+
   const body = {
     title: 'Created Through HTTP',
     event_date: '2030-09-12',
@@ -118,7 +137,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `sge_session=${signSession(organizerId)}`
+      cookie: sessionCookie
     },
     body: JSON.stringify(body)
   });

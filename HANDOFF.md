@@ -61,7 +61,8 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 - **Key folders:** `src/routes/` (auth, events, public event/RSVP flows, isolated public host pages, uploads, photos, admin), `src/lib/` (mailer, session, shared public HTML, calendar/ics, unsplash, cloudinary, slug, csv), `src/jobs/reminders.js` (cron), `src/views/` (HTML pages), `public/` (CSS + JS/assets).
 - **Database:** auto-migrations run on startup from `src/db/migrations/*.sql`. Tables: organizers, magic_link_tokens, events, event_secret_codes, rsvps, event_comments, message_log, line_submissions, feedback_submissions, host_invitations.
 - **Current migrations:** `001` through `020_follow_host_v1.sql`.
-- **Health check:** `GET /health` returns `{status:"ok", sha:"..."}`.
+- **Health check:** `GET /health` returns `{status:"ok", version:"...", sha:"..."}`.
+- **Release version:** `package.json` is the canonical semantic version, production commits receive matching annotated Git tags, and `CHANGELOG.md` records user-facing releases. `/health` returns both `version` and `sha` for deployment verification.
 
 ## 7. Environment variables (set in Railway)
 ```
@@ -92,7 +93,7 @@ Production may contain promoted events, so the MVP workflow is **local first, pr
 git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-events
 ```
 
-7. Verify `curl https://silver-glider-events-production.up.railway.app/health` — the `sha` in the response should match `git rev-parse --short HEAD` — then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
+7. Verify `curl https://silver-glider-events-production.up.railway.app/health`. The `version` should match `package.json`, and the `sha` should match `git rev-parse --short HEAD`. Then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
 
 **Current machine note:** GitHub HTTPS pushes currently fail because credentials are not configured (`could not read Username for 'https://github.com'`). This is separate from Railway. A direct `railway up --service silver-glider-events` deploy is the authoritative production path; repair GitHub authentication separately and do not mistake a failed push for a failed Railway release.
 
