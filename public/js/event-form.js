@@ -12,6 +12,26 @@ const ArtworkColor = window.SGArtworkColor;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
 
+if (editId) {
+  $('event-form').inert = true;
+  $('event-form').setAttribute('aria-busy', 'true');
+  $('publish-btn').disabled = true;
+}
+
+function finishEditLoading() {
+  document.documentElement.classList.remove('event-edit-loading');
+  $('event-edit-skeleton').removeAttribute('aria-label');
+  $('event-form').inert = false;
+  $('event-form').setAttribute('aria-busy', 'false');
+  $('publish-btn').disabled = false;
+}
+
+function showEditLoadError() {
+  $('event-form').setAttribute('aria-busy', 'false');
+  $('event-edit-skeleton').removeAttribute('aria-label');
+  $('event-edit-skeleton').innerHTML = `<div class="event-edit-load-error"><h2>We couldn't load this event.</h2><p>Your event has not been changed. Try loading the editor again.</p><a class="sg-btn sg-btn-ghost" href="/events/${encodeURIComponent(editId)}/edit">Try again</a></div>`;
+}
+
 function setSecondVibeVisible(visible) {
   const singleLink = $('vibe-single-link');
   const firstChoice = $('vibe-choice-one');
@@ -826,7 +846,8 @@ if (editId) {
       setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link, { preserveFit: true });
     }
     refreshActiveArtworkAccent({ knownAccent: event.artwork_accent_color });
-  }).catch(err => showError(err.message));
+    finishEditLoading();
+  }).catch(showEditLoadError);
 }
 
 $('event-form').addEventListener('submit', async e => {

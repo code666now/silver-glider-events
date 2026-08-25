@@ -89,6 +89,7 @@ test('create and edit form default to Standard and require an uploaded flyer in 
 
 test('event editor expands into two columns on desktop without changing the mobile flow', () => {
   const html = read('src/views/event-form.html');
+  const js = read('public/js/event-form.js');
   const mainStyles = read('public/css/main.css');
 
   assert.match(html, /class="sg-shell event-editor-shell"/);
@@ -105,10 +106,15 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.match(html, /grid-template-columns: minmax\(360px, \.9fr\) minmax\(480px, 1\.1fr\)/);
   assert.match(html, /@media \(min-width: 1200px\) and \(min-height: 900px\)[\s\S]*position: sticky/);
   assert.match(html, /@media \(max-width: 640px\)/);
+  assert.match(html, /class="event-edit-skeleton" id="event-edit-skeleton" aria-label="Loading event editor"/);
+  assert.match(html, /event-edit-loading #event-form \{ display:none; \}/);
+  assert.match(js, /\$\('event-form'\)\.inert = true/);
+  assert.match(js, /function finishEditLoading\(\)/);
+  assert.match(js, /function showEditLoadError\(\)/);
   assert.match(mainStyles, /\.sg-shell\s*\{\s*max-width: 680px/);
   assert.ok(html.indexOf('class="event-editor-design"') < html.indexOf('class="event-editor-details"'));
   assert.match(html, /<\/form>\s*<\/div>\s*<div class="image-modal" id="image-modal"/);
-  assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form">'), html.indexOf('</form>')), /id="image-modal"/);
+  assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>')), /id="image-modal"/);
 });
 
 test('Standard artwork actions keep local upload separate from free-photo browsing', () => {

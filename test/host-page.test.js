@@ -143,7 +143,7 @@ test('settings use progressive disclosure and separate account from host-page sa
   assert.match(settings, /@media\(min-width:1200px\) and \(min-height:900px\)[\s\S]*position:sticky/);
   assert.match(settings, /@media\(max-width:560px\)/);
   assert.match(settings, /id="account-form"/);
-  assert.match(settings, /id="account-save-btn">Save account</);
+  assert.match(settings, /id="account-save-btn" disabled>Save account</);
   assert.match(settings, /id="host-summary-view"[^>]*hidden>View page</);
   assert.match(settings, /\.host-summary-actions \[hidden\] \{ display:none; \}/);
   assert.match(settings, /id="host-editor-toggle"[^>]*aria-expanded="false"/);
@@ -153,4 +153,9 @@ test('settings use progressive disclosure and separate account from host-page sa
   assert.ok(settings.indexOf('id="account-form"') < settings.indexOf('id="host-profile-form"'));
   assert.ok(settings.indexOf('id="host-summary-name"') < settings.indexOf('for="org_name"'));
   assert.doesNotMatch(settings, /id="settings-form"|id="save-btn"/);
+  assert.match(settings, /id="settings-loading" aria-label="Loading settings"/);
+  assert.match(settings, /id="settings-content" aria-busy="true" hidden/);
+  assert.match(settings, /function showSettings\(\)/);
+  assert.match(settings, /function showSettingsError\(\)/);
+  assert.match(settings, /\$\('account-save-btn'\)\.disabled = false/);
 });

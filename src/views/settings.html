@@ -50,6 +50,27 @@
     .settings-plan { display:flex;align-items:center;gap:12px; }
     .settings-plan .settings-eyebrow { margin:0; }
     .settings-footer-card .sg-btn { padding:10px 16px;font-size:11px; }
+    .settings-loading[hidden],.settings-wrap[hidden] { display:none; }
+    .settings-loading { display:grid;gap:18px; }
+    .settings-loading-card {
+      min-height:260px;padding:26px;border:1px solid var(--sg-border-soft);
+      border-radius:24px;background:rgba(17,17,17,.7);
+    }
+    .settings-loading-head { display:grid;gap:10px;margin-bottom:26px; }
+    .settings-loading-eyebrow { width:72px;height:9px; }
+    .settings-loading-title { width:min(230px,64%);height:25px; }
+    .settings-loading-copy { width:min(330px,82%);height:12px; }
+    .settings-loading-fields { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
+    .settings-loading-field { display:grid;gap:9px; }
+    .settings-loading-label { width:68px;height:10px; }
+    .settings-loading-input { width:100%;height:48px;border-radius:12px; }
+    .settings-loading-host { display:flex;align-items:center;gap:18px;min-height:130px; }
+    .settings-loading-avatar { width:72px;height:72px;flex:0 0 auto;border-radius:19px; }
+    .settings-loading-host-copy { min-width:0;flex:1;display:grid;gap:10px; }
+    .settings-loading-button { width:112px;height:42px;flex:0 0 auto; }
+    .settings-load-error { padding:64px 24px;text-align:center;color:var(--sg-text-dim); }
+    .settings-load-error h2 { margin-bottom:8px;font-size:22px;color:var(--sg-text); }
+    .settings-load-error p { margin-bottom:22px;font-size:14px; }
     @media(min-width:1024px) {
       .settings-shell {
         max-width:1260px;
@@ -66,6 +87,13 @@
         gap:24px;
         align-items:start;
       }
+      .settings-loading {
+        grid-template-columns:minmax(340px,.78fr) minmax(0,1.22fr);
+        gap:24px;
+      }
+      .settings-loading-card { min-height:390px;padding:30px; }
+      .settings-loading-host-card { display:flex;align-items:center; }
+      .settings-loading-host { width:100%; }
       .settings-card {
         padding:30px;
         background:linear-gradient(145deg,rgba(19,19,21,.78),rgba(11,11,13,.62));
@@ -106,6 +134,10 @@
       .host-summary-actions .sg-btn { flex:1;text-align:center; }
       .profile-upload { align-items:center; }
       .settings-footer-card { align-items:flex-start;flex-direction:column; }
+      .settings-loading-card { min-height:240px;padding:21px 19px;border-radius:21px; }
+      .settings-loading-fields { grid-template-columns:1fr; }
+      .settings-loading-host { align-items:flex-start;flex-wrap:wrap; }
+      .settings-loading-button { width:100%; }
     }
   </style>
 </head>
@@ -115,7 +147,17 @@
     <h1 class="sg-page-title">Settings</h1>
     <p class="sg-page-sub">Account basics and your public event home.</p>
 
-    <div class="settings-wrap">
+    <div class="settings-loading" id="settings-loading" aria-label="Loading settings">
+      <section class="settings-loading-card" aria-hidden="true">
+        <div class="settings-loading-head"><span class="sg-skeleton settings-loading-eyebrow"></span><span class="sg-skeleton settings-loading-title"></span><span class="sg-skeleton settings-loading-copy"></span></div>
+        <div class="settings-loading-fields"><span class="settings-loading-field"><span class="sg-skeleton settings-loading-label"></span><span class="sg-skeleton settings-loading-input"></span></span><span class="settings-loading-field"><span class="sg-skeleton settings-loading-label"></span><span class="sg-skeleton settings-loading-input"></span></span></div>
+      </section>
+      <section class="settings-loading-card settings-loading-host-card" aria-hidden="true">
+        <div class="settings-loading-host"><span class="sg-skeleton settings-loading-avatar"></span><span class="settings-loading-host-copy"><span class="sg-skeleton settings-loading-eyebrow"></span><span class="sg-skeleton settings-loading-title"></span><span class="sg-skeleton settings-loading-copy"></span></span><span class="sg-skeleton settings-loading-button"></span></div>
+      </section>
+    </div>
+
+    <div class="settings-wrap" id="settings-content" aria-busy="true" hidden>
       <section class="settings-card settings-account-card" aria-labelledby="account-settings-title">
         <div class="settings-card-head">
           <p class="settings-eyebrow">Account</p>
@@ -130,11 +172,11 @@
             </div>
             <div class="sg-field">
               <label for="name">Your name</label>
-              <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez">
+              <input class="sg-input" id="name" maxlength="100" placeholder="Adrian Martinez" disabled>
             </div>
           </div>
           <div class="settings-actions">
-            <button class="sg-btn sg-btn-primary" type="submit" id="account-save-btn">Save account</button>
+            <button class="sg-btn sg-btn-primary" type="submit" id="account-save-btn" disabled>Save account</button>
           </div>
         </form>
       </section>
@@ -219,7 +261,7 @@
 
       <section class="settings-card settings-footer-card" aria-label="Plan and account actions">
         <div class="settings-plan"><p class="settings-eyebrow">Plan</p><span class="sg-badge" id="plan-badge">Free</span></div>
-        <button class="sg-btn sg-btn-ghost" type="button" id="logout-btn">Sign out</button>
+        <button class="sg-btn sg-btn-ghost" type="button" id="logout-btn" disabled>Sign out</button>
       </section>
     </div>
   </div>
@@ -311,6 +353,22 @@
       populateHostFields(organizer);
     }
 
+    function showSettings() {
+      $('settings-loading').hidden = true;
+      $('settings-content').hidden = false;
+      $('settings-content').setAttribute('aria-busy', 'false');
+      $('name').disabled = false;
+      $('account-save-btn').disabled = false;
+      $('logout-btn').disabled = false;
+    }
+
+    function showSettingsError() {
+      $('settings-content').hidden = true;
+      $('settings-content').setAttribute('aria-busy', 'false');
+      $('settings-loading').removeAttribute('aria-label');
+      $('settings-loading').innerHTML = `<div class="settings-load-error"><h2>We couldn't load your settings.</h2><p>Your account has not been changed. Try loading the page again.</p><a class="sg-btn sg-btn-ghost" href="/settings">Try again</a></div>`;
+    }
+
     function savedHostBody(organizer) {
       const body = {
         org_name: organizer.org_name || '',
@@ -324,11 +382,12 @@
 
     api('/api/auth/me').then(({ organizer }) => {
       populateSettings(organizer);
+      showSettings();
       if (organizer.is_admin) {
         const nav = document.querySelector('.sg-nav-links');
         nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
       }
-    });
+    }).catch(showSettingsError);
 
     $('account-form').addEventListener('submit', async e => {
       e.preventDefault();
