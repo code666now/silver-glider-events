@@ -271,6 +271,10 @@ test('flyer events remain in the existing dashboard, event list, host page, and 
   assert.match(events, /@media \(min-width:1024px\)[\s\S]*\.events-shell\s*\{[\s\S]*max-width:1260px/);
   assert.match(events, /\.events-grid\.visible\s*\{[\s\S]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(events, /\.events-grid \{ display:none; \}[\s\S]*\.events-grid\.visible \{ display:block; \}/);
+  assert.match(events, /id="events-loading" aria-label="Loading events"/);
+  assert.match(events, /id="events-content" aria-busy="true"/);
+  assert.equal((events.match(/class="events-skeleton-card"/g) || []).length, 2);
+  assert.match(events, /content\.setAttribute\('aria-busy', 'false'\)/);
   assert.match(read('public/js/manage.js'), /event\.presentation_mode === 'flyer'/);
   const hostRoute = read('src/routes/public-hosts.js');
   assert.match(hostRoute, /SELECT slug, title, cover_image_url, presentation_mode, flyer_image_url/);

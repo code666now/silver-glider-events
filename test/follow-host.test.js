@@ -56,6 +56,9 @@ test('Following is a lightweight authenticated list in the shared navigation', (
   assert.match(view, /renderNav\('following'\)/);
   assert.match(view, /Hosts you follow will appear here\./);
   assert.match(view, /upcoming.*show/);
+  assert.match(view, /id="following-list" aria-busy="true"/);
+  assert.equal((view.match(/following-card following-card-skeleton/g) || []).length, 2);
+  assert.match(view, /list\.setAttribute\('aria-busy', 'false'\)/);
   assert.doesNotMatch(view, /Create Event/);
   assert.match(routes, /e\.status='published' AND e\.visibility='public'/);
   assert.match(routes, /e\.event_date >= CURRENT_DATE/);

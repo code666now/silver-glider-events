@@ -19,7 +19,13 @@
     .following-copy h2 { font-size:23px;overflow-wrap:anywhere; }
     .following-count { margin-top:5px;color:var(--sg-text-dim);font-size:13px; }
     .following-link { display:inline-block;margin-top:13px;color:var(--sg-accent);font-size:12px;font-weight:800; }
-    .following-loading { padding:52px 24px;text-align:center;color:var(--sg-text-dim); }
+    .following-card-skeleton:hover { transform:none;border-color:var(--sg-border-soft); }
+    .following-skeleton-art { width:82px;height:82px;flex:0 0 auto;border-radius:19px; }
+    .following-skeleton-copy { min-width:0;flex:1;display:grid;gap:10px; }
+    .following-skeleton-title { width:min(230px,72%);height:21px; }
+    .following-skeleton-meta { width:min(170px,52%);height:12px; }
+    .following-skeleton-link { width:86px;height:11px;margin-top:3px; }
+    .following-loading { grid-column:1/-1;padding:52px 24px;text-align:center;color:var(--sg-text-dim); }
     @media(max-width:720px) { .following-grid { grid-template-columns:1fr; } }
     @media(max-width:480px) { .following-card { padding:15px;gap:14px; }.following-art { width:70px;height:70px;border-radius:17px; } }
   </style>
@@ -29,7 +35,16 @@
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Following</h1>
     <p class="sg-page-sub">Hosts, artists, venues, and promoters you follow.</p>
-    <div class="following-grid" id="following-list"><p class="following-loading">Loading…</p></div>
+    <div class="following-grid" id="following-list" aria-busy="true" aria-label="Loading followed hosts">
+      <div class="following-card following-card-skeleton" aria-hidden="true">
+        <span class="sg-skeleton following-skeleton-art"></span>
+        <span class="following-skeleton-copy"><span class="sg-skeleton following-skeleton-title"></span><span class="sg-skeleton following-skeleton-meta"></span><span class="sg-skeleton following-skeleton-link"></span></span>
+      </div>
+      <div class="following-card following-card-skeleton" aria-hidden="true">
+        <span class="sg-skeleton following-skeleton-art"></span>
+        <span class="following-skeleton-copy"><span class="sg-skeleton following-skeleton-title"></span><span class="sg-skeleton following-skeleton-meta"></span><span class="sg-skeleton following-skeleton-link"></span></span>
+      </div>
+    </div>
     <div class="sg-empty" id="following-empty" hidden>
       <h3>No followed Hosts yet</h3>
       <p>Hosts you follow will appear here.</p>
@@ -50,6 +65,8 @@
     }
     api('/api/following').then(({ hosts }) => {
       const list = document.getElementById('following-list');
+      list.setAttribute('aria-busy', 'false');
+      list.removeAttribute('aria-label');
       if (!hosts.length) {
         list.style.display = 'none';
         document.getElementById('following-empty').hidden = false;
@@ -65,7 +82,10 @@
         </a>`;
       }).join('');
     }).catch(err => {
-      document.getElementById('following-list').innerHTML = `<p class="following-loading">${sgEscapeHtml(err.message)}</p>`;
+      const list = document.getElementById('following-list');
+      list.setAttribute('aria-busy', 'false');
+      list.removeAttribute('aria-label');
+      list.innerHTML = `<div class="following-loading"><p>${sgEscapeHtml(err.message)}</p><a class="sg-btn sg-btn-ghost" href="/following" style="margin-top:18px">Try again</a></div>`;
     });
   </script>
 </body>

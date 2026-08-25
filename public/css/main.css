@@ -57,6 +57,22 @@
 .sg-page-title { font-size: 34px; margin-bottom: 6px; }
 .sg-page-sub { color: var(--sg-text-dim); font-size: 15px; margin-bottom: 32px; }
 
+/* Shared loading placeholders for authenticated app views. */
+.sg-skeleton {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,.045) 20%, rgba(255,255,255,.105) 45%, rgba(255,255,255,.045) 70%);
+  background-size: 240% 100%;
+  animation: sg-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+@keyframes sg-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sg-skeleton { animation: none; background: rgba(255,255,255,.07); }
+}
+
 /* Event cards on the Events list */
 .sg-event-card {
   display: flex;

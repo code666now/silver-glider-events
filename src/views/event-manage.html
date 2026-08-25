@@ -100,6 +100,25 @@
     .hero-banner.flyer { height:auto;max-height:none;background:#090909;text-align:center; }
     .hero-banner.flyer img { width:auto;max-width:100%;height:auto;max-height:720px;object-fit:contain;margin:0 auto; }
     .manage-hero-placeholder { display:none; }
+    .manage-hero-skeleton {
+      width:100%;min-height:270px;aspect-ratio:16/10;margin-bottom:24px;
+      border:1px solid var(--sg-border-soft);border-radius:var(--sg-radius-card);
+    }
+    .manage-hero-skeleton[hidden] { display:none; }
+    .manage-title-skeleton { width:min(290px,72vw);height:34px; }
+    .manage-meta-skeleton { width:min(330px,82vw);height:14px; }
+    .manage-stat-skeleton { width:42px;height:30px;margin-bottom:7px; }
+    .manage-shell[data-loading] .toolbar,
+    .manage-shell[data-loading] .promotion-card,
+    .manage-shell[data-loading] .manage-danger-zone { opacity:.55; }
+    .manage-shell[data-loading] .more-menu { pointer-events:none; }
+    .manage-shell a[aria-disabled="true"] { pointer-events:none;color:var(--sg-text-faint); }
+    .manage-guest-skeleton { width:clamp(72px,10vw,150px);height:12px; }
+    .manage-load-error {
+      margin-bottom:24px;padding:16px 18px;border:1px solid rgba(255,93,93,.26);
+      border-radius:14px;background:rgba(255,93,93,.06);color:var(--sg-text-dim);font-size:14px;
+    }
+    .manage-load-error strong { color:var(--sg-text); }
     @media (min-width: 1024px) {
       .manage-shell {
         max-width:1260px;
@@ -134,6 +153,7 @@
         box-shadow:0 18px 55px rgba(0,0,0,.16);
       }
       .manage-visual-column .hero-banner:not(.flyer) { height:100%;min-height:500px;aspect-ratio:auto; }
+      .manage-hero-skeleton { height:100%;min-height:500px;aspect-ratio:auto;margin-bottom:0;border-radius:24px; }
       .manage-hero-placeholder {
         height:100%;
         min-height:500px;
@@ -188,57 +208,62 @@
   </style>
 </head>
 <body>
-  <div class="sg-shell manage-shell">
+  <div class="sg-shell manage-shell" id="manage-shell" data-loading>
     <nav id="nav"></nav>
+
+    <div class="manage-load-error" id="manage-load-error" role="status" hidden>
+      <strong>We couldn't load this event.</strong> Your event data has not been changed. Try loading the page again.
+    </div>
 
     <div id="created-note" style="display:none;background:rgba(28,197,190,.1);border:1px solid rgba(28,197,190,.3);border-radius:14px;padding:14px 18px;margin-bottom:24px;font-size:14px">
       <strong style="color:var(--sg-accent)">Your event is live.</strong> Copy the link below and share it anywhere.
       <span id="created-host-note"></span>
     </div>
 
-    <div class="manage-overview" id="manage-overview">
+    <div class="manage-overview" id="manage-overview" aria-busy="true">
     <div class="manage-visual-column">
       <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
-      <div class="manage-hero-placeholder" id="manage-hero-placeholder" aria-hidden="true">SG</div>
+      <div class="manage-hero-skeleton sg-skeleton" id="manage-hero-skeleton" aria-hidden="true"></div>
+      <div class="manage-hero-placeholder" id="manage-hero-placeholder" aria-hidden="true" hidden>SG</div>
     </div>
 
     <section class="manage-event-panel" aria-label="Event overview and actions">
     <div class="manage-title-row" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px">
-      <h1 class="sg-page-title" id="title" style="margin:0">…</h1>
+      <h1 class="sg-page-title" id="title" style="margin:0"><span class="sg-skeleton manage-title-skeleton" aria-hidden="true"></span></h1>
       <span id="status-badge"></span>
     </div>
-    <p class="sg-page-sub" id="meta"></p>
+    <p class="sg-page-sub" id="meta"><span class="sg-skeleton manage-meta-skeleton" aria-hidden="true"></span></p>
 
     <div class="stat-row">
       <div class="stat">
-        <strong id="stat-rsvps">0</strong>
+        <strong id="stat-rsvps"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
         <span>RSVP submissions</span>
       </div>
       <div class="stat" data-private-metric>
-        <strong id="stat-attendance">0</strong>
+        <strong id="stat-attendance"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
         <span>People going</span>
         <div class="cap-bar" id="cap-bar" style="display:none"><div id="cap-fill"></div></div>
       </div>
       <div class="stat" data-private-metric>
-        <strong id="stat-guests">0</strong>
+        <strong id="stat-guests"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
         <span>Guests</span>
       </div>
       <div class="stat" data-private-metric>
-        <strong id="stat-comments">0</strong>
+        <strong id="stat-comments"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
         <span>Comments</span>
       </div>
     </div>
 
     <div class="toolbar" aria-label="Event actions">
-      <button class="sg-btn sg-btn-primary" id="copy-link">Copy event link</button>
-      <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank">View page</a>
-      <a class="sg-btn sg-btn-ghost" id="edit-link">Edit</a>
+      <button class="sg-btn sg-btn-primary" id="copy-link" disabled>Copy event link</button>
+      <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank" aria-disabled="true" tabindex="-1">View page</a>
+      <a class="sg-btn sg-btn-ghost" id="edit-link" aria-disabled="true" tabindex="-1">Edit</a>
       <details class="more-menu" id="more-menu">
-        <summary class="sg-btn sg-btn-ghost">Event actions <span class="menu-chevron" aria-hidden="true">▾</span></summary>
+        <summary class="sg-btn sg-btn-ghost" aria-disabled="true">Event actions <span class="menu-chevron" aria-hidden="true">▾</span></summary>
         <div class="more-menu-panel">
-          <button id="duplicate">Duplicate event</button>
+          <button id="duplicate" disabled>Duplicate event</button>
           <div class="more-menu-divider" role="separator"></div>
-          <button class="danger" id="cancel-event">Cancel event</button>
+          <button class="danger" id="cancel-event" disabled>Cancel event</button>
         </div>
       </details>
     </div>
@@ -248,17 +273,17 @@
       <p id="promotion-copy">Choose how you want to get the word out.</p>
       <p class="promotion-group-label">Get the word out</p>
       <div class="promotion-action-list">
-        <button class="promotion-action" id="share-event" type="button">
+        <button class="promotion-action" id="share-event" type="button" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v8h14v-8"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title">Share event</strong><span class="promotion-action-description">Send or post your event link.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
-        <button class="promotion-action" id="download-qr" type="button">
+        <button class="promotion-action" id="download-qr" type="button" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z"/><path d="M15 14h2v2h-2zm3 3h2v3h-3v-2h-2v2h-2v-4h2"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title">Download QR code</strong><span class="promotion-action-description">Use it on posters, flyers, and print.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">↓</span>
         </button>
-        <button class="promotion-action" id="announce" type="button" style="display:none">
+        <button class="promotion-action" id="announce" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 10a2.5 2.5 0 0 1 2 4M6 10a2.5 2.5 0 0 0-2 4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="announce-title">Email my followers</strong><span class="promotion-action-description" id="announce-copy">Send this event once to people following your host page.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
@@ -269,31 +294,35 @@
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h2m3-4v8m4-11v14m4-9v4m3-2h-1"/></svg></span>
           <div><p class="promotion-group-label">Editorial opportunity</p><h3 id="line-title">The Line</h3><p class="line-feature-copy" id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</p></div>
         </div>
-        <button class="line-submit" id="submit-line" type="button">Submit to The Line</button>
+        <button class="line-submit" id="submit-line" type="button" disabled>Submit to The Line</button>
       </section>
     </section>
     </section>
     </div>
 
-    <section class="manage-guest-section" aria-label="Guest management">
+    <section class="manage-guest-section" id="manage-guest-section" aria-label="Guest management" aria-busy="true">
     <div class="guest-head">
       <p class="sg-label" style="margin:0">Guest list</p>
       <div class="guest-tools">
         <button class="sg-btn sg-btn-ghost" id="export-csv" disabled>Export CSV</button>
-        <input class="sg-input" id="search" placeholder="Search guests…">
+        <input class="sg-input" id="search" placeholder="Search guests…" disabled>
       </div>
     </div>
     <div style="overflow-x:auto">
       <table class="sg-table" id="guests">
         <thead><tr><th>Attendee</th><th>Attendee email</th><th>Guest</th><th>Guest email</th><th>RSVP'd</th></tr></thead>
-        <tbody id="guest-rows"></tbody>
+        <tbody id="guest-rows">
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+        </tbody>
       </table>
     </div>
     <p id="no-guests" style="display:none;color:var(--sg-text-dim);font-size:14px;padding:24px 0;text-align:center">No RSVPs yet. Share the event link to get the word out.</p>
     </section>
 
     <div class="manage-danger-zone" style="margin-top:56px;padding-top:24px;border-top:1px solid var(--sg-border-soft);text-align:center">
-      <button class="sg-btn sg-btn-danger" id="delete-event" style="font-size:13px;padding:10px 22px">Delete permanently</button>
+      <button class="sg-btn sg-btn-danger" id="delete-event" style="font-size:13px;padding:10px 22px" disabled>Delete permanently</button>
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>
   </div>

@@ -21,6 +21,33 @@ function eventUrl() {
   return `${location.origin}/e/${eventData.slug}`;
 }
 
+function setManageReady() {
+  $('manage-shell').removeAttribute('data-loading');
+  $('manage-overview').setAttribute('aria-busy', 'false');
+  $('manage-hero-skeleton').hidden = true;
+  ['copy-link', 'share-event', 'download-qr', 'duplicate', 'cancel-event', 'delete-event'].forEach(id => {
+    $(id).disabled = false;
+  });
+  ['view-link', 'edit-link'].forEach(id => {
+    $(id).removeAttribute('aria-disabled');
+    $(id).removeAttribute('tabindex');
+  });
+  $('more-menu').querySelector('summary').removeAttribute('aria-disabled');
+}
+
+function showManageLoadError() {
+  $('manage-load-error').hidden = false;
+  $('manage-overview').setAttribute('aria-busy', 'false');
+  $('manage-guest-section').setAttribute('aria-busy', 'false');
+  $('manage-hero-skeleton').hidden = true;
+  $('manage-hero-placeholder').hidden = false;
+  $('title').textContent = 'Event unavailable';
+  $('meta').textContent = 'Try loading this page again.';
+  ['stat-rsvps', 'stat-attendance', 'stat-guests', 'stat-comments'].forEach(id => { $(id).textContent = '—'; });
+  $('guest-rows').innerHTML = '';
+  $('guests').style.display = 'none';
+}
+
 async function loadEvent() {
   const { event } = await api(`/api/events/${eventId}`);
   eventData = event;
@@ -32,11 +59,14 @@ async function loadEvent() {
   $('meta').textContent = `${dateStr} · ${event.venue_name}`;
 
   const manageImage = event.presentation_mode === 'flyer' ? event.flyer_image_url : event.cover_image_url;
+  $('manage-hero-skeleton').hidden = true;
   if (manageImage) {
     $('manage-hero-placeholder').hidden = true;
     $('hero').style.display = 'block';
     $('hero').classList.toggle('flyer', event.presentation_mode === 'flyer');
     $('hero-img').src = manageImage;
+  } else {
+    $('manage-hero-placeholder').hidden = false;
   }
 
   const badge = $('status-badge');
@@ -84,7 +114,10 @@ function setLineCard({ title, copy, button, disabled, selected }) {
 async function loadLineStatus() {
   try {
     const { submission } = await api(`/api/events/${eventId}/line-status`);
-    if (!submission) return;
+    if (!submission) {
+      $('submit-line').disabled = false;
+      return;
+    }
     if (submission.status === 'approved') {
       setLineCard({
         title: 'You were selected',
@@ -108,7 +141,9 @@ async function loadLineStatus() {
         disabled: true
       });
     }
-  } catch (_) {}
+  } catch (_) {
+    $('submit-line').disabled = false;
+  }
 }
 
 async function loadGuests(search = '') {
@@ -126,6 +161,8 @@ async function loadGuests(search = '') {
   $('no-guests').style.display = active.length ? 'none' : 'block';
   $('guests').style.display = active.length ? 'table' : 'none';
   $('export-csv').disabled = active.length === 0;
+  $('search').disabled = false;
+  $('manage-guest-section').setAttribute('aria-busy', 'false');
 }
 
 $('copy-link').addEventListener('click', async () => {
@@ -191,6 +228,7 @@ async function loadFollowers() {
     }
     if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
     btn.style.display = '';
+    btn.disabled = false;
     btn.dataset.count = count;
     $('announce-title').textContent = `Invite ${count} ${count === 1 ? 'follower' : 'followers'}`;
     $('announce-copy').textContent = 'Send this event once to people following your host page.';
@@ -250,4 +288,21 @@ $('search').addEventListener('input', e => {
   searchTimer = setTimeout(() => loadGuests(e.target.value.trim()), 250);
 });
 
-loadEvent().then(() => { loadGuests(); loadLineStatus(); loadFollowers(); });
+async function initializeManagePage() {
+  try {
+    await loadEvent();
+    setManageReady();
+    const [guests] = await Promise.allSettled([loadGuests(), loadLineStatus(), loadFollowers()]);
+    if (guests.status === 'rejected') {
+      $('manage-guest-section').setAttribute('aria-busy', 'false');
+      $('guest-rows').innerHTML = '';
+      $('guests').style.display = 'none';
+      $('no-guests').textContent = 'We could not load the guest list. Try loading the page again.';
+      $('no-guests').style.display = 'block';
+    }
+  } catch (_) {
+    showManageLoadError();
+  }
+}
+
+initializeManagePage();

@@ -55,6 +55,21 @@
     .sg-event-thumb.flyer { object-fit:contain;background:#090909; }
     .events-grid { display:none; }
     .events-grid.visible { display:block; }
+    .events-loading[hidden] { display:none; }
+    .events-skeleton-grid { display:grid;gap:14px; }
+    .events-skeleton-card {
+      display:flex;align-items:center;gap:16px;min-height:118px;padding:16px;
+      border:1px solid var(--sg-border-soft);border-radius:var(--sg-radius-card);
+      background:var(--sg-card);
+    }
+    .events-skeleton-thumb { width:84px;height:84px;flex:0 0 auto;border-radius:16px; }
+    .events-skeleton-copy { min-width:0;flex:1;display:grid;gap:10px; }
+    .events-skeleton-title { width:min(240px,72%);height:18px; }
+    .events-skeleton-meta { width:min(310px,88%);height:12px; }
+    .events-skeleton-count { width:44px;height:32px;flex:0 0 auto; }
+    .events-load-error { padding:64px 24px;text-align:center;color:var(--sg-text-dim); }
+    .events-load-error h2 { margin-bottom:8px;font-size:22px;color:var(--sg-text); }
+    .events-load-error p { margin-bottom:22px;font-size:14px; }
 
     /* Toast with an action button */
     .sg-toast .toast-action {
@@ -76,6 +91,9 @@
         grid-template-columns:repeat(2,minmax(0,1fr));
         gap:14px;
       }
+      .events-skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .events-skeleton-card { min-height:122px;padding:18px; }
+      .events-skeleton-thumb { width:92px;height:92px; }
       .events-grid .swipe-row { height:100%;margin-bottom:0; }
       .events-grid .sg-event-card { min-height:122px;height:100%;padding:18px; }
       .events-grid .sg-event-thumb { width:92px;height:92px; }
@@ -102,6 +120,24 @@
       <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
     </div>
 
+    <section class="events-loading" id="events-loading" aria-label="Loading events">
+      <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
+      <div class="events-skeleton-grid" aria-hidden="true">
+        <div class="events-skeleton-card">
+          <span class="sg-skeleton events-skeleton-thumb"></span>
+          <span class="events-skeleton-copy"><span class="sg-skeleton events-skeleton-title"></span><span class="sg-skeleton events-skeleton-meta"></span></span>
+          <span class="sg-skeleton events-skeleton-count"></span>
+        </div>
+        <div class="events-skeleton-card">
+          <span class="sg-skeleton events-skeleton-thumb"></span>
+          <span class="events-skeleton-copy"><span class="sg-skeleton events-skeleton-title"></span><span class="sg-skeleton events-skeleton-meta"></span></span>
+          <span class="sg-skeleton events-skeleton-count"></span>
+        </div>
+      </div>
+    </section>
+
+    <div id="events-content" aria-busy="true">
+
     <div id="upcoming-section" style="display:none">
       <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
       <div class="events-grid" id="upcoming"></div>
@@ -126,6 +162,7 @@
       <h3>No events yet</h3>
       <p>Create your first event in under a minute.</p>
       <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
+    </div>
     </div>
   </div>
 
@@ -326,31 +363,44 @@
     wireToggle('archived-toggle', 'archived');
 
     async function load() {
-      const [{ events }, { events: archived }] = await Promise.all([
-        api('/api/events'),
-        api('/api/events?archived=1')
-      ]);
+      const loading = document.getElementById('events-loading');
+      const content = document.getElementById('events-content');
+      loading.hidden = false;
+      content.setAttribute('aria-busy', 'true');
+      try {
+        const [{ events }, { events: archived }] = await Promise.all([
+          api('/api/events'),
+          api('/api/events?archived=1')
+        ]);
 
-      const today = new Date(new Date().toDateString());
-      const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
-      const past = events.filter(e => new Date(e.event_date) < today);
+        const today = new Date(new Date().toDateString());
+        const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
+        const past = events.filter(e => new Date(e.event_date) < today);
 
-      document.getElementById('empty').style.display =
-        (!events.length && !archived.length) ? 'block' : 'none';
+        document.getElementById('empty').style.display =
+          (!events.length && !archived.length) ? 'block' : 'none';
 
-      document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
-      document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
-      document.getElementById('upcoming').classList.toggle('visible', upcoming.length > 0);
+        document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
+        document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
+        document.getElementById('upcoming').classList.toggle('visible', upcoming.length > 0);
 
-      document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
-      document.getElementById('past-label').textContent = `Past (${past.length})`;
-      document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
-      document.getElementById('past').classList.remove('visible');
+        document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
+        document.getElementById('past-label').textContent = `Past (${past.length})`;
+        document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
+        document.getElementById('past').classList.remove('visible');
 
-      document.getElementById('archived-section').style.display = archived.length ? 'block' : 'none';
-      document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
-      document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
-      document.getElementById('archived').classList.remove('visible');
+        document.getElementById('archived-section').style.display = archived.length ? 'block' : 'none';
+        document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
+        document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
+        document.getElementById('archived').classList.remove('visible');
+        loading.hidden = true;
+      } catch (_) {
+        loading.removeAttribute('aria-label');
+        loading.innerHTML = `<div class="events-load-error"><h2>We couldn't load your events.</h2><p>Your events are safe. Try loading the page again.</p><button class="sg-btn sg-btn-ghost" id="retry-events" type="button">Try again</button></div>`;
+        document.getElementById('retry-events').addEventListener('click', () => location.reload());
+      } finally {
+        content.setAttribute('aria-busy', 'false');
+      }
     }
     load();
   </script>

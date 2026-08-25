@@ -115,26 +115,10 @@
       gap: 12px;
       padding: 22px;
     }
-    .dashboard-skeleton-line,
-    .dashboard-stat-skeleton {
-      display: block;
-      border-radius: 999px;
-      background: linear-gradient(90deg, rgba(255,255,255,.045) 20%, rgba(255,255,255,.105) 45%, rgba(255,255,255,.045) 70%);
-      background-size: 240% 100%;
-      animation: dashboard-shimmer 1.35s ease-in-out infinite;
-    }
     .dashboard-skeleton .dashboard-skeleton-visual { border-radius: 0; }
     .dashboard-skeleton-title { width: 48%; height: 24px; }
     .dashboard-skeleton-meta { width: 66%; height: 13px; }
     .dashboard-stat-skeleton { width: 38px; height: 32px; margin-bottom: 5px; }
-    @keyframes dashboard-shimmer {
-      from { background-position: 100% 0; }
-      to { background-position: -100% 0; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .dashboard-skeleton-line,
-      .dashboard-stat-skeleton { animation: none; }
-    }
     @media (min-width: 1024px) {
       .dashboard-shell {
         max-width: 1260px;
@@ -322,10 +306,10 @@
         </div>
         <div id="next-event" aria-live="polite" aria-busy="true">
           <div class="dashboard-skeleton" aria-hidden="true">
-            <div class="dashboard-skeleton-visual dashboard-skeleton-line"></div>
+            <div class="dashboard-skeleton-visual dashboard-skeleton-line sg-skeleton"></div>
             <div class="dashboard-skeleton-details">
-              <span class="dashboard-skeleton-line dashboard-skeleton-title"></span>
-              <span class="dashboard-skeleton-line dashboard-skeleton-meta"></span>
+              <span class="dashboard-skeleton-line dashboard-skeleton-title sg-skeleton"></span>
+              <span class="dashboard-skeleton-line dashboard-skeleton-meta sg-skeleton"></span>
             </div>
           </div>
         </div>
@@ -338,9 +322,9 @@
             <span>All events</span>
           </div>
           <div class="dashboard-stat-grid" aria-live="polite" aria-busy="true">
-            <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Upcoming events</span></div>
-            <div class="dashboard-stat"><strong id="rsvp-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Total RSVPs</span></div>
-            <div class="dashboard-stat"><strong id="event-count"><span class="dashboard-stat-skeleton" aria-hidden="true"></span></strong><span>Total events</span></div>
+            <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count"><span class="dashboard-stat-skeleton sg-skeleton" aria-hidden="true"></span></strong><span>Upcoming events</span></div>
+            <div class="dashboard-stat"><strong id="rsvp-count"><span class="dashboard-stat-skeleton sg-skeleton" aria-hidden="true"></span></strong><span>Total RSVPs</span></div>
+            <div class="dashboard-stat"><strong id="event-count"><span class="dashboard-stat-skeleton sg-skeleton" aria-hidden="true"></span></strong><span>Total events</span></div>
           </div>
         </section>
 

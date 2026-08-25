@@ -15,6 +15,12 @@ test('event management and promotion actions remain clearly separated', () => {
   assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\s*\{[\s\S]*max-width:1260px/);
   assert.match(view, /grid-template-columns:minmax\(0,1\.25fr\) minmax\(350px,\.75fr\)/);
   assert.match(view, /@media \(max-width: 620px\)/);
+  assert.match(view, /id="manage-shell" data-loading/);
+  assert.match(view, /id="manage-overview" aria-busy="true"/);
+  assert.match(view, /id="manage-hero-skeleton"/);
+  assert.match(view, /id="manage-guest-section"[^>]+aria-busy="true"/);
+  assert.match(view, /id="copy-link" disabled/);
+  assert.match(view, /id="view-link"[^>]+aria-disabled="true"/);
   const toolbar = view.slice(view.indexOf('<div class="toolbar"'), view.indexOf('<section class="promotion-card"'));
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
@@ -46,6 +52,9 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /fetch\(`\/e\/\$\{eventData\.slug\}\/qr\.png`\)/);
   assert.match(client, /link\.download = `\$\{eventData\.slug\}-qr-code\.png`/);
   assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
+  assert.match(client, /function setManageReady\(\)/);
+  assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), loadLineStatus\(\), loadFollowers\(\)\]\)/);
+  assert.match(client, /function showManageLoadError\(\)/);
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];
   assert.doesNotMatch(privateBranch, /line-card/);
 });
