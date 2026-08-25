@@ -67,16 +67,20 @@
     </div>
 
     <div class="feedback-filters">
-      <select class="sg-select" id="type-filter" aria-label="Filter by type">
+      <select class="sg-select" id="type-filter" aria-label="Filter by type" disabled>
         <option value="">All types</option><option value="bug">Bugs</option><option value="suggestion">Suggestions</option><option value="other">Other</option>
       </select>
-      <select class="sg-select" id="status-filter" aria-label="Filter by status">
+      <select class="sg-select" id="status-filter" aria-label="Filter by status" disabled>
         <option value="">All statuses</option><option value="new">New</option><option value="reviewing">Reviewing</option><option value="resolved">Resolved</option>
       </select>
     </div>
 
     <div class="feedback-list-head"><span>Type</span><span>Message</span><span>Status</span><span>Host</span><span>Event</span><span>Page</span><span>Date</span><span></span></div>
-    <div id="feedback-list"></div>
+    <div id="feedback-list" aria-busy="true" class="admin-skeleton-stack">
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+    </div>
     <p id="feedback-empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:48px 0">No feedback matches these filters.</p>
   </div>
 
@@ -115,13 +119,23 @@
     function statusLabel(value) { return value === 'reviewing' ? 'Reviewing' : value === 'resolved' ? 'Resolved' : 'New'; }
 
     async function loadFeedback() {
-      const params = new URLSearchParams();
-      if (document.getElementById('type-filter').value) params.set('type', document.getElementById('type-filter').value);
-      if (document.getElementById('status-filter').value) params.set('status', document.getElementById('status-filter').value);
-      const { feedback } = await api(`/api/admin/feedback${params.toString() ? `?${params}` : ''}`);
+      const typeFilter = document.getElementById('type-filter');
+      const statusFilter = document.getElementById('status-filter');
       const list = document.getElementById('feedback-list');
-      document.getElementById('feedback-empty').style.display = feedback.length ? 'none' : 'block';
-      list.innerHTML = feedback.map(item => `
+      list.classList.add('admin-skeleton-stack');
+      list.setAttribute('aria-busy', 'true');
+      typeFilter.disabled = true;
+      statusFilter.disabled = true;
+      document.getElementById('feedback-empty').style.display = 'none';
+      list.innerHTML = `<div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>`;
+      const params = new URLSearchParams();
+      if (typeFilter.value) params.set('type', typeFilter.value);
+      if (statusFilter.value) params.set('status', statusFilter.value);
+      try {
+        const { feedback } = await api(`/api/admin/feedback${params.toString() ? `?${params}` : ''}`);
+        list.classList.remove('admin-skeleton-stack');
+        document.getElementById('feedback-empty').style.display = feedback.length ? 'none' : 'block';
+        list.innerHTML = feedback.map(item => `
         <div class="feedback-admin-row" data-id="${item.id}" role="button" tabindex="0" aria-label="Open feedback ${item.id}">
           <span class="feedback-type">${esc(item.type)}</span>
           <span class="feedback-preview"><strong>${esc(item.message_preview)}</strong></span>
@@ -131,8 +145,8 @@
           <span class="feedback-route">${esc(item.route)}</span>
           <span class="feedback-date">${formatDate(item.created_at)}</span>
           <button class="feedback-delete" type="button" data-delete-id="${item.id}" aria-label="Delete feedback ${item.id}">Delete</button>
-        </div>`).join('');
-      list.querySelectorAll('.feedback-admin-row').forEach(row => {
+          </div>`).join('');
+        list.querySelectorAll('.feedback-admin-row').forEach(row => {
         row.addEventListener('click', e => { if (!e.target.closest('.feedback-delete')) openDetail(row.dataset.id); });
         row.addEventListener('keydown', e => {
           if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.feedback-delete')) {
@@ -141,7 +155,7 @@
           }
         });
       });
-      list.querySelectorAll('.feedback-delete').forEach(button => button.addEventListener('click', async e => {
+        list.querySelectorAll('.feedback-delete').forEach(button => button.addEventListener('click', async e => {
         e.stopPropagation();
         if (!confirm('Delete this feedback permanently? This cannot be undone.')) return;
         button.disabled = true;
@@ -154,7 +168,15 @@
           button.disabled = false;
           toast(err.message);
         }
-      }));
+        }));
+      } catch (error) {
+        list.innerHTML = `<div class="admin-load-error"><strong>We couldn't load feedback.</strong><p>${esc(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-feedback" type="button">Try again</button></div>`;
+        document.getElementById('retry-feedback').addEventListener('click', loadFeedback);
+      } finally {
+        list.setAttribute('aria-busy', 'false');
+        typeFilter.disabled = false;
+        statusFilter.disabled = false;
+      }
     }
 
     async function openDetail(id) {

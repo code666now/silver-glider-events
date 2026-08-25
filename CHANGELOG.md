@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.15
+
+Released August 24, 2026.
+
+### Added
+
+* Completed responsive skeleton loading across The Line, Hosts, Feedback, and Invitations admin views.
+
+### Improved
+
+* Kept admin filters and search unavailable until their data finishes loading.
+* Added consistent retry states when an admin data request fails.
+
 ## 1.0.14
 
 Released August 24, 2026.

@@ -38,12 +38,15 @@
     </div>
 
     <div class="line-filters" id="filters">
-      <button class="sg-btn sg-btn-ghost" data-status="pending" style="padding:8px 18px;font-size:13px">Pending</button>
-      <button class="sg-btn sg-btn-ghost" data-status="approved" style="padding:8px 18px;font-size:13px">Approved</button>
-      <button class="sg-btn sg-btn-ghost" data-status="rejected" style="padding:8px 18px;font-size:13px">Rejected</button>
+      <button class="sg-btn sg-btn-ghost" data-status="pending" style="padding:8px 18px;font-size:13px" disabled>Pending</button>
+      <button class="sg-btn sg-btn-ghost" data-status="approved" style="padding:8px 18px;font-size:13px" disabled>Approved</button>
+      <button class="sg-btn sg-btn-ghost" data-status="rejected" style="padding:8px 18px;font-size:13px" disabled>Rejected</button>
     </div>
 
-    <div class="line-review-grid" id="list"></div>
+    <div class="line-review-grid" id="list" aria-busy="true">
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+    </div>
     <p id="empty" style="display:none;color:var(--sg-text-dim);text-align:center;padding:40px 0">Nothing here.</p>
   </div>
 
@@ -57,14 +60,20 @@
     }
 
     async function load() {
+      const list = document.getElementById('list');
+      const buttons = document.querySelectorAll('#filters button');
+      list.setAttribute('aria-busy', 'true');
+      document.getElementById('empty').style.display = 'none';
+      buttons.forEach(button => { button.disabled = true; });
+      list.innerHTML = `<div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>`;
       document.querySelectorAll('#filters button').forEach(b => {
         b.style.borderColor = b.dataset.status === current ? 'var(--sg-accent)' : '';
         b.style.color = b.dataset.status === current ? 'var(--sg-accent)' : '';
       });
-      const { submissions } = await api(`/api/admin/line-submissions?status=${current}`);
-      const list = document.getElementById('list');
-      document.getElementById('empty').style.display = submissions.length ? 'none' : 'block';
-      list.innerHTML = submissions.map(s => {
+      try {
+        const { submissions } = await api(`/api/admin/line-submissions?status=${current}`);
+        document.getElementById('empty').style.display = submissions.length ? 'none' : 'block';
+        list.innerHTML = submissions.map(s => {
         const id = Number(s.id);
         const host = s.org_name || s.organizer_name || s.organizer_email;
         return `
@@ -82,7 +91,14 @@
             </div>` : `<span class="sg-badge ${current === 'approved' ? 'sg-badge-accent' : ''}">${current}</span>`}
           </div>
         </div>`;
-      }).join('');
+        }).join('');
+      } catch (error) {
+        list.innerHTML = `<div class="admin-load-error" style="grid-column:1/-1"><strong>We couldn't load The Line.</strong><p>${sgEscapeHtml(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-line" type="button">Try again</button></div>`;
+        document.getElementById('retry-line').addEventListener('click', load);
+      } finally {
+        list.setAttribute('aria-busy', 'false');
+        buttons.forEach(button => { button.disabled = false; });
+      }
     }
 
     async function act(id, action) {

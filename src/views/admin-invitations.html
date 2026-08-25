@@ -85,9 +85,12 @@
       <section>
         <div class="invite-list-head">
           <div><h2>Generated invitations</h2><p>Private links stay active until you revoke them.</p></div>
-          <span class="invite-count" id="invite-count"></span>
+          <span class="invite-count sg-skeleton admin-count-skeleton" id="invite-count" aria-label="Loading invitation count"></span>
         </div>
-        <div id="invite-list"></div>
+        <div id="invite-list" aria-busy="true" class="admin-skeleton-stack">
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+        </div>
         <p class="invite-empty" id="invite-empty">No invitations yet. Create your first one.</p>
       </section>
     </div>
@@ -137,11 +140,23 @@
     }
 
     async function loadInvitations() {
-      const { invitations } = await api('/api/admin/invitations');
       const list = document.getElementById('invite-list');
-      document.getElementById('invite-count').textContent = `${invitations.length} ${invitations.length === 1 ? 'invitation' : 'invitations'}`;
-      document.getElementById('invite-empty').style.display = invitations.length ? 'none' : 'block';
-      list.innerHTML = invitations.map(item => {
+      const count = document.getElementById('invite-count');
+      list.classList.add('admin-skeleton-stack');
+      list.setAttribute('aria-busy', 'true');
+      document.getElementById('invite-empty').style.display = 'none';
+      count.textContent = '';
+      count.className = 'invite-count sg-skeleton admin-count-skeleton';
+      count.setAttribute('aria-label', 'Loading invitation count');
+      list.innerHTML = `<div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>`;
+      try {
+        const { invitations } = await api('/api/admin/invitations');
+        list.classList.remove('admin-skeleton-stack');
+        count.className = 'invite-count';
+        count.removeAttribute('aria-label');
+        count.textContent = `${invitations.length} ${invitations.length === 1 ? 'invitation' : 'invitations'}`;
+        document.getElementById('invite-empty').style.display = invitations.length ? 'none' : 'block';
+        list.innerHTML = invitations.map(item => {
         const [label, cls] = status(item);
         const joinedBy = item.joined_org_name || item.joined_name || item.joined_email;
         return `<article class="invite-admin-row">
@@ -157,10 +172,10 @@
             <button class="sg-btn ${item.revoked_at ? 'sg-btn-ghost' : 'sg-btn-danger'}" type="button" data-toggle="${item.id}" data-revoked="${item.revoked_at ? 'false' : 'true'}">${item.revoked_at ? 'Restore' : 'Revoke'}</button>
           </div>
         </article>`;
-      }).join('');
+        }).join('');
 
-      list.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyPath(button.dataset.copy)));
-      list.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', async () => {
+        list.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyPath(button.dataset.copy)));
+        list.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', async () => {
         const revoke = button.dataset.revoked === 'true';
         if (revoke && !confirm('Revoke this invitation? Its private link will stop working.')) return;
         button.disabled = true;
@@ -172,7 +187,16 @@
           button.disabled = false;
           toast(err.message);
         }
-      }));
+        }));
+      } catch (error) {
+        count.className = 'invite-count';
+        count.removeAttribute('aria-label');
+        count.textContent = 'Unavailable';
+        list.innerHTML = `<div class="admin-load-error"><strong>We couldn't load invitations.</strong><p>${esc(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-invitations" type="button">Try again</button></div>`;
+        document.getElementById('retry-invitations').addEventListener('click', loadInvitations);
+      } finally {
+        list.setAttribute('aria-busy', 'false');
+      }
     }
 
     form.addEventListener('submit', async event => {

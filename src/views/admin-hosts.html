@@ -88,14 +88,18 @@
     </div>
 
     <section class="host-summary" aria-label="Host account summary">
-      <div class="host-summary-card"><strong id="total-hosts">—</strong><span>Total accounts</span></div>
-      <div class="host-summary-card"><strong id="new-hosts">—</strong><span>New in 30 days</span></div>
-      <div class="host-summary-card"><strong id="active-hosts">—</strong><span>Created an event</span></div>
+      <div class="host-summary-card"><strong id="total-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Total accounts</span></div>
+      <div class="host-summary-card"><strong id="new-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>New in 30 days</span></div>
+      <div class="host-summary-card"><strong id="active-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Created an event</span></div>
     </section>
 
-    <input class="sg-input host-search" id="host-search" type="search" placeholder="Search host name or email" aria-label="Search host accounts">
+    <input class="sg-input host-search" id="host-search" type="search" placeholder="Search host name or email" aria-label="Search host accounts" disabled>
     <div class="host-list-head"><span>Host</span><span>Email</span><span>Created</span><span>Last login</span><span>Events</span><span>RSVPs</span><span>Source</span></div>
-    <div id="host-list"></div>
+    <div id="host-list" aria-busy="true" class="admin-skeleton-stack">
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+    </div>
     <p class="host-empty" id="host-empty">No host accounts match this search.</p>
   </div>
 
@@ -182,10 +186,27 @@
     }
 
     async function loadHosts() {
-      const data = await api('/api/admin/hosts');
-      hosts = data.hosts;
-      renderSummary();
-      renderHosts();
+      const list = document.getElementById('host-list');
+      const search = document.getElementById('host-search');
+      list.classList.add('admin-skeleton-stack');
+      list.setAttribute('aria-busy', 'true');
+      search.disabled = true;
+      document.getElementById('host-empty').style.display = 'none';
+      list.innerHTML = `<div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div><div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>`;
+      try {
+        const data = await api('/api/admin/hosts');
+        hosts = data.hosts;
+        renderSummary();
+        list.classList.remove('admin-skeleton-stack');
+        renderHosts();
+        search.disabled = false;
+      } catch (error) {
+        ['total-hosts','new-hosts','active-hosts'].forEach(id => { document.getElementById(id).textContent = '—'; });
+        list.innerHTML = `<div class="admin-load-error"><strong>We couldn't load host accounts.</strong><p>${esc(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-hosts" type="button">Try again</button></div>`;
+        document.getElementById('retry-hosts').addEventListener('click', loadHosts);
+      } finally {
+        list.setAttribute('aria-busy', 'false');
+      }
     }
 
     async function openHost(id) {
