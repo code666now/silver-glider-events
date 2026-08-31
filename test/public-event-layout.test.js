@@ -20,6 +20,7 @@ test('public event sections follow the guest-first vertical hierarchy', () => {
     '{{DESCRIPTION_HTML}}',
     '{{VIBE_HTML}}',
     '<div class="rsvp-zone">',
+    '{{RECAP_GALLERY_HTML}}',
     '{{GUEST_LIST_HTML}}',
     '{{COMMENTS_HTML}}',
     'id="share-btn"',

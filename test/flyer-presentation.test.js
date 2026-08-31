@@ -159,6 +159,7 @@ test('flyer public rendering uses an isolated poster-first template without repl
     '<div class="rsvp-zone">',
     '{{PRIMARY_ACTION_HTML}}',
     '{{ADDITIONAL_DETAILS_HTML}}',
+    '{{RECAP_GALLERY_HTML}}',
     '{{GUEST_LIST_HTML}}',
     '{{COMMENTS_HTML}}',
     'id="share-btn"',

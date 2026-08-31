@@ -238,6 +238,24 @@ function renderComments(event) {
   </section>`;
 }
 
+function recapImageUrl(source) {
+  const url = String(source || '');
+  return url.includes('/image/upload/')
+    ? url.replace('/image/upload/', '/image/upload/f_auto,q_auto:good,w_1200,c_limit/')
+    : url;
+}
+
+function renderFeaturedPhotos(event, photos) {
+  if (!photos.length) return '';
+  const items = photos.map((photo, index) => `<a href="${esc(photo.image_url)}" target="_blank" rel="noopener" aria-label="Open ${esc(event.title)} photo ${index + 1}">
+      <img src="${esc(recapImageUrl(photo.image_url))}" alt="${esc(event.title)} photo ${index + 1}" loading="lazy" decoding="async">
+    </a>`).join('');
+  return `<section class="event-recap" aria-labelledby="event-recap-title">
+    <div class="section-heading"><h2 id="event-recap-title">From the night</h2><span>${photos.length}</span></div>
+    <div class="event-recap-grid">${items}</div>
+  </section>`;
+}
+
 function setAttendeeCookie(res, eventId, token) {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.append('Set-Cookie', `${attendeeCookieName(eventId)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${180 * 24 * 3600}${secure}`);
@@ -321,6 +339,19 @@ router.get('/e/:slug', async (req, res, next) => {
            FROM rsvps
           WHERE event_id=$1 AND status='confirmed'
           ORDER BY created_at ASC, id ASC`,
+        [event.id]
+      )).rows;
+    }
+
+    let featuredPhotos = [];
+    if (event.collect_photos_enabled && event.status === 'published') {
+      featuredPhotos = (await pool.query(
+        `SELECT ep.image_url
+           FROM event_photos ep JOIN events e ON e.id=ep.event_id
+          WHERE ep.event_id=$1 AND ep.is_featured=TRUE AND ep.public_feature_consent=TRUE
+            AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+          ORDER BY ep.featured_at ASC, ep.id ASC
+          LIMIT 8`,
         [event.id]
       )).rows;
     }
@@ -437,6 +468,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_FIELDS_HTML}}/g, renderGuestFields(event))
       .replace(/{{GUEST_LIST_HTML}}/g, renderGuestList(event, publicGuestRows))
       .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
+      .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{RSVP_CTA}}/g, 'RSVP')
       .replace(/{{FLYER_VENUE_HTML}}/g, flyerVenueHtml)

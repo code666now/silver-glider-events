@@ -113,17 +113,23 @@ function renderPhotos(photos) {
     : 'View photos';
   $('view-photos').disabled = photos.length === 0;
   $('photo-empty').style.display = photos.length ? 'none' : 'block';
-  $('photo-grid').innerHTML = photos.map(photo => `
-    <article class="photo-card">
+  $('photo-grid').innerHTML = photos.map(photo => {
+    const featureAction = photo.public_feature_consent
+      ? `<button type="button" data-feature-photo="${photo.id}" data-featured="${photo.is_featured ? 'true' : 'false'}">${photo.is_featured ? 'Remove from page' : 'Feature on page'}</button>`
+      : '<span class="photo-card-private">Private only</span>';
+    return `
+    <article class="photo-card${photo.is_featured ? ' is-featured' : ''}">
       <img src="${escapeHtml(photo.image_url)}" alt="Photo shared after ${escapeHtml(eventData.title)}" loading="lazy">
       <div class="photo-card-body">
-        <span class="photo-card-name">${escapeHtml(photo.contributor_name || 'Anonymous guest')}</span>
+        <div class="photo-card-meta"><span class="photo-card-name">${escapeHtml(photo.contributor_name || 'Anonymous guest')}</span>${photo.is_featured ? '<span class="photo-card-featured">On event page</span>' : ''}</div>
         <div class="photo-card-actions">
           <a href="/api/events/${eventId}/photos/${photo.id}/download">Download</a>
+          ${featureAction}
           <button type="button" data-delete-photo="${photo.id}">Delete</button>
         </div>
       </div>
-    </article>`).join('');
+    </article>`;
+  }).join('');
 }
 
 async function loadPhotoCollection() {
@@ -258,6 +264,22 @@ $('view-photos').addEventListener('click', () => {
 });
 
 $('photo-grid').addEventListener('click', async event => {
+  const featureButton = event.target.closest('[data-feature-photo]');
+  if (featureButton) {
+    const featured = featureButton.dataset.featured !== 'true';
+    featureButton.disabled = true;
+    try {
+      await api(`/api/events/${eventId}/photos/${featureButton.dataset.featurePhoto}/feature`, {
+        method: 'PATCH', body: { featured }
+      });
+      toast(featured ? 'Photo featured on the event page' : 'Photo removed from the event page');
+      await loadPhotoCollection();
+    } catch (err) {
+      toast(err.message);
+      featureButton.disabled = false;
+    }
+    return;
+  }
   const button = event.target.closest('[data-delete-photo]');
   if (!button || !confirm('Delete this photo from the event collection?')) return;
   button.disabled = true;

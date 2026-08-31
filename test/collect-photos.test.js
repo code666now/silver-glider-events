@@ -19,6 +19,30 @@ test('Collect Photos Beta is additive, event-scoped, and disabled by default', (
   assert.match(shortLinks, /events_photo_short_token_uq/);
 });
 
+test('public recaps require explicit guest consent and host curation', () => {
+  const migration = read('src/db/migrations/023_featured_event_photos.sql');
+  const route = read('src/routes/event-photos.js');
+  const publicRoute = read('src/routes/public.js');
+  const uploadView = read('src/views/event-photo-upload.html');
+  const manageClient = read('public/js/manage.js');
+  for (const column of ['public_feature_consent', 'is_featured', 'featured_at']) {
+    assert.match(migration, new RegExp(column));
+  }
+  assert.match(migration, /DEFAULT FALSE/);
+  assert.match(migration, /CHECK \(is_featured=FALSE OR public_feature_consent=TRUE\)/);
+  assert.match(route, /MAX_FEATURED_PHOTOS = 8/);
+  assert.match(route, /photos\/:photoId\/feature', requireOrganizer/);
+  assert.match(route, /did not permit public featuring/);
+  assert.match(uploadView, /name="public_feature_consent" value="true"/);
+  assert.doesNotMatch(uploadView, /name="public_feature_consent"[^>]*checked/);
+  assert.match(uploadView, /Your name will not be shown publicly/);
+  assert.match(manageClient, /Feature on page/);
+  assert.match(manageClient, /Remove from page/);
+  assert.match(publicRoute, /ep\.is_featured=TRUE AND ep\.public_feature_consent=TRUE/);
+  assert.match(publicRoute, />From the night</);
+  assert.doesNotMatch(publicRoute.slice(publicRoute.indexOf('function renderFeaturedPhotos'), publicRoute.indexOf('function setAttendeeCookie')), /contributor_name/);
+});
+
 test('Super Admin enables Collect Photos only on an individual published past event', () => {
   const route = read('src/routes/admin.js');
   const view = read('src/views/admin-hosts.html');
@@ -65,6 +89,7 @@ test('past-event management replaces promotion with one focused collection workf
   assert.match(client, /event\.is_past[\s\S]*\$\('line-card'\)\.style\.display = 'none'/);
   assert.match(client, /eventData\.collect_photos_enabled \? \[loadPhotoCollection\(\)\] : \[\]/);
   assert.match(client, /\/api\/events\/\$\{eventId\}\/photo-request/);
+  assert.match(client, /\/photos\/\$\{featureButton\.dataset\.featurePhoto\}\/feature/);
   assert.match(client, /data-delete-photo/);
 });
 

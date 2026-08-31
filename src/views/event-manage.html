@@ -98,10 +98,15 @@
     .photo-card { overflow:hidden;border:1px solid var(--sg-border-soft);border-radius:13px;background:rgba(0,0,0,.2); }
     .photo-card img { display:block;width:100%;aspect-ratio:1;object-fit:cover;background:#080808; }
     .photo-card-body { padding:9px; }
+    .photo-card.is-featured { border-color:rgba(28,197,190,.42); }
+    .photo-card-meta { display:flex;align-items:center;justify-content:space-between;gap:7px; }
     .photo-card-name { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sg-text-dim);font-size:10px; }
+    .photo-card-featured { flex:0 0 auto;color:var(--sg-accent);font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
     .photo-card-actions { display:flex;align-items:center;gap:9px;margin-top:7px; }
-    .photo-card-actions a,.photo-card-actions button { padding:0;border:0;background:none;color:var(--sg-accent);font:700 10px var(--sg-font-body);cursor:pointer;text-decoration:none; }
+    .photo-card-actions a,.photo-card-actions button { padding:4px 0;border:0;background:none;color:var(--sg-accent);font:700 10px var(--sg-font-body);cursor:pointer;text-decoration:none; }
     .photo-card-actions button { color:var(--sg-danger); }
+    .photo-card-actions button[data-feature-photo] { color:var(--sg-accent); }
+    .photo-card-private { color:var(--sg-text-faint);font-size:9px;font-weight:700; }
     .photo-collection-empty { padding:18px 8px 4px;color:var(--sg-text-faint);font-size:12px;line-height:1.5;text-align:center; }
     .guest-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
     .guest-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1; }

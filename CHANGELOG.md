@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.18
+
+Released August 31, 2026.
+
+### Added
+
+* Added explicit guest consent for public photo featuring during Collect Photos uploads.
+* Added host curation controls for featuring up to eight consented photos on a past event page.
+* Added a responsive “From the night” recap gallery to Standard and Flyer event pages.
+
+### Safety
+
+* Existing uploads remain private and cannot be featured without new consent.
+* Contributor names stay private and are never rendered in the public recap.
+* Recaps appear only for published past events with Collect Photos enabled.
+
 ## 1.0.17
 
 Released August 31, 2026.

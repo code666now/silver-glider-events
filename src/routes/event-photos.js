@@ -15,6 +15,7 @@ const uploadTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'even
 const LEGACY_TOKEN_RE = /^[a-f0-9]{48}$/;
 const SHORT_TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
 const MAX_PHOTOS_PER_EVENT = 500;
+const MAX_FEATURED_PHOTOS = 8;
 const PHOTO_RATE_WINDOW_MS = 60 * 60 * 1000;
 const photoRateLimiter = createRateLimiter({
   windowMs: PHOTO_RATE_WINDOW_MS,
@@ -138,6 +139,7 @@ router.post('/api/public/photo-collections/:token', (req, res, next) => {
     }
 
     const contributorName = String(req.body.contributor_name || '').trim().replace(/\s+/g, ' ').slice(0, 100) || null;
+    const publicFeatureConsent = req.body.public_feature_consent === 'true';
     uploaded = await Promise.all(req.files.map(file => uploadEventPhoto(file.buffer)));
     const client = await pool.connect();
     try {
@@ -153,9 +155,10 @@ router.post('/api/public/photo-collections/:token', (req, res, next) => {
       }
       for (const image of uploaded) {
         await client.query(
-          `INSERT INTO event_photos (event_id, cloudinary_id, image_url, contributor_name)
-           VALUES ($1,$2,$3,$4)`,
-          [event.id, image.public_id, image.secure_url, contributorName]
+          `INSERT INTO event_photos
+             (event_id, cloudinary_id, image_url, contributor_name, public_feature_consent)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [event.id, image.public_id, image.secure_url, contributorName, publicFeatureConsent]
         );
       }
       await client.query('COMMIT');
@@ -190,7 +193,7 @@ router.get('/api/events/:id/photos', requireOrganizer, async (req, res, next) =>
       return res.status(404).json({ error: 'Photo collection not available' });
     }
     const { rows: photos } = await pool.query(
-      `SELECT id, image_url, contributor_name, created_at
+      `SELECT id, image_url, contributor_name, public_feature_consent, is_featured, featured_at, created_at
          FROM event_photos WHERE event_id=$1 ORDER BY created_at DESC, id DESC`,
       [event.id]
     );
@@ -283,6 +286,66 @@ router.get('/api/events/:eventId/photos/:photoId/download', requireOrganizer, as
     const attachmentUrl = rows[0].image_url.replace('/image/upload/', '/image/upload/fl_attachment/');
     res.redirect(attachmentUrl);
   } catch (err) { next(err); }
+});
+
+router.patch('/api/events/:eventId/photos/:photoId/feature', requireOrganizer, async (req, res, next) => {
+  const featured = req.body?.featured;
+  if (typeof featured !== 'boolean') return res.status(400).json({ error: 'Choose whether this photo is featured' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: events } = await client.query(
+      `SELECT e.id FROM events e
+        WHERE e.id=$1 AND e.organizer_id=$2 AND e.collect_photos_enabled=TRUE
+          AND e.status='published'
+          AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+        FOR UPDATE`,
+      [req.params.eventId, req.organizer.id]
+    );
+    if (!events.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Photo collection not found' });
+    }
+
+    const { rows: photos } = await client.query(
+      `SELECT id, public_feature_consent, is_featured
+         FROM event_photos WHERE id=$1 AND event_id=$2 FOR UPDATE`,
+      [req.params.photoId, req.params.eventId]
+    );
+    if (!photos.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Photo not found' });
+    }
+    if (featured && !photos[0].public_feature_consent) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This guest shared the photo privately and did not permit public featuring' });
+    }
+    if (featured && !photos[0].is_featured) {
+      const { rows: counts } = await client.query(
+        'SELECT COUNT(*)::int AS count FROM event_photos WHERE event_id=$1 AND is_featured=TRUE',
+        [req.params.eventId]
+      );
+      if (counts[0].count >= MAX_FEATURED_PHOTOS) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Feature up to ${MAX_FEATURED_PHOTOS} photos on an event page` });
+      }
+    }
+
+    const { rows } = await client.query(
+      `UPDATE event_photos
+          SET is_featured=$3, featured_at=CASE WHEN $3 THEN COALESCE(featured_at,NOW()) ELSE NULL END
+        WHERE id=$1 AND event_id=$2
+      RETURNING id, public_feature_consent, is_featured, featured_at`,
+      [req.params.photoId, req.params.eventId, featured]
+    );
+    await client.query('COMMIT');
+    return res.json({ photo: rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 router.delete('/api/events/:eventId/photos/:photoId', requireOrganizer, async (req, res, next) => {

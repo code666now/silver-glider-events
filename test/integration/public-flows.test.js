@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.17');
+  assert.equal((await health.json()).version, '1.0.18');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -501,6 +501,55 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   const shortPath = new URL(collectionData.collectionUrl).pathname;
   const shortUploadPage = await fetch(`${baseUrl}${shortPath}`);
   assert.equal(shortUploadPage.status, 200);
+  const shortUploadHtml = await shortUploadPage.text();
+  assert.match(shortUploadHtml, /Allow public featuring/);
+  assert.match(shortUploadHtml, /Your name will not be shown publicly/);
+
+  const { rows: photoRows } = await pool.query(
+    `INSERT INTO event_photos
+       (event_id, cloudinary_id, image_url, contributor_name, public_feature_consent)
+     VALUES ($1,'private-photo','https://images.example/private.jpg','Private Person',FALSE),
+            ($1,'consented-photo','https://images.example/featured.jpg','Featured Person',TRUE)
+     RETURNING id, public_feature_consent`,
+    [past.id]
+  );
+  const privatePhoto = photoRows.find(photo => !photo.public_feature_consent);
+  const consentedPhoto = photoRows.find(photo => photo.public_feature_consent);
+
+  const unsignedFeature = await fetch(`${baseUrl}/api/events/${past.id}/photos/${consentedPhoto.id}/feature`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ featured: true })
+  });
+  assert.equal(unsignedFeature.status, 401);
+  const privateFeature = await fetch(`${baseUrl}/api/events/${past.id}/photos/${privatePhoto.id}/feature`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ featured: true })
+  });
+  assert.equal(privateFeature.status, 400);
+  assert.match((await privateFeature.json()).error, /did not permit public featuring/);
+
+  const feature = await fetch(`${baseUrl}/api/events/${past.id}/photos/${consentedPhoto.id}/feature`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ featured: true })
+  });
+  assert.equal(feature.status, 200);
+  assert.equal((await feature.json()).photo.is_featured, true);
+
+  const recapPage = await fetch(`${baseUrl}/e/past-photo-night`);
+  const recapHtml = await recapPage.text();
+  assert.match(recapHtml, /From the night/);
+  assert.match(recapHtml, /https:\/\/images\.example\/featured\.jpg/);
+  assert.doesNotMatch(recapHtml, /private\.jpg|Private Person|Featured Person/);
+
+  const unfeature = await fetch(`${baseUrl}/api/events/${past.id}/photos/${consentedPhoto.id}/feature`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ featured: false })
+  });
+  assert.equal(unfeature.status, 200);
+  const recapRemovedHtml = await (await fetch(`${baseUrl}/e/past-photo-night`)).text();
+  assert.doesNotMatch(recapRemovedHtml, /From the night|featured\.jpg/);
 
   const request = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
     method: 'POST', headers: { cookie: organizerCookie }

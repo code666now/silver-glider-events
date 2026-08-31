@@ -27,6 +27,9 @@
     .sg-field label { display:block;margin-bottom:7px;color:var(--sg-text-dim);font-size:12px;font-weight:700; }
     .sg-input { min-height:50px; }
     .collection-consent { margin:18px 0;color:var(--sg-text-faint);font-size:12px;line-height:1.55; }
+    .feature-consent { display:flex;align-items:flex-start;gap:11px;margin:18px 0;padding:14px;border:1px solid var(--sg-border-soft);border-radius:14px;background:rgba(255,255,255,.025);color:var(--sg-text-dim);font-size:13px;line-height:1.45;cursor:pointer; }
+    .feature-consent input { width:18px;height:18px;margin:1px 0 0;flex:0 0 auto;accent-color:var(--sg-accent); }
+    .feature-consent strong { display:block;margin-bottom:2px;color:var(--sg-text);font-size:13px; }
     .collection-status { min-height:22px;margin:12px 0 0;color:#ff8a8a;font-size:13px;line-height:1.45; }
     .collection-success { padding:22px 0 6px;text-align:center; }
     .collection-success strong { display:block;margin-bottom:8px;font:400 30px var(--sg-font-display); }
@@ -64,6 +67,10 @@
             <input class="sg-input" id="contributor-name" name="contributor_name" maxlength="100" autocomplete="name" placeholder="So the host knows who shared them">
           </div>
           <p class="collection-consent">By uploading, you confirm that you took these photos or have permission to share them. Photos are shared privately with {{HOST_NAME}} during this beta.</p>
+          <label class="feature-consent">
+            <input type="checkbox" name="public_feature_consent" value="true">
+            <span><strong>Allow public featuring</strong>{{HOST_NAME}} may choose to feature these photos on this event page. Your name will not be shown publicly.</span>
+          </label>
           <button class="sg-btn sg-btn-primary sg-btn-block" id="submit-photos" type="submit">Share photos</button>
           <p class="collection-status" id="photo-status" role="alert"></p>
         </form>
