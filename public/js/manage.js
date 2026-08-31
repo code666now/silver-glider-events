@@ -96,10 +96,55 @@ async function loadEvent() {
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
     $('line-card').style.display = 'none';
+    $('collect-photos-card').hidden = true;
+  } else if (event.is_past) {
+    $('line-card').style.display = 'none';
+    $('collect-photos-card').hidden = !event.collect_photos_enabled;
   } else if (event.visibility === 'private') {
     $('promotion-copy').textContent = 'Share your private event link or download its QR code.';
     $('line-feature').style.display = 'none';
   }
+}
+
+function renderPhotos(photos) {
+  $('photo-count').textContent = photos.length;
+  $('view-photos-title').textContent = photos.length
+    ? `View ${photos.length} photo${photos.length === 1 ? '' : 's'}`
+    : 'View photos';
+  $('view-photos').disabled = photos.length === 0;
+  $('photo-empty').style.display = photos.length ? 'none' : 'block';
+  $('photo-grid').innerHTML = photos.map(photo => `
+    <article class="photo-card">
+      <img src="${escapeHtml(photo.image_url)}" alt="Photo shared after ${escapeHtml(eventData.title)}" loading="lazy">
+      <div class="photo-card-body">
+        <span class="photo-card-name">${escapeHtml(photo.contributor_name || 'Anonymous guest')}</span>
+        <div class="photo-card-actions">
+          <a href="/api/events/${eventId}/photos/${photo.id}/download">Download</a>
+          <button type="button" data-delete-photo="${photo.id}">Delete</button>
+        </div>
+      </div>
+    </article>`).join('');
+}
+
+async function loadPhotoCollection() {
+  const data = await api(`/api/events/${eventId}/photos`);
+  $('collect-photos-card').dataset.collectionUrl = data.collectionUrl;
+  $('copy-photo-link').disabled = false;
+  if (data.requestSentAt) {
+    $('ask-rsvps').disabled = true;
+    $('ask-rsvps-title').textContent = `${data.requestSentCount} ${data.requestSentCount === 1 ? 'guest' : 'guests'} asked`;
+    $('ask-rsvps-copy').textContent = 'The one-time photo request has been sent.';
+  } else if (data.eligibleCount > 0) {
+    $('ask-rsvps').disabled = false;
+    $('ask-rsvps').dataset.count = data.eligibleCount;
+    $('ask-rsvps-title').textContent = `Ask ${data.eligibleCount} RSVP${data.eligibleCount === 1 ? '' : 's'}`;
+    $('ask-rsvps-copy').textContent = 'Send one photo request to attendees who accepted updates.';
+  } else {
+    $('ask-rsvps').disabled = true;
+    $('ask-rsvps-title').textContent = 'No eligible RSVPs';
+    $('ask-rsvps-copy').textContent = 'Copy the photo link to request photos directly.';
+  }
+  renderPhotos(data.photos);
 }
 
 function setLineCard({ title, copy, button, disabled, selected }) {
@@ -181,6 +226,48 @@ $('share-event').addEventListener('click', async () => {
     }
   } catch (err) {
     if (err.name !== 'AbortError') toast('Could not share this event');
+  }
+});
+
+$('copy-photo-link').addEventListener('click', async () => {
+  const url = $('collect-photos-card').dataset.collectionUrl;
+  if (!url) return;
+  await navigator.clipboard.writeText(url);
+  toast('Photo link copied');
+});
+
+$('ask-rsvps').addEventListener('click', async () => {
+  const count = Number($('ask-rsvps').dataset.count || 0);
+  if (!count || !confirm(`Send one photo request to ${count} eligible RSVP${count === 1 ? '' : 's'}? This can only be sent once.`)) return;
+  $('ask-rsvps').disabled = true;
+  $('ask-rsvps-title').textContent = 'Sending…';
+  $('ask-rsvps-copy').textContent = 'Emailing eligible attendees.';
+  try {
+    const { sent } = await api(`/api/events/${eventId}/photo-request`, { method: 'POST' });
+    toast(`Photo request sent to ${sent} ${sent === 1 ? 'guest' : 'guests'}`);
+    await loadPhotoCollection();
+  } catch (err) {
+    toast(err.message);
+    await loadPhotoCollection().catch(() => {});
+  }
+});
+
+$('view-photos').addEventListener('click', () => {
+  $('photo-collection-summary').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('photo-collection-summary').focus({ preventScroll: true });
+});
+
+$('photo-grid').addEventListener('click', async event => {
+  const button = event.target.closest('[data-delete-photo]');
+  if (!button || !confirm('Delete this photo from the event collection?')) return;
+  button.disabled = true;
+  try {
+    await api(`/api/events/${eventId}/photos/${button.dataset.deletePhoto}`, { method: 'DELETE' });
+    toast('Photo deleted');
+    await loadPhotoCollection();
+  } catch (err) {
+    toast(err.message);
+    button.disabled = false;
   }
 });
 
@@ -292,7 +379,10 @@ async function initializeManagePage() {
   try {
     await loadEvent();
     setManageReady();
-    const [guests] = await Promise.allSettled([loadGuests(), loadLineStatus(), loadFollowers()]);
+    const secondaryTasks = eventData.is_past
+      ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
+      : [loadLineStatus(), loadFollowers()];
+    const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');
       $('guest-rows').innerHTML = '';

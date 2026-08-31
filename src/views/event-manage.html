@@ -45,6 +45,7 @@
       padding: 22px;
       margin: 0 0 32px;
     }
+    .promotion-card[hidden] { display:none; }
     .promotion-card h2 { font-size: 22px; margin-bottom: 6px; }
     .promotion-card > p { color: var(--sg-text-dim); font-size: 13px; line-height: 1.6; margin-bottom: 18px; }
     .promotion-group-label {
@@ -87,6 +88,21 @@
     .line-submit:hover { border-color:var(--sg-accent);background:rgba(28,197,190,.14); }
     .line-submit:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
     .line-submit:disabled { cursor:not-allowed;opacity:.58; }
+    .photo-collection-summary {
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      margin:20px 0 10px;padding-top:18px;border-top:1px solid var(--sg-border-soft);
+    }
+    .photo-collection-summary strong { font-family:var(--sg-font-display);font-size:24px;font-weight:400; }
+    .photo-collection-summary span { color:var(--sg-text-faint);font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
+    .photo-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+    .photo-card { overflow:hidden;border:1px solid var(--sg-border-soft);border-radius:13px;background:rgba(0,0,0,.2); }
+    .photo-card img { display:block;width:100%;aspect-ratio:1;object-fit:cover;background:#080808; }
+    .photo-card-body { padding:9px; }
+    .photo-card-name { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sg-text-dim);font-size:10px; }
+    .photo-card-actions { display:flex;align-items:center;gap:9px;margin-top:7px; }
+    .photo-card-actions a,.photo-card-actions button { padding:0;border:0;background:none;color:var(--sg-accent);font:700 10px var(--sg-font-body);cursor:pointer;text-decoration:none; }
+    .photo-card-actions button { color:var(--sg-danger); }
+    .photo-collection-empty { padding:18px 8px 4px;color:var(--sg-text-faint);font-size:12px;line-height:1.5;text-align:center; }
     .guest-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
     .guest-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1; }
     .guest-tools .sg-btn { padding: 10px 17px; font-size: 12px; white-space: nowrap; }
@@ -296,6 +312,34 @@
         </div>
         <button class="line-submit" id="submit-line" type="button" disabled>Submit to The Line</button>
       </section>
+    </section>
+
+    <section class="promotion-card" id="collect-photos-card" aria-labelledby="collect-photos-title" hidden>
+      <h2 id="collect-photos-title">Collect photos</h2>
+      <p>Invite guests to share their photos from the event.</p>
+      <p class="promotion-group-label">After the event</p>
+      <div class="promotion-action-list">
+        <button class="promotion-action" id="ask-rsvps" type="button" disabled>
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="ask-rsvps-title">Ask RSVPs</strong><span class="promotion-action-description" id="ask-rsvps-copy">Send one photo request to eligible attendees.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
+        <button class="promotion-action" id="copy-photo-link" type="button" disabled>
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Copy photo link</strong><span class="promotion-action-description">Share the private upload link anywhere.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
+        <button class="promotion-action" id="view-photos" type="button" disabled>
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="m4 16 5-5 4 4 2-2 5 5"/><circle cx="16.5" cy="8.5" r="1.5"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="view-photos-title">View photos</strong><span class="promotion-action-description">Review and download what guests shared.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">↓</span>
+        </button>
+      </div>
+      <div class="photo-collection-summary" id="photo-collection-summary" tabindex="-1">
+        <span>Photos received</span><strong id="photo-count">0</strong>
+      </div>
+      <div class="photo-grid" id="photo-grid" aria-live="polite"></div>
+      <p class="photo-collection-empty" id="photo-empty">No photos yet. Copy the link or ask RSVPs to get started.</p>
     </section>
     </section>
     </div>

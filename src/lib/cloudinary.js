@@ -10,6 +10,8 @@ const hostLogoFolder = process.env.CLOUDINARY_HOST_LOGO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/hosts' : 'sg-events-dev/hosts');
 const hostHeaderFolder = process.env.CLOUDINARY_HOST_HEADER_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/hosts/headers' : 'sg-events-dev/hosts/headers');
+const eventPhotoFolder = process.env.CLOUDINARY_EVENT_PHOTO_FOLDER ||
+  (process.env.NODE_ENV === 'production' ? 'sg-events/event-photos' : 'sg-events-dev/event-photos');
 
 if (configured) {
   cloudinary.config({
@@ -93,4 +95,26 @@ async function uploadHostHeader(buffer) {
   });
 }
 
-module.exports = { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, isManagedFlyerUrl, configured };
+async function uploadEventPhoto(buffer) {
+  if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: eventPhotoFolder,
+        transformation: [{ width: 2400, height: 2400, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
+      },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+async function deleteEventPhoto(publicId) {
+  if (!configured || !publicId) return;
+  await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+}
+
+module.exports = {
+  uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo,
+  uploadEventPhoto, deleteEventPhoto, isManagedFlyerUrl, configured
+};

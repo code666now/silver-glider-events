@@ -25,6 +25,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(require('./routes/auth'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
+app.use(require('./routes/event-photos'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
 app.use(require('./routes/invites'));

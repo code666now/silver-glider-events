@@ -54,6 +54,15 @@
     .host-event-row h3 { font-size:14px;margin-bottom:3px; }
     .host-event-row p { color:var(--sg-text-faint);font-size:10px; }
     .host-event-row a { flex:0 0 auto;color:var(--sg-accent);font-size:11px;font-weight:700; }
+    .host-event-actions { flex:0 0 auto;display:flex;align-items:center;gap:8px; }
+    .collect-toggle {
+      min-height:34px;padding:7px 11px;border:1px solid var(--sg-border);border-radius:999px;
+      background:rgba(255,255,255,.025);color:var(--sg-text-dim);font:700 10px var(--sg-font-body);
+      cursor:pointer;white-space:nowrap;
+    }
+    .collect-toggle[aria-pressed="true"] { border-color:rgba(28,197,190,.44);background:rgba(28,197,190,.1);color:var(--sg-accent); }
+    .collect-toggle:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
+    .collect-toggle:disabled { opacity:.55;cursor:wait; }
     @media(max-width:800px) {
       .host-list-head { display:none; }
       .host-admin-row { grid-template-columns:1fr auto;gap:7px 14px; }
@@ -71,7 +80,8 @@
       .host-detail-grid { grid-template-columns:1fr; }
       .host-profile-grid { grid-template-columns:1fr; }
       .host-profile-grid .wide { grid-column:auto; }
-      .host-event-row { align-items:flex-start; }
+      .host-event-row { align-items:flex-start;flex-direction:column; }
+      .host-event-actions { width:100%;justify-content:space-between; }
     }
   </style>
 </head>
@@ -238,9 +248,28 @@
         ? 'Changing the slug breaks previously shared host-page links.'
         : 'Save a host name first; Silver Glider will create a unique slug.';
       document.getElementById('host-detail-events').innerHTML = events.length ? events.map(event => {
-        const meta = `${eventDate(event.event_date)} · ${event.venue_name} · ${event.rsvp_count} RSVP${event.rsvp_count === 1 ? '' : 's'}${event.archived_at ? ' · Archived' : ''}`;
-        return `<div class="host-event-row"><div><h3>${esc(event.title)}</h3><p>${esc(meta)} · ${esc(event.status)}</p></div>${event.status === 'draft' ? '' : `<a href="/e/${encodeURIComponent(event.slug)}" target="_blank" rel="noopener">Open</a>`}</div>`;
+        const photos = event.collect_photos_enabled ? ` · ${event.photo_count} photo${event.photo_count === 1 ? '' : 's'}` : '';
+        const meta = `${eventDate(event.event_date)} · ${event.venue_name} · ${event.rsvp_count} RSVP${event.rsvp_count === 1 ? '' : 's'}${photos}${event.archived_at ? ' · Archived' : ''}`;
+        const open = event.status === 'draft' ? '' : `<a href="/e/${encodeURIComponent(event.slug)}" target="_blank" rel="noopener">Open</a>`;
+        const toggle = event.is_past && event.status === 'published'
+          ? `<button class="collect-toggle" type="button" data-collect-event="${event.id}" aria-pressed="${event.collect_photos_enabled ? 'true' : 'false'}">Collect Photos: ${event.collect_photos_enabled ? 'On' : 'Off'}</button>`
+          : '';
+        return `<div class="host-event-row"><div><h3>${esc(event.title)}</h3><p>${esc(meta)} · ${esc(event.status)}</p></div><div class="host-event-actions">${toggle}${open}</div></div>`;
       }).join('') : '<p style="color:var(--sg-text-dim);font-size:13px;padding:12px 0 6px">No events created yet.</p>';
+      document.querySelectorAll('[data-collect-event]').forEach(button => button.addEventListener('click', async () => {
+        const enabled = button.getAttribute('aria-pressed') !== 'true';
+        button.disabled = true;
+        button.textContent = 'Saving…';
+        try {
+          await api(`/api/admin/events/${button.dataset.collectEvent}/collect-photos`, { method:'PATCH', body:{ enabled } });
+          toast(`Collect Photos turned ${enabled ? 'on' : 'off'}`);
+          await openHost(activeHostId);
+        } catch (error) {
+          toast(error.message);
+          button.disabled = false;
+          button.textContent = `Collect Photos: ${enabled ? 'Off' : 'On'}`;
+        }
+      }));
       detailModal.classList.add('open');
       detailModal.setAttribute('aria-hidden','false');
     }

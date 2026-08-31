@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.16
+
+Released August 31, 2026.
+
+### Added
+
+* Added an event-scoped Collect Photos Beta for published past events, controlled by Super Admin.
+* Added a private, no-account photo uploader with bounded Cloudinary uploads and an optional contributor name.
+* Added a host-only photo inbox with download and delete actions.
+* Added a one-time photo request for confirmed guests who opted into event updates.
+
+### Safety
+
+* Kept the feature disabled by default and isolated to the specific event where it is enabled.
+* Kept uploaded photos private to the event host, with unguessable links, upload limits, rate limiting, and no public gallery.
+* Left RSVP, capacity, ticketing, event pages, confirmations, and reminders unchanged.
+
 ## 1.0.15
 
 Released August 24, 2026.

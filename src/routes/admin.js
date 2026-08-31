@@ -74,6 +74,9 @@ router.get('/api/admin/hosts/:id', async (req, res, next) => {
     const events = await pool.query(
       `SELECT e.id, e.title, e.slug, e.event_date, e.start_time, e.status,
               e.visibility, e.archived_at, e.venue_name,
+              e.collect_photos_enabled,
+              e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+              COALESCE((SELECT COUNT(*) FROM event_photos ep WHERE ep.event_id=e.id),0)::int AS photo_count,
               COUNT(r.id) FILTER (WHERE r.status='confirmed')::int AS rsvp_count
          FROM events e
          LEFT JOIN rsvps r ON r.event_id=e.id
@@ -84,6 +87,37 @@ router.get('/api/admin/hosts/:id', async (req, res, next) => {
       [id]
     );
     res.json({ host: rows[0], events: events.rows });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/admin/events/:id/collect-photos — isolated event-level beta flag.
+router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
+  try {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'Event not found' });
+    if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'Choose whether photo collection is on or off' });
+
+    const { rows: current } = await pool.query(
+      `SELECT id, event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past, status
+         FROM events WHERE id=$1`,
+      [id]
+    );
+    if (!current.length) return res.status(404).json({ error: 'Event not found' });
+    if (req.body.enabled && (!current[0].is_past || current[0].status !== 'published')) {
+      return res.status(400).json({ error: 'Collect Photos can only be enabled for published past events' });
+    }
+
+    const token = crypto.randomBytes(24).toString('hex');
+    const { rows } = await pool.query(
+      `UPDATE events
+          SET collect_photos_enabled=$2,
+              photo_upload_token=CASE WHEN $2 THEN COALESCE(photo_upload_token,$3) ELSE photo_upload_token END,
+              updated_at=NOW()
+        WHERE id=$1
+      RETURNING id, collect_photos_enabled, photo_upload_token`,
+      [id, req.body.enabled, token]
+    );
+    res.json({ event: rows[0] });
   } catch (err) { next(err); }
 });
 

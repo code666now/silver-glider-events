@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.15');
+  assert.equal((await health.json()).version, '1.0.16');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -417,4 +417,104 @@ test('enforces RSVP capacity through the live HTTP route and database transactio
       WHERE event_id=(SELECT id FROM events WHERE slug='one-seat') AND status='confirmed'`
   );
   assert.equal(rows[0].count, 1);
+});
+
+test('keeps Collect Photos isolated to one Super-Admin-enabled past event', async () => {
+  const past = await createEvent({
+    slug: 'past-photo-night',
+    title: 'Past Photo Night',
+    event_date: '2020-08-10'
+  });
+  const future = await createEvent({
+    slug: 'future-photo-night',
+    title: 'Future Photo Night',
+    event_date: '2030-08-10'
+  });
+  const organizerCookie = `sge_session=${signSession(organizerId)}`;
+
+  const forbidden = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ enabled: true })
+  });
+  assert.equal(forbidden.status, 403);
+
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const futureEnable = await fetch(`${baseUrl}/api/admin/events/${future.id}/collect-photos`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ enabled: true })
+  });
+  assert.equal(futureEnable.status, 400);
+
+  const enabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ enabled: true })
+  });
+  assert.equal(enabled.status, 200);
+  const enabledEvent = (await enabled.json()).event;
+  assert.equal(enabledEvent.collect_photos_enabled, true);
+  assert.match(enabledEvent.photo_upload_token, /^[a-f0-9]{48}$/);
+
+  const state = await pool.query(
+    'SELECT id, collect_photos_enabled, photo_upload_token FROM events WHERE id IN ($1,$2) ORDER BY id',
+    [past.id, future.id]
+  );
+  assert.equal(state.rows.find(event => event.id === past.id).collect_photos_enabled, true);
+  assert.equal(state.rows.find(event => event.id === future.id).collect_photos_enabled, false);
+  assert.equal(state.rows.find(event => event.id === future.id).photo_upload_token, null);
+
+  const uploadPage = await fetch(`${baseUrl}/photos/${enabledEvent.photo_upload_token}`);
+  const uploadHtml = await uploadPage.text();
+  assert.equal(uploadPage.status, 200);
+  assert.match(uploadHtml, /Share your photos from Past Photo Night/);
+  assert.match(uploadHtml, /No account needed/);
+  assert.equal(uploadPage.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
+
+  const normalEventPage = await fetch(`${baseUrl}/e/past-photo-night`);
+  const normalEventHtml = await normalEventPage.text();
+  assert.equal(normalEventPage.status, 200);
+  assert.doesNotMatch(normalEventHtml, /photo-form|Collect photos/);
+
+  await pool.query(
+    `INSERT INTO rsvps (event_id, first_name, last_name, email, wants_reminders, organizer_optin, status, manage_token)
+     VALUES ($1,'Photo','Guest','photo-guest@example.test',TRUE,FALSE,'confirmed','photo-guest-token'),
+            ($1,'No','Updates','no-updates@example.test',FALSE,FALSE,'confirmed','no-updates-token')`,
+    [past.id]
+  );
+
+  const collection = await fetch(`${baseUrl}/api/events/${past.id}/photos`, {
+    headers: { cookie: organizerCookie }
+  });
+  const collectionData = await collection.json();
+  assert.equal(collection.status, 200);
+  assert.equal(collectionData.eligibleCount, 1);
+  assert.equal(collectionData.photos.length, 0);
+  assert.match(collectionData.collectionUrl, new RegExp(`/photos/${enabledEvent.photo_upload_token}$`));
+
+  const request = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
+    method: 'POST', headers: { cookie: organizerCookie }
+  });
+  assert.equal(request.status, 200);
+  assert.deepEqual(await request.json(), { sent: 1, total: 1 });
+  const logs = await pool.query(
+    `SELECT recipient, status FROM message_log WHERE event_id=$1 AND message_type='photo_request'`,
+    [past.id]
+  );
+  assert.deepEqual(logs.rows, [{ recipient: 'photo-guest@example.test', status: 'sent' }]);
+
+  const repeated = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
+    method: 'POST', headers: { cookie: organizerCookie }
+  });
+  assert.equal(repeated.status, 409);
+
+  const disabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(disabled.status, 200);
+  const hiddenUploadPage = await fetch(`${baseUrl}/photos/${enabledEvent.photo_upload_token}`);
+  assert.equal(hiddenUploadPage.status, 404);
 });

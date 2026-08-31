@@ -53,7 +53,9 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /link\.download = `\$\{eventData\.slug\}-qr-code\.png`/);
   assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
   assert.match(client, /function setManageReady\(\)/);
-  assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), loadLineStatus\(\), loadFollowers\(\)\]\)/);
+  assert.match(client, /secondaryTasks = eventData\.is_past/);
+  assert.match(client, /\[loadLineStatus\(\), loadFollowers\(\)\]/);
+  assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), \.\.\.secondaryTasks\]\)/);
   assert.match(client, /function showManageLoadError\(\)/);
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];
   assert.doesNotMatch(privateBranch, /line-card/);

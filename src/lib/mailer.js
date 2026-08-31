@@ -467,9 +467,36 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
   });
 }
 
+function photoRequestArtwork(event) {
+  const source = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
+  const imageUrl = emailSafeImageUrl(source);
+  if (!imageUrl) return '';
+  return `<div style="margin:0 0 24px;border-radius:16px;overflow:hidden;background:#111;text-align:center">
+    <img src="${esc(imageUrl)}" width="584" alt="${esc(event.title)} artwork" style="display:block;width:100%;max-width:584px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none">
+  </div>`;
+}
+
+async function sendPhotoRequest({ to, event, organizerLabel, uploadUrl, replyTo }) {
+  return send({
+    to,
+    replyTo,
+    subject: `Share your photos from ${event.title}`,
+    html: layout({
+      kicker: 'After the event',
+      headline: 'Share what you captured.',
+      sub: `${organizerLabel} is collecting photos from ${event.title}.`,
+      bodyHtml: `${photoRequestArtwork(event)}<p style="color:#9a9a9a;font-size:16px;line-height:1.6;margin:0">Upload up to five photos. They’ll be shared privately with ${esc(organizerLabel)}.</p>`,
+      cta: 'Share photos',
+      ctaUrl: uploadUrl,
+      footerHtml: '<p style="color:#666;font-size:12px;text-align:center;line-height:1.6;margin:0">You’re receiving this because you RSVP’d and asked for event updates.</p>',
+      footerBrand: 'Powered by Silver Glider'
+    })
+  });
+}
+
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventAnnouncement, formatTime, renderRsvpConfirmationEmail,
+  sendEventAnnouncement, sendPhotoRequest, formatTime, renderRsvpConfirmationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, rsvpConfirmationSubject
 };
