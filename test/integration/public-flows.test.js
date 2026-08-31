@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.18');
+  assert.equal((await health.json()).version, '1.0.19');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -538,7 +538,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
 
   const recapPage = await fetch(`${baseUrl}/e/past-photo-night`);
   const recapHtml = await recapPage.text();
-  assert.match(recapHtml, /From the night/);
+  assert.match(recapHtml, /Event photos/);
   assert.match(recapHtml, /https:\/\/images\.example\/featured\.jpg/);
   assert.doesNotMatch(recapHtml, /private\.jpg|Private Person|Featured Person/);
 
@@ -549,7 +549,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   });
   assert.equal(unfeature.status, 200);
   const recapRemovedHtml = await (await fetch(`${baseUrl}/e/past-photo-night`)).text();
-  assert.doesNotMatch(recapRemovedHtml, /From the night|featured\.jpg/);
+  assert.doesNotMatch(recapRemovedHtml, /Event photos|featured\.jpg/);
 
   const request = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
     method: 'POST', headers: { cookie: organizerCookie }

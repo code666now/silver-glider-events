@@ -251,7 +251,7 @@ function renderFeaturedPhotos(event, photos) {
       <img src="${esc(recapImageUrl(photo.image_url))}" alt="${esc(event.title)} photo ${index + 1}" loading="lazy" decoding="async">
     </a>`).join('');
   return `<section class="event-recap" aria-labelledby="event-recap-title">
-    <div class="section-heading"><h2 id="event-recap-title">From the night</h2><span>${photos.length}</span></div>
+    <div class="section-heading"><h2 id="event-recap-title">Event photos</h2><span>${photos.length}</span></div>
     <div class="event-recap-grid">${items}</div>
   </section>`;
 }

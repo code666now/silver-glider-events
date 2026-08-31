@@ -39,7 +39,7 @@ test('public recaps require explicit guest consent and host curation', () => {
   assert.match(manageClient, /Feature on page/);
   assert.match(manageClient, /Remove from page/);
   assert.match(publicRoute, /ep\.is_featured=TRUE AND ep\.public_feature_consent=TRUE/);
-  assert.match(publicRoute, />From the night</);
+  assert.match(publicRoute, />Event photos</);
   assert.doesNotMatch(publicRoute.slice(publicRoute.indexOf('function renderFeaturedPhotos'), publicRoute.indexOf('function setAttendeeCookie')), /contributor_name/);
 });
 
