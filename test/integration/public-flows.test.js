@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.19');
+  assert.equal((await health.json()).version, '1.0.20');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -417,6 +417,30 @@ test('enforces RSVP capacity through the live HTTP route and database transactio
       WHERE event_id=(SELECT id FROM events WHERE slug='one-seat') AND status='confirmed'`
   );
   assert.equal(rows[0].count, 1);
+});
+
+test('uses past tense for attendance after a private event passes', async () => {
+  const past = await createEvent({
+    slug: 'past-private-night',
+    title: 'Past Private Night',
+    event_date: '2020-08-10',
+    visibility: 'private',
+    show_guest_list: true,
+    allow_guests: true
+  });
+  await pool.query(
+    `INSERT INTO rsvps
+       (event_id, first_name, last_name, email, guest_first_name, wants_reminders, organizer_optin, status, manage_token)
+     VALUES ($1,'First','Guest','past-one@example.test','Plus One',TRUE,FALSE,'confirmed','past-one-token'),
+            ($1,'Second','Guest','past-two@example.test',NULL,TRUE,FALSE,'confirmed','past-two-token')`,
+    [past.id]
+  );
+
+  const response = await fetch(`${baseUrl}/e/past-private-night`);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /3 people went/);
+  assert.doesNotMatch(html, /3 people are going/);
 });
 
 test('keeps Collect Photos isolated to one Super-Admin-enabled past event', async () => {

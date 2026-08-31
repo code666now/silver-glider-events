@@ -154,6 +154,7 @@ function renderVibe(event) {
 async function loadEventBySlug(slug) {
   const { rows } = await pool.query(
     `SELECT e.*,
+            e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
             COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
             COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
             COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
@@ -198,9 +199,12 @@ function renderGuestList(event, rows) {
     ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false">See everyone</button>'
     : '';
   const count = Number(event.total_attendance) || 0;
+  const attendanceLabel = event.is_past
+    ? `${count} ${count === 1 ? 'person' : 'people'} went`
+    : `${count} ${count === 1 ? 'person is' : 'people are'} going`;
   return `<section class="public-guest-list" aria-labelledby="guest-list-title">
     <div class="section-heading">
-      <h2 id="guest-list-title">${count} ${count === 1 ? 'person is' : 'people are'} going</h2>
+      <h2 id="guest-list-title">${attendanceLabel}</h2>
     </div>
     ${items ? `<ul class="guest-name-list">${items}</ul>` : '<p class="section-empty">Be the first to RSVP.</p>'}
     ${toggle}

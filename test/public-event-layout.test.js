@@ -34,6 +34,13 @@ test('public event sections follow the guest-first vertical hierarchy', () => {
   assert.match(view, /legal-footer\.js/);
 });
 
+test('guest-list attendance copy uses past tense after an event passes', () => {
+  const route = source('src/routes/public.js');
+  assert.match(route, /AS is_past/);
+  assert.match(route, /event\.is_past[\s\S]*'person'[\s\S]*'people'[\s\S]*went/);
+  assert.match(route, /'person is'[\s\S]*'people are'[\s\S]*going/);
+});
+
 test('QR stays available to hosts but is removed from the public event page', () => {
   const view = source('src/views/event-public.html');
   const client = source('public/js/public-event.js');

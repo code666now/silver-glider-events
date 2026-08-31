@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.20
+
+Released August 31, 2026.
+
+### Improved
+
+* Changed the private-event attendance heading to past tense after the event date, such as “17 people went.”
+* Preserved the existing “are going” wording for upcoming events and correct singular grammar.
+
 ## 1.0.19
 
 Released August 31, 2026.
