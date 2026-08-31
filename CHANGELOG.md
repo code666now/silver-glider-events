@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.17
+
+Released August 31, 2026.
+
+### Improved
+
+* Shortened Collect Photos sharing links to a 22-character, 128-bit secure token under `/p/`.
+* Automatically issues a short link for photo collections enabled before this release.
+* Preserved every existing long Collect Photos link for backward compatibility.
+
 ## 1.0.16
 
 Released August 31, 2026.

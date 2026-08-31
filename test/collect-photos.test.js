@@ -8,12 +8,15 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('Collect Photos Beta is additive, event-scoped, and disabled by default', () => {
   const migration = read('src/db/migrations/021_collect_photos_beta.sql');
+  const shortLinks = read('src/db/migrations/022_short_photo_links.sql');
   assert.match(migration, /collect_photos_enabled BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(migration, /photo_upload_token TEXT/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS event_photos/);
   assert.match(migration, /event_id\s+INT NOT NULL REFERENCES events\(id\) ON DELETE CASCADE/);
   assert.match(migration, /'photo_request'/);
   assert.doesNotMatch(migration, /ALTER TABLE rsvps ADD|ALTER TABLE organizers ADD/);
+  assert.match(shortLinks, /photo_short_token TEXT/);
+  assert.match(shortLinks, /events_photo_short_token_uq/);
 });
 
 test('Super Admin enables Collect Photos only on an individual published past event', () => {
@@ -23,6 +26,7 @@ test('Super Admin enables Collect Photos only on an individual published past ev
   assert.match(route, /req\.body\.enabled/);
   assert.match(route, /Collect Photos can only be enabled for published past events/);
   assert.match(route, /COALESCE\(photo_upload_token,\$3\)/);
+  assert.match(route, /COALESCE\(photo_short_token,\$4\)/);
   assert.match(view, /data-collect-event/);
   assert.match(view, /Collect Photos: \$\{event\.collect_photos_enabled \? 'On' : 'Off'\}/);
   assert.match(view, /event\.is_past && event\.status === 'published'/);
@@ -32,7 +36,11 @@ test('public photo collection is private-by-default and bounded', () => {
   const route = read('src/routes/event-photos.js');
   const view = read('src/views/event-photo-upload.html');
   const client = read('public/js/photo-upload.js');
-  assert.match(route, /TOKEN_RE = \/\^\[a-f0-9\]\{48\}\$\//);
+  assert.match(route, /LEGACY_TOKEN_RE = \/\^\[a-f0-9\]\{48\}\$\//);
+  assert.match(route, /SHORT_TOKEN_RE = \/\^\[A-Za-z0-9_-\]\{22\}\$\//);
+  assert.match(route, /crypto\.randomBytes\(16\)\.toString\('base64url'\)/);
+  assert.match(route, /router\.get\(\['\/photos\/:token', '\/p\/:token'\]/);
+  assert.match(route, /photo_upload_token=\$1 OR e\.photo_short_token=\$1/);
   assert.match(route, /collect_photos_enabled=TRUE/);
   assert.match(route, /event_date < \(CURRENT_TIMESTAMP AT TIME ZONE e\.timezone\)::date/);
   assert.match(route, /limits: \{ fileSize: 5 \* 1024 \* 1024, files: 5 \}/);

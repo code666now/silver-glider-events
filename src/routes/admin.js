@@ -108,14 +108,16 @@ router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
     }
 
     const token = crypto.randomBytes(24).toString('hex');
+    const shortToken = crypto.randomBytes(16).toString('base64url');
     const { rows } = await pool.query(
       `UPDATE events
           SET collect_photos_enabled=$2,
               photo_upload_token=CASE WHEN $2 THEN COALESCE(photo_upload_token,$3) ELSE photo_upload_token END,
+              photo_short_token=CASE WHEN $2 THEN COALESCE(photo_short_token,$4) ELSE photo_short_token END,
               updated_at=NOW()
         WHERE id=$1
-      RETURNING id, collect_photos_enabled, photo_upload_token`,
-      [id, req.body.enabled, token]
+      RETURNING id, collect_photos_enabled, photo_upload_token, photo_short_token`,
+      [id, req.body.enabled, token, shortToken]
     );
     res.json({ event: rows[0] });
   } catch (err) { next(err); }

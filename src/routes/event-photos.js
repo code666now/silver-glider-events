@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
@@ -11,7 +12,8 @@ const { esc, render404 } = require('../lib/public-html');
 
 const router = express.Router();
 const uploadTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-photo-upload.html'), 'utf8');
-const TOKEN_RE = /^[a-f0-9]{48}$/;
+const LEGACY_TOKEN_RE = /^[a-f0-9]{48}$/;
+const SHORT_TOKEN_RE = /^[A-Za-z0-9_-]{22}$/;
 const MAX_PHOTOS_PER_EVENT = 500;
 const PHOTO_RATE_WINDOW_MS = 60 * 60 * 1000;
 const photoRateLimiter = createRateLimiter({
@@ -46,8 +48,32 @@ function handlePhotoUpload(req, res, next) {
 }
 
 function validToken(value) {
-  const token = String(value || '').trim().toLowerCase();
-  return TOKEN_RE.test(token) ? token : '';
+  const token = String(value || '').trim();
+  if (SHORT_TOKEN_RE.test(token)) return token;
+  const legacyToken = token.toLowerCase();
+  return LEGACY_TOKEN_RE.test(legacyToken) ? legacyToken : '';
+}
+
+function newShortToken() {
+  return crypto.randomBytes(16).toString('base64url');
+}
+
+async function ensureShortToken(eventId, organizerId) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const { rows } = await pool.query(
+        `UPDATE events
+            SET photo_short_token=COALESCE(photo_short_token,$3), updated_at=NOW()
+          WHERE id=$1 AND organizer_id=$2 AND collect_photos_enabled=TRUE
+        RETURNING photo_short_token`,
+        [eventId, organizerId, newShortToken()]
+      );
+      return rows[0]?.photo_short_token || null;
+    } catch (err) {
+      if (err.code !== '23505' || attempt === 2) throw err;
+    }
+  }
+  return null;
 }
 
 function appBaseUrl() {
@@ -60,7 +86,8 @@ async function publicCollection(token) {
     `SELECT e.id, e.title, e.event_date, e.cover_image_url, e.flyer_image_url,
             e.presentation_mode, o.org_name, o.name AS organizer_name
        FROM events e JOIN organizers o ON o.id=e.organizer_id
-      WHERE e.photo_upload_token=$1 AND e.collect_photos_enabled=TRUE
+      WHERE (e.photo_upload_token=$1 OR e.photo_short_token=$1)
+        AND e.collect_photos_enabled=TRUE
         AND e.status='published'
         AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date`,
     [token]
@@ -68,7 +95,7 @@ async function publicCollection(token) {
   return rows[0] || null;
 }
 
-router.get('/photos/:token', async (req, res, next) => {
+router.get(['/photos/:token', '/p/:token'], async (req, res, next) => {
   try {
     const token = validToken(req.params.token);
     const event = await publicCollection(token);
@@ -147,8 +174,9 @@ router.post('/api/public/photo-collections/:token', (req, res, next) => {
 
 router.get('/api/events/:id/photos', requireOrganizer, async (req, res, next) => {
   try {
+    await ensureShortToken(req.params.id, req.organizer.id);
     const { rows: events } = await pool.query(
-      `SELECT e.id, e.title, e.collect_photos_enabled, e.photo_upload_token,
+      `SELECT e.id, e.title, e.collect_photos_enabled, e.photo_upload_token, e.photo_short_token,
               e.photo_request_sent_at, e.photo_request_sent_count,
               e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
               COALESCE((SELECT COUNT(*) FROM rsvps r
@@ -169,7 +197,7 @@ router.get('/api/events/:id/photos', requireOrganizer, async (req, res, next) =>
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       photos,
-      collectionUrl: `${appBaseUrl()}/photos/${event.photo_upload_token}`,
+      collectionUrl: `${appBaseUrl()}/p/${event.photo_short_token || event.photo_upload_token}`,
       requestSentAt: event.photo_request_sent_at,
       requestSentCount: event.photo_request_sent_count,
       eligibleCount: event.eligible_count
@@ -179,10 +207,11 @@ router.get('/api/events/:id/photos', requireOrganizer, async (req, res, next) =>
 
 router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, next) => {
   try {
+    await ensureShortToken(req.params.id, req.organizer.id);
     const { rows: claimed } = await pool.query(
       `UPDATE events e SET photo_request_sent_at=NOW(), photo_request_sent_count=0, updated_at=NOW()
         WHERE e.id=$1 AND e.organizer_id=$2 AND e.collect_photos_enabled=TRUE
-          AND e.status='published' AND e.photo_upload_token IS NOT NULL
+          AND e.status='published' AND (e.photo_short_token IS NOT NULL OR e.photo_upload_token IS NOT NULL)
           AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
           AND e.photo_request_sent_at IS NULL
       RETURNING e.*`,
@@ -203,7 +232,7 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
       [event.id]
     );
     const organizerLabel = req.organizer.org_name || req.organizer.name || 'the host';
-    const uploadUrl = `${appBaseUrl()}/photos/${event.photo_upload_token}`;
+    const uploadUrl = `${appBaseUrl()}/p/${event.photo_short_token || event.photo_upload_token}`;
     let sent = 0;
     for (const recipient of recipients) {
       let logId = null;

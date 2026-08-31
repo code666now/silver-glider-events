@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.16');
+  assert.equal((await health.json()).version, '1.0.17');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -456,14 +456,16 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   const enabledEvent = (await enabled.json()).event;
   assert.equal(enabledEvent.collect_photos_enabled, true);
   assert.match(enabledEvent.photo_upload_token, /^[a-f0-9]{48}$/);
+  assert.match(enabledEvent.photo_short_token, /^[A-Za-z0-9_-]{22}$/);
 
   const state = await pool.query(
-    'SELECT id, collect_photos_enabled, photo_upload_token FROM events WHERE id IN ($1,$2) ORDER BY id',
+    'SELECT id, collect_photos_enabled, photo_upload_token, photo_short_token FROM events WHERE id IN ($1,$2) ORDER BY id',
     [past.id, future.id]
   );
   assert.equal(state.rows.find(event => event.id === past.id).collect_photos_enabled, true);
   assert.equal(state.rows.find(event => event.id === future.id).collect_photos_enabled, false);
   assert.equal(state.rows.find(event => event.id === future.id).photo_upload_token, null);
+  assert.equal(state.rows.find(event => event.id === future.id).photo_short_token, null);
 
   const uploadPage = await fetch(`${baseUrl}/photos/${enabledEvent.photo_upload_token}`);
   const uploadHtml = await uploadPage.text();
@@ -471,6 +473,10 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.match(uploadHtml, /Share your photos from Past Photo Night/);
   assert.match(uploadHtml, /No account needed/);
   assert.equal(uploadPage.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
+
+  // Simulate an event enabled before short links existed. Owner access backfills
+  // a short token without invalidating its already-shared legacy URL.
+  await pool.query('UPDATE events SET photo_short_token=NULL WHERE id=$1', [past.id]);
 
   const normalEventPage = await fetch(`${baseUrl}/e/past-photo-night`);
   const normalEventHtml = await normalEventPage.text();
@@ -491,7 +497,10 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(collection.status, 200);
   assert.equal(collectionData.eligibleCount, 1);
   assert.equal(collectionData.photos.length, 0);
-  assert.match(collectionData.collectionUrl, new RegExp(`/photos/${enabledEvent.photo_upload_token}$`));
+  assert.match(collectionData.collectionUrl, /\/p\/[A-Za-z0-9_-]{22}$/);
+  const shortPath = new URL(collectionData.collectionUrl).pathname;
+  const shortUploadPage = await fetch(`${baseUrl}${shortPath}`);
+  assert.equal(shortUploadPage.status, 200);
 
   const request = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
     method: 'POST', headers: { cookie: organizerCookie }
@@ -517,4 +526,6 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(disabled.status, 200);
   const hiddenUploadPage = await fetch(`${baseUrl}/photos/${enabledEvent.photo_upload_token}`);
   assert.equal(hiddenUploadPage.status, 404);
+  const hiddenShortUploadPage = await fetch(`${baseUrl}${shortPath}`);
+  assert.equal(hiddenShortUploadPage.status, 404);
 });
