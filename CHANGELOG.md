@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.24
+
+Released September 1, 2026.
+
+### Improved
+
+* Restored the venue address field directly beneath Venue so address autofill remains visible during event setup.
+* Kept admission, ticket fields, and public or private visibility permanently visible in the event editor.
+* Limited progressive disclosure to genuinely optional host, description, and Event Vibe content.
+
 ## 1.0.23
 
 Released September 1, 2026.

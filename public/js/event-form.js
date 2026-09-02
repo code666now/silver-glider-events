@@ -186,7 +186,6 @@ function setSecretShow(enabled, { focus = false } = {}) {
 
 $('secret_show_enabled').addEventListener('change', event => setSecretShow(event.target.checked, { focus: event.target.checked }));
 $('create-secret-show').addEventListener('click', () => {
-  $('audience-settings').open = true;
   setSecretShow(true, { focus: true });
 });
 ['secret_code','secret_code_confirm'].forEach(id => $(id).addEventListener('input', event => {
@@ -845,10 +844,7 @@ if (editId) {
     setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
-    $('more-details').open = Boolean(event.description || event.event_vibe_url || event.event_vibe_url_2 || event.venue_address);
-    $('audience-settings').open = Boolean(
-      event.category || event.capacity || event.admission_type === 'paid' || event.visibility === 'private'
-    );
+    $('more-details').open = Boolean(event.description || event.event_vibe_url || event.event_vibe_url_2);
     if (event.cover_image_url) {
       setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link, { preserveFit: true });
     }

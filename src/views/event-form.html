@@ -220,6 +220,21 @@
     .event-editor-disclosure summary small { color: var(--sg-text-faint); font-size: 12px; font-weight: 500; line-height: 1.45; }
     .event-editor-disclosure-body { padding: 4px 16px 2px; border-top: 1px solid var(--sg-border-soft); }
     .event-editor-disclosure-body > .sg-field:first-child { margin-top: 16px; }
+    .event-editor-open-section {
+      margin: 18px 0 0;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 16px;
+      background: rgba(255,255,255,.018);
+      overflow: hidden;
+    }
+    .event-editor-open-section-heading {
+      display: grid;
+      gap: 2px;
+      padding: 16px;
+      border-bottom: 1px solid var(--sg-border-soft);
+    }
+    .event-editor-open-section-heading span { color: var(--sg-text); font-size: 14px; font-weight: 700; }
+    .event-editor-open-section-heading small { color: var(--sg-text-faint); font-size: 12px; font-weight: 500; line-height: 1.45; }
     .places-status {
       margin-top: 7px;
       color: var(--sg-text-faint);
@@ -826,6 +841,11 @@
         <input class="sg-input" id="venue_name" maxlength="140" required placeholder="Make Out Room">
         <p class="places-status" id="places-status"></p>
       </div>
+
+      <div class="sg-field">
+        <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="sg-input" id="venue_address" placeholder="3225 22nd St, San Francisco">
+      </div>
       <input type="hidden" id="venue_city">
       <input type="hidden" id="venue_state">
       <input type="hidden" id="venue_latitude">
@@ -833,7 +853,7 @@
       <input type="hidden" id="google_place_id">
 
       <details class="event-editor-disclosure" id="more-details">
-        <summary><span>Add more details<small>Host, description, music, and address</small></span></summary>
+        <summary><span>Add more details<small>Host, description, and music</small></span></summary>
         <div class="event-editor-disclosure-body">
           <div class="sg-field">
             <label for="presenter_name">Presented by <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
@@ -867,16 +887,14 @@
               <p class="vibe-editor-help" id="vibe-editor-help">Add one link for a simple Event Vibe, or offer guests a choice between two artists.</p>
             </div>
           </div>
-
-          <div class="sg-field">
-            <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-            <input class="sg-input" id="venue_address" placeholder="3225 22nd St, San Francisco">
-          </div>
         </div>
       </details>
 
-      <details class="event-editor-disclosure" id="audience-settings">
-        <summary><span>Audience settings<small>Category, capacity, admission, and access</small></span></summary>
+      <section class="event-editor-open-section" id="audience-settings" aria-labelledby="audience-settings-title">
+        <header class="event-editor-open-section-heading">
+          <span id="audience-settings-title">Tickets and visibility</span>
+          <small>Choose admission and who can find this event.</small>
+        </header>
         <div class="event-editor-disclosure-body">
           <div class="row2">
             <div class="sg-field">
@@ -927,7 +945,7 @@
             </div>
           </div>
         </div>
-      </details>
+      </section>
 
       <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>
       </div>
