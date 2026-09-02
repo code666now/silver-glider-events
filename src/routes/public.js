@@ -254,7 +254,7 @@ function renderFeaturedPhotos(event, photos) {
   const items = photos.map((photo, index) => `<a href="${esc(photo.image_url)}" target="_blank" rel="noopener" aria-label="Open ${esc(event.title)} photo ${index + 1}">
       <img src="${esc(recapImageUrl(photo.image_url))}" alt="${esc(event.title)} photo ${index + 1}" loading="lazy" decoding="async">
     </a>`).join('');
-  return `<section class="event-recap" aria-labelledby="event-recap-title">
+  return `<section class="event-recap" id="event-recap" aria-labelledby="event-recap-title">
     <div class="section-heading"><h2 id="event-recap-title">Event photos</h2><span>${photos.length}</span></div>
     <div class="event-recap-grid">${items}</div>
   </section>`;
@@ -370,21 +370,40 @@ router.get('/e/:slug', async (req, res, next) => {
         </div>`
       : '';
     const isPaid = event.admission_type === 'paid';
-    const ticketHtml = isPaid
+    const ticketHtml = event.is_past
+      ? ''
+      : isPaid
       ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
     const vibeHtml = renderVibe(event);
     const flyerAction = flyerPrimaryAction(event);
-    const flyerPrimaryActionHtml = flyerAction.type === 'ticket'
+    const recapHref = featuredPhotos.length ? '#event-recap' : '';
+    const endedActionHtml = recapHref
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" data-primary-action="recap" href="${recapHref}">View event photos</a>`
+      : '<p class="event-ended-note">This event has ended.</p>';
+    const endedMobileActionHtml = recapHref
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${recapHref}">View event photos</a>`
+      : '';
+    const standardPrimaryActionHtml = event.is_past
+      ? endedActionHtml
+      : '<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP</button>';
+    const standardMobileActionHtml = event.is_past
+      ? endedMobileActionHtml
+      : '<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button>';
+    const flyerPrimaryActionHtml = event.is_past
+      ? endedActionHtml
+      : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
-    const flyerSecondaryActionHtml = flyerAction.secondaryRsvp
+    const flyerSecondaryActionHtml = !event.is_past && flyerAction.secondaryRsvp
       ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
       : '';
-    const flyerActionSupportHtml = flyerAction.supportingText
+    const flyerActionSupportHtml = !event.is_past && flyerAction.supportingText
       ? `<p class="primary-action-support">${esc(flyerAction.supportingText)}</p>`
       : '';
-    const flyerMobileActionHtml = flyerAction.type === 'ticket'
+    const flyerMobileActionHtml = event.is_past
+      ? endedMobileActionHtml
+      : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
@@ -443,6 +462,7 @@ router.get('/e/:slug', async (req, res, next) => {
       status: event.status,
       isFull,
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
+      isPast: event.is_past,
       coverImageUrl: primaryImageUrl || null,
       coverFitMode,
       bgEffect: isEffect ? theme : null
@@ -474,7 +494,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
-      .replace(/{{RSVP_CTA}}/g, 'RSVP')
+      .replace(/{{STANDARD_PRIMARY_ACTION_HTML}}/g, standardPrimaryActionHtml)
+      .replace(/{{STANDARD_MOBILE_ACTION_HTML}}/g, standardMobileActionHtml)
       .replace(/{{FLYER_VENUE_HTML}}/g, flyerVenueHtml)
       .replace(/{{PRIMARY_ACTION_HTML}}/g, flyerPrimaryActionHtml)
       .replace(/{{PRIMARY_ACTION_SUPPORT_HTML}}/g, flyerActionSupportHtml)
@@ -592,7 +613,9 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 
     await client.query('BEGIN');
     const { rows: evRows } = await client.query(
-      `SELECT e.*, o.org_name, o.public_slug AS organizer_public_slug
+      `SELECT e.*,
+              e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+              o.org_name, o.public_slug AS organizer_public_slug
          FROM events e JOIN organizers o ON o.id=e.organizer_id
         WHERE e.slug=$1 AND e.status='published'
         FOR UPDATE OF e`, [req.params.slug]
@@ -602,6 +625,10 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       return res.status(404).json({ error: 'Event not found' });
     }
     const event = evRows[0];
+    if (event.is_past) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'event_ended', message: 'This event has ended.' });
+    }
     if (secretShowLocked(req, event)) {
       await client.query('ROLLBACK');
       return rejectLockedSecret(res);

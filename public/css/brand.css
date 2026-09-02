@@ -11,7 +11,7 @@
   --sg-accent-press: #0FA39D;
   --sg-text: #f0f0f0;
   --sg-text-dim: #999999;
-  --sg-text-faint: #555555;
+  --sg-text-faint: #787878;
   --sg-danger: #e05252;
   --sg-radius-card: 24px;
   --sg-radius-input: 12px;
@@ -176,7 +176,8 @@ a { color: var(--sg-accent); text-decoration: none; }
   transition: border-color 0.15s ease;
 }
 .sg-input:focus, .sg-select:focus, .sg-textarea:focus {
-  outline: none;
+  outline: 2px solid rgba(28, 197, 190, 0.32);
+  outline-offset: 2px;
   border-color: var(--sg-accent);
 }
 .sg-input[type='date'], .sg-input[type='time'] {

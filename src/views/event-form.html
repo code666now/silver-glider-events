@@ -67,7 +67,7 @@
     }
     .page-style-option input:checked + span { background: rgba(28,197,190,.14); color: var(--sg-accent); }
     .page-style-option input:focus-visible + span { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
-    .page-style-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
+    .page-style-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
     .media-panel[hidden] { display: none; }
     .cover-fit-control { margin: -4px 0 24px; padding: 0; border: 0; }
     .cover-fit-control[hidden] { display: none; }
@@ -94,7 +94,7 @@
     }
     .cover-fit-option input:checked + span { background: rgba(28,197,190,.14); color: var(--sg-accent); }
     .cover-fit-option input:focus-visible + span { outline: 2px solid var(--sg-accent); outline-offset: 1px; }
-    .cover-fit-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
+    .cover-fit-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
     .flyer-drop {
       position: relative;
       min-height: 280px;
@@ -115,7 +115,7 @@
     .flyer-drop.has-image img { display: block; }
     .flyer-drop.has-image .hint { display: none; }
     .flyer-drop .hint { color: var(--sg-text-faint); font-size: 13px; line-height: 1.55; text-align: center; }
-    .flyer-help { color: var(--sg-text-faint); font-size: 11px; line-height: 1.55; margin: 0 0 24px; }
+    .flyer-help { color: var(--sg-text-faint); font-size: 12px; line-height: 1.55; margin: 0 0 24px; }
     .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
     .row2 > * { min-width: 0; }
     .row2 .sg-input { min-width: 0; width: 100%; }
@@ -137,7 +137,7 @@
     .vibe-choice-fields[hidden] { display: none; }
     .vibe-editor-actions { display: flex; justify-content: flex-start; gap: 10px; margin-top: 10px; }
     .vibe-editor-actions .sg-btn { padding: 9px 14px; font-size: 12px; }
-    .vibe-editor-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
+    .vibe-editor-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
     .vis-toggle { display: flex; gap: 10px; }
     .vis-toggle button {
       flex: 1; padding: 12px; border-radius: 999px; font-family: var(--sg-font-body);
@@ -171,14 +171,14 @@
       accent-color: var(--sg-accent);
     }
     .private-option strong { display: block; color: var(--sg-text); font-size: 14px; }
-    .private-option span { display: block; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; }
+    .private-option span { display: block; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
     .secret-shortcut {
       display:flex;align-items:center;justify-content:space-between;gap:18px;
       margin:0 0 24px;padding:18px 20px;border:1px solid rgba(28,197,190,.18);
       border-radius:17px;background:linear-gradient(120deg,rgba(28,197,190,.055),rgba(255,255,255,.015));
     }
     .secret-shortcut strong { display:block;margin-bottom:3px;font-size:14px; }
-    .secret-shortcut span { display:block;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
+    .secret-shortcut span { display:block;color:var(--sg-text-faint);font-size:12px;line-height:1.5; }
     .secret-shortcut .sg-btn { flex:0 0 auto;padding:9px 16px;font-size:11px; }
     .secret-option { margin-top:3px;padding-top:14px;border-top:1px solid var(--sg-border-soft); }
     .secret-code-fields { display:none;grid-template-columns:1fr 1fr;gap:12px;padding:4px 0 2px; }
@@ -187,6 +187,39 @@
     .secret-code-help { grid-column:1/-1;color:var(--sg-text-faint);font-size:10px;line-height:1.55; }
     .admission-fields { display: none; }
     .admission-fields.show { display: grid; }
+    .event-editor-disclosure {
+      margin: 18px 0 0;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 16px;
+      background: rgba(255,255,255,.018);
+      overflow: hidden;
+    }
+    .event-editor-disclosure summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 56px;
+      padding: 14px 16px;
+      color: var(--sg-text);
+      cursor: pointer;
+      list-style: none;
+    }
+    .event-editor-disclosure summary::-webkit-details-marker { display: none; }
+    .event-editor-disclosure summary::after {
+      content: '+';
+      flex: 0 0 auto;
+      color: var(--sg-accent);
+      font-size: 22px;
+      font-weight: 400;
+      line-height: 1;
+    }
+    .event-editor-disclosure[open] summary::after { content: '−'; }
+    .event-editor-disclosure summary:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: -3px; }
+    .event-editor-disclosure summary span { display: grid; gap: 2px; font-size: 14px; font-weight: 700; }
+    .event-editor-disclosure summary small { color: var(--sg-text-faint); font-size: 12px; font-weight: 500; line-height: 1.45; }
+    .event-editor-disclosure-body { padding: 4px 16px 2px; border-top: 1px solid var(--sg-border-soft); }
+    .event-editor-disclosure-body > .sg-field:first-child { margin-top: 16px; }
     .places-status {
       margin-top: 7px;
       color: var(--sg-text-faint);
@@ -769,51 +802,6 @@
         <input class="sg-input" id="title" maxlength="140" required placeholder="Vinyl Night at Make Out Room">
       </div>
 
-      <div class="sg-field">
-        <label for="presenter_name">Presented by <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="presenter_name" maxlength="100" placeholder="Heat Wave Booking">
-        <p id="presenter-help" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">Add a promoter or host name to create a reusable public host page.</p>
-      </div>
-
-      <div class="sg-field">
-        <label for="description">Description <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <textarea class="sg-textarea" id="description" placeholder="What should people know?"></textarea>
-      </div>
-
-      <div class="sg-field">
-        <label for="event_vibe_url">What does this event sound like? <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <div class="vibe-editor">
-          <div class="sg-field" id="vibe-single-link">
-            <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link." aria-label="Event Vibe link">
-          </div>
-          <div class="vibe-choice-fields" id="vibe-choice-one" hidden>
-            <div class="sg-field">
-              <label for="event_vibe_label">Artist name</label>
-              <input class="sg-input" id="event_vibe_label" maxlength="80" placeholder="Fire in the Sky">
-            </div>
-            <div class="sg-field">
-              <label for="event_vibe_url_labeled">Artist link</label>
-              <input class="sg-input" id="event_vibe_url_labeled" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp">
-            </div>
-          </div>
-          <div class="vibe-choice-fields" id="vibe-choice-two" hidden>
-            <div class="sg-field">
-              <label for="event_vibe_label_2">Second artist</label>
-              <input class="sg-input" id="event_vibe_label_2" maxlength="80" placeholder="TL Tramps">
-            </div>
-            <div class="sg-field">
-              <label for="event_vibe_url_2">Artist link</label>
-              <input class="sg-input" id="event_vibe_url_2" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp">
-            </div>
-          </div>
-          <div class="vibe-editor-actions">
-            <button class="sg-btn sg-btn-ghost" id="add-vibe-choice" type="button">+ Add another artist</button>
-            <button class="sg-btn sg-btn-ghost" id="remove-vibe-choice" type="button" hidden>Remove second artist</button>
-          </div>
-          <p class="vibe-editor-help" id="vibe-editor-help">Add one link for a simple Event Vibe, or offer guests a choice between two artists.</p>
-        </div>
-      </div>
-
       <p class="event-editor-group-heading">When &amp; where</p>
 
       <div class="row2">
@@ -838,91 +826,108 @@
         <input class="sg-input" id="venue_name" maxlength="140" required placeholder="Make Out Room">
         <p class="places-status" id="places-status"></p>
       </div>
-
-      <div class="sg-field">
-        <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-        <input class="sg-input" id="venue_address" placeholder="3225 22nd St, San Francisco">
-      </div>
       <input type="hidden" id="venue_city">
       <input type="hidden" id="venue_state">
       <input type="hidden" id="venue_latitude">
       <input type="hidden" id="venue_longitude">
       <input type="hidden" id="google_place_id">
 
-      <p class="event-editor-group-heading">Audience &amp; access</p>
-
-      <div class="row2">
-        <div class="sg-field">
-          <label for="category">Category</label>
-          <select class="sg-select" id="category">
-            <option value="">Choose…</option>
-            <option>Music</option><option>Art</option><option>Market</option><option>Party</option>
-            <option>Community</option><option>Food & Drink</option><option>Film</option><option>Other</option>
-          </select>
-        </div>
-        <div class="sg-field">
-          <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-          <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
-        </div>
-      </div>
-
-      <div class="sg-field">
-        <label>Admission</label>
-        <div class="vis-toggle">
-          <button type="button" id="admission-free" class="on">Free RSVP</button>
-          <button type="button" id="admission-paid">Paid elsewhere</button>
-        </div>
-      </div>
-
-      <div class="row2 admission-fields" id="ticket-fields">
-        <div class="sg-field">
-          <label for="ticket_price">Ticket price</label>
-          <input class="sg-input" type="number" id="ticket_price" min="0.01" step="0.01" placeholder="15">
-        </div>
-        <div class="sg-field">
-          <label for="ticket_url">Ticket link <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-          <input class="sg-input" type="url" id="ticket_url" placeholder="At the door, or paste https://...">
-        </div>
-      </div>
-
-      <div class="sg-field">
-        <label>Visibility</label>
-        <div class="vis-toggle">
-          <button type="button" id="vis-public" class="on">Public</button>
-          <button type="button" id="vis-private">Private — link only</button>
-        </div>
-      </div>
-
-      <div class="private-settings" id="private-settings">
-        <p>Anyone with the direct link can view this event. It will not appear on your public host page or in Silver Glider discovery.</p>
-        <label class="private-option">
-          <input type="checkbox" id="show_guest_list">
-          <span><strong>Show guest list</strong>Display first names only on the event page.</span>
-        </label>
-        <label class="private-option">
-          <input type="checkbox" id="allow_guests">
-          <span><strong>Allow guests</strong>Each RSVP may bring one named guest.</span>
-        </label>
-        <label class="private-option">
-          <input type="checkbox" id="comments_enabled">
-          <span><strong>Enable comments</strong>Confirmed attendees can post to a simple comments section.</span>
-        </label>
-        <label class="private-option secret-option">
-          <input type="checkbox" id="secret_show_enabled">
-          <span><strong>Secret Show Mode</strong>Guests must enter a code before they can view the event.</span>
-        </label>
-        <div class="secret-code-fields" id="secret-code-fields">
+      <details class="event-editor-disclosure" id="more-details">
+        <summary><span>Add more details<small>Host, description, music, and address</small></span></summary>
+        <div class="event-editor-disclosure-body">
           <div class="sg-field">
-            <label for="secret_code">Access code</label>
-            <input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers">
+            <label for="presenter_name">Presented by <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <input class="sg-input" id="presenter_name" maxlength="100" placeholder="Heat Wave Booking">
+            <p id="presenter-help" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">Add a promoter or host name to create a reusable public host page.</p>
           </div>
+
           <div class="sg-field">
-            <label for="secret_code_confirm">Confirm access code</label>
-            <input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again">
+            <label for="description">Description <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <textarea class="sg-textarea" id="description" placeholder="What should people know?"></textarea>
           </div>
-          <p class="secret-code-help" id="secret-code-help">Guests must enter this code before they can view the event.</p>
+
+          <div class="sg-field">
+            <label for="event_vibe_url">What does this event sound like? <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <div class="vibe-editor">
+              <div class="sg-field" id="vibe-single-link">
+                <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link." aria-label="Event Vibe link">
+              </div>
+              <div class="vibe-choice-fields" id="vibe-choice-one" hidden>
+                <div class="sg-field"><label for="event_vibe_label">Artist name</label><input class="sg-input" id="event_vibe_label" maxlength="80" placeholder="Fire in the Sky"></div>
+                <div class="sg-field"><label for="event_vibe_url_labeled">Artist link</label><input class="sg-input" id="event_vibe_url_labeled" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
+              </div>
+              <div class="vibe-choice-fields" id="vibe-choice-two" hidden>
+                <div class="sg-field"><label for="event_vibe_label_2">Second artist</label><input class="sg-input" id="event_vibe_label_2" maxlength="80" placeholder="TL Tramps"></div>
+                <div class="sg-field"><label for="event_vibe_url_2">Artist link</label><input class="sg-input" id="event_vibe_url_2" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
+              </div>
+              <div class="vibe-editor-actions">
+                <button class="sg-btn sg-btn-ghost" id="add-vibe-choice" type="button">+ Add another artist</button>
+                <button class="sg-btn sg-btn-ghost" id="remove-vibe-choice" type="button" hidden>Remove second artist</button>
+              </div>
+              <p class="vibe-editor-help" id="vibe-editor-help">Add one link for a simple Event Vibe, or offer guests a choice between two artists.</p>
+            </div>
+          </div>
+
+          <div class="sg-field">
+            <label for="venue_address">Address <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <input class="sg-input" id="venue_address" placeholder="3225 22nd St, San Francisco">
+          </div>
         </div>
-      </div>
+      </details>
+
+      <details class="event-editor-disclosure" id="audience-settings">
+        <summary><span>Audience settings<small>Category, capacity, admission, and access</small></span></summary>
+        <div class="event-editor-disclosure-body">
+          <div class="row2">
+            <div class="sg-field">
+              <label for="category">Category</label>
+              <select class="sg-select" id="category">
+                <option value="">Choose…</option>
+                <option>Music</option><option>Art</option><option>Market</option><option>Party</option>
+                <option>Community</option><option>Food & Drink</option><option>Film</option><option>Other</option>
+              </select>
+            </div>
+            <div class="sg-field">
+              <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+              <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
+            </div>
+          </div>
+
+          <div class="sg-field">
+            <label>Admission</label>
+            <div class="vis-toggle">
+              <button type="button" id="admission-free" class="on">Free RSVP</button>
+              <button type="button" id="admission-paid">Paid elsewhere</button>
+            </div>
+          </div>
+
+          <div class="row2 admission-fields" id="ticket-fields">
+            <div class="sg-field"><label for="ticket_price">Ticket price</label><input class="sg-input" type="number" id="ticket_price" min="0.01" step="0.01" placeholder="15"></div>
+            <div class="sg-field"><label for="ticket_url">Ticket link <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="url" id="ticket_url" placeholder="At the door, or paste https://..."></div>
+          </div>
+
+          <div class="sg-field">
+            <label>Visibility</label>
+            <div class="vis-toggle">
+              <button type="button" id="vis-public" class="on">Public</button>
+              <button type="button" id="vis-private">Private — link only</button>
+            </div>
+          </div>
+
+          <div class="private-settings" id="private-settings">
+            <p>Anyone with the direct link can view this event. It will not appear on your public host page or in Silver Glider discovery.</p>
+            <label class="private-option"><input type="checkbox" id="show_guest_list"><span><strong>Show guest list</strong>Display first names only on the event page.</span></label>
+            <label class="private-option"><input type="checkbox" id="allow_guests"><span><strong>Allow guests</strong>Each RSVP may bring one named guest.</span></label>
+            <label class="private-option"><input type="checkbox" id="comments_enabled"><span><strong>Enable comments</strong>Confirmed attendees can post to a simple comments section.</span></label>
+            <label class="private-option secret-option"><input type="checkbox" id="secret_show_enabled"><span><strong>Secret Show Mode</strong>Guests must enter a code before they can view the event.</span></label>
+            <div class="secret-code-fields" id="secret-code-fields">
+              <div class="sg-field"><label for="secret_code">Access code</label><input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers"></div>
+              <div class="sg-field"><label for="secret_code_confirm">Confirm access code</label><input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again"></div>
+              <p class="secret-code-help" id="secret-code-help">Guests must enter this code before they can view the event.</p>
+            </div>
+          </div>
+        </div>
+      </details>
 
       <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>
       </div>

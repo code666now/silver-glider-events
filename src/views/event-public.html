@@ -360,6 +360,7 @@
     .actions .sg-btn { flex: 1; padding: 12px; font-size: 13px; }
 
     .rsvp-zone { margin-bottom: 44px; }
+    .event-ended-note { color: var(--sg-text-dim); font-size: 14px; text-align: center; }
     .mobile-rsvp-dock { display: none; }
     .mobile-rsvp-dock[hidden] { display: none; }
     #rsvp-form-box { display: none; margin-top: 20px; }
@@ -596,7 +597,7 @@
 
     <div class="rsvp-zone">
       <div id="cta-state">
-        <button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">{{RSVP_CTA}}</button>
+        {{STANDARD_PRIMARY_ACTION_HTML}}
       </div>
 
       <div id="rsvp-form-box">
@@ -654,7 +655,7 @@
   </div><!-- /layout -->
 
   <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
-    <button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">{{RSVP_CTA}}</button>
+    {{STANDARD_MOBILE_ACTION_HTML}}
   </div>
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>

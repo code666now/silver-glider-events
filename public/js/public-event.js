@@ -205,7 +205,7 @@ function show(stateId) {
 }
 
 if (EVENT.status === 'cancelled') show('cancelled-state');
-else if (EVENT.isFull) show('full-state');
+else if (!EVENT.isPast && EVENT.isFull) show('full-state');
 
 function openRsvpForm({ scrollToForm = false, trigger = null } = {}) {
   lastRsvpTrigger = trigger;

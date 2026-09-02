@@ -188,6 +188,7 @@
 
 .rsvp-zone { margin-bottom: 32px; }
 .flyer-action-stack { text-align: center; }
+.event-ended-note { color: var(--sg-text-dim); font-size: 14px; }
 .flyer-primary-cta { padding: 17px; font-size: 17px; }
 .primary-action-support { margin: 9px 0 0; color: var(--sg-text-dim); font-size: 12px; font-weight: 600; }
 .flyer-secondary-rsvp {

@@ -99,7 +99,8 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.match(html, /class="event-editor-details"/);
   assert.match(html, /event-editor-group-heading event-editor-group-heading-first">Essentials/);
   assert.match(html, /event-editor-group-heading">When &amp; where/);
-  assert.match(html, /event-editor-group-heading">Audience &amp; access/);
+  assert.match(html, /id="more-details"/);
+  assert.match(html, /id="audience-settings"/);
   assert.match(html, /@media \(min-width: 1024px\)[\s\S]*\.event-editor-shell\s*\{[\s\S]*max-width: 1260px/);
   assert.match(html, /\.event-editor-intro \.secret-shortcut\s*\{[\s\S]*min-height: 64px/);
   assert.match(html, /\.event-editor-intro \.secret-shortcut > div\s*\{[\s\S]*display: flex/);
@@ -115,6 +116,28 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.ok(html.indexOf('class="event-editor-design"') < html.indexOf('class="event-editor-details"'));
   assert.match(html, /<\/form>\s*<\/div>\s*<div class="image-modal" id="image-modal"/);
   assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>')), /id="image-modal"/);
+});
+
+test('event editor keeps essentials visible and progressively discloses optional settings', () => {
+  const html = read('src/views/event-form.html');
+  const js = read('public/js/event-form.js');
+  const form = html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>'));
+  const moreStart = form.indexOf('<details class="event-editor-disclosure" id="more-details">');
+  const audienceStart = form.indexOf('<details class="event-editor-disclosure" id="audience-settings">');
+
+  for (const essential of ['id="title"', 'id="event_date"', 'id="start_time"', 'id="venue_name"']) {
+    assert.ok(form.indexOf(essential) > -1 && form.indexOf(essential) < moreStart, `${essential} should remain visible`);
+  }
+  for (const optional of ['id="presenter_name"', 'id="description"', 'id="event_vibe_url"', 'id="venue_address"']) {
+    assert.ok(form.indexOf(optional) > moreStart && form.indexOf(optional) < audienceStart, `${optional} should live in Add more details`);
+  }
+  for (const audience of ['id="category"', 'id="capacity"', 'id="admission-free"', 'id="vis-public"']) {
+    assert.ok(form.indexOf(audience) > audienceStart, `${audience} should live in Audience settings`);
+  }
+  assert.doesNotMatch(form, /id="more-details"[^>]*open|id="audience-settings"[^>]*open/);
+  assert.match(js, /\$\('more-details'\)\.open = Boolean/);
+  assert.match(js, /\$\('audience-settings'\)\.open = Boolean/);
+  assert.match(js, /\$\('audience-settings'\)\.open = true;[\s\S]*setSecretShow/);
 });
 
 test('Standard artwork actions keep local upload separate from free-photo browsing', () => {

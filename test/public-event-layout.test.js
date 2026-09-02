@@ -131,8 +131,7 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   const standardView = source('src/views/event-public.html');
   const flyerView = source('src/views/event-public-flyer.html');
   assert.equal((standardView.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
-  assert.equal((standardView.match(/id="mobile-rsvp-cta"/g) || []).length, 1);
-  assert.match(standardView, /aria-controls="rsvp-form-box"/);
+  assert.match(standardView, /{{STANDARD_MOBILE_ACTION_HTML}}/);
   assert.equal((flyerView.match(/id="mobile-rsvp-dock"/g) || []).length, 1);
   assert.match(flyerView, /{{MOBILE_PRIMARY_ACTION_HTML}}/);
   assert.match(route, /id="mobile-rsvp-cta" href=/);
@@ -151,6 +150,26 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(flyerStyles, /\.vibe-embed \{ touch-action: pan-y; \}/);
   assert.match(flyerStyles, /\.flyer-public-page > \.event-bg,[\s\S]*\.flyer-public-page > \.fx-veil[\s\S]*height: 100lvh;[\s\S]*contain: paint/);
   assert.match(flyerStyles, /\.public-guest-list,[\s\S]*\.event-wall \{[\s\S]*backdrop-filter: none;/);
+});
+
+test('past events replace RSVP with photos when available and reject new submissions', () => {
+  const route = source('src/routes/public.js');
+  const standardView = source('src/views/event-public.html');
+  const client = source('public/js/public-event.js');
+
+  assert.match(route, /const recapHref = featuredPhotos\.length \? '#event-recap' : ''/);
+  assert.match(route, /class="event-recap" id="event-recap"/);
+  assert.match(route, /event\.is_past[\s\S]*View event photos/);
+  assert.match(route, /event\.is_past[\s\S]*This event has ended\./);
+  assert.match(route, /event\.is_past[\s\S]*status\(409\)\.json\(\{ error: 'event_ended'/);
+  assert.match(standardView, /{{STANDARD_PRIMARY_ACTION_HTML}}/);
+  assert.match(client, /!EVENT\.isPast && EVENT\.isFull/);
+});
+
+test('secondary text and form focus use readable shared contrast tokens', () => {
+  const brand = source('public/css/brand.css');
+  assert.match(brand, /--sg-text-faint: #787878/);
+  assert.match(brand, /\.sg-input:focus[\s\S]*outline: 2px solid rgba\(28, 197, 190, 0\.32\)/);
 });
 
 test('public RSVP success state clearly confirms the RSVP without implying guest-list access', () => {

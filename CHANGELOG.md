@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.23
+
+Released September 1, 2026.
+
+### Improved
+
+* Replaced RSVP actions on past events with a focused event-photo action when a public recap is available.
+* Prevented new RSVP submissions after an event date has passed.
+* Increased secondary-text contrast and strengthened keyboard focus visibility across the shared design system.
+* Simplified the event editor by keeping title, date, time, and venue visible while progressively disclosing optional event and audience settings.
+* Preserved saved optional settings by reopening the relevant editor sections automatically when an existing event is edited.
+
 ## 1.0.22
 
 Released September 1, 2026.

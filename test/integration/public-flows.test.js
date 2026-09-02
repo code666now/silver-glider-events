@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.22');
+  assert.equal((await health.json()).version, '1.0.23');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -443,6 +443,28 @@ test('uses past tense for attendance after a private event passes', async () => 
   assert.doesNotMatch(html, /3 people are going/);
 });
 
+test('past events no longer accept new RSVPs', async () => {
+  await createEvent({ slug: 'ended-rsvp-night', event_date: '2020-08-10' });
+
+  const page = await fetch(`${baseUrl}/e/ended-rsvp-night`);
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(html, /This event has ended\./);
+  assert.doesNotMatch(html, /data-open-rsvp/);
+
+  const response = await fetch(`${baseUrl}/api/public/events/ended-rsvp-night/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Late Guest', email: 'late@example.test' })
+  });
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'event_ended', message: 'This event has ended.' });
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM rsvps
+      WHERE event_id=(SELECT id FROM events WHERE slug='ended-rsvp-night')`
+  )).rows[0].count, 0);
+});
+
 test('keeps Collect Photos isolated to one Super-Admin-enabled past event', async () => {
   const past = await createEvent({
     slug: 'past-photo-night',
@@ -563,6 +585,9 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   const recapPage = await fetch(`${baseUrl}/e/past-photo-night`);
   const recapHtml = await recapPage.text();
   assert.match(recapHtml, /Event photos/);
+  assert.match(recapHtml, /class="event-recap" id="event-recap"/);
+  assert.match(recapHtml, /data-primary-action="recap"[^>]*href="#event-recap"[^>]*>View event photos<\/a>/);
+  assert.doesNotMatch(recapHtml, /data-open-rsvp/);
   assert.match(recapHtml, /https:\/\/images\.example\/featured\.jpg/);
   assert.doesNotMatch(recapHtml, /private\.jpg|Private Person|Featured Person/);
 
@@ -574,6 +599,8 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(unfeature.status, 200);
   const recapRemovedHtml = await (await fetch(`${baseUrl}/e/past-photo-night`)).text();
   assert.doesNotMatch(recapRemovedHtml, /Event photos|featured\.jpg/);
+  assert.match(recapRemovedHtml, /This event has ended\./);
+  assert.doesNotMatch(recapRemovedHtml, /data-open-rsvp/);
 
   const request = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
     method: 'POST', headers: { cookie: organizerCookie }

@@ -90,7 +90,7 @@ test('unlock is rate-limited and all private social routes require access', () =
 test('existing private features remain on the normal event page after unlock', () => {
   const publicRoute = source('src/routes/public.js');
   const getEvent = publicRoute.slice(publicRoute.indexOf("router.get('/e/:slug'"), publicRoute.indexOf('// GET /api/public/events/:slug/comments'));
-  for (const feature of ['renderGuestFields(event)', 'renderGuestList(event, publicGuestRows)', 'renderComments(event)', "'RSVP'"]) {
+  for (const feature of ['renderGuestFields(event)', 'renderGuestList(event, publicGuestRows)', 'renderComments(event)', 'data-open-rsvp']) {
     assert.match(getEvent, new RegExp(feature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 
