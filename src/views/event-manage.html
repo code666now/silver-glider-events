@@ -113,6 +113,7 @@
     .guest-tools .sg-btn { padding: 10px 17px; font-size: 12px; white-space: nowrap; }
     .guest-tools .sg-btn:disabled { opacity: .42; cursor: not-allowed; color: var(--sg-text-dim); border-color: var(--sg-border-soft); }
     #search { flex: 1; min-width: 0; max-width: 280px; }
+    .guest-inline-email { display:none; }
     .hero-banner {
       border-radius: var(--sg-radius-card); overflow: hidden; margin-bottom: 24px;
       aspect-ratio: 16/6; background: var(--sg-surface);
@@ -212,10 +213,39 @@
         background:linear-gradient(145deg,rgba(19,19,21,.7),rgba(11,11,13,.55));
       }
       .manage-guest-section .guest-head { margin-bottom:18px; }
+      .manage-shell.is-past-event .manage-overview { align-items:start; }
+      .manage-shell.is-past-event .manage-visual-column {
+        display:flex;
+        flex-direction:column;
+        gap:24px;
+        position:static;
+      }
+      .manage-shell.is-past-event .manage-visual-column .hero-banner:not(.flyer) {
+        height:auto;
+        min-height:0;
+        aspect-ratio:16/10;
+      }
+      .manage-shell.is-past-event .manage-visual-column .manage-hero-placeholder {
+        height:auto;
+        min-height:360px;
+        aspect-ratio:16/10;
+      }
+      .manage-shell.is-past-event #manage-guest-section { width:100%; }
+      .manage-shell.is-past-event #manage-guest-section .guest-inline-email {
+        display:block;
+        margin-top:4px;
+        color:var(--sg-text-faint);
+        font-size:11px;
+        line-height:1.35;
+        overflow-wrap:anywhere;
+      }
+      .manage-shell.is-past-event #manage-guest-section .guest-email-column { display:none; }
+      .manage-shell.is-past-event #manage-guest-section .sg-table th,
+      .manage-shell.is-past-event #manage-guest-section .sg-table td { padding-right:14px;padding-left:14px; }
       .manage-danger-zone { margin-top:34px !important; }
     }
     @media (min-width: 1200px) and (min-height: 900px) {
-      .manage-visual-column { position:sticky;top:24px; }
+      .manage-shell:not(.is-past-event) .manage-visual-column { position:sticky;top:24px; }
     }
     @media (max-width: 620px) {
       .stat-row { grid-template-columns: 1fr 1fr; }
@@ -246,6 +276,7 @@
       <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
       <div class="manage-hero-skeleton sg-skeleton" id="manage-hero-skeleton" aria-hidden="true"></div>
       <div class="manage-hero-placeholder" id="manage-hero-placeholder" aria-hidden="true" hidden>SG</div>
+      <div id="manage-guest-desktop-slot"></div>
     </div>
 
     <section class="manage-event-panel" aria-label="Event overview and actions">
@@ -349,6 +380,7 @@
     </section>
     </div>
 
+    <div id="manage-guest-home" hidden></div>
     <section class="manage-guest-section" id="manage-guest-section" aria-label="Guest management" aria-busy="true">
     <div class="guest-head">
       <p class="sg-label" style="margin:0">Guest list</p>
@@ -359,11 +391,11 @@
     </div>
     <div style="overflow-x:auto">
       <table class="sg-table" id="guests">
-        <thead><tr><th>Attendee</th><th>Attendee email</th><th>Guest</th><th>Guest email</th><th>RSVP'd</th></tr></thead>
+        <thead><tr><th>Attendee</th><th class="guest-email-column">Attendee email</th><th>Guest</th><th class="guest-email-column">Guest email</th><th>RSVP'd</th></tr></thead>
         <tbody id="guest-rows">
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
+          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
         </tbody>
       </table>
     </div>

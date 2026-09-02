@@ -4,6 +4,7 @@ const eventId = location.pathname.split('/')[2];
 const $ = id => document.getElementById(id);
 let eventData = null;
 const LINE_NUMBER = '(844) 261-6758';
+const desktopManageLayout = window.matchMedia('(min-width: 1024px)');
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20,6 +21,17 @@ if (new URLSearchParams(location.search).get('created')) {
 function eventUrl() {
   return `${location.origin}/e/${eventData.slug}`;
 }
+
+function positionGuestSection() {
+  const section = $('manage-guest-section');
+  if (eventData?.is_past && desktopManageLayout.matches) {
+    $('manage-guest-desktop-slot').append(section);
+  } else {
+    $('manage-guest-home').after(section);
+  }
+}
+
+desktopManageLayout.addEventListener('change', positionGuestSection);
 
 function setManageReady() {
   $('manage-shell').removeAttribute('data-loading');
@@ -51,6 +63,8 @@ function showManageLoadError() {
 async function loadEvent() {
   const { event } = await api(`/api/events/${eventId}`);
   eventData = event;
+  $('manage-shell').classList.toggle('is-past-event', event.is_past);
+  positionGuestSection();
   document.title = `${event.title} — Silver Glider Events`;
 
   $('title').textContent = event.title;
@@ -203,10 +217,10 @@ async function loadGuests(search = '') {
   const tbody = $('guest-rows');
   tbody.innerHTML = active.map(r => `
     <tr>
-      <td>${escapeHtml(`${r.first_name} ${r.last_name}`.trim())}</td>
-      <td class="dim">${escapeHtml(r.email)}</td>
-      <td>${r.guest_first_name ? escapeHtml(`${r.guest_first_name} ${r.guest_last_name || ''}`.trim()) : '—'}</td>
-      <td class="dim">${escapeHtml(r.guest_email || '—')}</td>
+      <td>${escapeHtml(`${r.first_name} ${r.last_name}`.trim())}<span class="guest-inline-email">${escapeHtml(r.email)}</span></td>
+      <td class="dim guest-email-column">${escapeHtml(r.email)}</td>
+      <td>${r.guest_first_name ? `${escapeHtml(`${r.guest_first_name} ${r.guest_last_name || ''}`.trim())}<span class="guest-inline-email">${escapeHtml(r.guest_email || 'No email')}</span>` : '—'}</td>
+      <td class="dim guest-email-column">${escapeHtml(r.guest_email || '—')}</td>
       <td class="dim">${new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
     </tr>`).join('');
   $('no-guests').style.display = active.length ? 'none' : 'block';

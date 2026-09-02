@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.21
+
+Released September 1, 2026.
+
+### Improved
+
+* Moved the guest list beneath the event artwork on desktop past-event management pages.
+* Grouped attendee and guest emails beneath their names for a cleaner compact table.
+* Preserved the existing mobile layout and ordering.
+
 ## 1.0.20
 
 Released August 31, 2026.

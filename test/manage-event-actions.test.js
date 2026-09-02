@@ -15,6 +15,10 @@ test('event management and promotion actions remain clearly separated', () => {
   assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\s*\{[\s\S]*max-width:1260px/);
   assert.match(view, /grid-template-columns:minmax\(0,1\.25fr\) minmax\(350px,\.75fr\)/);
   assert.match(view, /@media \(max-width: 620px\)/);
+  assert.match(view, /id="manage-guest-desktop-slot"/);
+  assert.match(view, /id="manage-guest-home" hidden/);
+  assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\.is-past-event #manage-guest-section/);
+  assert.match(view, /\.guest-inline-email \{ display:none; \}/);
   assert.match(view, /id="manage-shell" data-loading/);
   assert.match(view, /id="manage-overview" aria-busy="true"/);
   assert.match(view, /id="manage-hero-skeleton"/);
@@ -54,6 +58,11 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
   assert.match(client, /function setManageReady\(\)/);
   assert.match(client, /secondaryTasks = eventData\.is_past/);
+  assert.match(client, /desktopManageLayout = window\.matchMedia\('\(min-width: 1024px\)'\)/);
+  assert.match(client, /eventData\?\.is_past && desktopManageLayout\.matches/);
+  assert.match(client, /manage-guest-desktop-slot'\)\.append\(section\)/);
+  assert.match(client, /manage-guest-home'\)\.after\(section\)/);
+  assert.match(client, /class="guest-inline-email"/);
   assert.match(client, /\[loadLineStatus\(\), loadFollowers\(\)\]/);
   assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), \.\.\.secondaryTasks\]\)/);
   assert.match(client, /function showManageLoadError\(\)/);
