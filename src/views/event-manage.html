@@ -118,6 +118,8 @@
       border-radius: var(--sg-radius-card); overflow: hidden; margin-bottom: 24px;
       aspect-ratio: 16/6; background: var(--sg-surface);
     }
+    .hero-artwork-link { position:relative;display:block;width:100%;height:100%;color:inherit;text-decoration:none; }
+    .hero-artwork-hint { display:none; }
     .hero-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .hero-banner.flyer { height:auto;max-height:none;background:#090909;text-align:center; }
     .hero-banner.flyer img { width:auto;max-width:100%;height:auto;max-height:720px;object-fit:contain;margin:0 auto; }
@@ -220,10 +222,54 @@
         gap:24px;
         position:static;
       }
+      .manage-shell.is-past-event .manage-visual-column .hero-banner {
+        display:grid;
+        place-items:center;
+        height:auto;
+        min-height:0;
+        aspect-ratio:auto;
+        background:linear-gradient(145deg,#0b0b0d,#050506);
+      }
+      .manage-shell.is-past-event .manage-visual-column .hero-artwork-link {
+        display:grid;
+        place-items:center;
+        height:auto;
+        min-height:0;
+      }
+      .manage-shell.is-past-event .manage-visual-column .hero-banner img {
+        width:auto;
+        max-width:100%;
+        height:auto;
+        max-height:min(72vh,720px);
+        object-fit:contain;
+        margin:0 auto;
+      }
+      .manage-shell.is-past-event .manage-visual-column .hero-artwork-hint {
+        position:absolute;
+        right:16px;
+        bottom:16px;
+        display:inline-flex;
+        align-items:center;
+        min-height:34px;
+        padding:7px 11px;
+        border:1px solid rgba(255,255,255,.13);
+        border-radius:999px;
+        background:rgba(8,8,10,.78);
+        color:rgba(255,255,255,.76);
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.01em;
+        backdrop-filter:blur(10px);
+      }
+      .manage-shell.is-past-event .manage-visual-column .hero-artwork-link:hover .hero-artwork-hint,
+      .manage-shell.is-past-event .manage-visual-column .hero-artwork-link:focus-visible .hero-artwork-hint {
+        border-color:rgba(28,197,190,.4);
+        color:#fff;
+      }
       .manage-shell.is-past-event .manage-visual-column .hero-banner:not(.flyer) {
         height:auto;
         min-height:0;
-        aspect-ratio:16/10;
+        aspect-ratio:auto;
       }
       .manage-shell.is-past-event .manage-visual-column .manage-hero-placeholder {
         height:auto;
@@ -273,7 +319,12 @@
 
     <div class="manage-overview" id="manage-overview" aria-busy="true">
     <div class="manage-visual-column">
-      <div class="hero-banner" id="hero" style="display:none"><img id="hero-img" alt=""></div>
+      <div class="hero-banner" id="hero" style="display:none">
+        <a class="hero-artwork-link" id="hero-link" target="_blank" rel="noopener">
+          <img id="hero-img" alt="">
+          <span class="hero-artwork-hint">View full artwork ↗</span>
+        </a>
+      </div>
       <div class="manage-hero-skeleton sg-skeleton" id="manage-hero-skeleton" aria-hidden="true"></div>
       <div class="manage-hero-placeholder" id="manage-hero-placeholder" aria-hidden="true" hidden>SG</div>
       <div id="manage-guest-desktop-slot"></div>

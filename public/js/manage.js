@@ -79,6 +79,9 @@ async function loadEvent() {
     $('hero').style.display = 'block';
     $('hero').classList.toggle('flyer', event.presentation_mode === 'flyer');
     $('hero-img').src = manageImage;
+    $('hero-img').alt = `${event.title} artwork`;
+    $('hero-link').href = manageImage;
+    $('hero-link').setAttribute('aria-label', `View full artwork for ${event.title}`);
   } else {
     $('manage-hero-placeholder').hidden = false;
   }

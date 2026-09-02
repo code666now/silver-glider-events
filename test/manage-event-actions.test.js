@@ -18,6 +18,10 @@ test('event management and promotion actions remain clearly separated', () => {
   assert.match(view, /id="manage-guest-desktop-slot"/);
   assert.match(view, /id="manage-guest-home" hidden/);
   assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\.is-past-event #manage-guest-section/);
+  assert.match(view, /id="hero-link"[\s\S]*View full artwork/);
+  assert.match(view, /\.manage-shell\.is-past-event \.manage-visual-column \.hero-banner img[\s\S]*object-fit:contain/);
+  assert.match(view, /max-height:min\(72vh,720px\)/);
+  assert.match(view, /\.manage-shell\.is-past-event \.manage-visual-column \.hero-banner:not\(\.flyer\)[\s\S]*aspect-ratio:auto/);
   assert.match(view, /\.guest-inline-email \{ display:none; \}/);
   assert.match(view, /id="manage-shell" data-loading/);
   assert.match(view, /id="manage-overview" aria-busy="true"/);
@@ -61,6 +65,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /desktopManageLayout = window\.matchMedia\('\(min-width: 1024px\)'\)/);
   assert.match(client, /eventData\?\.is_past && desktopManageLayout\.matches/);
   assert.match(client, /manage-guest-desktop-slot'\)\.append\(section\)/);
+  assert.match(client, /\$\('hero-link'\)\.href = manageImage/);
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);
   assert.match(client, /class="guest-inline-email"/);
   assert.match(client, /\[loadLineStatus\(\), loadFollowers\(\)\]/);
