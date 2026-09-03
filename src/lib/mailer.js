@@ -498,7 +498,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   return send({
     to,
-    subject: `${isTest ? '[Test] ' : ''}Silver Glider ticketing is ready`,
+    subject: `${isTest ? '[Test] ' : ''}Silver Glider Tickets is ready`,
     html: layout({
       kicker: isTest ? 'Test email' : 'Ticketing',
       headline: 'Sell tickets with Silver Glider.',
@@ -508,7 +508,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
       ctaUrl: `${baseUrl}/events/new`,
       footerHtml: `<p style="color:#666;font-size:12px;text-align:center;line-height:1.7;margin:0">${isTest
         ? 'This is a private test of the ticketing launch announcement. No interested hosts were notified.'
-        : 'You’re receiving this one-time email because you asked us to notify you when Silver Glider ticketing launched.'}</p>`,
+        : 'You’re receiving this one-time email because you asked us to notify you when Silver Glider Tickets launched.'}</p>`,
       footerBrand: 'Silver Glider Events'
     })
   });

@@ -153,8 +153,8 @@ function renderCommerceInterest() {
   button.setAttribute('aria-pressed', String(commerceInterested));
   button.textContent = commerceInterested ? 'Remove me' : 'Notify me';
   $('commerce-interest-copy').innerHTML = commerceInterested
-    ? '<strong>You’re on the list.</strong><span>We’ll send one email when integrated ticketing is ready.</span>'
-    : '<strong>Want to know when it launches?</strong><span>Ask for one email when integrated ticketing is ready.</span>';
+    ? '<strong>You’re on the list.</strong><span>We’ll email you when Silver Glider Tickets is ready.</span>'
+    : '<strong>Want to know when Silver Glider Tickets launches?</strong><span>We’ll send you one email when it’s ready.</span>';
 }
 
 const commerceConfigReady = api('/api/commerce/config')

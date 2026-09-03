@@ -23,10 +23,12 @@ test('event editor offers a one-click launch notification without another identi
   const js = read('public/js/event-form.js');
   assert.match(html, /id="commerce-interest"[^>]*hidden/);
   assert.match(html, /id="commerce-interest-toggle"[\s\S]*Notify me/);
-  assert.match(html, /Ask for one email when integrated ticketing is ready/);
+  assert.match(html, /Want to know when Silver Glider Tickets launches/);
+  assert.match(html, /We’ll send you one email when it’s ready/);
   assert.doesNotMatch(html, /id="commerce-interest-(?:email|name)"/i);
   assert.match(js, /api\('\/api\/commerce\/interest'/);
   assert.match(js, /body: \{ interested: nextInterested \}/);
+  assert.match(js, /We’ll email you when Silver Glider Tickets is ready/);
   assert.match(js, /commerceInterested \? 'Remove me' : 'Notify me'/);
 });
 
@@ -41,7 +43,7 @@ test('admin launch workflow is previewable, feature-gated, and retry-safe', () =
   assert.match(route, /confirm !== 'SEND_LAUNCH'/);
   assert.match(route, /launch_sent_at IS NULL/);
   assert.match(route, /launch_claimed_at IS NULL OR launch_claimed_at < NOW\(\) - INTERVAL '15 minutes'/);
-  assert.match(view, /Silver Glider ticketing is ready/);
+  assert.match(view, /Silver Glider Tickets is ready/);
   assert.match(view, /id="send-test"/);
   assert.match(view, /id="send-launch"[^>]*disabled/);
   assert.match(mailer, /async function sendCommerceLaunch/);
