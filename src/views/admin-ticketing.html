@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticketing Interest — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <link rel="stylesheet" href="/css/main.css">
+  <style>
+    .ticketing-summary { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0 28px; }
+    .ticketing-summary-card { padding:20px;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(17,17,17,.74); }
+    .ticketing-summary-card strong { display:block;margin-bottom:6px;font-family:var(--sg-font-display);font-size:31px; }
+    .ticketing-summary-card span { color:var(--sg-text-faint);font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase; }
+    .ticketing-grid { display:grid;grid-template-columns:minmax(300px,410px) minmax(0,1fr);gap:26px;align-items:start; }
+    .launch-card { position:sticky;top:22px;padding:24px; }
+    .launch-card-head { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px; }
+    .launch-card h2,.interest-list-head h2 { font-size:23px; }
+    .launch-card-head p,.interest-list-head p { margin-top:5px;color:var(--sg-text-faint);font-size:12px;line-height:1.55; }
+    .commerce-state { flex:0 0 auto;padding:6px 9px;border:1px solid var(--sg-border);border-radius:999px;color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase; }
+    .commerce-state.ready { border-color:rgba(121,201,138,.35);color:#79c98a; }
+    .email-preview { margin:18px 0;padding:18px;border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.018); }
+    .email-preview-label { margin-bottom:7px;color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase; }
+    .email-preview h3 { margin-bottom:7px;font-size:17px; }
+    .email-preview p { color:var(--sg-text-dim);font-size:12px;line-height:1.55; }
+    .launch-actions { display:grid;gap:9px; }
+    .launch-actions .sg-btn { min-height:46px; }
+    .launch-help { margin-top:13px;color:var(--sg-text-faint);font-size:11px;line-height:1.55; }
+    .interest-list-head { display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px; }
+    .interest-list-count { color:var(--sg-text-faint);font-size:11px;white-space:nowrap; }
+    .interest-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 18px;margin-bottom:10px;padding:18px 20px;border:1px solid var(--sg-border-soft);border-radius:17px;background:rgba(17,17,17,.74); }
+    .interest-row h3 { margin-bottom:4px;font-size:15px;overflow-wrap:anywhere; }
+    .interest-row-email { color:var(--sg-text-dim);font-size:12px;overflow-wrap:anywhere; }
+    .interest-row-date { grid-column:1;color:var(--sg-text-faint);font-size:10px; }
+    .interest-status { grid-column:2;grid-row:1/3;align-self:center;padding:6px 9px;border:1px solid rgba(28,197,190,.3);border-radius:999px;color:var(--sg-accent);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase; }
+    .interest-status.notified { border-color:rgba(121,201,138,.35);color:#79c98a; }
+    .interest-status.removed { border-color:var(--sg-border);color:var(--sg-text-faint); }
+    .interest-error { grid-column:1/-1;color:#e57373;font-size:10px;line-height:1.45; }
+    .ticketing-empty { display:none;padding:54px 18px;text-align:center;color:var(--sg-text-dim); }
+    @media(max-width:840px) {
+      .ticketing-grid { grid-template-columns:1fr; }
+      .launch-card { position:static; }
+    }
+    @media(max-width:560px) {
+      .ticketing-summary { grid-template-columns:1fr;gap:8px; }
+      .ticketing-summary-card { display:flex;align-items:center;justify-content:space-between;padding:14px 16px; }
+      .ticketing-summary-card strong { margin:0;order:2;font-size:25px; }
+      .launch-card,.interest-row { padding:18px; }
+      .launch-card-head,.interest-list-head { align-items:flex-start;flex-direction:column; }
+      .interest-row { grid-template-columns:minmax(0,1fr); }
+      .interest-status { grid-column:1;grid-row:auto;justify-self:start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-shell" style="max-width:1260px">
+    <nav id="nav"></nav>
+    <h1 class="sg-page-title">Ticketing interest</h1>
+    <p class="sg-page-sub">Hosts who asked for one email when Silver Glider ticketing launches.</p>
+    <div class="admin-section-nav" aria-label="Admin sections">
+      <a href="/admin/line">The Line</a>
+      <a href="/admin/hosts">Hosts</a>
+      <a class="active" href="/admin/ticketing">Ticketing</a>
+      <a href="/admin/feedback">Feedback</a>
+      <a href="/admin/invitations">Invitations</a>
+    </div>
+
+    <section class="ticketing-summary" aria-label="Ticketing launch audience">
+      <div class="ticketing-summary-card"><strong id="count-interested"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Interested</span></div>
+      <div class="ticketing-summary-card"><strong id="count-awaiting"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Awaiting email</span></div>
+      <div class="ticketing-summary-card"><strong id="count-notified"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Notified</span></div>
+    </section>
+
+    <div class="ticketing-grid">
+      <section class="sg-card launch-card" aria-labelledby="launch-title">
+        <div class="launch-card-head">
+          <div><h2 id="launch-title">Launch announcement</h2><p>Prepared now so the audience is ready when Commerce goes live.</p></div>
+          <span class="commerce-state" id="commerce-state">Checking</span>
+        </div>
+        <div class="email-preview">
+          <div class="email-preview-label">Subject</div>
+          <h3>Silver Glider ticketing is ready</h3>
+          <p>Integrated ticketing is now available in the event editor, with a direct link to create a ticketed event.</p>
+        </div>
+        <div class="launch-actions">
+          <button class="sg-btn sg-btn-ghost" id="send-test" type="button" disabled>Send test to me</button>
+          <button class="sg-btn sg-btn-primary" id="send-launch" type="button" disabled>Send launch email</button>
+        </div>
+        <p class="launch-help" id="launch-help">The launch send unlocks only after Commerce is enabled. Removed hosts are excluded, and each active host can receive it once.</p>
+      </section>
+
+      <section aria-labelledby="interest-title">
+        <div class="interest-list-head">
+          <div><h2 id="interest-title">Host list</h2><p>Ticketing interest stays separate from RSVPs, follows, and general marketing.</p></div>
+          <span class="interest-list-count sg-skeleton admin-count-skeleton" id="interest-list-count" aria-label="Loading host count"></span>
+        </div>
+        <div id="interest-list" aria-busy="true" class="admin-skeleton-stack">
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+          <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+        </div>
+        <p class="ticketing-empty" id="interest-empty">No hosts have requested a ticketing notification yet.</p>
+      </section>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    let launchState = { commerceEnabled:false, awaiting:0 };
+
+    function formatDate(value) {
+      return new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    }
+
+    function interestStatus(item) {
+      if (item.removed_at) return ['Removed','removed'];
+      if (item.launch_sent_at) return ['Notified','notified'];
+      return ['Interested',''];
+    }
+
+    function setSending(active) {
+      document.getElementById('send-test').disabled = active;
+      document.getElementById('send-launch').disabled = active || !launchState.commerceEnabled || launchState.awaiting < 1;
+    }
+
+    async function loadInterests() {
+      const list = document.getElementById('interest-list');
+      const count = document.getElementById('interest-list-count');
+      list.setAttribute('aria-busy','true');
+      document.getElementById('interest-empty').style.display = 'none';
+      try {
+        const data = await api('/api/admin/commerce-interest');
+        launchState = { commerceEnabled:data.commerceEnabled, awaiting:data.counts.awaiting };
+        document.getElementById('count-interested').textContent = data.counts.interested;
+        document.getElementById('count-awaiting').textContent = data.counts.awaiting;
+        document.getElementById('count-notified').textContent = data.counts.notified;
+        const state = document.getElementById('commerce-state');
+        state.textContent = data.commerceEnabled ? 'Commerce ready' : 'Commerce not enabled';
+        state.classList.toggle('ready',data.commerceEnabled);
+        count.className = 'interest-list-count';
+        count.removeAttribute('aria-label');
+        count.textContent = `${data.interests.length} ${data.interests.length === 1 ? 'request' : 'requests'}`;
+        document.getElementById('interest-empty').style.display = data.interests.length ? 'none' : 'block';
+        list.classList.remove('admin-skeleton-stack');
+        list.innerHTML = data.interests.map(item => {
+          const [label,cls] = interestStatus(item);
+          const host = item.org_name || item.name || item.email;
+          return `<article class="interest-row">
+            <div><h3>${sgEscapeHtml(host)}</h3><p class="interest-row-email">${sgEscapeHtml(item.email)}</p></div>
+            <p class="interest-row-date">Requested ${sgEscapeHtml(formatDate(item.requested_at))}${item.launch_sent_at ? ` · Notified ${sgEscapeHtml(formatDate(item.launch_sent_at))}` : ''}</p>
+            <span class="interest-status ${cls}">${label}</span>
+            ${item.launch_error ? `<p class="interest-error">Last send failed: ${sgEscapeHtml(item.launch_error)}</p>` : ''}
+          </article>`;
+        }).join('');
+        document.getElementById('send-test').disabled = false;
+        setSending(false);
+      } catch (error) {
+        count.className = 'interest-list-count';
+        count.removeAttribute('aria-label');
+        count.textContent = 'Unavailable';
+        list.innerHTML = `<div class="admin-load-error"><strong>We couldn't load ticketing interest.</strong><p>${sgEscapeHtml(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-interest" type="button">Try again</button></div>`;
+        document.getElementById('retry-interest').addEventListener('click',loadInterests);
+      } finally {
+        list.setAttribute('aria-busy','false');
+      }
+    }
+
+    document.getElementById('send-test').addEventListener('click',async event => {
+      const button = event.currentTarget;
+      setSending(true);
+      button.textContent = 'Sending test…';
+      try {
+        const result = await api('/api/admin/commerce-interest/test',{method:'POST'});
+        toast(`Test sent to ${result.recipient}`);
+      } catch (error) { toast(error.message); }
+      finally {
+        button.textContent = 'Send test to me';
+        setSending(false);
+      }
+    });
+
+    document.getElementById('send-launch').addEventListener('click',async event => {
+      if (!confirm(`Send the ticketing launch email to ${launchState.awaiting} interested ${launchState.awaiting === 1 ? 'host' : 'hosts'}? Each person can receive it only once.`)) return;
+      const button = event.currentTarget;
+      setSending(true);
+      button.textContent = 'Sending launch…';
+      try {
+        const result = await api('/api/admin/commerce-interest/send',{method:'POST',body:{confirm:'SEND_LAUNCH'}});
+        toast(`Launch sent to ${result.sent} ${result.sent === 1 ? 'host' : 'hosts'}${result.failed ? ` · ${result.failed} failed` : ''}`);
+        await loadInterests();
+      } catch (error) { toast(error.message); }
+      finally {
+        button.textContent = 'Send launch email';
+        setSending(false);
+      }
+    });
+
+    loadInterests();
+  </script>
+</body>
+</html>

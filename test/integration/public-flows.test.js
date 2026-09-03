@@ -12,11 +12,14 @@ process.env.SESSION_SECRET = 'silver-glider-integration-test-secret';
 process.env.APP_URL = 'http://127.0.0.1';
 process.env.NODE_ENV = 'development';
 process.env.REMINDERS_ENABLED = 'false';
+process.env.COMMERCE_ENABLED = 'false';
+delete process.env.COMMERCE_API_BASE_URL;
 delete process.env.RESEND_API_KEY;
 
 const pool = require('../../src/config/db');
 const migrate = require('../../src/db/migrate');
 const { app } = require('../../src/index');
+const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { signSession } = require('../../src/lib/session');
 
@@ -101,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.26');
+  assert.equal((await health.json()).version, '1.0.27');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -288,6 +291,107 @@ test('canonical external tickets preserve the existing price, link, and RSVP beh
   assert.match(pageHtml, /\$25/);
   assert.match(pageHtml, /https:\/\/tickets\.example\.test\/external-night/);
   assert.match(pageHtml, /data-primary-action="rsvp"/);
+});
+
+test('ticketing launch interest is reversible, admin-visible, and safely gated', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const initialConfig = await fetch(`${baseUrl}/api/commerce/config`, { headers: { cookie } });
+  assert.equal(initialConfig.status, 200);
+  assert.equal((await initialConfig.json()).interest.interested, false);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const subscribe = await fetch(`${baseUrl}/api/commerce/interest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ interested: true })
+    });
+    assert.equal(subscribe.status, 200);
+    assert.equal((await subscribe.json()).interest.interested, true);
+  }
+  const stored = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM commerce_feature_interests
+      WHERE organizer_id=$1 AND feature_key='commerce_ticketing'`,
+    [organizerId]
+  );
+  assert.equal(stored.rows[0].count, 1);
+
+  const denied = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  assert.equal(denied.status, 403);
+
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const adminPage = await fetch(`${baseUrl}/admin/ticketing`, { headers: { cookie } });
+  assert.equal(adminPage.status, 200);
+  assert.match(await adminPage.text(), /Ticketing interest/);
+
+  const adminList = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  assert.equal(adminList.status, 200);
+  const adminData = await adminList.json();
+  assert.equal(adminData.counts.interested, 1);
+  assert.equal(adminData.counts.awaiting, 1);
+  assert.equal(adminData.interests[0].email, 'host@example.test');
+
+  const testEmail = await fetch(`${baseUrl}/api/admin/commerce-interest/test`, {
+    method: 'POST', headers: { cookie }
+  });
+  assert.equal(testEmail.status, 200);
+  assert.equal((await testEmail.json()).recipient, 'host@example.test');
+
+  const prematureLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
+  });
+  assert.equal(prematureLaunch.status, 409);
+
+  const previousCommerce = {
+    enabled: process.env.COMMERCE_ENABLED,
+    baseUrl: commerceClient.baseUrl,
+    apiKey: commerceClient.apiKey
+  };
+  process.env.COMMERCE_ENABLED = 'true';
+  commerceClient.baseUrl = 'https://commerce.example.test';
+  commerceClient.apiKey = 'integration-test-key';
+  try {
+    const launch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
+    });
+    assert.equal(launch.status, 200);
+    assert.deepEqual(await launch.json(), { total: 1, sent: 1, failed: 0 });
+
+    const retryLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
+    });
+    assert.equal(retryLaunch.status, 200);
+    assert.deepEqual(await retryLaunch.json(), { total: 0, sent: 0, failed: 0 });
+  } finally {
+    process.env.COMMERCE_ENABLED = previousCommerce.enabled;
+    commerceClient.baseUrl = previousCommerce.baseUrl;
+    commerceClient.apiKey = previousCommerce.apiKey;
+  }
+
+  const delivered = await pool.query(
+    `SELECT launch_sent_at FROM commerce_feature_interests
+      WHERE organizer_id=$1 AND feature_key='commerce_ticketing'`,
+    [organizerId]
+  );
+  assert.ok(delivered.rows[0].launch_sent_at);
+
+  const remove = await fetch(`${baseUrl}/api/commerce/interest`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ interested: false })
+  });
+  assert.equal(remove.status, 200);
+  assert.equal((await remove.json()).interest.interested, false);
+
+  const afterRemoval = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  const afterRemovalData = await afterRemoval.json();
+  assert.equal(afterRemovalData.counts.interested, 0);
+  assert.ok(afterRemovalData.interests[0].removed_at);
 });
 
 test('renders the Host Page Dashboard control only for its authenticated owner', async () => {

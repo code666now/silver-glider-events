@@ -4,7 +4,9 @@ const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
 let admissionType = 'free_rsvp';
 let commerceEnabled = false;
+let commerceConfigLoaded = false;
 let commerceEventId = null;
+let commerceInterested = false;
 let presentationMode = 'standard';
 let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
@@ -144,14 +146,48 @@ const organizerProfileReady = api('/api/auth/me')
   .then(({ organizer }) => applyOrganizerProfile(organizer))
   .catch(() => {});
 
+function renderCommerceInterest() {
+  const panel = $('commerce-interest');
+  const button = $('commerce-interest-toggle');
+  panel.hidden = !commerceConfigLoaded || commerceEnabled || Boolean(commerceEventId);
+  button.setAttribute('aria-pressed', String(commerceInterested));
+  button.textContent = commerceInterested ? 'Remove me' : 'Notify me';
+  $('commerce-interest-copy').innerHTML = commerceInterested
+    ? '<strong>You’re on the list.</strong><span>We’ll send one email when integrated ticketing is ready.</span>'
+    : '<strong>Want to know when it launches?</strong><span>Ask for one email when integrated ticketing is ready.</span>';
+}
+
 const commerceConfigReady = api('/api/commerce/config')
-  .then(({ enabled }) => {
+  .then(({ enabled, interest }) => {
     commerceEnabled = enabled === true;
+    commerceConfigLoaded = true;
+    commerceInterested = interest?.interested === true;
     $('admission-commerce').disabled = !commerceEnabled;
     $('admission-commerce-status').hidden = commerceEnabled;
+    renderCommerceInterest();
     if (admissionType === 'silver_glider_tickets') setAdmission(admissionType, { force: true });
   })
   .catch(() => {});
+
+$('commerce-interest-toggle').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  const nextInterested = !commerceInterested;
+  button.disabled = true;
+  button.textContent = nextInterested ? 'Adding…' : 'Removing…';
+  try {
+    const { interest } = await api('/api/commerce/interest', {
+      method: 'POST', body: { interested: nextInterested }
+    });
+    commerceInterested = interest.interested === true;
+    renderCommerceInterest();
+    toast(commerceInterested ? 'You’re on the ticketing list' : 'Ticketing notification removed');
+  } catch (error) {
+    renderCommerceInterest();
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
 
 document.querySelectorAll('[data-picker-target]').forEach(button => {
   button.addEventListener('click', () => {
@@ -224,6 +260,7 @@ function setAdmission(v, { force = false } = {}) {
     : 'Silver Glider ticket setup will be available after the Commerce connection is configured.';
   $('ticket_price').required = admissionType === 'external_tickets';
   $('ticket_url').required = false;
+  renderCommerceInterest();
 }
 $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-commerce').addEventListener('click', () => setAdmission('silver_glider_tickets'));

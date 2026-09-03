@@ -494,9 +494,29 @@ async function sendPhotoRequest({ to, event, organizerLabel, uploadUrl, replyTo 
   });
 }
 
+async function sendCommerceLaunch({ to, isTest = false }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  return send({
+    to,
+    subject: `${isTest ? '[Test] ' : ''}Silver Glider ticketing is ready`,
+    html: layout({
+      kicker: isTest ? 'Test email' : 'Ticketing',
+      headline: 'Sell tickets with Silver Glider.',
+      sub: 'Integrated ticketing is now available in your event editor.',
+      bodyHtml: '<p style="color:#9a9a9a;font-size:16px;line-height:1.65;margin:0">Create or edit an event, choose <strong style="color:#f4f4f4">Sell with Silver Glider</strong>, and connect your checkout.</p>',
+      cta: 'Create a ticketed event',
+      ctaUrl: `${baseUrl}/events/new`,
+      footerHtml: `<p style="color:#666;font-size:12px;text-align:center;line-height:1.7;margin:0">${isTest
+        ? 'This is a private test of the ticketing launch announcement. No interested hosts were notified.'
+        : 'You’re receiving this one-time email because you asked us to notify you when Silver Glider ticketing launched.'}</p>`,
+      footerBrand: 'Silver Glider Events'
+    })
+  });
+}
+
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventAnnouncement, sendPhotoRequest, formatTime, renderRsvpConfirmationEmail,
+  sendEventAnnouncement, sendPhotoRequest, sendCommerceLaunch, formatTime, renderRsvpConfirmationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, rsvpConfirmationSubject
 };

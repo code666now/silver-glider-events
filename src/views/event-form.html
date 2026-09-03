@@ -164,6 +164,15 @@
       line-height:1.2;text-transform:uppercase;
     }
     .admission-option .admission-coming-soon[hidden] { display:none; }
+    .commerce-interest {
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
+      margin:10px 0 20px;padding:12px 14px;border:1px solid var(--sg-border-soft);
+      border-radius:14px;background:rgba(255,255,255,.018);
+    }
+    .commerce-interest[hidden] { display:none; }
+    .commerce-interest-copy { min-width:0;color:var(--sg-text-dim);font-size:11px;line-height:1.45; }
+    .commerce-interest-copy strong { display:block;margin-bottom:2px;color:var(--sg-text);font-size:12px; }
+    .commerce-interest .sg-btn { flex:0 0 auto;min-height:40px;padding:9px 14px;font-size:11px; }
     .commerce-admission-note {
       display:none;margin:-2px 0 20px;padding:14px 16px;border:1px solid var(--sg-border-soft);
       border-radius:14px;background:rgba(255,255,255,.025);color:var(--sg-text-dim);
@@ -694,6 +703,8 @@
     @media (max-width: 640px) {
       .admission-options { grid-template-columns:1fr; }
       .admission-option { min-height:64px; }
+      .commerce-interest { align-items:flex-start;flex-direction:column; }
+      .commerce-interest .sg-btn { width:100%;min-height:44px; }
       .vibe-choice-fields { grid-template-columns: 1fr; gap: 0; }
       .vibe-editor-actions { align-items: stretch; flex-direction: column; }
       .secret-shortcut { align-items:flex-start;flex-direction:column; }
@@ -944,6 +955,13 @@
               <button type="button" id="admission-free" class="admission-option on"><strong>Free RSVP</strong><span>Collect guest names and confirmations here.</span></button>
               <button type="button" id="admission-paid" class="admission-option"><strong>External tickets</strong><span>Send guests to another ticket link or sell at the door.</span></button>
               <button type="button" id="admission-commerce" class="admission-option" disabled><strong>Sell with Silver Glider</strong><span class="admission-coming-soon" id="admission-commerce-status">Coming soon</span><span>Integrated ticket checkout is on the way.</span></button>
+            </div>
+            <div class="commerce-interest" id="commerce-interest" hidden>
+              <div class="commerce-interest-copy" id="commerce-interest-copy" aria-live="polite">
+                <strong>Want to know when it launches?</strong>
+                <span>Ask for one email when integrated ticketing is ready.</span>
+              </div>
+              <button class="sg-btn sg-btn-ghost" id="commerce-interest-toggle" type="button" aria-pressed="false">Notify me</button>
             </div>
           </div>
 

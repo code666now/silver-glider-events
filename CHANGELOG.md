@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.27
+
+Released September 3, 2026.
+
+### Added
+
+* Added a one-click Notify me action beneath the upcoming Silver Glider ticketing option for signed-in hosts.
+* Added a separate, reversible ticketing-interest list that does not reuse RSVP, follower, or general marketing consent.
+* Added a Super Admin Ticketing workspace with audience counts, a launch-email preview, and a private test-send action.
+* Added an idempotent one-time launch sender that unlocks only after the Commerce integration is configured.
+
+### Safety
+
+* Repeated opt-ins create only one interest record, removed hosts are excluded, failed sends remain retryable, and delivered launch messages cannot be sent twice.
+* No production launch email is sent automatically; the final send requires Commerce to be enabled and an explicit Super Admin confirmation.
+
 ## 1.0.26
 
 Released September 3, 2026.
