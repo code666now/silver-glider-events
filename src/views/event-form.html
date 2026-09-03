@@ -145,6 +145,23 @@
       background: var(--sg-surface); color: var(--sg-text-dim); border: 1px solid var(--sg-border);
     }
     .vis-toggle button.on { background: rgba(28,197,190,0.12); color: var(--sg-accent); border-color: var(--sg-accent); }
+    .admission-options { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px; }
+    .admission-option {
+      min-height:74px;padding:13px 14px;border:1px solid var(--sg-border);border-radius:15px;
+      background:var(--sg-surface);color:var(--sg-text-dim);font-family:var(--sg-font-body);
+      text-align:left;cursor:pointer;
+    }
+    .admission-option strong { display:block;margin-bottom:4px;color:var(--sg-text);font-size:13px;line-height:1.25; }
+    .admission-option span { display:block;color:var(--sg-text-faint);font-size:10px;line-height:1.4; }
+    .admission-option.on { border-color:var(--sg-accent);background:rgba(28,197,190,.1); }
+    .admission-option.on strong { color:var(--sg-accent); }
+    .admission-option:disabled { cursor:not-allowed;opacity:.48; }
+    .commerce-admission-note {
+      display:none;margin:-2px 0 20px;padding:14px 16px;border:1px solid var(--sg-border-soft);
+      border-radius:14px;background:rgba(255,255,255,.025);color:var(--sg-text-dim);
+      font-size:12px;line-height:1.55;
+    }
+    .commerce-admission-note.show { display:block; }
     .private-settings {
       display: none;
       margin: -4px 0 24px;
@@ -667,6 +684,8 @@
       }
     }
     @media (max-width: 640px) {
+      .admission-options { grid-template-columns:1fr; }
+      .admission-option { min-height:64px; }
       .vibe-choice-fields { grid-template-columns: 1fr; gap: 0; }
       .vibe-editor-actions { align-items: stretch; flex-direction: column; }
       .secret-shortcut { align-items:flex-start;flex-direction:column; }
@@ -913,11 +932,15 @@
 
           <div class="sg-field">
             <label>Admission</label>
-            <div class="vis-toggle">
-              <button type="button" id="admission-free" class="on">Free RSVP</button>
-              <button type="button" id="admission-paid">Paid elsewhere</button>
+            <div class="admission-options" role="group" aria-label="Admission type">
+              <button type="button" id="admission-free" class="admission-option on"><strong>Free RSVP</strong><span>Collect guest names and confirmations here.</span></button>
+              <button type="button" id="admission-commerce" class="admission-option" disabled><strong>Sell with Silver Glider</strong><span>Ticket checkout and orders are handled by Commerce.</span></button>
+              <button type="button" id="admission-paid" class="admission-option"><strong>External tickets</strong><span>Send guests to another ticket link or sell at the door.</span></button>
             </div>
           </div>
+
+          <input type="hidden" id="commerce_event_id">
+          <p class="commerce-admission-note" id="commerce-admission-note">Silver Glider ticket setup will be available after the Commerce connection is configured.</p>
 
           <div class="row2 admission-fields" id="ticket-fields">
             <div class="sg-field"><label for="ticket_price">Ticket price</label><input class="sg-input" type="number" id="ticket_price" min="0.01" step="0.01" placeholder="15"></div>

@@ -101,7 +101,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.24');
+  assert.equal((await health.json()).version, '1.0.25');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -199,6 +199,95 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.match(hostHtml, /Standard Night/);
   assert.match(hostHtml, /Flyer Night/);
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
+});
+
+test('Commerce ticket events use Get Tickets, reject RSVP, and never duplicate the Commerce reference', async () => {
+  const organizerCookie = `sge_session=${signSession(organizerId)}`;
+  const missingReference = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({
+      title: 'Unlinked Commerce Night',
+      event_date: '2030-08-11',
+      start_time: '19:30',
+      venue_name: 'Test Hall',
+      admission_type: 'silver_glider_tickets'
+    })
+  });
+  assert.equal(missingReference.status, 400);
+
+  const create = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({
+      title: 'Commerce Night',
+      event_date: '2030-08-10',
+      start_time: '19:30',
+      venue_name: 'Test Hall',
+      admission_type: 'silver_glider_tickets',
+      commerce_event_id: 'commerce_event_123'
+    })
+  });
+  assert.equal(create.status, 201);
+  const commerceEvent = (await create.json()).event;
+
+  const publicPage = await fetch(`${baseUrl}/e/${commerceEvent.slug}`);
+  const publicHtml = await publicPage.text();
+  assert.equal(publicPage.status, 200);
+  assert.match(publicHtml, new RegExp(`data-primary-action="ticket"[^>]*href="/e/${commerceEvent.slug}/tickets"[^>]*>Get Tickets</a>`));
+  assert.match(publicHtml, /"rsvpEnabled":false/);
+  assert.doesNotMatch(publicHtml, /data-open-rsvp/);
+
+  const directRsvp = await fetch(`${baseUrl}/api/public/events/${commerceEvent.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Ticket Buyer', email: 'buyer@example.test' })
+  });
+  assert.equal(directRsvp.status, 409);
+  assert.equal((await directRsvp.json()).error, 'tickets_required');
+
+  const handoff = await fetch(`${baseUrl}/e/${commerceEvent.slug}/tickets`);
+  assert.equal(handoff.status, 503);
+  assert.match(await handoff.text(), /Ticket checkout is temporarily unavailable/);
+
+  const duplicate = await fetch(`${baseUrl}/api/events/${commerceEvent.id}/duplicate`, {
+    method: 'POST',
+    headers: { cookie: organizerCookie }
+  });
+  assert.equal(duplicate.status, 201);
+  const duplicateEvent = (await duplicate.json()).event;
+  assert.equal(duplicateEvent.admission_type, 'silver_glider_tickets');
+  assert.equal(duplicateEvent.commerce_event_id, null);
+  assert.equal(duplicateEvent.status, 'draft');
+});
+
+test('canonical external tickets preserve the existing price, link, and RSVP behavior', async () => {
+  const response = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `sge_session=${signSession(organizerId)}`
+    },
+    body: JSON.stringify({
+      title: 'External Ticket Night',
+      event_date: '2030-09-20',
+      start_time: '20:00',
+      venue_name: 'External Hall',
+      admission_type: 'external_tickets',
+      ticket_price: 25,
+      ticket_url: 'https://tickets.example.test/external-night'
+    })
+  });
+  assert.equal(response.status, 201);
+  const event = (await response.json()).event;
+  assert.equal(event.admission_type, 'external_tickets');
+  assert.equal(Number(event.ticket_price), 25);
+  assert.equal(event.commerce_event_id, null);
+
+  const pageHtml = await (await fetch(`${baseUrl}/e/${event.slug}`)).text();
+  assert.match(pageHtml, /\$25/);
+  assert.match(pageHtml, /https:\/\/tickets\.example\.test\/external-night/);
+  assert.match(pageHtml, /data-primary-action="rsvp"/);
 });
 
 test('renders the Host Page Dashboard control only for its authenticated owner', async () => {

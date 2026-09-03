@@ -17,7 +17,17 @@ function validTicketUrl(value) {
 }
 
 function flyerPrimaryAction(event = {}) {
-  const isPaid = event.admission_type === 'paid';
+  if (isSilverGliderTickets(event)) {
+    return {
+      type: 'commerce_ticket',
+      label: 'Get Tickets',
+      url: event.slug ? `/e/${encodeURIComponent(event.slug)}/tickets` : null,
+      supportingText: 'Tickets by Silver Glider',
+      secondaryRsvp: false
+    };
+  }
+
+  const isPaid = isExternalTickets(event);
   const ticketUrl = isPaid ? validTicketUrl(event.ticket_url) : null;
   const price = formatTicketPrice(event.ticket_price);
   const hasPrice = price !== 'Paid admission';
@@ -52,3 +62,4 @@ function flyerPrimaryAction(event = {}) {
 }
 
 module.exports = { flyerPrimaryAction, formatTicketPrice, validTicketUrl };
+const { isExternalTickets, isSilverGliderTickets } = require('./admission');

@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.25
+
+Released September 3, 2026.
+
+### Added
+
+* Added three explicit admission choices: Free RSVP, Sell tickets with Silver Glider, and External tickets.
+* Added an optional Commerce event reference and a feature-gated Commerce API boundary for the future Silver Glider Tickets integration.
+* Added a stable Get Tickets handoff route for Silver Glider ticketed events.
+
+### Safety
+
+* Existing Free RSVP and external-ticket events retain their current behavior and data.
+* Commerce remains the source of truth for prices, inventory, availability, checkout, orders, and issued tickets; none of that logic was duplicated in Events.
+* The Silver Glider ticketing option remains unavailable until the Commerce API is explicitly configured, and an unavailable handoff fails safely without exposing an RSVP form.
+
 ## 1.0.24
 
 Released September 1, 2026.

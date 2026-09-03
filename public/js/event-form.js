@@ -3,6 +3,8 @@ renderNav('events');
 const editId = new URLSearchParams(location.search).get('id');
 let visibility = 'public';
 let admissionType = 'free_rsvp';
+let commerceEnabled = false;
+let commerceEventId = null;
 let presentationMode = 'standard';
 let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
@@ -142,6 +144,14 @@ const organizerProfileReady = api('/api/auth/me')
   .then(({ organizer }) => applyOrganizerProfile(organizer))
   .catch(() => {});
 
+const commerceConfigReady = api('/api/commerce/config')
+  .then(({ enabled }) => {
+    commerceEnabled = enabled === true;
+    $('admission-commerce').disabled = !commerceEnabled;
+    if (admissionType === 'silver_glider_tickets') setAdmission(admissionType, { force: true });
+  })
+  .catch(() => {});
+
 document.querySelectorAll('[data-picker-target]').forEach(button => {
   button.addEventListener('click', () => {
     const input = $(button.dataset.pickerTarget);
@@ -192,20 +202,31 @@ $('create-secret-show').addEventListener('click', () => {
   event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 }));
 
-function setAdmission(v) {
-  admissionType = v === 'paid' ? 'paid' : 'free_rsvp';
-  $('admission-free').classList.toggle('on', admissionType === 'free_rsvp');
-  $('admission-paid').classList.toggle('on', admissionType === 'paid');
-  $('ticket-fields').classList.toggle('show', admissionType === 'paid');
-  $('ticket_price').required = admissionType === 'paid';
-  $('ticket_url').required = false;
-  if (admissionType === 'free_rsvp') {
-    $('ticket_price').value = '';
-    $('ticket_url').value = '';
+function setAdmission(v, { force = false } = {}) {
+  const normalized = v === 'paid' || v === 'external_tickets'
+    ? 'external_tickets'
+    : v === 'silver_glider_tickets'
+      ? 'silver_glider_tickets'
+      : 'free_rsvp';
+  if (normalized === 'silver_glider_tickets' && !force && !commerceEnabled && !commerceEventId) {
+    toast('Silver Glider ticket setup is not connected yet');
+    return;
   }
+  admissionType = normalized;
+  $('admission-free').classList.toggle('on', admissionType === 'free_rsvp');
+  $('admission-commerce').classList.toggle('on', admissionType === 'silver_glider_tickets');
+  $('admission-paid').classList.toggle('on', admissionType === 'external_tickets');
+  $('ticket-fields').classList.toggle('show', admissionType === 'external_tickets');
+  $('commerce-admission-note').classList.toggle('show', admissionType === 'silver_glider_tickets');
+  $('commerce-admission-note').textContent = commerceEventId
+    ? 'Connected to Silver Glider Commerce. Pricing, inventory, orders, and ticket delivery are managed there.'
+    : 'Silver Glider ticket setup will be available after the Commerce connection is configured.';
+  $('ticket_price').required = admissionType === 'external_tickets';
+  $('ticket_url').required = false;
 }
 $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
-$('admission-paid').addEventListener('click', () => setAdmission('paid'));
+$('admission-commerce').addEventListener('click', () => setAdmission('silver_glider_tickets'));
+$('admission-paid').addEventListener('click', () => setAdmission('external_tickets'));
 
 // Background picker — gradients + generative/photo/video effects
 const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
@@ -790,8 +811,9 @@ function collect() {
     secret_code_confirm: $('secret_show_enabled').checked ? $('secret_code_confirm').value : '',
     background_theme: $('background_theme').value,
     admission_type: admissionType,
-    ticket_price: admissionType === 'paid' ? ($('ticket_price').value || null) : null,
-    ticket_url: admissionType === 'paid' ? ($('ticket_url').value.trim() || null) : null,
+    ticket_price: admissionType === 'external_tickets' ? ($('ticket_price').value || null) : null,
+    ticket_url: admissionType === 'external_tickets' ? ($('ticket_url').value.trim() || null) : null,
+    commerce_event_id: admissionType === 'silver_glider_tickets' ? commerceEventId : null,
     cover_credit_name: $('cover_credit_name').value || null,
     cover_credit_link: $('cover_credit_link').value || null
   };
@@ -841,7 +863,13 @@ if (editId) {
     setPresentationMode(event.presentation_mode === 'flyer' ? 'flyer' : 'standard');
     setCoverFitMode(event.cover_fit_mode || 'auto');
     if (event.flyer_image_url) setFlyer(event.flyer_image_url);
-    setAdmission(event.admission_type === 'paid' ? 'paid' : 'free_rsvp');
+    commerceEventId = event.commerce_event_id || null;
+    $('commerce_event_id').value = commerceEventId || '';
+    setAdmission(event.admission_type === 'silver_glider_tickets'
+      ? 'silver_glider_tickets'
+      : (event.admission_type === 'paid' || event.admission_type === 'external_tickets')
+        ? 'external_tickets'
+        : 'free_rsvp', { force: true });
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
     $('more-details').open = Boolean(event.description || event.event_vibe_url || event.event_vibe_url_2);
@@ -860,6 +888,7 @@ $('event-form').addEventListener('submit', async e => {
   btn.textContent = editId ? 'Saving…' : 'Publishing…';
   try {
     await organizerProfileReady;
+    await commerceConfigReady;
     if (presentationMode === 'flyer' && !$('flyer_image_url').value) {
       throw new Error('Upload a flyer before publishing this event');
     }

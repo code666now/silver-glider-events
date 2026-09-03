@@ -10,6 +10,7 @@ const { signOptout } = require('../lib/followers');
 const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
+const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
 const { normalizeHex } = require('../../public/js/artwork-color');
 
 const router = express.Router();
@@ -21,7 +22,6 @@ router.use('/api/places', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'disco', 'fog', 'saloon'];
-const ADMISSION_TYPES = ['free_rsvp', 'paid'];
 const PRESENTATION_MODES = ['standard', 'flyer'];
 const COVER_FIT_MODES = ['auto', 'contain', 'cover'];
 
@@ -47,6 +47,13 @@ function cleanTicketUrl(v) {
   } catch (_) {
     return null;
   }
+}
+
+function cleanCommerceEventId(v) {
+  const value = String(v ?? '').trim();
+  if (!value) return null;
+  if (value.length > 200 || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
 }
 
 function cleanVibeUrl(v) {
@@ -122,9 +129,10 @@ function validateEventBody(body, { partial = false } = {}) {
     capacity:        v => (v === '' || v == null ? null : Math.max(1, parseInt(v, 10) || 0) || null),
     visibility:      v => (v === 'private' ? 'private' : 'public'),
     background_theme: v => (THEMES.includes(v) ? v : 'midnight'),
-    admission_type:  v => (ADMISSION_TYPES.includes(v) ? v : 'free_rsvp'),
+    admission_type:  normalizeAdmissionType,
     ticket_price:    v => (v === '' || v == null ? null : Math.round((Number(v) || 0) * 100) / 100),
     ticket_url:      cleanTicketUrl,
+    commerce_event_id: cleanCommerceEventId,
     status:          v => (['draft', 'published', 'cancelled'].includes(v) ? v : undefined)
   };
   for (const [key, clean] of Object.entries(fields)) {
@@ -157,14 +165,26 @@ function validateEventBody(body, { partial = false } = {}) {
   }
   if (body.flyer_image_url && !out.flyer_image_url) errors.push('Upload the flyer through Silver Glider Events');
   if (!partial && out.presentation_mode === 'flyer' && !out.flyer_image_url) errors.push('A flyer image is required for Flyer presentation');
-  const paid = out.admission_type === 'paid' || (partial && body.admission_type === undefined && (out.ticket_price != null || out.ticket_url));
-  if (out.admission_type === 'free_rsvp') {
+  if (body.admission_type !== undefined && !out.admission_type) errors.push('Choose a valid admission type');
+  if (body.commerce_event_id && !out.commerce_event_id) errors.push('Enter a valid Commerce event reference');
+  const externalTickets = out.admission_type === ADMISSION_TYPES.EXTERNAL_TICKETS ||
+    (partial && body.admission_type === undefined && (out.ticket_price != null || out.ticket_url));
+  const silverGliderTickets = out.admission_type === ADMISSION_TYPES.SILVER_GLIDER_TICKETS ||
+    (partial && body.admission_type === undefined && out.commerce_event_id);
+  if (out.admission_type === ADMISSION_TYPES.FREE_RSVP) {
     out.ticket_price = null;
     out.ticket_url = null;
+    out.commerce_event_id = null;
   }
-  if (paid) {
+  if (externalTickets) {
+    out.commerce_event_id = null;
     if (out.ticket_price == null || out.ticket_price <= 0) errors.push('Enter a ticket price');
     if (body.ticket_url && !out.ticket_url) errors.push('Enter a valid ticket link');
+  }
+  if (silverGliderTickets) {
+    out.ticket_price = null;
+    out.ticket_url = null;
+    if (!out.commerce_event_id && !partial) errors.push('Connect this event to Silver Glider Commerce before publishing');
   }
   if (out.status !== undefined && out.status === undefined) delete out.status;
   return { out, errors };
@@ -263,8 +283,8 @@ router.post('/api/events', async (req, res, next) => {
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
                                event_vibe_label, event_vibe_url_2, event_vibe_label_2,
                                show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
-                               artwork_accent_color)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+                               artwork_accent_color, commerce_event_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.cover_fit_mode, out.presentation_mode, out.flyer_image_url, out.event_date, out.start_time, out.end_time, out.venue_name, out.venue_address,
@@ -275,7 +295,8 @@ router.post('/api/events', async (req, res, next) => {
            out.google_place_id || null, out.event_vibe_url || null,
            out.event_vibe_label || null, out.event_vibe_url_2 || null, out.event_vibe_label_2 || null,
            out.show_guest_list, out.allow_guests, out.comments_enabled,
-           secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null]
+           secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
+           out.commerce_event_id || null]
         );
         if (secretShowEnabled) {
           await client.query(
@@ -325,7 +346,8 @@ router.put('/api/events/:id', async (req, res, next) => {
     await client.query('BEGIN');
     const { rows: currentRows } = await client.query(
       `SELECT visibility, show_guest_list, allow_guests, comments_enabled,
-              secret_show_enabled, secret_show_version, presentation_mode, flyer_image_url
+              secret_show_enabled, secret_show_version, presentation_mode, flyer_image_url,
+              admission_type, ticket_price, ticket_url, commerce_event_id, status
          FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
@@ -334,6 +356,18 @@ router.put('/api/events/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     const current = currentRows[0];
+    const effectiveAdmission = out.admission_type || normalizeAdmissionType(current.admission_type) || ADMISSION_TYPES.FREE_RSVP;
+    const effectiveCommerceEventId = out.commerce_event_id !== undefined
+      ? out.commerce_event_id
+      : current.commerce_event_id;
+    if (effectiveAdmission === ADMISSION_TYPES.SILVER_GLIDER_TICKETS && !effectiveCommerceEventId && current.status !== 'draft') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Connect this event to Silver Glider Commerce before publishing' });
+    }
+    if (effectiveAdmission !== ADMISSION_TYPES.SILVER_GLIDER_TICKETS && out.commerce_event_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Choose Sell with Silver Glider before adding a Commerce event reference' });
+    }
     const effectivePresentationMode = out.presentation_mode ?? current.presentation_mode ?? 'standard';
     const effectiveFlyerImage = out.flyer_image_url !== undefined ? out.flyer_image_url : current.flyer_image_url;
     if (effectivePresentationMode === 'flyer' && !effectiveFlyerImage) {
@@ -422,8 +456,8 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                background_theme, cover_credit_name, cover_credit_link,
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
                                event_vibe_label, event_vibe_url_2, event_vibe_label_2,
-                               show_guest_list, allow_guests, comments_enabled, artwork_accent_color)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'draft',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+                               show_guest_list, allow_guests, comments_enabled, artwork_accent_color, commerce_event_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'draft',$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,NULL)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url,
            e.cover_fit_mode || 'auto', e.presentation_mode || 'standard', e.flyer_image_url || null, e.event_date,

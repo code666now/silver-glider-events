@@ -30,6 +30,7 @@ app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
 app.use(require('./routes/invites'));
 app.use(require('./routes/follows'));
+app.use(require('./routes/commerce'));
 app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));

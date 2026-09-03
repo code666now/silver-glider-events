@@ -2,7 +2,7 @@
 
 Silver Glider Events is a lightweight event publishing and RSVP platform for independent hosts, promoters, artists, venues, and private gatherings.
 
-Hosts can publish a Standard event page or a poster-first Flyer page, collect free RSVPs, link to an external ticket provider, manage guest lists, send reminders, and maintain a public host page. Silver Glider does **not** process ticket payments or issue tickets in this MVP.
+Hosts can publish a Standard event page or a poster-first Flyer page, collect free RSVPs, link to an external ticket provider, manage guest lists, send reminders, and maintain a public host page. A feature-gated integration boundary can also hand Silver Glider ticketed events to the separate Commerce service; this repository does **not** process payments or issue tickets.
 
 - Live: https://silvergliderevents.com
 - Railway: https://silver-glider-events-production.up.railway.app
@@ -44,7 +44,7 @@ Never use the Railway production database for development or tests.
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
 - Flyer events with a centered, uncropped poster-first public layout
 - Optional Event Vibe with one link or two labeled artist choices sharing a single active player
-- Free RSVP and external paid-ticket links; no native payment processing
+- Free RSVP, external ticket links, and a feature-gated Silver Glider Commerce handoff; no payment processing in this app
 - Progressive RSVP form, mobile docked CTA, capacity enforcement, cancellation links, and confirmation resends
 - Artwork-led RSVP confirmation emails with adaptive color treatment, linked host/vibe identity, conditional details, and calendar attachments; separate day-before/day-of reminders
 - Public and Private—Link Only visibility
@@ -76,7 +76,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, reminder cron
-src/db/migrations/           numbered SQL migrations (currently 001–020)
+src/db/migrations/           numbered SQL migrations (currently 001–024)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/reminders.js        idempotent day-before and day-of reminder job
@@ -95,6 +95,7 @@ test/                        focused Node test suite
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
 - **Event Vibe:** one supported music/media link keeps the original simple embed. Hosts can optionally add a second labeled artist; Standard and Flyer pages show compact accessible tabs above one active player, and the inactive embed is not loaded.
+- **Admission:** `free_rsvp` keeps the established guest flow, `external_tickets` keeps the existing displayed-price and outbound-link behavior, and `silver_glider_tickets` stores only a `commerce_event_id`. Commerce remains authoritative for price, inventory, availability, checkout, orders, and issued tickets.
 - **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited.
 
 ## Tests
@@ -104,7 +105,7 @@ npm test
 npm run check:static
 ```
 
-As of August 12, 2026, the suite contains 83 tests. The 74 focused tests cover Follow Host contracts, Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Nine HTTP/PostgreSQL integration tests exercise signed-in and magic-link Host follows, owner-only Host Page navigation, unchanged creator magic-link destinations, authenticated event creation, adaptive email-icon delivery, Standard/Flyer/host and two-artist Event Vibe rendering, locked and unlocked Secret Shows, RSVP capacity transactions, and confirmation dispatch against `postgresql://localhost:5432/sge_test`.
+As of September 3, 2026, the suite contains 108 tests. The 94 focused tests cover Commerce admission and client boundaries, Follow Host contracts, Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, private-event visibility, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout. Fourteen HTTP/PostgreSQL integration tests exercise the established RSVP, authentication, privacy, and rendering flows plus backward-compatible Free RSVP, external-ticket, and Silver Glider Commerce admission behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

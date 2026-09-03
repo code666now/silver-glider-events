@@ -200,14 +200,18 @@ function queueMobileRsvpDockSync() {
 function show(stateId) {
   activeRsvpState = stateId;
   ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
-    .forEach(id => { $(id).style.display = id === stateId ? 'block' : 'none'; });
+    .forEach(id => {
+      const element = $(id);
+      if (element) element.style.display = id === stateId ? 'block' : 'none';
+    });
   syncMobileRsvpDock();
 }
 
 if (EVENT.status === 'cancelled') show('cancelled-state');
-else if (!EVENT.isPast && EVENT.isFull) show('full-state');
+else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.isFull) show('full-state');
 
 function openRsvpForm({ scrollToForm = false, trigger = null } = {}) {
+  if (EVENT.rsvpEnabled === false) return;
   lastRsvpTrigger = trigger;
   show('rsvp-form-box');
   document.querySelectorAll('[data-open-rsvp]').forEach(button => button.setAttribute('aria-expanded', 'true'));
@@ -226,11 +230,13 @@ function closeRsvpForm() {
   if (lastRsvpTrigger?.isConnected) lastRsvpTrigger.focus({ preventScroll: true });
 }
 
-document.querySelectorAll('[data-open-rsvp]').forEach(trigger => {
-  trigger.setAttribute('aria-expanded', 'false');
-  trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta, trigger }));
-});
-$('rsvp-close').addEventListener('click', closeRsvpForm);
+if (EVENT.rsvpEnabled !== false) {
+  document.querySelectorAll('[data-open-rsvp]').forEach(trigger => {
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta, trigger }));
+  });
+  $('rsvp-close').addEventListener('click', closeRsvpForm);
+}
 window.addEventListener('scroll', queueMobileRsvpDockSync, { passive: true });
 window.addEventListener('resize', queueMobileRsvpDockSync);
 mobileRsvpMedia.addEventListener?.('change', queueMobileRsvpDockSync);
@@ -251,7 +257,7 @@ if (guestFields) {
   });
 }
 
-$('rsvp-form').addEventListener('submit', async e => {
+if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('rsvp-submit');
   btn.disabled = true;

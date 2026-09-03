@@ -11,6 +11,8 @@ const { verifyOptout } = require('../lib/followers');
 const { parseSession, readSessionCookie } = require('../lib/session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
+const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
+const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const {
   ensureAttemptSession,
@@ -331,13 +333,14 @@ router.get('/e/:slug', async (req, res, next) => {
 
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send(render404());
+    const rsvpEnabled = !isSilverGliderTickets(event);
 
     if (event.visibility === 'private') {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     }
 
     let publicGuestRows = [];
-    if (event.visibility === 'private' && event.show_guest_list) {
+    if (rsvpEnabled && event.visibility === 'private' && event.show_guest_list) {
       publicGuestRows = (await pool.query(
         `SELECT first_name, guest_first_name
            FROM rsvps
@@ -360,7 +363,7 @@ router.get('/e/:slug', async (req, res, next) => {
       )).rows;
     }
 
-    const isFull = event.capacity != null && event.total_attendance >= event.capacity;
+    const isFull = rsvpEnabled && event.capacity != null && event.total_attendance >= event.capacity;
     const presenterHtml = event.org_name
       ? `<div class="host-attribution">
           ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
@@ -369,9 +372,12 @@ router.get('/e/:slug', async (req, res, next) => {
             : `<strong>${esc(event.org_name)}</strong>`}</p>
         </div>`
       : '';
-    const isPaid = event.admission_type === 'paid';
+    const isPaid = isExternalTickets(event);
+    const isCommerceTicketed = isSilverGliderTickets(event);
     const ticketHtml = event.is_past
       ? ''
+      : isCommerceTicketed
+      ? '<div class="ticket-note"><span>Tickets</span><em>Sold by Silver Glider</em></div>'
       : isPaid
       ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
@@ -386,14 +392,20 @@ router.get('/e/:slug', async (req, res, next) => {
       : '';
     const standardPrimaryActionHtml = event.is_past
       ? endedActionHtml
+      : isCommerceTicketed
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="ticket-cta" data-primary-action="ticket" href="/e/${encodeURIComponent(event.slug)}/tickets" style="font-size:17px;padding:17px">Get Tickets</a>`
       : '<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP</button>';
     const standardMobileActionHtml = event.is_past
       ? endedMobileActionHtml
+      : isCommerceTicketed
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="/e/${encodeURIComponent(event.slug)}/tickets">Get Tickets</a>`
       : '<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button>';
     const flyerPrimaryActionHtml = event.is_past
       ? endedActionHtml
       : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      : flyerAction.type === 'commerce_ticket'
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
     const flyerSecondaryActionHtml = !event.is_past && flyerAction.secondaryRsvp
       ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
@@ -405,6 +417,8 @@ router.get('/e/:slug', async (req, res, next) => {
       ? endedMobileActionHtml
       : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      : flyerAction.type === 'commerce_ticket'
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
     const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
@@ -462,6 +476,7 @@ router.get('/e/:slug', async (req, res, next) => {
       status: event.status,
       isFull,
       commentsEnabled: event.visibility === 'private' && event.comments_enabled,
+      rsvpEnabled,
       isPast: event.is_past,
       coverImageUrl: primaryImageUrl || null,
       coverFitMode,
@@ -489,9 +504,9 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
-      .replace(/{{GUEST_FIELDS_HTML}}/g, renderGuestFields(event))
-      .replace(/{{GUEST_LIST_HTML}}/g, renderGuestList(event, publicGuestRows))
-      .replace(/{{COMMENTS_HTML}}/g, renderComments(event))
+      .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event) : '')
+      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows) : '')
+      .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{STANDARD_PRIMARY_ACTION_HTML}}/g, standardPrimaryActionHtml)
@@ -507,6 +522,36 @@ router.get('/e/:slug', async (req, res, next) => {
     res.send(html);
   } catch (err) { next(err); }
 });
+
+// Stable Events-owned handoff URL. It enforces event visibility before any
+// future Commerce request. The actual checkout endpoint will be added only
+// after the Commerce contract is supplied and verified.
+router.get('/e/:slug/tickets', async (req, res, next) => {
+  try {
+    const event = await loadEventBySlug(req.params.slug);
+    if (!event || !isSilverGliderTickets(event) || !event.commerce_event_id) {
+      return res.status(404).send(render404());
+    }
+    if (secretShowLocked(req, event)) return res.status(404).send(render404());
+    if (event.is_past || event.status !== 'published') {
+      return res.status(410).type('html').send(ticketHandoffPage(event, 'Ticket sales for this event are closed.'));
+    }
+    const message = commerceAdmissionEnabled()
+      ? 'Ticket checkout is not connected yet. Please try again shortly.'
+      : 'Ticket checkout is temporarily unavailable. Please try again shortly.';
+    res.setHeader('Retry-After', '60');
+    return res.status(503).type('html').send(ticketHandoffPage(event, message));
+  } catch (err) { next(err); }
+});
+
+function ticketHandoffPage(event, message) {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tickets — ${esc(event.title)}</title><link rel="stylesheet" href="/css/brand.css"></head>
+<body><main style="max-width:460px;margin:0 auto;padding:18vh 24px;text-align:center">
+<p class="sg-label" style="margin-bottom:20px">Silver Glider Tickets</p><h1 style="font-size:30px;margin-bottom:12px">${esc(event.title)}</h1>
+<p style="color:var(--sg-text-dim);font-size:16px;line-height:1.65;margin-bottom:26px">${esc(message)}</p>
+<a class="sg-btn sg-btn-ghost" href="/e/${encodeURIComponent(event.slug)}">Return to event</a></main></body></html>`;
+}
 
 // GET /api/public/events/:slug/comments — safe public wall data only.
 router.get('/api/public/events/:slug/comments', async (req, res, next) => {
@@ -632,6 +677,13 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     if (secretShowLocked(req, event)) {
       await client.query('ROLLBACK');
       return rejectLockedSecret(res);
+    }
+    if (isSilverGliderTickets(event)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'tickets_required',
+        message: 'Get tickets through Silver Glider for this event.'
+      });
     }
 
     const { rows: existing } = await client.query(
