@@ -155,7 +155,15 @@
     .admission-option span { display:block;color:var(--sg-text-faint);font-size:10px;line-height:1.4; }
     .admission-option.on { border-color:var(--sg-accent);background:rgba(28,197,190,.1); }
     .admission-option.on strong { color:var(--sg-accent); }
-    .admission-option:disabled { cursor:not-allowed;opacity:.48; }
+    .admission-option:disabled {
+      cursor:not-allowed;opacity:.72;border-style:dashed;background:rgba(255,255,255,.012);
+    }
+    .admission-option .admission-coming-soon {
+      display:inline-block;margin:6px 0 5px;padding:3px 7px;border:1px solid rgba(28,197,190,.34);
+      border-radius:999px;color:var(--sg-accent);font-size:9px;font-weight:800;letter-spacing:.08em;
+      line-height:1.2;text-transform:uppercase;
+    }
+    .admission-option .admission-coming-soon[hidden] { display:none; }
     .commerce-admission-note {
       display:none;margin:-2px 0 20px;padding:14px 16px;border:1px solid var(--sg-border-soft);
       border-radius:14px;background:rgba(255,255,255,.025);color:var(--sg-text-dim);
@@ -934,8 +942,8 @@
             <label>Admission</label>
             <div class="admission-options" role="group" aria-label="Admission type">
               <button type="button" id="admission-free" class="admission-option on"><strong>Free RSVP</strong><span>Collect guest names and confirmations here.</span></button>
-              <button type="button" id="admission-commerce" class="admission-option" disabled><strong>Sell with Silver Glider</strong><span>Ticket checkout and orders are handled by Commerce.</span></button>
               <button type="button" id="admission-paid" class="admission-option"><strong>External tickets</strong><span>Send guests to another ticket link or sell at the door.</span></button>
+              <button type="button" id="admission-commerce" class="admission-option" disabled><strong>Sell with Silver Glider</strong><span class="admission-coming-soon" id="admission-commerce-status">Coming soon</span><span>Integrated ticket checkout is on the way.</span></button>
             </div>
           </div>
 

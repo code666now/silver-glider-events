@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.26
+
+Released September 3, 2026.
+
+### Improved
+
+* Moved Sell tickets with Silver Glider to the third admission position while the Commerce connection is being completed.
+* Replaced the overly faded unavailable treatment with a clear Coming soon badge that remains readable on desktop and mobile.
+* Automatically removes the Coming soon status when the Commerce feature is enabled.
+
 ## 1.0.25
 
 Released September 3, 2026.

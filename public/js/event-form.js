@@ -148,6 +148,7 @@ const commerceConfigReady = api('/api/commerce/config')
   .then(({ enabled }) => {
     commerceEnabled = enabled === true;
     $('admission-commerce').disabled = !commerceEnabled;
+    $('admission-commerce-status').hidden = commerceEnabled;
     if (admissionType === 'silver_glider_tickets') setAdmission(admissionType, { force: true });
   })
   .catch(() => {});

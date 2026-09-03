@@ -35,9 +35,11 @@ test('event editor presents three admission choices and gates unfinished Commerc
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
   assert.match(html, /id="admission-free"[\s\S]*Free RSVP/);
-  assert.match(html, /id="admission-commerce"[^>]*disabled[\s\S]*Sell with Silver Glider/);
+  assert.match(html, /id="admission-free"[\s\S]*id="admission-paid"[\s\S]*id="admission-commerce"/, 'Commerce should be the third admission option');
+  assert.match(html, /id="admission-commerce"[^>]*disabled[\s\S]*Sell with Silver Glider[\s\S]*Coming soon/);
   assert.match(html, /id="admission-paid"[\s\S]*External tickets/);
   assert.match(js, /api\('\/api\/commerce\/config'\)/);
+  assert.match(js, /admission-commerce-status'\)\.hidden = commerceEnabled/);
   assert.match(js, /commerce_event_id: admissionType === 'silver_glider_tickets'/);
   assert.match(js, /ticket_price: admissionType === 'external_tickets'/);
 });
