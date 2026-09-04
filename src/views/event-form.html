@@ -119,6 +119,27 @@
     .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
     .row2 > * { min-width: 0; }
     .row2 .sg-input { min-width: 0; width: 100%; }
+    #event-form .sg-input,
+    #event-form .sg-select,
+    #event-form .sg-textarea {
+      transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+    }
+    @media (hover:hover) and (pointer:fine) {
+      #event-form .sg-input:hover:not(:disabled),
+      #event-form .sg-select:hover:not(:disabled),
+      #event-form .sg-textarea:hover:not(:disabled),
+      #event-form .native-picker-wrap:hover .sg-input:not(:disabled) {
+        border-color: rgba(28,197,190,.7);
+        box-shadow: 0 0 0 3px rgba(28,197,190,.08), 0 0 20px rgba(28,197,190,.07);
+      }
+    }
+    #event-form .sg-input:focus:not(:disabled),
+    #event-form .sg-select:focus:not(:disabled),
+    #event-form .sg-textarea:focus:not(:disabled),
+    #event-form .native-picker-wrap:focus-within .sg-input:not(:disabled) {
+      border-color: var(--sg-accent);
+      box-shadow: 0 0 0 4px rgba(28,197,190,.11), 0 0 24px rgba(28,197,190,.09);
+    }
     .vibe-editor {
       padding: 16px;
       border: 1px solid var(--sg-border-soft);
@@ -192,17 +213,22 @@
       font-size:12px;line-height:1.55;
     }
     .commerce-admission-note.show { display:block; }
+    .guest-experience-settings,
     .private-settings {
-      display: none;
-      margin: -4px 0 24px;
+      margin: -4px 0 14px;
       padding: 18px;
       border: 1px solid var(--sg-border-soft);
       border-radius: 16px;
       background: rgba(255,255,255,.025);
     }
+    .guest-experience-settings { display:grid;gap:13px; }
+    .private-settings { display:none;margin-top:0;margin-bottom:24px; }
     .private-settings.show { display: grid; gap: 13px; }
-    .private-settings > p { color: var(--sg-text-faint); font-size: 12px; line-height: 1.55; }
-    .private-option {
+    .settings-group-heading strong {
+      display:block;color:var(--sg-text);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+    }
+    .settings-group-heading span { display:block;margin-top:4px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
+    .experience-option {
       display: flex;
       align-items: flex-start;
       gap: 12px;
@@ -210,15 +236,15 @@
       font-size: 14px;
       cursor: pointer;
     }
-    .private-option input {
+    .experience-option input {
       width: 18px;
       height: 18px;
       margin-top: 2px;
       flex: 0 0 auto;
       accent-color: var(--sg-accent);
     }
-    .private-option strong { display: block; color: var(--sg-text); font-size: 14px; }
-    .private-option span { display: block; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
+    .experience-option strong { display: block; color: var(--sg-text); font-size: 14px; }
+    .experience-option span { display: block; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
     .secret-shortcut {
       display:flex;align-items:center;justify-content:space-between;gap:18px;
       margin:0 0 24px;padding:18px 20px;border:1px solid rgba(28,197,190,.18);
@@ -1013,18 +1039,22 @@
             </div>
           </div>
 
-          <div class="private-settings" id="private-settings">
-            <p>Anyone with the direct link can view this event. It will not appear on your public host page or in Silver Glider discovery.</p>
-            <label class="private-option"><input type="checkbox" id="show_guest_list"><span><strong>Show guest list</strong>Display first names only on the event page.</span></label>
-            <label class="private-option"><input type="checkbox" id="allow_guests"><span><strong>Allow guests</strong>Each RSVP may bring one named guest.</span></label>
-            <label class="private-option"><input type="checkbox" id="comments_enabled"><span><strong>Enable comments</strong>Confirmed attendees can post to a simple comments section.</span></label>
-            <label class="private-option secret-option"><input type="checkbox" id="secret_show_enabled"><span><strong>Secret Show Mode</strong>Guests must enter a code before they can view the event.</span></label>
+          <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title">
+            <div class="settings-group-heading"><strong id="guest-experience-title">Guest experience</strong></div>
+            <label class="experience-option"><input type="checkbox" id="show_guest_list"><span><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span></label>
+            <label class="experience-option"><input type="checkbox" id="allow_guests"><span><strong>Allow +1s</strong>Let each RSVP bring one guest.</span></label>
+            <label class="experience-option"><input type="checkbox" id="comments_enabled"><span><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span></label>
+          </section>
+
+          <section class="private-settings" id="private-settings" aria-labelledby="private-options-title">
+            <div class="settings-group-heading"><strong id="private-options-title">Private event options</strong></div>
+            <label class="experience-option secret-option"><input type="checkbox" id="secret_show_enabled"><span><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span></label>
             <div class="secret-code-fields" id="secret-code-fields">
               <div class="sg-field"><label for="secret_code">Access code</label><input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers"></div>
               <div class="sg-field"><label for="secret_code_confirm">Confirm access code</label><input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again"></div>
               <p class="secret-code-help" id="secret-code-help">Guests must enter this code before they can view the event.</p>
             </div>
-          </div>
+          </section>
         </div>
       </section>
 

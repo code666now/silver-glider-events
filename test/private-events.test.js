@@ -6,23 +6,23 @@ const path = require('node:path');
 const {
   canAppearInPublicListings,
   cleanComment,
-  normalizePrivateSettings,
+  normalizeGuestExperienceSettings,
   parseNamedGuest,
   publicGuestNames,
   robotsDirective
 } = require('../src/lib/private-events');
 
-test('private settings are opt-in and can never leak onto a public event', () => {
-  assert.deepEqual(normalizePrivateSettings('public', {
+test('guest experience settings are opt-in for both public and private events', () => {
+  assert.deepEqual(normalizeGuestExperienceSettings({
     show_guest_list: true,
     allow_guests: true,
     comments_enabled: true
   }), {
-    show_guest_list: false,
-    allow_guests: false,
-    comments_enabled: false
+    show_guest_list: true,
+    allow_guests: true,
+    comments_enabled: true
   });
-  assert.deepEqual(normalizePrivateSettings('private', {
+  assert.deepEqual(normalizeGuestExperienceSettings({
     show_guest_list: true,
     allow_guests: false,
     comments_enabled: true
@@ -117,7 +117,7 @@ test('comments are text-only and limited to 300 characters', () => {
 test('fresh comment-enabled RSVPs receive attendee access without trusting existing emails', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public.js'), 'utf8');
   assert.match(source, /const isNewRsvp = existing\.length === 0/);
-  assert.match(source, /if \(isNewRsvp && event\.visibility === 'private' && event\.comments_enabled\)/);
+  assert.match(source, /if \(isNewRsvp && event\.comments_enabled\)/);
   assert.match(source, /setAttendeeCookie\(res, event\.id, rsvp\.manage_token\)/);
 
   const clientSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'public-event.js'), 'utf8');

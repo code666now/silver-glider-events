@@ -118,6 +118,18 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>')), /id="image-modal"/);
 });
 
+test('event editor gives editable fields a restrained hover and focus halo', () => {
+  const html = read('src/views/event-form.html');
+
+  assert.match(html, /@media \(hover:hover\) and \(pointer:fine\)/);
+  assert.match(html, /#event-form \.sg-input:hover:not\(:disabled\)/);
+  assert.match(html, /#event-form \.sg-select:hover:not\(:disabled\)/);
+  assert.match(html, /#event-form \.sg-textarea:hover:not\(:disabled\)/);
+  assert.match(html, /#event-form \.native-picker-wrap:hover \.sg-input:not\(:disabled\)/);
+  assert.match(html, /#event-form \.native-picker-wrap:focus-within \.sg-input:not\(:disabled\)/);
+  assert.match(html, /box-shadow: 0 0 0 4px rgba\(28,197,190,\.11\), 0 0 24px rgba\(28,197,190,\.09\)/);
+});
+
 test('event editor keeps venue, admission, and event settings visible while progressively disclosing optional content', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
@@ -141,8 +153,15 @@ test('event editor keeps venue, admission, and event settings visible while prog
   assert.doesNotMatch(form, /Tickets and visibility/);
   assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your Host Page and may appear in Silver Glider discovery/);
   assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your Host Page and discovery/);
+  assert.match(form, /id="guest-experience-settings"[\s\S]*Show guest list[\s\S]*Show attendee first names and avatars on the event page/);
+  assert.match(form, /id="guest-experience-settings"[\s\S]*Allow \+1s[\s\S]*Let each RSVP bring one guest/);
+  assert.match(form, /id="guest-experience-settings"[\s\S]*Enable comments[\s\S]*Confirmed attendees can join the conversation/);
+  assert.match(form, /id="private-settings"[\s\S]*Private event options[\s\S]*Secret Show Mode/);
+  assert.ok(form.indexOf('id="guest-experience-settings"') < form.indexOf('id="private-settings"'));
   assert.match(js, /vis-public'\)\.setAttribute\('aria-pressed'/);
   assert.match(js, /vis-private'\)\.setAttribute\('aria-pressed'/);
+  assert.match(js, /secretShowWasDisabled[\s\S]*setSecretShow\(false\)/);
+  assert.match(js, /show_guest_list: \$\('show_guest_list'\)\.checked/);
   assert.doesNotMatch(form, /<details[^>]+id="admission-settings"/);
   assert.doesNotMatch(form, /<details[^>]+id="audience-settings"/);
   assert.doesNotMatch(form, /id="more-details"[^>]*open/);

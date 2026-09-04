@@ -13,10 +13,7 @@ function splitName(value) {
   };
 }
 
-function normalizePrivateSettings(visibility, body = {}) {
-  if (visibility !== 'private') {
-    return { show_guest_list: false, allow_guests: false, comments_enabled: false };
-  }
+function normalizeGuestExperienceSettings(body = {}) {
   return {
     show_guest_list: isTrue(body.show_guest_list),
     allow_guests: isTrue(body.allow_guests),
@@ -93,7 +90,7 @@ module.exports = {
   attendeeCookieName,
   canAppearInPublicListings,
   cleanComment,
-  normalizePrivateSettings,
+  normalizeGuestExperienceSettings,
   parseNamedGuest,
   publicGuestNames,
   readCookie,

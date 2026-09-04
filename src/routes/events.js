@@ -7,7 +7,7 @@ const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../l
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
-const { canAppearInPublicListings, normalizePrivateSettings } = require('../lib/private-events');
+const { canAppearInPublicListings, normalizeGuestExperienceSettings } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
@@ -254,7 +254,7 @@ router.post('/api/events', async (req, res, next) => {
   try {
     const { out, errors } = validateEventBody(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
-    Object.assign(out, normalizePrivateSettings(out.visibility || 'public', req.body));
+    Object.assign(out, normalizeGuestExperienceSettings(req.body));
     const secretShowEnabled = isTrue(req.body.secret_show_enabled);
     if (secretShowEnabled && out.visibility !== 'private') {
       return res.status(400).json({ error: 'Secret Show requires Private — Link Only' });
@@ -375,7 +375,7 @@ router.put('/api/events/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'A flyer image is required for Flyer presentation' });
     }
     const effectiveVisibility = out.visibility || current.visibility;
-    Object.assign(out, normalizePrivateSettings(effectiveVisibility, {
+    Object.assign(out, normalizeGuestExperienceSettings({
       show_guest_list: req.body.show_guest_list ?? current.show_guest_list,
       allow_guests: req.body.allow_guests ?? current.allow_guests,
       comments_enabled: req.body.comments_enabled ?? current.comments_enabled

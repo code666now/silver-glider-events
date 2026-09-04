@@ -191,7 +191,7 @@ function rejectLockedSecret(res) {
 }
 
 function renderGuestList(event, rows) {
-  if (event.visibility !== 'private' || !event.show_guest_list) return '';
+  if (!event.show_guest_list) return '';
   const names = publicGuestNames(rows);
   const visibleLimit = 8;
   const items = names.map((entry, index) =>
@@ -214,7 +214,7 @@ function renderGuestList(event, rows) {
 }
 
 function renderGuestFields(event) {
-  if (event.visibility !== 'private' || !event.allow_guests) return '';
+  if (!event.allow_guests) return '';
   return `<fieldset class="party-size-field">
     <legend>Who is attending?</legend>
     <label><input type="radio" name="party_size" value="solo" checked> Just me</label>
@@ -227,7 +227,7 @@ function renderGuestFields(event) {
 }
 
 function renderComments(event) {
-  if (event.visibility !== 'private' || !event.comments_enabled) return '';
+  if (!event.comments_enabled) return '';
   return `<section class="event-wall" id="event-wall" aria-labelledby="event-wall-title">
     <div class="section-heading">
       <h2 id="event-wall-title">Comments</h2>
@@ -340,7 +340,7 @@ router.get('/e/:slug', async (req, res, next) => {
     }
 
     let publicGuestRows = [];
-    if (rsvpEnabled && event.visibility === 'private' && event.show_guest_list) {
+    if (rsvpEnabled && event.show_guest_list) {
       publicGuestRows = (await pool.query(
         `SELECT first_name, guest_first_name
            FROM rsvps
@@ -475,7 +475,7 @@ router.get('/e/:slug', async (req, res, next) => {
       title: event.title,
       status: event.status,
       isFull,
-      commentsEnabled: event.visibility === 'private' && event.comments_enabled,
+      commentsEnabled: event.comments_enabled,
       rsvpEnabled,
       isPast: event.is_past,
       coverImageUrl: primaryImageUrl || null,
@@ -557,7 +557,7 @@ function ticketHandoffPage(event, message) {
 router.get('/api/public/events/:slug/comments', async (req, res, next) => {
   try {
     const event = await loadEventBySlug(req.params.slug);
-    if (!event || event.visibility !== 'private' || !event.comments_enabled) {
+    if (!event || !event.comments_enabled) {
       return res.status(404).json({ error: 'Event wall not found' });
     }
     if (secretShowLocked(req, event)) return rejectLockedSecret(res);
@@ -589,7 +589,7 @@ router.get('/api/public/events/:slug/comments', async (req, res, next) => {
 router.post('/api/public/events/:slug/comments', async (req, res, next) => {
   try {
     const event = await loadEventBySlug(req.params.slug);
-    if (!event || event.visibility !== 'private' || !event.comments_enabled || event.status !== 'published') {
+    if (!event || !event.comments_enabled || event.status !== 'published') {
       return res.status(404).json({ error: 'Event wall not found' });
     }
     if (secretShowLocked(req, event)) return rejectLockedSecret(res);
@@ -695,9 +695,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       return res.json({ ok: true, alreadyRsvpd: true });
     }
 
-    const guest = parseNamedGuest({
-      allow_guests: event.visibility === 'private' && event.allow_guests
-    }, req.body);
+    const guest = parseNamedGuest({ allow_guests: event.allow_guests }, req.body);
     if (guest.error) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: guest.error });
@@ -742,7 +740,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     // A fresh RSVP establishes attendee access on this browser immediately.
     // Existing-email attempts still require the confirmation link so knowing
     // another attendee's email can never grant comment or deletion access.
-    if (isNewRsvp && event.visibility === 'private' && event.comments_enabled) {
+    if (isNewRsvp && event.comments_enabled) {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
     void resendConfirmation(event, rsvp);

@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.31
+
+Released September 3, 2026.
+
+### Improved
+
+* Made guest-list, +1, and comment controls available to both public and private events.
+* Reorganized those controls into Guest experience and kept Secret Show Mode in contextual Private event options.
+* Added a restrained Silver Glider teal hover and focus halo to editable event fields across mouse, keyboard, and mobile input.
+
+### Safety
+
+* Switching a Secret Show to Public now disables Secret Show Mode before save, while the server continues to reject Secret Show on public events.
+
 ## 1.0.30
 
 Released September 3, 2026.

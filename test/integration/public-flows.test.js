@@ -104,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.30');
+  assert.equal((await health.json()).version, '1.0.31');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -127,7 +127,10 @@ test('creates an event only for an authenticated organizer and publishes its pag
     start_time: '20:00',
     venue_name: 'Integration Hall',
     visibility: 'public',
-    presentation_mode: 'standard'
+    presentation_mode: 'standard',
+    show_guest_list: true,
+    allow_guests: true,
+    comments_enabled: true
   };
   const signedOut = await fetch(`${baseUrl}/api/events`, {
     method: 'POST',
@@ -148,10 +151,41 @@ test('creates an event only for an authenticated organizer and publishes its pag
   const payload = await created.json();
   assert.equal(payload.event.title, body.title);
   assert.equal(payload.event.organizer_id, organizerId);
+  assert.equal(payload.event.show_guest_list, true);
+  assert.equal(payload.event.allow_guests, true);
+  assert.equal(payload.event.comments_enabled, true);
 
   const publicPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
   assert.equal(publicPage.status, 200);
-  assert.match(await publicPage.text(), /Created Through HTTP/);
+  const publicHtml = await publicPage.text();
+  assert.match(publicHtml, /Created Through HTTP/);
+  assert.match(publicHtml, /class="public-guest-list"/);
+  assert.match(publicHtml, /name="party_size"/);
+  assert.match(publicHtml, /class="event-wall"/);
+
+  const rsvp = await fetch(`${baseUrl}/api/public/events/${payload.event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Public Attendee',
+      email: 'public-attendee@example.test',
+      bringing_guest: true,
+      guest_name: 'Public Guest'
+    })
+  });
+  assert.equal(rsvp.status, 201);
+  const attendeeCookie = rsvp.headers.get('set-cookie').split(';')[0];
+
+  const comment = await fetch(`${baseUrl}/api/public/events/${payload.event.slug}/comments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: attendeeCookie },
+    body: JSON.stringify({ message: 'See you there!' })
+  });
+  assert.equal(comment.status, 201);
+
+  const updatedPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
+  const updatedHtml = await updatedPage.text();
+  assert.match(updatedHtml, />Public<\/li>/);
 });
 
 test('serves email-safe adaptive icon PNGs with immutable caching', async () => {
