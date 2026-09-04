@@ -1,5 +1,5 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤠', '😁', '😄'];
+const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤠', '😁', '😄', '🎃', '👽', '🧟', '🕴️'];
 
 function isTrue(value) {
   return value === true || value === 'true';

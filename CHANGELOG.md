@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.38
+
+Unreleased.
+
+### Improved
+
+* Added pumpkin, alien, zombie, and levitating-suit characters to the seasonal guest-list fallback pool.
+
 ## 1.0.37
 
 Released September 4, 2026.
