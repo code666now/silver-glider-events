@@ -211,6 +211,8 @@ function setVisibility(v) {
   visibility = v;
   $('vis-public').classList.toggle('on', v === 'public');
   $('vis-private').classList.toggle('on', v === 'private');
+  $('vis-public').setAttribute('aria-pressed', String(v === 'public'));
+  $('vis-private').setAttribute('aria-pressed', String(v === 'private'));
   $('private-settings').classList.toggle('show', v === 'private');
   return true;
 }

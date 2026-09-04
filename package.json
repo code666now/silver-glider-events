@@ -1,6 +1,6 @@
 {
   "name": "silver-glider-events",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "Silver Glider Events — beautiful event pages, RSVPs, reminders",
   "type": "commonjs",
   "main": "src/index.js",

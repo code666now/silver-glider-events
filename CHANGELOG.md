@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.30
+
+Released September 3, 2026.
+
+### Improved
+
+* Replaced the compact visibility pills with descriptive Public and Private link-only cards.
+* Added quiet megaphone and crossed-eye icons so the visibility choices are easier to distinguish at a glance.
+* Preserved the Silver Glider selected state, mobile stacking, keyboard focus, and accessible pressed-state behavior.
+
 ## 1.0.29
 
 Released September 3, 2026.

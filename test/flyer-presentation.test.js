@@ -139,6 +139,10 @@ test('event editor keeps venue, admission, and event settings visible while prog
   assert.match(form, /id="admission-settings-title">Admission/);
   assert.match(form, /id="audience-settings-title">Event settings/);
   assert.doesNotMatch(form, /Tickets and visibility/);
+  assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your Host Page and may appear in Silver Glider discovery/);
+  assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your Host Page and discovery/);
+  assert.match(js, /vis-public'\)\.setAttribute\('aria-pressed'/);
+  assert.match(js, /vis-private'\)\.setAttribute\('aria-pressed'/);
   assert.doesNotMatch(form, /<details[^>]+id="admission-settings"/);
   assert.doesNotMatch(form, /<details[^>]+id="audience-settings"/);
   assert.doesNotMatch(form, /id="more-details"[^>]*open/);
