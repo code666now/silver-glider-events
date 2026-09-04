@@ -93,6 +93,19 @@ test('public guest list exposes first names only', () => {
   }
 });
 
+test('public guest list distributes fallback avatars evenly before repeating', () => {
+  const rows = Array.from({ length: ATTENDEE_AVATARS.length * 3 }, (_, index) => ({
+    id: index + 1,
+    first_name: `Guest ${index + 1}`
+  }));
+  const counts = new Map();
+  for (const { avatarEmoji } of publicGuestNames(rows)) {
+    counts.set(avatarEmoji, (counts.get(avatarEmoji) || 0) + 1);
+  }
+  assert.equal(counts.size, ATTENDEE_AVATARS.length);
+  assert.equal([...counts.values()].every(count => count === 3), true);
+});
+
 test('named guest validation is server-controlled by the event setting', () => {
   assert.deepEqual(parseNamedGuest({ allow_guests: false }, {
     bringing_guest: true,

@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.40
+
+Unreleased.
+
+### Fixed
+
+* Balanced guest-list fallback avatars so every character appears once before any emoji repeats, preventing seasonal characters from clustering.
+
 ## 1.0.39
 
 Released September 4, 2026.

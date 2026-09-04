@@ -15,6 +15,9 @@ function splitName(value) {
 }
 
 function attendeeAvatar(seed) {
+  if (Number.isInteger(seed) && seed >= 0) {
+    return ATTENDEE_AVATARS[seed % ATTENDEE_AVATARS.length];
+  }
   const value = String(seed || 'guest');
   let hash = 0;
   for (const character of value) hash = ((hash * 31) + character.codePointAt(0)) >>> 0;
@@ -78,13 +81,13 @@ function publicGuestNames(rows = []) {
       firstName: attendee,
       isGuest: false,
       avatarUrl: safeAvatarUrl(row.avatar_url),
-      avatarEmoji: attendeeAvatar(`${row.id || ''}:${attendee}`)
+      avatarEmoji: attendeeAvatar(names.length)
     });
     if (guest) names.push({
       firstName: guest,
       isGuest: true,
       avatarUrl: null,
-      avatarEmoji: attendeeAvatar(`${row.id || ''}:guest:${guest}`)
+      avatarEmoji: attendeeAvatar(names.length)
     });
   }
   return names;
