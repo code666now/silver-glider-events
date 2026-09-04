@@ -34,10 +34,18 @@ test('Commerce migration is additive, keeps legacy paid valid, and never stores 
 test('event editor presents three admission choices and gates unfinished Commerce setup', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
+  const admissionStart = html.indexOf('id="admission-settings"');
+  const eventSettingsStart = html.indexOf('id="audience-settings"');
+  assert.ok(admissionStart > -1 && admissionStart < eventSettingsStart, 'Admission should be a distinct section before event settings');
+  assert.match(html, /id="admission-settings-title">Admission<[\s\S]*Choose how guests get into this event\./);
   assert.match(html, /id="admission-free"[\s\S]*Free RSVP/);
   assert.match(html, /id="admission-free"[\s\S]*id="admission-paid"[\s\S]*id="admission-commerce"/, 'Commerce should be the third admission option');
   assert.match(html, /id="admission-commerce"[^>]*disabled[\s\S]*Sell with Silver Glider[\s\S]*Coming soon/);
   assert.match(html, /id="admission-paid"[\s\S]*External tickets/);
+  for (const control of ['id="admission-free"', 'id="admission-paid"', 'id="admission-commerce"', 'id="ticket-fields"']) {
+    const position = html.indexOf(control);
+    assert.ok(position > admissionStart && position < eventSettingsStart, `${control} should remain inside Admission`);
+  }
   assert.match(js, /api\('\/api\/commerce\/config'\)/);
   assert.match(js, /admission-commerce-status'\)\.hidden = commerceEnabled/);
   assert.match(js, /commerce_event_id: admissionType === 'silver_glider_tickets'/);

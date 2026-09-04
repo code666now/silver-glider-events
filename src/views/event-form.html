@@ -928,29 +928,13 @@
         </div>
       </details>
 
-      <section class="event-editor-open-section" id="audience-settings" aria-labelledby="audience-settings-title">
+      <section class="event-editor-open-section" id="admission-settings" aria-labelledby="admission-settings-title">
         <header class="event-editor-open-section-heading">
-          <span id="audience-settings-title">Tickets and visibility</span>
-          <small>Choose admission and who can find this event.</small>
+          <span id="admission-settings-title">Admission</span>
+          <small>Choose how guests get into this event.</small>
         </header>
         <div class="event-editor-disclosure-body">
-          <div class="row2">
-            <div class="sg-field">
-              <label for="category">Category</label>
-              <select class="sg-select" id="category">
-                <option value="">Choose…</option>
-                <option>Music</option><option>Art</option><option>Market</option><option>Party</option>
-                <option>Community</option><option>Food & Drink</option><option>Film</option><option>Other</option>
-              </select>
-            </div>
-            <div class="sg-field">
-              <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
-              <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
-            </div>
-          </div>
-
           <div class="sg-field">
-            <label>Admission</label>
             <div class="admission-options" role="group" aria-label="Admission type">
               <button type="button" id="admission-free" class="admission-option on"><strong>Free RSVP</strong><span>Collect guest names and confirmations here.</span></button>
               <button type="button" id="admission-paid" class="admission-option"><strong>External tickets</strong><span>Send guests to another ticket link or sell at the door.</span></button>
@@ -971,6 +955,29 @@
           <div class="row2 admission-fields" id="ticket-fields">
             <div class="sg-field"><label for="ticket_price">Ticket price</label><input class="sg-input" type="number" id="ticket_price" min="0.01" step="0.01" placeholder="15"></div>
             <div class="sg-field"><label for="ticket_url">Ticket link <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="url" id="ticket_url" placeholder="At the door, or paste https://..."></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="event-editor-open-section" id="audience-settings" aria-labelledby="audience-settings-title">
+        <header class="event-editor-open-section-heading">
+          <span id="audience-settings-title">Event settings</span>
+          <small>Set category, capacity, and who can find this event.</small>
+        </header>
+        <div class="event-editor-disclosure-body">
+          <div class="row2">
+            <div class="sg-field">
+              <label for="category">Category</label>
+              <select class="sg-select" id="category">
+                <option value="">Choose…</option>
+                <option>Music</option><option>Art</option><option>Market</option><option>Party</option>
+                <option>Community</option><option>Food & Drink</option><option>Film</option><option>Other</option>
+              </select>
+            </div>
+            <div class="sg-field">
+              <label for="capacity">Capacity <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+              <input class="sg-input" type="number" id="capacity" min="1" placeholder="Unlimited">
+            </div>
           </div>
 
           <div class="sg-field">

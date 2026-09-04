@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.29
+
+Released September 3, 2026.
+
+### Improved
+
+* Separated Admission into its own focused event-editor section with Free RSVP, External tickets, and Sell with Silver Glider choices.
+* Kept ticket fields directly connected to External tickets while preserving all existing admission behavior.
+* Moved category, capacity, and visibility into a clearly labeled Event settings section.
+
 ## 1.0.28
 
 Released September 3, 2026.

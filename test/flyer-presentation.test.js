@@ -118,23 +118,28 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>')), /id="image-modal"/);
 });
 
-test('event editor keeps venue, tickets, and visibility visible while progressively disclosing optional content', () => {
+test('event editor keeps venue, admission, and event settings visible while progressively disclosing optional content', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
   const form = html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>'));
   const moreStart = form.indexOf('<details class="event-editor-disclosure" id="more-details">');
+  const admissionStart = form.indexOf('<section class="event-editor-open-section" id="admission-settings"');
   const audienceStart = form.indexOf('<section class="event-editor-open-section" id="audience-settings"');
 
   for (const essential of ['id="title"', 'id="event_date"', 'id="start_time"', 'id="venue_name"', 'id="venue_address"']) {
     assert.ok(form.indexOf(essential) > -1 && form.indexOf(essential) < moreStart, `${essential} should remain visible`);
   }
   for (const optional of ['id="presenter_name"', 'id="description"', 'id="event_vibe_url"']) {
-    assert.ok(form.indexOf(optional) > moreStart && form.indexOf(optional) < audienceStart, `${optional} should live in Add more details`);
+    assert.ok(form.indexOf(optional) > moreStart && form.indexOf(optional) < admissionStart, `${optional} should live in Add more details`);
   }
-  for (const audience of ['id="category"', 'id="capacity"', 'id="admission-free"', 'id="vis-public"']) {
-    assert.ok(form.indexOf(audience) > audienceStart, `${audience} should remain visible in Tickets and visibility`);
+  assert.ok(form.indexOf('id="admission-free"') > admissionStart && form.indexOf('id="admission-free"') < audienceStart, 'Admission should remain visible in its own section');
+  for (const setting of ['id="category"', 'id="capacity"', 'id="vis-public"']) {
+    assert.ok(form.indexOf(setting) > audienceStart, `${setting} should remain visible in Event settings`);
   }
-  assert.match(form, /id="audience-settings-title">Tickets and visibility/);
+  assert.match(form, /id="admission-settings-title">Admission/);
+  assert.match(form, /id="audience-settings-title">Event settings/);
+  assert.doesNotMatch(form, /Tickets and visibility/);
+  assert.doesNotMatch(form, /<details[^>]+id="admission-settings"/);
   assert.doesNotMatch(form, /<details[^>]+id="audience-settings"/);
   assert.doesNotMatch(form, /id="more-details"[^>]*open/);
   assert.match(js, /\$\('more-details'\)\.open = Boolean/);
