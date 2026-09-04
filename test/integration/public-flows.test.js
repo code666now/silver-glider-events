@@ -104,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.34');
+  assert.equal((await health.json()).version, '1.0.35');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -760,6 +760,10 @@ test('uses past tense for attendance after a private event passes', async () => 
   const html = await response.text();
   assert.match(html, /3 people went/);
   assert.doesNotMatch(html, /3 people are going/);
+  assert.match(html, /class="guest-avatar-stack"/);
+  assert.match(html, /aria-controls="guest-list-modal"/);
+  assert.match(html, /class="guest-list-modal-card" role="dialog" aria-modal="true"/);
+  assert.match(html, /First[\s\S]*Plus One[\s\S]*Second/);
 });
 
 test('past events no longer accept new RSVPs', async () => {

@@ -311,12 +311,51 @@ async function share() {
 $('share-btn').addEventListener('click', share);
 
 const guestListToggle = $('guest-list-toggle');
-if (guestListToggle) {
-  guestListToggle.addEventListener('click', () => {
-    const expanded = guestListToggle.getAttribute('aria-expanded') === 'true';
-    document.querySelectorAll('.guest-name-extra').forEach(item => { item.hidden = expanded; });
-    guestListToggle.setAttribute('aria-expanded', String(!expanded));
-    guestListToggle.textContent = expanded ? 'See everyone' : 'Show less';
+const guestListModal = $('guest-list-modal');
+const guestListModalClose = $('guest-list-modal-close');
+if (guestListToggle && guestListModal && guestListModalClose) {
+  const modalCard = guestListModal.querySelector('.guest-list-modal-card');
+  let previousFocus = null;
+
+  function openGuestList() {
+    previousFocus = document.activeElement;
+    guestListModal.hidden = false;
+    guestListToggle.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('guest-list-modal-open');
+    modalCard.focus();
+  }
+
+  function closeGuestList() {
+    guestListModal.hidden = true;
+    guestListToggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('guest-list-modal-open');
+    if (previousFocus instanceof HTMLElement) previousFocus.focus();
+  }
+
+  guestListToggle.addEventListener('click', openGuestList);
+  guestListModalClose.addEventListener('click', closeGuestList);
+  guestListModal.addEventListener('click', event => {
+    if (event.target === guestListModal) closeGuestList();
+  });
+  document.addEventListener('keydown', event => {
+    if (guestListModal.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeGuestList();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(guestListModal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === modalCard)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === modalCard)) {
+      event.preventDefault();
+      first.focus();
+    }
   });
 }
 

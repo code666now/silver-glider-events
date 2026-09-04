@@ -41,6 +41,34 @@ test('guest-list attendance copy uses past tense after an event passes', () => {
   assert.match(route, /'person is'[\s\S]*'people are'[\s\S]*going/);
 });
 
+test('guest list uses a compact avatar preview and an accessible full attendee modal', () => {
+  const route = source('src/routes/public.js');
+  const client = source('public/js/public-event.js');
+  const standard = source('src/views/event-public.html');
+  const flyer = source('public/css/event-public-flyer.css');
+
+  assert.match(route, /class="guest-avatar-stack"/);
+  assert.match(route, /class="guest-avatar-more"/);
+  assert.match(route, /aria-controls="guest-list-modal"/);
+  assert.match(route, /class="guest-list-modal-card" role="dialog" aria-modal="true"/);
+  assert.match(route, /<ul class="guest-name-list">\$\{modalItems\}<\/ul>/);
+  assert.match(route, /\$\{avatar\(entry\)\}<span>\$\{esc\(entry\.firstName\)\}<\/span>/);
+
+  assert.match(client, /function openGuestList\(\)/);
+  assert.match(client, /function closeGuestList\(\)/);
+  assert.match(client, /event\.key === 'Escape'/);
+  assert.match(client, /event\.key !== 'Tab'/);
+  assert.match(client, /event\.target === guestListModal/);
+  assert.match(client, /guest-list-modal-open/);
+
+  for (const styles of [standard, flyer]) {
+    assert.match(styles, /\.guest-avatar-stack li \+ li \{ margin-left: -12px; \}/);
+    assert.match(styles, /\.guest-list-modal \{[\s\S]*position: fixed;[\s\S]*z-index: 100;/);
+    assert.match(styles, /\.guest-list-modal \.guest-avatar \{[\s\S]*width: 76px;[\s\S]*height: 76px;/);
+    assert.match(styles, /@media \(max-width: 599px\)[\s\S]*\.guest-list-modal \.guest-avatar \{ width: 60px; height: 60px;/);
+  }
+});
+
 test('QR stays available to hosts but is removed from the public event page', () => {
   const view = source('src/views/event-public.html');
   const client = source('public/js/public-event.js');

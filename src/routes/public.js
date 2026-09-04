@@ -194,26 +194,43 @@ function renderGuestList(event, rows) {
   if (!event.show_guest_list) return '';
   const names = publicGuestNames(rows);
   const visibleLimit = 8;
-  const items = names.map((entry, index) => {
-    const avatar = `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
-      ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
-      : ''}</span>`;
-    return `<li${index >= visibleLimit ? ' class="guest-name-extra" hidden' : ''}>${avatar}<span>${esc(entry.firstName)}</span></li>`;
+  const avatar = entry => `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
+    ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
+    : ''}</span>`;
+  const previewItems = names.slice(0, visibleLimit).map(entry => {
+    return `<li aria-label="${esc(entry.firstName)}">${avatar(entry)}</li>`;
   }).join('');
-  const toggle = names.length > visibleLimit
-    ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false">See everyone</button>'
+  const remaining = Math.max(0, names.length - visibleLimit);
+  const more = remaining
+    ? `<li class="guest-avatar-more" aria-label="${remaining} more ${remaining === 1 ? 'person' : 'people'}">+${remaining}</li>`
     : '';
+  const modalItems = names.map(entry => {
+    return `<li>${avatar(entry)}<span>${esc(entry.firstName)}</span></li>`;
+  }).join('');
   const count = Number(event.total_attendance) || 0;
   const attendanceLabel = event.is_past
     ? `${count} ${count === 1 ? 'person' : 'people'} went`
     : `${count} ${count === 1 ? 'person is' : 'people are'} going`;
+  const peopleIcon = `<svg class="guest-list-people-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
   return `<section class="public-guest-list" aria-labelledby="guest-list-title">
     <div class="section-heading">
-      <h2 id="guest-list-title">${attendanceLabel}</h2>
+      <h2 id="guest-list-title">${peopleIcon}<span>${attendanceLabel}</span></h2>
+      ${names.length ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false" aria-controls="guest-list-modal">See everyone <span aria-hidden="true">→</span></button>' : ''}
     </div>
-    ${items ? `<ul class="guest-name-list">${items}</ul>` : '<p class="section-empty">Be the first to RSVP.</p>'}
-    ${toggle}
-  </section>`;
+    ${previewItems ? `<ul class="guest-avatar-stack" aria-label="Attendee preview">${previewItems}${more}</ul>` : '<p class="section-empty">Be the first to RSVP.</p>'}
+  </section>
+  ${names.length ? `<div class="guest-list-modal" id="guest-list-modal" hidden>
+    <div class="guest-list-modal-card" role="dialog" aria-modal="true" aria-labelledby="guest-list-modal-title" aria-describedby="guest-list-modal-description" tabindex="-1">
+      <div class="guest-list-modal-head">
+        <div>
+          <h2 id="guest-list-modal-title">${peopleIcon}<span>${attendanceLabel}</span></h2>
+          <p id="guest-list-modal-description">Everyone who RSVP’d or joined as a guest.</p>
+        </div>
+        <button class="guest-list-modal-close" id="guest-list-modal-close" type="button" aria-label="Close attendee list">×</button>
+      </div>
+      <ul class="guest-name-list">${modalItems}</ul>
+    </div>
+  </div>` : ''}`;
 }
 
 function renderGuestFields(event) {

@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.35
+
+Unreleased.
+
+### Improved
+
+* Replaced the full inline attendee grid with a compact overlapping avatar preview and a clear See everyone action.
+* Added a responsive attendee modal with larger faces and names directly underneath.
+* Preserved keyboard navigation, focus return, backdrop and Escape closing, and mobile overflow safety.
+
 ## 1.0.34
 
 Released September 4, 2026.
