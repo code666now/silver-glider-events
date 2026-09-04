@@ -1,5 +1,9 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤠', '😁', '😄', '🎃', '👽', '🧟', '🥷', '👻', '👨‍🎤'];
+const ATTENDEE_AVATAR_CYCLE = [
+  '👽', '😊', '🎃', '🤠', '👨‍🎤', '😁', '🥷', '😄', '😎', '🧟', '👻',
+  '👽', '🎃', '👨‍🎤', '🥷', '😎', '🙂'
+];
 
 function isTrue(value) {
   return value === true || value === 'true';
@@ -16,7 +20,7 @@ function splitName(value) {
 
 function attendeeAvatar(seed) {
   if (Number.isInteger(seed) && seed >= 0) {
-    return ATTENDEE_AVATARS[seed % ATTENDEE_AVATARS.length];
+    return ATTENDEE_AVATAR_CYCLE[seed % ATTENDEE_AVATAR_CYCLE.length];
   }
   const value = String(seed || 'guest');
   let hash = 0;
@@ -74,20 +78,24 @@ function parseNamedGuest(event, body = {}) {
 
 function publicGuestNames(rows = []) {
   const names = [];
+  let fallbackIndex = 0;
   for (const row of rows) {
     const attendee = String(row.first_name || '').trim().slice(0, 80);
     const guest = String(row.guest_first_name || '').trim().slice(0, 80);
+    const avatarUrl = safeAvatarUrl(row.avatar_url);
     if (attendee) names.push({
       firstName: attendee,
       isGuest: false,
-      avatarUrl: safeAvatarUrl(row.avatar_url),
-      avatarEmoji: attendeeAvatar(names.length)
+      avatarUrl,
+      avatarEmoji: avatarUrl
+        ? attendeeAvatar(`${row.id || ''}:${attendee}`)
+        : attendeeAvatar(fallbackIndex++)
     });
     if (guest) names.push({
       firstName: guest,
       isGuest: true,
       avatarUrl: null,
-      avatarEmoji: attendeeAvatar(names.length)
+      avatarEmoji: attendeeAvatar(fallbackIndex++)
     });
   }
   return names;

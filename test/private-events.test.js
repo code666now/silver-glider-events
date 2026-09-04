@@ -93,17 +93,23 @@ test('public guest list exposes first names only', () => {
   }
 });
 
-test('public guest list distributes fallback avatars evenly before repeating', () => {
-  const rows = Array.from({ length: ATTENDEE_AVATARS.length * 3 }, (_, index) => ({
+test('a 17-person list gives priority characters two appearances without clustering', () => {
+  const rows = Array.from({ length: 17 }, (_, index) => ({
     id: index + 1,
-    first_name: `Guest ${index + 1}`
+    first_name: `Guest ${index + 1}`,
+    avatar_url: index === 0
+      ? 'https://res.cloudinary.com/example/image/upload/profile.jpg'
+      : null
   }));
   const counts = new Map();
-  for (const { avatarEmoji } of publicGuestNames(rows)) {
+  for (const { avatarEmoji, avatarUrl } of publicGuestNames(rows)) {
+    if (avatarUrl) continue;
     counts.set(avatarEmoji, (counts.get(avatarEmoji) || 0) + 1);
   }
-  assert.equal(counts.size, ATTENDEE_AVATARS.length);
-  assert.equal([...counts.values()].every(count => count === 3), true);
+  for (const featured of ['👽', '🎃', '👨‍🎤', '🥷', '😎']) {
+    assert.equal(counts.get(featured), 2);
+  }
+  assert.equal(Math.max(...counts.values()), 2);
 });
 
 test('named guest validation is server-controlled by the event setting', () => {

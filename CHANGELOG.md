@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.41
+
+Unreleased.
+
+### Improved
+
+* Tuned the guest-list fallback mix so a 17-person list gives aliens, pumpkins, Bowie-style singers, ninjas, and sunglasses two appearances each without clustering any character more than twice.
+
 ## 1.0.40
 
 Released September 4, 2026.
