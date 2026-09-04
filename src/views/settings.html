@@ -15,6 +15,16 @@
     .settings-eyebrow { margin-bottom:5px;color:var(--sg-text-faint);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.16em; }
     .settings-card h2 { font-size:25px; }
     .settings-card-copy { margin-top:5px;color:var(--sg-text-faint);font-size:12px;line-height:1.55; }
+    .account-avatar { display:flex;align-items:center;gap:16px;margin:0 0 22px;padding:15px;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(255,255,255,.02); }
+    .account-avatar-preview { position:relative;width:68px;height:68px;display:flex;flex:0 0 auto;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--sg-border);border-radius:50%;background:var(--sg-surface);font-size:32px;line-height:1; }
+    .account-avatar-preview img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover; }
+    .account-avatar-preview img[hidden] { display:none; }
+    .account-avatar-copy { min-width:0;flex:1; }
+    .account-avatar-copy strong { display:block;color:var(--sg-text);font-size:14px; }
+    .account-avatar-copy p { margin-top:3px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
+    .account-avatar-actions { display:flex;flex-wrap:wrap;gap:8px;margin-top:11px; }
+    .account-avatar-actions .sg-btn { min-height:38px;padding:8px 13px;font-size:11px; }
+    .account-avatar-status { min-height:17px;margin-top:7px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
     .account-grid,.host-profile-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
     .host-profile-grid .wide { grid-column:1/-1; }
     .settings-card .sg-field { margin-bottom:0; }
@@ -127,6 +137,7 @@
     @media(max-width:560px) {
       .settings-card { padding:21px 19px;border-radius:21px; }
       .account-grid,.host-profile-grid,.host-media-grid { grid-template-columns:1fr; }
+      .account-avatar { align-items:flex-start; }
       .host-profile-grid .wide { grid-column:auto; }
       .host-summary { align-items:flex-start;flex-wrap:wrap; }
       .host-summary-copy { padding-top:5px; }
@@ -163,6 +174,19 @@
           <p class="settings-eyebrow">Account</p>
           <h2 id="account-settings-title">Your details</h2>
           <p class="settings-card-copy">Used for signing in and managing your events.</p>
+        </div>
+        <div class="account-avatar" aria-labelledby="account-avatar-title">
+          <div class="account-avatar-preview" aria-hidden="true"><span id="account-avatar-fallback">😎</span><img id="account-avatar-image" alt="" hidden></div>
+          <div class="account-avatar-copy">
+            <strong id="account-avatar-title">Your RSVP photo</strong>
+            <p>Shown with your name on guest lists. Your Host Page logo stays separate.</p>
+            <div class="account-avatar-actions">
+              <button class="sg-btn sg-btn-ghost" type="button" id="account-avatar-btn" disabled>Add photo</button>
+              <button class="sg-btn sg-btn-ghost" type="button" id="account-avatar-remove" hidden>Remove photo</button>
+            </div>
+            <p class="account-avatar-status" id="account-avatar-status" role="status" aria-live="polite"></p>
+            <input type="file" id="account-avatar-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+          </div>
         </div>
         <form id="account-form">
           <div class="account-grid">
@@ -333,10 +357,32 @@
       setHostEditor(hostEditorOpen);
     }
 
+    function showAccountAvatarFallback() {
+      $('account-avatar-image').hidden = true;
+      $('account-avatar-fallback').hidden = false;
+    }
+
+    function renderAccountAvatar(organizer) {
+      const image = $('account-avatar-image');
+      if (organizer.avatar_url) {
+        image.src = organizer.avatar_url;
+        image.hidden = false;
+        $('account-avatar-fallback').hidden = true;
+        $('account-avatar-btn').textContent = 'Change photo';
+        $('account-avatar-remove').hidden = false;
+      } else {
+        image.removeAttribute('src');
+        showAccountAvatarFallback();
+        $('account-avatar-btn').textContent = 'Add photo';
+        $('account-avatar-remove').hidden = true;
+      }
+    }
+
     function populateAccount(organizer) {
       $('email').value = organizer.email;
       $('name').value = organizer.name || '';
       $('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
+      renderAccountAvatar(organizer);
     }
 
     function populateHostFields(organizer) {
@@ -359,6 +405,7 @@
       $('settings-content').setAttribute('aria-busy', 'false');
       $('name').disabled = false;
       $('account-save-btn').disabled = false;
+      $('account-avatar-btn').disabled = false;
       $('logout-btn').disabled = false;
     }
 
@@ -441,6 +488,61 @@
       if (currentOrganizer) populateHostFields(currentOrganizer);
       setHostEditor(false);
       $('host-editor-toggle').focus();
+    });
+
+    async function uploadAccountAvatar() {
+      const input = $('account-avatar-input');
+      const button = $('account-avatar-btn');
+      const status = $('account-avatar-status');
+      const file = input.files[0];
+      if (!file) return;
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) {
+        status.textContent = 'Choose a JPG, PNG, WebP, or GIF image.';
+        input.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        status.textContent = 'That image is larger than 5 MB.';
+        input.value = '';
+        return;
+      }
+      const form = new FormData();
+      form.append('image', file);
+      button.disabled = true;
+      status.textContent = 'Uploading…';
+      try {
+        const response = await fetch('/api/uploads/avatar', { method:'POST', body:form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Upload failed');
+        currentOrganizer = data.organizer;
+        renderAccountAvatar(currentOrganizer);
+        status.textContent = 'Photo saved.';
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        button.disabled = false;
+        input.value = '';
+      }
+    }
+
+    $('account-avatar-image').addEventListener('error', showAccountAvatarFallback);
+    $('account-avatar-btn').addEventListener('click', () => $('account-avatar-input').click());
+    $('account-avatar-input').addEventListener('change', uploadAccountAvatar);
+    $('account-avatar-remove').addEventListener('click', async () => {
+      const button = $('account-avatar-remove');
+      const status = $('account-avatar-status');
+      button.disabled = true;
+      status.textContent = 'Removing…';
+      try {
+        const { organizer } = await api('/api/me/profile', { method:'PATCH', body:{ avatarUrl:null } });
+        currentOrganizer = organizer;
+        renderAccountAvatar(currentOrganizer);
+        status.textContent = 'Photo removed. Your smiley is back.';
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
     });
 
     async function uploadProfileImage(kind) {

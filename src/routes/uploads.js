@@ -3,7 +3,7 @@ const multer = require('multer');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
 const pool = require('../config/db');
-const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, configured } = require('../lib/cloudinary');
+const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar, configured } = require('../lib/cloudinary');
 const { selectAccentColor } = require('../../public/js/artwork-color');
 
 const router = express.Router();
@@ -58,6 +58,28 @@ router.post('/api/uploads/flyer', requireOrganizer, handleUpload, async (req, re
   }
 });
 
+router.post('/api/uploads/avatar', requireOrganizer, handleUpload, async (req, res) => {
+  if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
+  if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 5 MB)' });
+  try {
+    const result = await uploadAccountAvatar(req.file.buffer);
+    const { rows } = await pool.query(
+      `UPDATE organizers SET avatar_url=$2, updated_at=NOW() WHERE id=$1
+       RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
+                 bio, website_url, instagram_handle, instagram_url, contact_email,
+                 plan, is_admin, created_at, updated_at`,
+      [req.organizer.id, result.secure_url]
+    );
+    res.json({ url: result.secure_url, organizer: rows[0] });
+  } catch (err) {
+    console.error('[upload:avatar]', err.name, err.http_code || '', err.message);
+    const msg = /certificate|self.signed|ECONN|ETIMEDOUT|ENOTFOUND/i.test(err.message)
+      ? 'Could not reach the image service. Please try again.'
+      : (err.message || 'Upload failed');
+    res.status(502).json({ error: msg });
+  }
+});
+
 router.post('/api/uploads/host-logo', requireOrganizer, handleUpload, async (req, res) => {
   if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
   if (!req.file) return res.status(400).json({ error: 'Choose a logo (JPG, PNG, WebP, or GIF, max 5 MB)' });
@@ -65,7 +87,7 @@ router.post('/api/uploads/host-logo', requireOrganizer, handleUpload, async (req
     const result = await uploadHostLogo(req.file.buffer);
     const { rows } = await pool.query(
       `UPDATE organizers SET logo_url=$2, updated_at=NOW() WHERE id=$1
-       RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+       RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
                  bio, website_url, instagram_handle, instagram_url, contact_email,
                  plan, is_admin, created_at, updated_at`,
       [req.organizer.id, result.secure_url]
@@ -88,7 +110,7 @@ router.post('/api/uploads/host-header', requireOrganizer, handleUpload, async (r
     const result = await uploadHostHeader(req.file.buffer);
     const { rows } = await pool.query(
       `UPDATE organizers SET header_image_url=$2, updated_at=NOW() WHERE id=$1
-       RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+       RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
                  bio, website_url, instagram_handle, instagram_url, contact_email,
                  plan, is_admin, created_at, updated_at`,
       [req.organizer.id, result.secure_url]

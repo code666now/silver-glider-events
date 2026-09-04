@@ -6,6 +6,7 @@ const path = require('node:path');
 const {
   canAppearInPublicListings,
   cleanComment,
+  ATTENDEE_AVATARS,
   normalizeGuestExperienceSettings,
   parseNamedGuest,
   publicGuestNames,
@@ -71,10 +72,12 @@ test('public guest list exposes first names only', () => {
     guest_last_name: 'Secret',
     guest_email: 'sam@example.com'
   }]);
-  assert.deepEqual(names, [
-    { firstName: 'Avery', isGuest: false },
-    { firstName: 'Sam', isGuest: true }
+  assert.deepEqual(names.map(({ firstName, isGuest, avatarUrl }) => ({ firstName, isGuest, avatarUrl })), [
+    { firstName: 'Avery', isGuest: false, avatarUrl: null },
+    { firstName: 'Sam', isGuest: true, avatarUrl: null }
   ]);
+  assert.equal(names.every(({ avatarEmoji }) => ATTENDEE_AVATARS.includes(avatarEmoji)), true);
+  assert.ok(ATTENDEE_AVATARS.includes('😎'));
   const serialized = JSON.stringify(names);
   for (const secret of ['Private', 'Secret', '@example.com', '555-0100', '91']) {
     assert.equal(serialized.includes(secret), false);

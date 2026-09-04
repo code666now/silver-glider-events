@@ -194,9 +194,12 @@ function renderGuestList(event, rows) {
   if (!event.show_guest_list) return '';
   const names = publicGuestNames(rows);
   const visibleLimit = 8;
-  const items = names.map((entry, index) =>
-    `<li${index >= visibleLimit ? ' class="guest-name-extra" hidden' : ''}>${esc(entry.firstName)}</li>`
-  ).join('');
+  const items = names.map((entry, index) => {
+    const avatar = `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
+      ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
+      : ''}</span>`;
+    return `<li${index >= visibleLimit ? ' class="guest-name-extra" hidden' : ''}>${avatar}<span>${esc(entry.firstName)}</span></li>`;
+  }).join('');
   const toggle = names.length > visibleLimit
     ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false">See everyone</button>'
     : '';
@@ -284,6 +287,16 @@ function organizerViewer(req, event) {
   return session?.id === event.organizer_id;
 }
 
+async function verifiedSessionAccountId(client, req, email) {
+  const session = parseSession(readSessionCookie(req));
+  if (!session) return null;
+  const { rows } = await client.query(
+    'SELECT id FROM organizers WHERE id=$1 AND LOWER(email)=LOWER($2)',
+    [session.id, email]
+  );
+  return rows[0]?.id || null;
+}
+
 // POST /api/public/events/:slug/unlock — access-code gate only; no event data.
 router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
   try {
@@ -342,10 +355,10 @@ router.get('/e/:slug', async (req, res, next) => {
     let publicGuestRows = [];
     if (rsvpEnabled && event.show_guest_list) {
       publicGuestRows = (await pool.query(
-        `SELECT first_name, guest_first_name
-           FROM rsvps
-          WHERE event_id=$1 AND status='confirmed'
-          ORDER BY created_at ASC, id ASC`,
+        `SELECT r.id, r.first_name, r.guest_first_name, o.avatar_url
+           FROM rsvps r LEFT JOIN organizers o ON o.id=r.account_id
+          WHERE r.event_id=$1 AND r.status='confirmed'
+          ORDER BY r.created_at ASC, r.id ASC`,
         [event.id]
       )).rows;
     }
@@ -689,7 +702,14 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     const { rows: existing } = await client.query(
       `SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2)`, [event.id, email]
     );
+    const accountId = await verifiedSessionAccountId(client, req, email);
     if (existing.length && existing[0].status === 'confirmed') {
+      if (accountId && !existing[0].account_id) {
+        existing[0] = (await client.query(
+          'UPDATE rsvps SET account_id=$2 WHERE id=$1 RETURNING *',
+          [existing[0].id, accountId]
+        )).rows[0];
+      }
       await client.query('COMMIT');
       void resendConfirmation(event, existing[0]);
       return res.json({ ok: true, alreadyRsvpd: true });
@@ -720,19 +740,20 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       rsvp = (await client.query(
         `UPDATE rsvps SET status='confirmed', first_name=$2, last_name=$3, phone=$4,
                 wants_reminders=$5, organizer_optin=$6,
-                guest_first_name=$7, guest_last_name=$8, guest_email=$9
+                guest_first_name=$7, guest_last_name=$8, guest_email=$9,
+                account_id=COALESCE(account_id,$10)
           WHERE id=$1 RETURNING *`,
         [existing[0].id, firstName, lastName, phone, wantsReminders, organizerOptin,
-         guest.guestFirstName, guest.guestLastName, guest.guestEmail]
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail, accountId]
       )).rows[0];
     } else {
       rsvp = (await client.query(
         `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
-                            guest_first_name, guest_last_name, guest_email, manage_token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+                            guest_first_name, guest_last_name, guest_email, manage_token, account_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
         [event.id, firstName, lastName, email, phone, wantsReminders, organizerOptin,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
-         crypto.randomBytes(16).toString('hex')]
+         crypto.randomBytes(16).toString('hex'), accountId]
       )).rows[0];
     }
     await client.query('COMMIT');

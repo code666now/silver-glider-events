@@ -104,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.31');
+  assert.equal((await health.json()).version, '1.0.32');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -185,7 +185,78 @@ test('creates an event only for an authenticated organizer and publishes its pag
 
   const updatedPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
   const updatedHtml = await updatedPage.text();
-  assert.match(updatedHtml, />Public<\/li>/);
+  assert.match(updatedHtml, /class="guest-avatar"/);
+  assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
+});
+
+test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {
+  const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
+  const avatarUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/avatars/attendee.jpg';
+  const logoUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/hosts/attendee-logo.jpg';
+  const { rows: accounts } = await pool.query(
+    `INSERT INTO organizers (email, name, avatar_url, logo_url)
+     VALUES ('avatar@example.test','Avatar Person',$1,$2) RETURNING id`,
+    [avatarUrl, logoUrl]
+  );
+  const accountId = accounts[0].id;
+  const accountCookie = `sge_session=${signSession(accountId)}`;
+
+  const signedOutMe = await fetch(`${baseUrl}/api/me`);
+  assert.equal(signedOutMe.status, 401);
+  const me = await fetch(`${baseUrl}/api/me`, { headers: { cookie: accountCookie } });
+  assert.equal(me.status, 200);
+  assert.deepEqual(await me.json(), {
+    user: { id: accountId, email: 'avatar@example.test', name: 'Avatar Person', avatarUrl }
+  });
+
+  const matchingRsvp = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: accountCookie },
+    body: JSON.stringify({ full_name: 'Avatar Person', email: 'avatar@example.test' })
+  });
+  assert.equal(matchingRsvp.status, 201);
+
+  const emailOnlyRsvp = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: accountCookie },
+    body: JSON.stringify({ full_name: 'Smiley Guest', email: 'different@example.test' })
+  });
+  assert.equal(emailOnlyRsvp.status, 201);
+
+  const { rows: rsvps } = await pool.query(
+    `SELECT email, account_id FROM rsvps WHERE event_id=$1 ORDER BY email`,
+    [event.id]
+  );
+  assert.deepEqual(rsvps, [
+    { email: 'avatar@example.test', account_id: accountId },
+    { email: 'different@example.test', account_id: null }
+  ]);
+
+  const page = await fetch(`${baseUrl}/e/${event.slug}`);
+  const html = await page.text();
+  assert.match(html, new RegExp(avatarUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(html, /class="guest-avatar"/);
+  assert.match(html, /Avatar<\/span>/);
+  assert.match(html, /Smiley<\/span>/);
+
+  const signedOutRemove = await fetch(`${baseUrl}/api/me/profile`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ avatarUrl: null })
+  });
+  assert.equal(signedOutRemove.status, 401);
+
+  const remove = await fetch(`${baseUrl}/api/me/profile`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: accountCookie },
+    body: JSON.stringify({ avatarUrl: null })
+  });
+  assert.equal(remove.status, 200);
+  const { rows: accountAfter } = await pool.query(
+    'SELECT avatar_url, logo_url FROM organizers WHERE id=$1',
+    [accountId]
+  );
+  assert.deepEqual(accountAfter[0], { avatar_url: null, logo_url: logoUrl });
 });
 
 test('serves email-safe adaptive icon PNGs with immutable caching', async () => {

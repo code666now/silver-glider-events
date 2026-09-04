@@ -1,4 +1,5 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤓', '😁', '😄'];
 
 function isTrue(value) {
   return value === true || value === 'true';
@@ -11,6 +12,24 @@ function splitName(value) {
     firstName: String(parts.shift() || '').slice(0, 80),
     lastName: parts.join(' ').slice(0, 80)
   };
+}
+
+function attendeeAvatar(seed) {
+  const value = String(seed || 'guest');
+  let hash = 0;
+  for (const character of value) hash = ((hash * 31) + character.codePointAt(0)) >>> 0;
+  return ATTENDEE_AVATARS[hash % ATTENDEE_AVATARS.length];
+}
+
+function safeAvatarUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' && url.hostname === 'res.cloudinary.com' && url.pathname.includes('/image/upload/')
+      ? url.toString()
+      : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function normalizeGuestExperienceSettings(body = {}) {
@@ -55,8 +74,18 @@ function publicGuestNames(rows = []) {
   for (const row of rows) {
     const attendee = String(row.first_name || '').trim().slice(0, 80);
     const guest = String(row.guest_first_name || '').trim().slice(0, 80);
-    if (attendee) names.push({ firstName: attendee, isGuest: false });
-    if (guest) names.push({ firstName: guest, isGuest: true });
+    if (attendee) names.push({
+      firstName: attendee,
+      isGuest: false,
+      avatarUrl: safeAvatarUrl(row.avatar_url),
+      avatarEmoji: attendeeAvatar(`${row.id || ''}:${attendee}`)
+    });
+    if (guest) names.push({
+      firstName: guest,
+      isGuest: true,
+      avatarUrl: null,
+      avatarEmoji: attendeeAvatar(`${row.id || ''}:guest:${guest}`)
+    });
   }
   return names;
 }
@@ -87,6 +116,8 @@ function readCookie(req, name) {
 }
 
 module.exports = {
+  ATTENDEE_AVATARS,
+  attendeeAvatar,
   attendeeCookieName,
   canAppearInPublicListings,
   cleanComment,
@@ -95,5 +126,6 @@ module.exports = {
   publicGuestNames,
   readCookie,
   robotsDirective,
+  safeAvatarUrl,
   splitName
 };

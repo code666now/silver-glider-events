@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.32
+
+Released September 4, 2026.
+
+### Added
+
+* Added an optional personal RSVP photo in Settings, with immediate upload, change, and removal controls.
+* Added compact attendee photos to public guest lists, with deterministic smiley and glasses emoji fallbacks.
+
+### Safety
+
+* Kept personal RSVP photos separate from Host Page logos and header artwork.
+* Bound profile-photo changes to the authenticated session instead of accepting a browser-supplied user ID.
+* Linked an RSVP to an account only when its email matches the currently verified session, while preserving anonymous and email-only RSVPs.
+
 ## 1.0.31
 
 Released September 3, 2026.

@@ -10,6 +10,8 @@ const hostLogoFolder = process.env.CLOUDINARY_HOST_LOGO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/hosts' : 'sg-events-dev/hosts');
 const hostHeaderFolder = process.env.CLOUDINARY_HOST_HEADER_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/hosts/headers' : 'sg-events-dev/hosts/headers');
+const accountAvatarFolder = process.env.CLOUDINARY_ACCOUNT_AVATAR_FOLDER ||
+  (process.env.NODE_ENV === 'production' ? 'sg-events/avatars' : 'sg-events-dev/avatars');
 const eventPhotoFolder = process.env.CLOUDINARY_EVENT_PHOTO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/event-photos' : 'sg-events-dev/event-photos');
 
@@ -95,6 +97,20 @@ async function uploadHostHeader(buffer) {
   });
 }
 
+async function uploadAccountAvatar(buffer) {
+  if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: accountAvatarFolder,
+        transformation: [{ width: 512, height: 512, crop: 'fill', gravity: 'auto', quality: 'auto', fetch_format: 'auto' }]
+      },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
 async function uploadEventPhoto(buffer) {
   if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
   return new Promise((resolve, reject) => {
@@ -115,6 +131,6 @@ async function deleteEventPhoto(publicId) {
 }
 
 module.exports = {
-  uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo,
+  uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar,
   uploadEventPhoto, deleteEventPhoto, isManagedFlyerUrl, configured
 };

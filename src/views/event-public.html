@@ -482,13 +482,31 @@
     }
     .guest-name-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; }
     .guest-name-list li {
-      padding: 7px 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 11px 5px 6px;
       border: 1px solid var(--sg-border-soft);
       border-radius: 999px;
       color: var(--sg-text-dim);
       font-size: 12px;
       font-weight: 600;
     }
+    .guest-avatar {
+      position: relative;
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border-radius: 50%;
+      background: rgba(255,255,255,.07);
+      font-size: 15px;
+      line-height: 1;
+    }
+    .guest-avatar img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover; }
     .guest-list-toggle {
       margin-top: 15px;
       padding: 0;

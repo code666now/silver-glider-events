@@ -145,17 +145,42 @@ router.post('/api/auth/logout', (req, res) => {
 
 router.get('/api/auth/me', requireOrganizer, (req, res) => {
   const {
-    id, email, name, org_name, public_slug, logo_url, header_image_url,
+    id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
     bio, website_url, instagram_handle, instagram_url, contact_email,
     plan, is_admin, created_at, updated_at
   } = req.organizer;
   res.json({
     organizer: {
-      id, email, name, org_name, public_slug, logo_url, header_image_url,
+      id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
       bio, website_url, instagram_handle, instagram_url, contact_email,
       plan, is_admin, created_at, updated_at
     }
   });
+});
+
+router.get('/api/me', requireOrganizer, (req, res) => {
+  const { id, email, name, avatar_url } = req.organizer;
+  res.json({ user: { id, email, name, avatarUrl: avatar_url || null } });
+});
+
+router.patch('/api/me/profile', requireOrganizer, async (req, res, next) => {
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'avatarUrl') || req.body.avatarUrl !== null) {
+    return res.status(400).json({ error: 'Upload a photo or set avatarUrl to null' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE organizers SET avatar_url=NULL, updated_at=NOW() WHERE id=$1
+       RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
+                 bio, website_url, instagram_handle, instagram_url, contact_email,
+                 plan, is_admin, created_at, updated_at`,
+      [req.organizer.id]
+    );
+    const organizer = rows[0];
+    res.json({
+      user: { id: organizer.id, email: organizer.email, name: organizer.name, avatarUrl: null },
+      organizer
+    });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

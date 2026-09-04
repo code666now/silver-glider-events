@@ -677,7 +677,7 @@ router.put('/api/settings', async (req, res, next) => {
               website_url=$6, instagram_handle=$7, contact_email=$8,
               updated_at=NOW()
         WHERE id=$1
-        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+        RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
                   bio, website_url, instagram_handle, instagram_url, contact_email,
                   plan, is_admin, created_at, updated_at`,
       [
