@@ -38,6 +38,8 @@ test('profile-photo changes are bound to the authenticated session', () => {
 test('guest-list avatars link only through a verified matching session and keep smiley fallbacks', () => {
   const routes = read('src/routes/public.js');
   const cloudinary = read('src/lib/cloudinary.js');
+  const standard = read('src/views/event-public.html');
+  const flyer = read('public/css/event-public-flyer.css');
 
   assert.match(routes, /verifiedSessionAccountId\(client, req, email\)/);
   assert.match(routes, /SELECT id FROM organizers WHERE id=\$1 AND LOWER\(email\)=LOWER\(\$2\)/);
@@ -46,4 +48,9 @@ test('guest-list avatars link only through a verified matching session and keep 
   assert.match(routes, /guest-avatar/);
   assert.match(cloudinary, /CLOUDINARY_ACCOUNT_AVATAR_FOLDER/);
   assert.match(cloudinary, /width: 512, height: 512, crop: 'fill', gravity: 'auto'/);
+  for (const styles of [standard, flyer]) {
+    assert.match(styles, /grid-template-columns:\s*repeat\(auto-fill, minmax\(64px, 1fr\)\)/);
+    assert.match(styles, /width:\s*52px;\s*height:\s*52px/);
+    assert.doesNotMatch(styles, /\.guest-name-list li \{[^}]*border-radius:\s*999px/s);
+  }
 });
