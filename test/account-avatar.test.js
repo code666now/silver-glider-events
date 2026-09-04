@@ -44,7 +44,7 @@ test('profile-photo changes are bound to the authenticated session', () => {
   assert.doesNotMatch(accountRsvps, /req\.body|userId|organizerId/);
 });
 
-test('guest-list avatars link only through a verified matching session and keep smiley fallbacks', () => {
+test('guest-list avatars link only through a verified matching session and keep emoji fallbacks', () => {
   const routes = read('src/routes/public.js');
   const cloudinary = read('src/lib/cloudinary.js');
   const standard = read('src/views/event-public.html');

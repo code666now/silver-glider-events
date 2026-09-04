@@ -78,6 +78,8 @@ test('public guest list exposes first names only', () => {
   ]);
   assert.equal(names.every(({ avatarEmoji }) => ATTENDEE_AVATARS.includes(avatarEmoji)), true);
   assert.ok(ATTENDEE_AVATARS.includes('😎'));
+  assert.ok(ATTENDEE_AVATARS.includes('🤠'));
+  assert.equal(ATTENDEE_AVATARS.includes('🤓'), false);
   const serialized = JSON.stringify(names);
   for (const secret of ['Private', 'Secret', '@example.com', '555-0100', '91']) {
     assert.equal(serialized.includes(secret), false);

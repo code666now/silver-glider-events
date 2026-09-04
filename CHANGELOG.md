@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.37
+
+Unreleased.
+
+### Improved
+
+* Replaced the nerd-face guest-list fallback with a cowboy face while preserving deterministic attendee avatars and uploaded profile photos.
+
 ## 1.0.36
 
 Released September 4, 2026.
