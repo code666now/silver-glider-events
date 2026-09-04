@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.39
+
+Unreleased.
+
+### Improved
+
+* Replaced the levitating-suit fallback with ninja, ghost, and Bowie-style singer characters in the seasonal attendee pool.
+
 ## 1.0.38
 
 Released September 4, 2026.
