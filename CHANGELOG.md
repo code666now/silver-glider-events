@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.34
+
+Released September 4, 2026.
+
+### Fixed
+
+* Linked historical email-only RSVPs to the current authenticated account so a newly added RSVP photo appears on older guest lists.
+
+### Safety
+
+* Historical linking is account-scoped and requires the existing signed session or a newly verified magic link.
+* The server accepts no browser-supplied account ID, never overwrites an existing RSVP link, and leaves different-email attendees unchanged.
+
 ## 1.0.33
 
 Released September 4, 2026.

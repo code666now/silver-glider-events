@@ -104,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.33');
+  assert.equal((await health.json()).version, '1.0.34');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -191,6 +191,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
 
 test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {
   const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
+  const historicalEvent = await createEvent({ slug: 'historical-avatar-night', title: 'Historical Avatar Night', show_guest_list: true });
   const avatarUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/avatars/attendee.jpg';
   const logoUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/hosts/attendee-logo.jpg';
   const { rows: accounts } = await pool.query(
@@ -201,6 +202,12 @@ test('personal RSVP photos are session-owned, email-matched, and separate from H
   const accountId = accounts[0].id;
   const accountCookie = `sge_session=${signSession(accountId)}`;
 
+  await pool.query(
+    `INSERT INTO rsvps (event_id, first_name, last_name, email, status, manage_token)
+     VALUES ($1,'Avatar','Person','avatar@example.test','confirmed','historical-avatar-token')`,
+    [historicalEvent.id]
+  );
+
   const signedOutMe = await fetch(`${baseUrl}/api/me`);
   assert.equal(signedOutMe.status, 401);
   const me = await fetch(`${baseUrl}/api/me`, { headers: { cookie: accountCookie } });
@@ -208,6 +215,20 @@ test('personal RSVP photos are session-owned, email-matched, and separate from H
   assert.deepEqual(await me.json(), {
     user: { id: accountId, email: 'avatar@example.test', name: 'Avatar Person', avatarUrl }
   });
+
+  const signedOutLink = await fetch(`${baseUrl}/api/me/link-rsvps`, { method: 'POST' });
+  assert.equal(signedOutLink.status, 401);
+  const linkHistorical = await fetch(`${baseUrl}/api/me/link-rsvps`, {
+    method: 'POST',
+    headers: { cookie: accountCookie }
+  });
+  assert.equal(linkHistorical.status, 200);
+  assert.deepEqual(await linkHistorical.json(), { ok: true, linked: 1 });
+  const { rows: historicalRsvps } = await pool.query(
+    'SELECT account_id FROM rsvps WHERE event_id=$1',
+    [historicalEvent.id]
+  );
+  assert.equal(historicalRsvps[0].account_id, accountId);
 
   const matchingRsvp = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
     method: 'POST',

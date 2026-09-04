@@ -5,6 +5,7 @@ const requireAdmin = require('../middleware/requireAdmin');
 const pool = require('../config/db');
 const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar, configured } = require('../lib/cloudinary');
 const { selectAccentColor } = require('../../public/js/artwork-color');
+const { linkVerifiedRsvps } = require('../lib/account-rsvps');
 
 const router = express.Router();
 
@@ -70,6 +71,7 @@ router.post('/api/uploads/avatar', requireOrganizer, handleUpload, async (req, r
                  plan, is_admin, created_at, updated_at`,
       [req.organizer.id, result.secure_url]
     );
+    await linkVerifiedRsvps(pool, req.organizer.id, req.organizer.email);
     res.json({ url: result.secure_url, organizer: rows[0] });
   } catch (err) {
     console.error('[upload:avatar]', err.name, err.http_code || '', err.message);

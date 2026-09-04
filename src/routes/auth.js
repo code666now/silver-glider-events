@@ -5,6 +5,7 @@ const { sendMagicLink } = require('../lib/mailer');
 const { setSessionCookie, clearSessionCookie } = require('../lib/session');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { findPublicHost, followHost } = require('../lib/host-follows');
+const { linkVerifiedRsvps } = require('../lib/account-rsvps');
 
 const router = express.Router();
 
@@ -113,6 +114,10 @@ router.get('/auth/verify', async (req, res, next) => {
       )).rows[0];
     }
 
+    // Reaching this point proves control of the magic-link email. Historical
+    // email-only RSVPs may now safely use this account's current avatar.
+    await linkVerifiedRsvps(client, organizer.id, email);
+
     if (pending.intent === 'follow_host') {
       const { rows: targetRows } = await client.query(
         `SELECT id FROM organizers
@@ -161,6 +166,13 @@ router.get('/api/auth/me', requireOrganizer, (req, res) => {
 router.get('/api/me', requireOrganizer, (req, res) => {
   const { id, email, name, avatar_url } = req.organizer;
   res.json({ user: { id, email, name, avatarUrl: avatar_url || null } });
+});
+
+router.post('/api/me/link-rsvps', requireOrganizer, async (req, res, next) => {
+  try {
+    const linked = await linkVerifiedRsvps(pool, req.organizer.id, req.organizer.email);
+    res.json({ ok: true, linked });
+  } catch (err) { next(err); }
 });
 
 router.patch('/api/me/profile', requireOrganizer, async (req, res, next) => {

@@ -23,6 +23,8 @@ test('personal avatars extend accounts and RSVPs without changing Host Page artw
 test('profile-photo changes are bound to the authenticated session', () => {
   const uploads = read('src/routes/uploads.js');
   const auth = read('src/routes/auth.js');
+  const accountRsvps = read('src/lib/account-rsvps.js');
+  const settings = read('src/views/settings.html');
 
   assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requireOrganizer, handleUpload/);
   assert.match(uploads, /UPDATE organizers SET avatar_url=\$2[\s\S]*WHERE id=\$1/);
@@ -33,6 +35,13 @@ test('profile-photo changes are bound to the authenticated session', () => {
   assert.match(auth, /router\.patch\('\/api\/me\/profile', requireOrganizer/);
   assert.match(auth, /UPDATE organizers SET avatar_url=NULL[\s\S]*WHERE id=\$1/);
   assert.match(auth, /\[req\.organizer\.id\]/);
+  assert.match(auth, /router\.post\('\/api\/me\/link-rsvps', requireOrganizer/);
+  assert.match(auth, /linkVerifiedRsvps\(client, organizer\.id, email\)/);
+  assert.match(uploads, /linkVerifiedRsvps\(pool, req\.organizer\.id, req\.organizer\.email\)/);
+  assert.match(settings, /api\('\/api\/me\/link-rsvps', \{ method: 'POST' \}\)/);
+  assert.match(accountRsvps, /WHERE account_id IS NULL AND LOWER\(email\)=LOWER\(\$2\)/);
+  assert.match(accountRsvps, /\[id, verifiedEmail\]/);
+  assert.doesNotMatch(accountRsvps, /req\.body|userId|organizerId/);
 });
 
 test('guest-list avatars link only through a verified matching session and keep smiley fallbacks', () => {
