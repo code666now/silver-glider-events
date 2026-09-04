@@ -59,7 +59,7 @@ test('guest-list avatars link only through a verified matching session and keep 
   assert.match(cloudinary, /width: 512, height: 512, crop: 'fill', gravity: 'auto'/);
   for (const styles of [standard, flyer]) {
     assert.match(styles, /grid-template-columns:\s*repeat\(auto-fill, minmax\(64px, 1fr\)\)/);
-    assert.match(styles, /width:\s*52px;\s*height:\s*52px/);
+    assert.match(styles, /width:\s*58px;\s*height:\s*58px/);
     assert.doesNotMatch(styles, /\.guest-name-list li \{[^}]*border-radius:\s*999px/s);
   }
 });

@@ -215,9 +215,10 @@ function renderGuestList(event, rows) {
   return `<section class="public-guest-list" aria-labelledby="guest-list-title">
     <div class="section-heading">
       <h2 id="guest-list-title">${peopleIcon}<span>${attendanceLabel}</span></h2>
-      ${names.length ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false" aria-controls="guest-list-modal">See everyone <span aria-hidden="true">→</span></button>' : ''}
+      ${names.length ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false" aria-controls="guest-list-inline guest-list-modal">See everyone <span aria-hidden="true">→</span></button>' : ''}
     </div>
-    ${previewItems ? `<ul class="guest-avatar-stack" aria-label="Attendee preview">${previewItems}${more}</ul>` : '<p class="section-empty">Be the first to RSVP.</p>'}
+    ${previewItems ? `<ul class="guest-avatar-stack" id="guest-avatar-preview" aria-label="Attendee preview">${previewItems}${more}</ul>
+    <div class="guest-list-inline" id="guest-list-inline" hidden><ul class="guest-name-list">${modalItems}</ul></div>` : '<p class="section-empty">Be the first to RSVP.</p>'}
   </section>
   ${names.length ? `<div class="guest-list-modal" id="guest-list-modal" hidden>
     <div class="guest-list-modal-card" role="dialog" aria-modal="true" aria-labelledby="guest-list-modal-title" aria-describedby="guest-list-modal-description" tabindex="-1">

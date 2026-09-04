@@ -41,7 +41,7 @@ test('guest-list attendance copy uses past tense after an event passes', () => {
   assert.match(route, /'person is'[\s\S]*'people are'[\s\S]*going/);
 });
 
-test('guest list uses a compact avatar preview and an accessible full attendee modal', () => {
+test('guest list uses an inline mobile expansion and an accessible desktop modal', () => {
   const route = source('src/routes/public.js');
   const client = source('public/js/public-event.js');
   const standard = source('src/views/event-public.html');
@@ -49,13 +49,16 @@ test('guest list uses a compact avatar preview and an accessible full attendee m
 
   assert.match(route, /class="guest-avatar-stack"/);
   assert.match(route, /class="guest-avatar-more"/);
-  assert.match(route, /aria-controls="guest-list-modal"/);
+  assert.match(route, /aria-controls="guest-list-inline guest-list-modal"/);
+  assert.match(route, /class="guest-list-inline" id="guest-list-inline" hidden/);
   assert.match(route, /class="guest-list-modal-card" role="dialog" aria-modal="true"/);
   assert.match(route, /<ul class="guest-name-list">\$\{modalItems\}<\/ul>/);
   assert.match(route, /\$\{avatar\(entry\)\}<span>\$\{esc\(entry\.firstName\)\}<\/span>/);
 
   assert.match(client, /function openGuestList\(\)/);
-  assert.match(client, /function closeGuestList\(\)/);
+  assert.match(client, /function closeGuestList\(\{ restoreFocus = true \} = \{\}\)/);
+  assert.match(client, /function toggleInlineGuestList\(\)/);
+  assert.match(client, /guestListMobileMedia\.matches/);
   assert.match(client, /event\.key === 'Escape'/);
   assert.match(client, /event\.key !== 'Tab'/);
   assert.match(client, /event\.target === guestListModal/);
@@ -64,8 +67,9 @@ test('guest list uses a compact avatar preview and an accessible full attendee m
   for (const styles of [standard, flyer]) {
     assert.match(styles, /\.guest-avatar-stack li \+ li \{ margin-left: -12px; \}/);
     assert.match(styles, /\.guest-list-modal \{[\s\S]*position: fixed;[\s\S]*z-index: 100;/);
-    assert.match(styles, /\.guest-list-modal \.guest-avatar \{[\s\S]*width: 76px;[\s\S]*height: 76px;/);
-    assert.match(styles, /@media \(max-width: 599px\)[\s\S]*\.guest-list-modal \.guest-avatar \{ width: 60px; height: 60px;/);
+    assert.match(styles, /\.guest-list-modal \.guest-avatar \{[\s\S]*width: 80px;[\s\S]*height: 80px;/);
+    assert.match(styles, /@media \(max-width: 599px\)[\s\S]*\.guest-list-modal \{ display: none !important; \}/);
+    assert.match(styles, /\.guest-list-inline \.guest-avatar \{ width: 64px; height: 64px;/);
   }
 });
 

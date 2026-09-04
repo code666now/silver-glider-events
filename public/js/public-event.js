@@ -313,26 +313,53 @@ $('share-btn').addEventListener('click', share);
 const guestListToggle = $('guest-list-toggle');
 const guestListModal = $('guest-list-modal');
 const guestListModalClose = $('guest-list-modal-close');
-if (guestListToggle && guestListModal && guestListModalClose) {
+const guestListInline = $('guest-list-inline');
+const guestListPreview = $('guest-avatar-preview');
+const guestListMobileMedia = window.matchMedia('(max-width: 599px)');
+if (guestListToggle && guestListModal && guestListModalClose && guestListInline && guestListPreview) {
   const modalCard = guestListModal.querySelector('.guest-list-modal-card');
   let previousFocus = null;
+
+  function setGuestListToggle(expanded) {
+    guestListToggle.setAttribute('aria-expanded', String(expanded));
+    guestListToggle.innerHTML = expanded && guestListMobileMedia.matches
+      ? 'Show less <span aria-hidden="true">↑</span>'
+      : 'See everyone <span aria-hidden="true">→</span>';
+  }
+
+  function toggleInlineGuestList() {
+    const expanded = guestListToggle.getAttribute('aria-expanded') === 'true';
+    guestListInline.hidden = expanded;
+    guestListPreview.hidden = !expanded;
+    setGuestListToggle(!expanded);
+  }
 
   function openGuestList() {
     previousFocus = document.activeElement;
     guestListModal.hidden = false;
-    guestListToggle.setAttribute('aria-expanded', 'true');
+    setGuestListToggle(true);
     document.body.classList.add('guest-list-modal-open');
     modalCard.focus();
   }
 
-  function closeGuestList() {
+  function closeGuestList({ restoreFocus = true } = {}) {
     guestListModal.hidden = true;
-    guestListToggle.setAttribute('aria-expanded', 'false');
+    setGuestListToggle(false);
     document.body.classList.remove('guest-list-modal-open');
-    if (previousFocus instanceof HTMLElement) previousFocus.focus();
+    if (restoreFocus && previousFocus instanceof HTMLElement) previousFocus.focus();
   }
 
-  guestListToggle.addEventListener('click', openGuestList);
+  function resetGuestListForViewport() {
+    guestListInline.hidden = true;
+    guestListPreview.hidden = false;
+    if (!guestListModal.hidden) closeGuestList({ restoreFocus: false });
+    else setGuestListToggle(false);
+  }
+
+  guestListToggle.addEventListener('click', () => {
+    if (guestListMobileMedia.matches) toggleInlineGuestList();
+    else openGuestList();
+  });
   guestListModalClose.addEventListener('click', closeGuestList);
   guestListModal.addEventListener('click', event => {
     if (event.target === guestListModal) closeGuestList();
@@ -357,6 +384,7 @@ if (guestListToggle && guestListModal && guestListModalClose) {
       first.focus();
     }
   });
+  guestListMobileMedia.addEventListener?.('change', resetGuestListForViewport);
 }
 
 function formatCommentTime(value) {
