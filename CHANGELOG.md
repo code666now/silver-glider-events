@@ -2,7 +2,9 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
-## Unreleased
+## 1.0.42
+
+Released September 4, 2026.
 
 ### Added
 
