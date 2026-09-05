@@ -5,6 +5,7 @@ const THEMES = [
   ['aurora', 'Aurora', 'gradient'],
   ['sunset', 'Sunset', 'gradient'],
   ['ocean', 'Ocean', 'gradient'],
+  ['adaptive', 'Default wall', 'effect'],
   ['halloween', 'Halloween', 'effect'],
   ['last-guest', 'The Last Guest', 'effect'],
   ['disco', 'Disco', 'effect'],

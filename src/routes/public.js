@@ -191,8 +191,8 @@ function rejectLockedSecret(res) {
   return res.status(404).json({ error: 'Event not found' });
 }
 
-function renderGuestList(event, rows) {
-  if (!event.show_guest_list) return '';
+function renderGuestList(event, rows, { ownerPreview = false } = {}) {
+  if (!event.show_guest_list && !ownerPreview) return '';
   const names = publicGuestNames(rows);
   const visibleLimit = 8;
   const avatar = entry => `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
@@ -213,7 +213,10 @@ function renderGuestList(event, rows) {
     ? `${count} ${count === 1 ? 'person' : 'people'} went`
     : `${count} ${count === 1 ? 'person is' : 'people are'} going`;
   const peopleIcon = `<svg class="guest-list-people-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
-  return `<section class="public-guest-list" aria-labelledby="guest-list-title">
+  const previewAttrs = ownerPreview
+    ? ` id="owner-preview-guest-list" data-owner-preview-section="guest-list"${event.show_guest_list ? '' : ' hidden'}`
+    : '';
+  return `<section class="public-guest-list"${previewAttrs} aria-labelledby="guest-list-title">
     <div class="section-heading">
       <h2 id="guest-list-title">${peopleIcon}<span>${attendanceLabel}</span></h2>
       ${names.length ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false" aria-controls="guest-list-inline guest-list-modal">See everyone <span aria-hidden="true">→</span></button>' : ''}
@@ -235,9 +238,12 @@ function renderGuestList(event, rows) {
   </div>` : ''}`;
 }
 
-function renderGuestFields(event) {
-  if (!event.allow_guests) return '';
-  return `<fieldset class="party-size-field">
+function renderGuestFields(event, { ownerPreview = false } = {}) {
+  if (!event.allow_guests && !ownerPreview) return '';
+  const previewAttrs = ownerPreview
+    ? ` id="owner-preview-guest-fields" data-owner-preview-section="guest-fields"${event.allow_guests ? '' : ' hidden'}`
+    : '';
+  return `<div${previewAttrs}><fieldset class="party-size-field">
     <legend>Who is attending?</legend>
     <label><input type="radio" name="party_size" value="solo" checked> Just me</label>
     <label><input type="radio" name="party_size" value="guest"> I’m bringing someone</label>
@@ -245,12 +251,12 @@ function renderGuestFields(event) {
   <div id="guest-fields" hidden>
     <div class="sg-field"><label for="guest_name">Guest name</label><input class="sg-input" id="guest_name" maxlength="160" autocomplete="name"></div>
     <div class="sg-field"><label for="guest_email">Guest email <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="email" id="guest_email" maxlength="254" autocomplete="email"></div>
-  </div>`;
+  </div></div>`;
 }
 
-function renderComments(event) {
-  if (!event.comments_enabled) return '';
-  return `<section class="event-wall" id="event-wall" aria-labelledby="event-wall-title">
+function renderComments(event, { ownerPreview = false } = {}) {
+  if (!event.comments_enabled && !ownerPreview) return '';
+  return `<section class="event-wall" id="event-wall"${ownerPreview ? ` data-owner-preview-section="comments"${event.comments_enabled ? '' : ' hidden'}` : ''} aria-labelledby="event-wall-title">
     <div class="section-heading">
       <h2 id="event-wall-title">Comments</h2>
       <span id="comment-count">${Number(event.comment_count) || 0}</span>
@@ -366,13 +372,14 @@ router.get('/e/:slug', async (req, res, next) => {
     const event = await loadEventBySlug(req.params.slug);
     if (!event) return res.status(404).send(render404());
     const rsvpEnabled = !isSilverGliderTickets(event);
+    const ownerPreview = organizerViewer(req, event);
 
     if (event.visibility === 'private') {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     }
 
     let publicGuestRows = [];
-    if (rsvpEnabled && event.show_guest_list) {
+    if (rsvpEnabled && (event.show_guest_list || ownerPreview)) {
       publicGuestRows = (await pool.query(
         `SELECT r.id, r.first_name, r.guest_first_name, o.avatar_url
            FROM rsvps r LEFT JOIN organizers o ON o.id=r.account_id
@@ -467,7 +474,7 @@ router.get('/e/:slug', async (req, res, next) => {
 
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
     // rendered for already-published events that selected them.
-    const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
+    const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'violet', 'ember'];
     const EFFECTS = ['static', 'paper', 'halloween', 'last-guest', 'disco', 'fog', 'saloon'];
     const VIDEO_EFFECTS = {
       halloween: 'sg-events/effects/halloween',
@@ -512,9 +519,11 @@ router.get('/e/:slug', async (req, res, next) => {
       isPast: event.is_past,
       coverImageUrl: primaryImageUrl || null,
       coverFitMode,
+      adaptiveBackground: theme === 'adaptive',
+      ownerPreview,
       bgEffect: isEffect ? theme : null
     };
-    const ownerEditorHtml = organizerViewer(req, event) ? renderOwnerEditor(event) : '';
+    const ownerEditorHtml = ownerPreview ? renderOwnerEditor(event) : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate
@@ -537,9 +546,9 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
-      .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event) : '')
-      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows) : '')
-      .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event) : '')
+      .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
+      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview }) : '')
+      .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{STANDARD_PRIMARY_ACTION_HTML}}/g, standardPrimaryActionHtml)
@@ -591,12 +600,15 @@ function ticketHandoffPage(event, message) {
 router.get('/api/public/events/:slug/comments', async (req, res, next) => {
   try {
     const event = await loadEventBySlug(req.params.slug);
-    if (!event || !event.comments_enabled) {
+    if (!event) {
       return res.status(404).json({ error: 'Event wall not found' });
     }
     if (secretShowLocked(req, event)) return rejectLockedSecret(res);
-    const attendee = await confirmedAttendee(req, event);
     const canModerate = organizerViewer(req, event);
+    if (!event.comments_enabled && !canModerate) {
+      return res.status(404).json({ error: 'Event wall not found' });
+    }
+    const attendee = await confirmedAttendee(req, event);
     const { rows } = await pool.query(
       `SELECT c.id, c.message, c.created_at, c.rsvp_id, r.first_name
          FROM event_comments c
@@ -606,7 +618,7 @@ router.get('/api/public/events/:slug/comments', async (req, res, next) => {
       [event.id]
     );
     res.json({
-      canComment: event.status === 'published' && Boolean(attendee),
+      canComment: event.comments_enabled && event.status === 'published' && Boolean(attendee),
       canModerate,
       comments: rows.map(row => ({
         id: row.id,

@@ -21,7 +21,7 @@ router.use('/api/settings', requireOrganizer);
 router.use('/api/places', requireOrganizer);
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'static', 'paper', 'halloween', 'last-guest', 'disco', 'fog', 'saloon'];
+const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'static', 'paper', 'halloween', 'last-guest', 'disco', 'fog', 'saloon'];
 const PRESENTATION_MODES = ['standard', 'flyer'];
 const COVER_FIT_MODES = ['auto', 'contain', 'cover'];
 

@@ -12,7 +12,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   const renderer = read('src/lib/event-owner-editor.js');
   const client = read('public/js/event-owner-editor.js');
 
-  assert.match(route, /organizerViewer\(req, event\) \? renderOwnerEditor\(event\) : ''/);
+  assert.match(route, /const ownerPreview = organizerViewer\(req, event\)/);
+  assert.match(route, /const ownerEditorHtml = ownerPreview \? renderOwnerEditor\(event\) : ''/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_HTML\}\}\/g, ownerEditorHtml\)/);
   assert.match(renderer, /id="owner-edit-trigger"/);
   assert.match(renderer, /role="tablist" aria-label="Event editing sections"/);
@@ -134,7 +135,29 @@ test('appearance gradients match the dashboard and visibly replace the artwork p
   }
 
   assert.match(ownerClient, /background\.classList\.remove\('image-palette'/);
-  assert.match(ownerClient, /background\.classList\.add\('bg-theme', `\$\{effectKeys\.includes/);
-  assert.doesNotMatch(ownerClient, /background\.classList\.add\('image-palette'\)/);
-  assert.doesNotMatch(publicClient, /bg\.classList\.add\('image-palette'\)/);
+  assert.match(ownerClient, /const themeClass = effectKeys\.includes\(draft\.backgroundTheme\)/);
+  assert.match(ownerClient, /if \(draft\.backgroundTheme === 'adaptive'\) applyArtworkPalette/);
+  assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
+});
+
+test('guest experience switches preview owner-only page sections without saving', () => {
+  const route = read('src/routes/public.js');
+  const ownerClient = read('public/js/event-owner-editor.js');
+  const publicClient = read('public/js/public-event.js');
+  const styles = read('public/css/event-owner-editor.css');
+
+  assert.match(route, /renderGuestList\(event, rows, \{ ownerPreview = false \} = \{\}\)/);
+  assert.match(route, /data-owner-preview-section="guest-list"/);
+  assert.match(route, /data-owner-preview-section="guest-fields"/);
+  assert.match(route, /data-owner-preview-section="comments"/);
+  assert.match(route, /event\.show_guest_list \|\| ownerPreview/);
+  assert.match(publicClient, /window\.SGEventPreview = \{/);
+  assert.match(publicClient, /setGuestListVisible\(visible\)/);
+  assert.match(publicClient, /setGuestFieldsVisible\(visible\)/);
+  assert.match(publicClient, /setCommentsVisible\(visible\)/);
+  assert.match(ownerClient, /function previewGuestSettings\(\)/);
+  assert.match(ownerClient, /preview\.setGuestListVisible\(draft\.showGuestList\)/);
+  assert.match(ownerClient, /preview\.setGuestFieldsVisible\(draft\.allowGuests\)/);
+  assert.match(ownerClient, /preview\.setCommentsVisible\(draft\.commentsEnabled\)/);
+  assert.match(styles, /\[data-owner-preview-section\]\[hidden\] \{ display: none !important; \}/);
 });

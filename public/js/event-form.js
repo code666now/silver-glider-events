@@ -16,6 +16,18 @@ const ArtworkColor = window.SGArtworkColor;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
 
+function updateAdaptiveThemeSwatch(colors) {
+  const swatch = document.querySelector('.sg-swatch.fx-adaptive');
+  if (!swatch) return;
+  if (!colors?.length) {
+    ['--adaptive-a', '--adaptive-b', '--adaptive-c'].forEach(property => swatch.style.removeProperty(property));
+    return;
+  }
+  swatch.style.setProperty('--adaptive-a', ArtworkColor.rgba(colors[0], .82));
+  swatch.style.setProperty('--adaptive-b', ArtworkColor.rgba(colors[1] || colors[0], .68));
+  swatch.style.setProperty('--adaptive-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
+}
+
 if (editId) {
   $('event-form').inert = true;
   $('event-form').setAttribute('aria-busy', 'true');
@@ -73,12 +85,15 @@ function activeArtworkUrl() {
 
 function queueArtworkPalette(artworkUrl, { sampleUrl = artworkUrl, knownAccent = null, updatePicker = false } = {}) {
   if (!artworkUrl) {
+    updateAdaptiveThemeSwatch([]);
     artworkAccentPromise = Promise.resolve(null);
     return artworkAccentPromise;
   }
   const saved = ArtworkColor.normalizeHex(knownAccent);
   if (saved) {
     artworkAccents.set(artworkUrl, saved);
+    const savedRgb = ArtworkColor.hexToRgb(saved);
+    updateAdaptiveThemeSwatch([savedRgb, savedRgb, savedRgb]);
     if (!updatePicker) {
       artworkAccentPromise = Promise.resolve(saved);
       return artworkAccentPromise;
@@ -92,6 +107,7 @@ function queueArtworkPalette(artworkUrl, { sampleUrl = artworkUrl, knownAccent =
   artworkAccentPromise = ArtworkColor.extractPalette(sampleUrl).then(candidates => {
     const accent = saved || ArtworkColor.selectAccentColor(candidates, { fallback: null });
     if (accent) artworkAccents.set(artworkUrl, accent);
+    updateAdaptiveThemeSwatch(ArtworkColor.paletteForBackground(candidates));
     if (updatePicker) {
       const colors = ArtworkColor.paletteForBackground(candidates, { darken: 0.56, desaturate: 0.34 })
         .map(ArtworkColor.rgbToHex);
@@ -269,10 +285,11 @@ $('admission-paid').addEventListener('click', () => setAdmission('external_ticke
 
 // Background picker — gradients + generative/photo/video effects
 const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
-const EFFECTS = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+const EFFECTS = ['adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
 const THEMES = [...GRADIENTS, ...EFFECTS];
 const THEME_LABELS = {
   midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
+  adaptive: 'Default wall',
   halloween: 'Halloween', 'last-guest': 'The Last Guest',
   static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog',
   saloon: 'After Hours Saloon'
@@ -498,6 +515,7 @@ function setCover(url, creditName, creditLink, { preserveFit = false } = {}) {
     drop.classList.remove('has-image');
     $('btn-clear-cover').style.display = 'none';
     markSelectedPhoto('');
+    updateAdaptiveThemeSwatch([]);
   }
 }
 

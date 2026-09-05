@@ -30,6 +30,12 @@
 .owner-editor textarea:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
 .owner-edit-trigger svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .owner-editor-open .owner-edit-trigger { opacity: 0; pointer-events: none; }
+[data-owner-preview-section][hidden] { display: none !important; }
+body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: owner-preview-reveal .18s ease-out both; }
+@keyframes owner-preview-reveal {
+  from { opacity: .45; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .owner-editor {
   position: fixed;
@@ -188,6 +194,7 @@
   text-align: left;
   cursor: pointer;
 }
+.owner-theme[hidden] { display: none; }
 .owner-theme[aria-pressed="true"] { border-color: var(--sg-accent); background: rgba(28,197,190,.09); color: #fff; box-shadow: 0 0 0 1px rgba(28,197,190,.12); }
 .owner-theme-preview { width: 56px; height: 42px; border-radius: 9px; background: #151515 center/cover no-repeat; }
 .owner-theme-midnight,
@@ -219,6 +226,15 @@
     radial-gradient(58% 44% at 90% 12%, rgba(28,197,190,.5), transparent 60%),
     radial-gradient(68% 54% at 80% 97%, rgba(0,140,255,.4), transparent 62%),
     radial-gradient(55% 46% at 12% 90%, rgba(28,197,190,.35), transparent 62%);
+}
+.owner-theme-adaptive {
+  --owner-adaptive-a: rgba(28,197,190,.56);
+  --owner-adaptive-b: rgba(0,140,255,.46);
+  --owner-adaptive-c: rgba(150,80,255,.34);
+  background-image:
+    radial-gradient(62% 56% at 5% 4%, var(--owner-adaptive-a), transparent 62%),
+    radial-gradient(70% 62% at 108% 18%, var(--owner-adaptive-b), transparent 60%),
+    radial-gradient(78% 66% at 82% 116%, var(--owner-adaptive-c), transparent 64%);
 }
 .owner-theme-plaster { background-image: linear-gradient(rgba(10,10,10,.38),rgba(10,10,10,.38)),url('/images/flyer-plaster-wall.jpg'); }
 .owner-theme-halloween { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/halloween.jpg"); }
@@ -362,6 +378,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: none; }
   .owner-edit-trigger,
   .owner-editor,
   .owner-switch-row i::after,

@@ -9,9 +9,32 @@ function source(relativePath) {
 
 test('seasonal video effects lead the effect picker', () => {
   const form = source('public/js/event-form.js');
-  assert.match(form, /const EFFECTS = \['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'\]/);
+  assert.match(form, /const EFFECTS = \['adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'\]/);
+  assert.match(form, /adaptive: 'Default wall'/);
   assert.match(form, /halloween: 'Halloween', 'last-guest': 'The Last Guest'/);
   assert.match(form, /saloon: 'After Hours Saloon'/);
+});
+
+test('Default wall reuses the artwork palette as an explicit adaptive background', () => {
+  const form = source('public/js/event-form.js');
+  const ownerRenderer = source('src/lib/event-owner-editor.js');
+  const ownerClient = source('public/js/event-owner-editor.js');
+  const publicClient = source('public/js/public-event.js');
+  const publicRoute = source('src/routes/public.js');
+  const eventsRoute = source('src/routes/events.js');
+  const brand = source('public/css/brand.css');
+
+  assert.match(form, /function updateAdaptiveThemeSwatch\(colors\)/);
+  assert.match(form, /updateAdaptiveThemeSwatch\(ArtworkColor\.paletteForBackground\(candidates\)\)/);
+  assert.match(ownerRenderer, /\['adaptive', 'Default wall', 'effect'\]/);
+  assert.match(ownerClient, /if \(pageBackground && draft\.backgroundTheme === 'adaptive'\)/);
+  assert.match(ownerClient, /background\.classList\.add\('image-palette'\)/);
+  assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
+  assert.match(publicClient, /background\.classList\.add\('image-palette'\)/);
+  assert.match(publicRoute, /adaptiveBackground: theme === 'adaptive'/);
+  assert.match(eventsRoute, /'midnight', 'aurora', 'sunset', 'ocean', 'adaptive'/);
+  assert.match(brand, /\.sg-swatch\.fx-adaptive/);
+  assert.match(brand, /\.bg-adaptive/);
 });
 
 test('seasonal video effects are accepted and render from dedicated assets', () => {

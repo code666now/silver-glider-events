@@ -276,7 +276,7 @@ test('Flyer pages use a fixed plaster background while Standard pages keep artwo
   assert.match(standardTemplate, /\.event-bg\.image-palette/);
   assert.match(publicClient, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
   assert.match(publicClient, /hero\.classList\.add\('image-palette'\)/);
-  assert.doesNotMatch(publicClient, /bg\.classList\.add\('image-palette'\)/);
+  assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
   assert.match(publicClient, /ArtworkColor\.extractPalette/);
   assert.match(artworkColor, /function selectAccentColor/);
   assert.doesNotMatch(publicClient, /function extractCoverPalette/);

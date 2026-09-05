@@ -59,6 +59,15 @@ async function applyCoverPalette() {
       hero.style.setProperty('--hero-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .54));
       hero.classList.add('image-palette');
     }
+    if (EVENT.adaptiveBackground) {
+      const background = document.querySelector('.event-bg');
+      if (background) {
+        background.style.setProperty('--event-bg-a', ArtworkColor.rgba(colors[0], .82));
+        background.style.setProperty('--event-bg-b', ArtworkColor.rgba(colors[1] || colors[0], .68));
+        background.style.setProperty('--event-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
+        background.classList.add('image-palette');
+      }
+    }
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
   }
@@ -419,7 +428,7 @@ function makeCommentCard(comment) {
 }
 
 async function loadComments() {
-  if (!EVENT.commentsEnabled || !$('event-wall')) return;
+  if ((!EVENT.commentsEnabled && !EVENT.ownerPreview) || !$('event-wall')) return;
   const res = await fetch(`/api/public/events/${EVENT.slug}/comments`);
   if (!res.ok) return;
   const data = await res.json();
@@ -438,7 +447,7 @@ async function loadComments() {
   $('comment-locked').hidden = data.canComment;
 }
 
-if (EVENT.commentsEnabled && $('event-wall')) {
+if ((EVENT.commentsEnabled || EVENT.ownerPreview) && $('event-wall')) {
   const message = $('comment-message');
   message.addEventListener('input', () => { $('comment-length').textContent = `${message.value.length}/300`; });
   $('comment-form').addEventListener('submit', async event => {
@@ -468,4 +477,30 @@ if (EVENT.commentsEnabled && $('event-wall')) {
     }
   });
   loadComments();
+}
+
+if (EVENT.ownerPreview) {
+  window.SGEventPreview = {
+    setGuestListVisible(visible) {
+      const section = $('owner-preview-guest-list');
+      if (section) section.hidden = !visible;
+      if (!visible) {
+        if (guestListModal) guestListModal.hidden = true;
+        if (guestListInline) guestListInline.hidden = true;
+        if (guestListPreview) guestListPreview.hidden = false;
+        if (guestListToggle) guestListToggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('guest-list-modal-open');
+      }
+    },
+    setGuestFieldsVisible(visible) {
+      const fields = $('owner-preview-guest-fields');
+      if (fields) fields.hidden = !visible;
+    },
+    setCommentsVisible(visible) {
+      const wall = $('event-wall');
+      if (!wall) return;
+      wall.hidden = !visible;
+      if (visible) loadComments();
+    }
+  };
 }

@@ -202,6 +202,7 @@ test('live event editing is visible only to the owner and saves through the prot
   assert.equal(visitorPage.status, 200);
   assert.doesNotMatch(visitorHtml, /id="owner-edit-trigger"/);
   assert.doesNotMatch(visitorHtml, /id="owner-event-data"/);
+  assert.doesNotMatch(visitorHtml, /data-owner-preview-section/);
 
   const { rows: otherOrganizers } = await pool.query(
     "INSERT INTO organizers (email, name) VALUES ('other-host@example.test','Other Host') RETURNING id"
@@ -209,7 +210,9 @@ test('live event editing is visible only to the owner and saves through the prot
   const otherPage = await fetch(`${baseUrl}/e/${event.slug}`, {
     headers: { cookie: `sge_session=${signSession(otherOrganizers[0].id)}` }
   });
-  assert.doesNotMatch(await otherPage.text(), /id="owner-edit-trigger"/);
+  const otherHtml = await otherPage.text();
+  assert.doesNotMatch(otherHtml, /id="owner-edit-trigger"/);
+  assert.doesNotMatch(otherHtml, /data-owner-preview-section/);
 
   const ownerPage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
   const ownerHtml = await ownerPage.text();
@@ -218,6 +221,17 @@ test('live event editing is visible only to the owner and saves through the prot
   assert.match(ownerHtml, /id="owner-editor"/);
   assert.match(ownerHtml, /id="owner-event-data"/);
   assert.match(ownerHtml, new RegExp(`"id":${event.id}`));
+  assert.match(ownerHtml, /data-owner-preview-section="guest-list" hidden/);
+  assert.match(ownerHtml, /data-owner-preview-section="guest-fields" hidden/);
+  assert.match(ownerHtml, /data-owner-preview-section="comments" hidden/);
+
+  const visitorComments = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`);
+  assert.equal(visitorComments.status, 404);
+  const ownerComments = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(ownerComments.status, 200);
+  assert.equal((await ownerComments.json()).canComment, false);
 
   const signedOutUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
     method: 'PUT',
@@ -261,6 +275,19 @@ test('live event editing is visible only to the owner and saves through the prot
   assert.match(refreshedHtml, /Edited On The Event Page/);
   assert.match(refreshedHtml, /class="event-bg bg-theme bg-aurora"/);
   assert.match(refreshedHtml, /class="public-guest-list"/);
+
+  const adaptiveUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ background_theme: 'adaptive' })
+  });
+  assert.equal(adaptiveUpdate.status, 200);
+  assert.equal((await adaptiveUpdate.json()).event.background_theme, 'adaptive');
+
+  const adaptivePage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
+  const adaptiveHtml = await adaptivePage.text();
+  assert.match(adaptiveHtml, /class="event-bg bg-theme bg-adaptive"/);
+  assert.match(adaptiveHtml, /"adaptiveBackground":true/);
 });
 
 test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {

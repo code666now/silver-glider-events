@@ -11,7 +11,7 @@
   const saveButton = $('owner-editor-save');
   const saveStatus = $('owner-save-status');
   const toastNode = $('owner-editor-toast');
-  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const effectKeys = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const videoEffects = {
     halloween: 'sg-events/effects/halloween',
@@ -112,6 +112,14 @@
     warning.textContent = needsWarning
       ? `${saved.rsvpCount} ${saved.rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d. This change may affect their plans.`
       : '';
+  }
+
+  function previewGuestSettings() {
+    const preview = window.SGEventPreview;
+    if (!preview) return;
+    preview.setGuestListVisible(draft.showGuestList);
+    preview.setGuestFieldsVisible(draft.allowGuests);
+    preview.setCommentsVisible(draft.commentsEnabled);
   }
 
   function formatDate(value) {
@@ -257,20 +265,45 @@
     } else {
       image.removeAttribute('src');
       card.classList.remove('has-image');
+      updateAdaptiveSwatch([]);
     }
     $('owner-remove-image').disabled = !url;
   }
 
-  async function applyArtworkPalette(url) {
+  function updateAdaptiveSwatch(colors) {
+    const swatch = document.querySelector('.owner-theme-adaptive');
+    if (!swatch) return;
+    if (!colors?.length) {
+      ['--owner-adaptive-a', '--owner-adaptive-b', '--owner-adaptive-c'].forEach(property => swatch.style.removeProperty(property));
+      return;
+    }
+    swatch.style.setProperty('--owner-adaptive-a', window.SGArtworkColor.rgba(colors[0], .82));
+    swatch.style.setProperty('--owner-adaptive-b', window.SGArtworkColor.rgba(colors[1] || colors[0], .68));
+    swatch.style.setProperty('--owner-adaptive-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .52));
+  }
+
+  async function applyArtworkPalette(url, { pageBackground = draft.backgroundTheme === 'adaptive' } = {}) {
     if (!url || draft.presentationMode === 'flyer' || effectKeys.includes(draft.backgroundTheme) || !window.SGArtworkColor) return;
     try {
       const colors = window.SGArtworkColor.paletteForBackground(await window.SGArtworkColor.extractPalette(url));
+      const activeUrl = draft.presentationMode === 'flyer' ? draft.flyerImageUrl : draft.coverImageUrl;
+      if (url !== activeUrl) return;
+      updateAdaptiveSwatch(colors);
       const hero = $('hero');
       if (hero) {
         hero.style.setProperty('--hero-bg-a', window.SGArtworkColor.rgba(colors[0], .76));
         hero.style.setProperty('--hero-bg-b', window.SGArtworkColor.rgba(colors[1], .62));
         hero.style.setProperty('--hero-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .54));
         hero.classList.add('image-palette');
+      }
+      if (pageBackground && draft.backgroundTheme === 'adaptive') {
+        const background = document.querySelector('.event-bg');
+        if (background) {
+          background.style.setProperty('--event-bg-a', window.SGArtworkColor.rgba(colors[0], .82));
+          background.style.setProperty('--event-bg-b', window.SGArtworkColor.rgba(colors[1] || colors[0], .68));
+          background.style.setProperty('--event-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .52));
+          background.classList.add('image-palette');
+        }
       }
     } catch (_) {
       // The selected theme remains a reliable fallback if the image blocks sampling.
@@ -304,6 +337,7 @@
     } else {
       image?.remove();
       hero.classList.add('no-image');
+      if (draft.backgroundTheme === 'adaptive') document.querySelector('.event-bg')?.classList.remove('image-palette');
     }
     updateOwnerImageCard(url);
     const credit = document.querySelector('.photo-credit');
@@ -433,7 +467,8 @@
     const background = document.querySelector('.event-bg');
     if (background) {
       background.classList.remove('image-palette', ...themeKeys.flatMap(key => [`bg-${key}`, `fx-${key}`]));
-      background.classList.add('bg-theme', `${effectKeys.includes(draft.backgroundTheme) ? 'fx' : 'bg'}-${draft.backgroundTheme}`);
+      const themeClass = effectKeys.includes(draft.backgroundTheme) ? `fx-${draft.backgroundTheme}` : `bg-${draft.backgroundTheme}`;
+      background.classList.add('bg-theme', themeClass);
       syncEffectMedia(draft.backgroundTheme, background);
     }
     const veil = $('event-fx-veil');
@@ -444,6 +479,7 @@
     document.querySelectorAll('[data-owner-theme]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.ownerTheme === draft.backgroundTheme));
     });
+    if (draft.backgroundTheme === 'adaptive') applyArtworkPalette(draft.coverImageUrl, { pageBackground: true });
   }
 
   function populate() {
@@ -467,10 +503,12 @@
     $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
     document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
     document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
+    document.querySelector('[data-owner-theme="adaptive"]').hidden = draft.presentationMode === 'flyer';
     setCoverFit(draft.coverFitMode);
     previewDetails();
     previewImage();
     previewTheme(draft.backgroundTheme);
+    previewGuestSettings();
     syncDirtyState();
   }
 
@@ -650,6 +688,7 @@
     draft.allowGuests = $('owner-allow-guests').checked;
     draft.commentsEnabled = $('owner-comments').checked;
     previewDetails();
+    previewGuestSettings();
     syncDirtyState();
   }
 
