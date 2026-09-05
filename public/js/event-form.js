@@ -269,10 +269,11 @@ $('admission-paid').addEventListener('click', () => setAdmission('external_ticke
 
 // Background picker — gradients + generative/photo/video effects
 const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
-const EFFECTS = ['disco', 'fog', 'paper', 'static', 'saloon'];
+const EFFECTS = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
 const THEMES = [...GRADIENTS, ...EFFECTS];
 const THEME_LABELS = {
   midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
+  halloween: 'Halloween', 'last-guest': 'The Last Guest',
   static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog',
   saloon: 'After Hours Saloon'
 };

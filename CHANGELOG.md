@@ -2,6 +2,17 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Added
+
+* Added Halloween and The Last Guest as the first two event background effects, with responsive video loops and optimized poster fallbacks.
+* Added matching background previews to the event editor, Host Page cards, and RSVP emails.
+
+### Accessibility
+
+* Preserved static poster imagery for reduced-motion preferences, data-saving mode, autoplay failures, and email clients.
+
 ## 1.0.41
 
 Released September 4, 2026.

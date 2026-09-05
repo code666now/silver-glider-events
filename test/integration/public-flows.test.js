@@ -127,6 +127,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
     start_time: '20:00',
     venue_name: 'Integration Hall',
     visibility: 'public',
+    background_theme: 'halloween',
     presentation_mode: 'standard',
     show_guest_list: true,
     allow_guests: true,
@@ -154,6 +155,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.equal(payload.event.show_guest_list, true);
   assert.equal(payload.event.allow_guests, true);
   assert.equal(payload.event.comments_enabled, true);
+  assert.equal(payload.event.background_theme, 'halloween');
 
   const publicPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
   assert.equal(publicPage.status, 200);
@@ -162,6 +164,8 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(publicHtml, /class="public-guest-list"/);
   assert.match(publicHtml, /name="party_size"/);
   assert.match(publicHtml, /class="event-wall"/);
+  assert.match(publicHtml, /class="event-bg bg-theme fx-halloween"/);
+  assert.match(publicHtml, /sg-events\/effects\/halloween/);
 
   const rsvp = await fetch(`${baseUrl}/api/public/events/${payload.event.slug}/rsvp`, {
     method: 'POST',
@@ -301,7 +305,7 @@ test('serves email-safe adaptive icon PNGs with immutable caching', async () => 
 });
 
 test('serves Standard and Flyer events through their isolated templates', async () => {
-  await createEvent();
+  await createEvent({ background_theme: 'last-guest', cover_image_url: null });
   await createEvent({
     slug: 'flyer-night',
     title: 'Flyer Night',
@@ -314,6 +318,8 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.equal(standard.status, 200);
   assert.doesNotMatch(standardHtml, /<body class="flyer-public-page">/);
   assert.match(standardHtml, /class="layout"/);
+  assert.match(standardHtml, /class="event-bg bg-theme fx-last-guest"/);
+  assert.match(standardHtml, /sg-events\/effects\/the-last-guest/);
 
   const flyer = await fetch(`${baseUrl}/e/flyer-night`);
   const flyerHtml = await flyer.text();
@@ -327,6 +333,7 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.equal(host.status, 200);
   assert.match(hostHtml, /Standard Night/);
   assert.match(hostHtml, /Flyer Night/);
+  assert.match(hostHtml, /sg-events\/effects\/the-last-guest\.jpg/);
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
 });
 

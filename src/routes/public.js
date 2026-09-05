@@ -467,8 +467,10 @@ router.get('/e/:slug', async (req, res, next) => {
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
     // rendered for already-published events that selected them.
     const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'violet', 'ember'];
-    const EFFECTS = ['static', 'paper', 'disco', 'fog', 'saloon'];
+    const EFFECTS = ['static', 'paper', 'halloween', 'last-guest', 'disco', 'fog', 'saloon'];
     const VIDEO_EFFECTS = {
+      halloween: 'sg-events/effects/halloween',
+      'last-guest': 'sg-events/effects/the-last-guest',
       disco: 'sg-events/effects/disco',
       fog: 'sg-events/effects/fog'
     };

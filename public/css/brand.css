@@ -323,6 +323,22 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-size: cover;
   background-position: center;
 }
+.sg-swatch.fx-halloween {
+  background-color: #070704;
+  background-image:
+    linear-gradient(rgba(7,7,4,.08), rgba(7,7,4,.3)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/halloween.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-last-guest {
+  background-color: #0c0b09;
+  background-image:
+    linear-gradient(rgba(8,7,6,.06), rgba(8,7,6,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/the-last-guest.jpg");
+  background-size: cover;
+  background-position: center;
+}
 .sg-swatch.fx-disco {
   background-color: #170d2d;
   background-image:
