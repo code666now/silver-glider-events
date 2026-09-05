@@ -191,15 +191,18 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   assert.doesNotMatch(setCoverSource, /background[^\n]*style\.display|fallback-background-field/);
 });
 
-test('free-photo browsing starts with distinct Halloween and Fall collections', () => {
+test('free-photo browsing starts with rate-conscious Halloween and Fall collections', () => {
   const js = read('public/js/event-form.js');
   const halloweenIndex = js.indexOf("label: '🎃 Halloween'");
   const fallIndex = js.indexOf("label: '🍂 Fall'");
   const picksIndex = js.indexOf("label: '⭐ Silver Glider Picks'");
   assert.ok(halloweenIndex > -1 && halloweenIndex < fallIndex && fallIndex < picksIndex);
   assert.match(js, /let activeImageCategory = '🎃 Halloween'/);
-  assert.match(js, /halloween jack o lantern dark[\s\S]*halloween costume party spooky[\s\S]*haunted house fog moon/);
-  assert.match(js, /autumn leaves golden forest[\s\S]*cozy autumn table candles[\s\S]*fall harvest apples outdoors/);
+  assert.match(js, /query: 'halloween pumpkins costumes haunted spooky'/);
+  assert.match(js, /query: 'autumn leaves cozy harvest warm'/);
+  const categoryConfig = js.slice(js.indexOf('const IMAGE_CATEGORIES'), js.indexOf('IMAGE_CATEGORIES.forEach'));
+  assert.doesNotMatch(categoryConfig, /queries:/);
+  assert.doesNotMatch(js, /unsplash-q'\)\.addEventListener\('input'/);
   assert.doesNotMatch(js, /☀️ Summer|pool party friends colorful summer/);
 });
 

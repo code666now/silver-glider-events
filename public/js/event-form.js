@@ -392,7 +392,6 @@ const pickerUpload = $('picker-upload');
 let photosEnabled = false;
 let activeImageCategory = '🎃 Halloween';
 let lastPhotos = [];
-let searchTimer;
 let currentPhotoQuery = '';
 let currentPhotoQueries = [];
 let currentPhotoCategory = '';
@@ -424,37 +423,19 @@ let pickerBgTimer;
 const IMAGE_CATEGORIES = [
   {
     label: '🎃 Halloween',
-    query: 'halloween jack o lantern dark',
-    queries: [
-      'halloween jack o lantern dark',
-      'halloween costume party spooky',
-      'haunted house fog moon',
-      'halloween decorations candles skull'
-    ],
+    query: 'halloween pumpkins costumes haunted spooky',
     bgClass: 'picker-bg-halloween',
     colors: ['#4f210d', '#321143', '#151810']
   },
   {
     label: '🍂 Fall',
-    query: 'autumn leaves golden forest',
-    queries: [
-      'autumn leaves golden forest',
-      'cozy autumn table candles',
-      'fall harvest apples outdoors',
-      'autumn city park warm'
-    ],
+    query: 'autumn leaves cozy harvest warm',
     bgClass: 'picker-bg-fall',
     colors: ['#6d3518', '#7a541d', '#29341f']
   },
   {
     label: '⭐ Silver Glider Picks',
-    query: 'nightlife live music crowd neon',
-    queries: [
-      'nightlife live music crowd neon',
-      'community dinner friends warm lights',
-      'fashion art gallery creative event',
-      'urban rooftop dinner party'
-    ],
+    query: 'nightlife live music crowd neon event',
     bgClass: 'picker-bg-featured',
     colors: ['#155b5a', '#30255f', '#75511f']
   },
@@ -816,14 +797,6 @@ async function runSearch() {
 $('unsplash-go').addEventListener('click', runSearch);
 $('unsplash-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } });
 $('photo-load-more').addEventListener('click', loadMorePhotos);
-$('unsplash-q').addEventListener('input', e => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    const q = e.target.value.trim();
-    if (q) runSearch();
-    else loadCategory(activeImageCategory || '🎃 Halloween');
-  }, 350);
-});
 
 function pickPhoto(photo) {
   setCover(photo.full, photo.credit_name, photo.credit_link);

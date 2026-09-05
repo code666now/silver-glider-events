@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Fixed
+
+* Reduced curated photo collections from four simultaneous Unsplash searches to one tuned request per pill while keeping up to 24 results.
+* Stopped photo search from firing automatically during typing so requests occur only from a category selection, Enter, or the Search button.
+
 ## 1.0.43
 
 Released September 4, 2026.
