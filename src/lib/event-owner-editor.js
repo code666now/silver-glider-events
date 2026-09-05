@@ -167,9 +167,9 @@ function renderOwnerEditor(event) {
             <p class="owner-secret-note" id="owner-secret-note" hidden>Secret Show is on. Disable it in Advanced settings before making this event public.</p>
             <label class="owner-field"><span>Capacity <small>Optional</small></span><input class="owner-input" id="owner-capacity" type="number" min="1" inputmode="numeric" placeholder="Unlimited"></label>
             <div class="owner-switch-list">
-              <label class="owner-switch-row"><span><strong>Show guest list</strong><small>Show attendee first names and avatars.</small></span><input id="owner-show-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>Off</b><b>On</b></i></label>
-              <label class="owner-switch-row"><span><strong>Allow +1s</strong><small>Let each RSVP bring one named guest.</small></span><input id="owner-allow-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>Off</b><b>On</b></i></label>
-              <label class="owner-switch-row"><span><strong>Enable comments</strong><small>Confirmed attendees can join the conversation.</small></span><input id="owner-comments" type="checkbox" role="switch"><i aria-hidden="true"><b>Off</b><b>On</b></i></label>
+              <label class="owner-switch-row"><span><strong>Show guest list</strong><small>Show attendee first names and avatars.</small></span><input id="owner-show-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
+              <label class="owner-switch-row"><span><strong>Allow +1s</strong><small>Let each RSVP bring one named guest.</small></span><input id="owner-allow-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
+              <label class="owner-switch-row"><span><strong>Enable comments</strong><small>Confirmed attendees can join the conversation.</small></span><input id="owner-comments" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
             </div>
             <div class="owner-rsvp-warning" id="owner-rsvp-warning" role="status" hidden></div>
             <div class="owner-editor-links">

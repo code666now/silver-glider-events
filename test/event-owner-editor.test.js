@@ -21,6 +21,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /data-owner-tab="settings"/);
   assert.match(renderer, /They stay private until you save\./);
   assert.match(renderer, /role="switch"/);
+  assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 3);
   assert.match(renderer, /Admission, music &amp; advanced settings/);
   assert.match(renderer, /owner-flyer-default[\s\S]*Default wall/);
   assert.doesNotMatch(renderer, /id="owner-end-time"/);
@@ -48,6 +49,7 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
   assert.match(styles, /@media \(max-width: 879px\)[\s\S]*inset: auto 0 0;[\s\S]*height: min\(88dvh,760px\)/);
   assert.match(styles, /\.owner-editor\.is-peeking \{ transform: translateY\(calc\(100% - 70px\)\)/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /input:checked \+ i::after \{ transform: translateX\(35px\)/);
 
   for (const template of [standard, flyer]) {
     assert.match(template, /event-owner-editor\.css/);

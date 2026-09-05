@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Fixed
+
+* Corrected the quick editor’s guest-setting switch labels so moving a switch right clearly reads On and moving it left reads Off.
+
 ## 1.0.47
 
 Released September 5, 2026.
