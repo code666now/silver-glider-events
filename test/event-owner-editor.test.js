@@ -36,6 +36,13 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /people have'\} RSVP’d\. This change may affect their plans\./);
   assert.doesNotMatch(client, /\$\('owner-end-time'\)/);
   assert.doesNotMatch(client, /end_time:/);
+  assert.match(renderer, /id="owner-places-status" role="status"/);
+  assert.match(client, /request\('\/api\/places\/config'\)/);
+  assert.match(client, /new google\.maps\.places\.Autocomplete\(\$\('owner-venue'\)/);
+  assert.match(client, /fields: \['name', 'formatted_address', 'address_components', 'geometry', 'place_id'\]/);
+  assert.match(client, /venue_city: draft\.venueCity \|\| null/);
+  assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
+  assert.match(client, /if \(!applyingPlace\) clearPlaceMeta\(\)/);
 });
 
 test('desktop uses a right editing rail while mobile uses a collapsible bottom sheet', () => {
@@ -50,6 +57,7 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
   assert.match(styles, /\.owner-editor\.is-peeking \{ transform: translateY\(calc\(100% - 70px\)\)/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(styles, /input:checked \+ i::after \{ transform: translateX\(35px\)/);
+  assert.match(styles, /\.pac-container \{[\s\S]*z-index: 2000;[\s\S]*background: #141416;/);
 
   for (const template of [standard, flyer]) {
     assert.match(template, /event-owner-editor\.css/);

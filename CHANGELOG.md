@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Fixed
+
+* Added the dashboard’s Google Places venue suggestions to the quick on-page editor, including automatic address and location metadata updates with a manual-entry fallback.
+
 ## 1.0.48
 
 Released September 5, 2026.

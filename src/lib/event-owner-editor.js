@@ -35,6 +35,11 @@ function ownerEventData(event) {
     endTime: event.end_time || '',
     venueName: event.venue_name,
     venueAddress: event.venue_address || '',
+    venueCity: event.venue_city || '',
+    venueState: event.venue_state || '',
+    venueLatitude: event.venue_latitude ?? null,
+    venueLongitude: event.venue_longitude ?? null,
+    googlePlaceId: event.google_place_id || '',
     category: event.category || '',
     capacity: event.capacity,
     visibility: event.visibility === 'private' ? 'private' : 'public',
@@ -147,7 +152,7 @@ function renderOwnerEditor(event) {
               <label class="owner-field"><span>Date</span><input class="owner-input" id="owner-date" type="date" required></label>
               <label class="owner-field"><span>Start time</span><input class="owner-input" id="owner-start-time" type="time" required></label>
             </div>
-            <label class="owner-field"><span>Venue</span><input class="owner-input" id="owner-venue" maxlength="140" required></label>
+            <label class="owner-field"><span>Venue</span><input class="owner-input" id="owner-venue" maxlength="140" autocomplete="off" required><small class="owner-places-status" id="owner-places-status" role="status"></small></label>
             <label class="owner-field"><span>Address <small>Optional</small></span><input class="owner-input" id="owner-address"></label>
             <label class="owner-field"><span>Category</span>
               <select class="owner-input" id="owner-category">

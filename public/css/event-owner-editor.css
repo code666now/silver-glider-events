@@ -242,6 +242,22 @@
 .owner-input:hover { border-color: rgba(255,255,255,.25); }
 .owner-input:focus { border-color: rgba(28,197,190,.52); }
 .owner-textarea { min-height: 126px; resize: vertical; }
+.owner-places-status { min-height: 14px; color: var(--sg-text-faint); font-size: 10px; line-height: 1.4; }
+.pac-container {
+  z-index: 2000;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 13px;
+  background: #141416;
+  color: var(--sg-text);
+  box-shadow: 0 20px 58px rgba(0,0,0,.48);
+  font-family: var(--sg-font-body);
+}
+.pac-item { padding: 9px 12px; border-top: 1px solid rgba(255,255,255,.08); color: var(--sg-text-dim); cursor: pointer; }
+.pac-item:hover,
+.pac-item-selected { background: rgba(28,197,190,.1); }
+.pac-item-query { color: var(--sg-text); }
+.pac-matched { color: var(--sg-accent); }
 .owner-choice-field { display: grid; gap: 9px; }
 .owner-choice { position: relative; display: block; cursor: pointer; }
 .owner-choice input { position: absolute; opacity: 0; pointer-events: none; }

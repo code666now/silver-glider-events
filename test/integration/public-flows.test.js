@@ -232,6 +232,13 @@ test('live event editing is visible only to the owner and saves through the prot
     body: JSON.stringify({
       title: 'Edited On The Event Page',
       background_theme: 'aurora',
+      venue_name: 'Selected Venue',
+      venue_address: '123 Test Street, San Francisco, CA',
+      venue_city: 'San Francisco',
+      venue_state: 'CA',
+      venue_latitude: 37.76,
+      venue_longitude: -122.42,
+      google_place_id: 'test-place-id',
       visibility: 'private',
       show_guest_list: true,
       allow_guests: true,
@@ -242,6 +249,10 @@ test('live event editing is visible only to the owner and saves through the prot
   const updated = (await update.json()).event;
   assert.equal(updated.title, 'Edited On The Event Page');
   assert.equal(updated.background_theme, 'aurora');
+  assert.equal(updated.venue_name, 'Selected Venue');
+  assert.equal(updated.venue_city, 'San Francisco');
+  assert.equal(updated.venue_state, 'CA');
+  assert.equal(updated.google_place_id, 'test-place-id');
   assert.equal(updated.visibility, 'private');
   assert.equal(updated.show_guest_list, true);
 

@@ -44,6 +44,11 @@
     startTime: timeValue(source.startTime),
     endTime: timeValue(source.endTime),
     capacity: source.capacity === '' || source.capacity == null ? null : Number(source.capacity),
+    venueCity: source.venueCity || '',
+    venueState: source.venueState || '',
+    venueLatitude: source.venueLatitude === '' || source.venueLatitude == null ? null : Number(source.venueLatitude),
+    venueLongitude: source.venueLongitude === '' || source.venueLongitude == null ? null : Number(source.venueLongitude),
+    googlePlaceId: source.googlePlaceId || '',
     coverImageUrl: source.coverImageUrl || '',
     flyerImageUrl: source.flyerImageUrl || '',
     coverCreditName: source.coverCreditName || '',
@@ -61,6 +66,9 @@
   let photoCategory = photoCategories[0][0];
   let photoLoading = false;
   let photosReady = false;
+  let applyingPlace = false;
+  let placesLoader;
+  let placesInitPromise;
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -143,6 +151,84 @@
     }
     const description = document.querySelector('.desc');
     if (description) description.textContent = draft.description || '';
+  }
+
+  function setPlacesStatus(message) {
+    $('owner-places-status').textContent = message || '';
+  }
+
+  function clearPlaceMeta() {
+    draft.venueCity = '';
+    draft.venueState = '';
+    draft.venueLatitude = null;
+    draft.venueLongitude = null;
+    draft.googlePlaceId = '';
+  }
+
+  function placeComponent(place, types, name = 'long_name') {
+    const component = (place.address_components || []).find(part => types.some(type => part.types.includes(type)));
+    return component ? component[name] : '';
+  }
+
+  function applySelectedPlace(place) {
+    if (!place) return;
+    applyingPlace = true;
+    draft.venueName = place.name || $('owner-venue').value.trim();
+    draft.venueAddress = place.formatted_address || $('owner-address').value.trim();
+    draft.venueCity =
+      placeComponent(place, ['locality']) ||
+      placeComponent(place, ['postal_town']) ||
+      placeComponent(place, ['administrative_area_level_2']);
+    draft.venueState = placeComponent(place, ['administrative_area_level_1'], 'short_name');
+    draft.googlePlaceId = place.place_id || '';
+    const location = place.geometry?.location;
+    draft.venueLatitude = location ? Number(location.lat()) : null;
+    draft.venueLongitude = location ? Number(location.lng()) : null;
+    $('owner-venue').value = draft.venueName;
+    $('owner-address').value = draft.venueAddress;
+    setPlacesStatus('');
+    previewDetails();
+    syncDirtyState();
+    setTimeout(() => { applyingPlace = false; }, 0);
+  }
+
+  function loadGooglePlaces(apiKey) {
+    if (window.google?.maps?.places) return Promise.resolve();
+    if (placesLoader) return placesLoader;
+    placesLoader = new Promise((resolve, reject) => {
+      window.__sgeInitOwnerPlaces = resolve;
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=__sgeInitOwnerPlaces`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return placesLoader;
+  }
+
+  function initVenueAutocomplete() {
+    if (placesInitPromise) return placesInitPromise;
+    placesInitPromise = (async () => {
+      try {
+        setPlacesStatus('Loading venue suggestions…');
+        const { enabled, apiKey } = await request('/api/places/config');
+        if (!enabled || !apiKey) {
+          setPlacesStatus('');
+          return;
+        }
+        await loadGooglePlaces(apiKey);
+        const autocomplete = new google.maps.places.Autocomplete($('owner-venue'), {
+          fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id'],
+          types: ['establishment']
+        });
+        autocomplete.addListener('place_changed', () => applySelectedPlace(autocomplete.getPlace()));
+        setPlacesStatus('');
+      } catch (_) {
+        setPlacesStatus('Venue suggestions unavailable. You can enter the venue manually.');
+      }
+    })();
+    return placesInitPromise;
   }
 
   function setCoverFit(mode) {
@@ -398,6 +484,7 @@
     });
     document.querySelectorAll('[data-owner-panel]').forEach(panel => { panel.hidden = panel.dataset.ownerPanel !== activeTab; });
     document.querySelector('.owner-editor-scroll').scrollTop = 0;
+    if (activeTab === 'details') initVenueAutocomplete();
   }
 
   function openEditor() {
@@ -574,6 +661,11 @@
       start_time: draft.startTime,
       venue_name: draft.venueName,
       venue_address: draft.venueAddress,
+      venue_city: draft.venueCity || null,
+      venue_state: draft.venueState || null,
+      venue_latitude: draft.venueLatitude,
+      venue_longitude: draft.venueLongitude,
+      google_place_id: draft.googlePlaceId || null,
       category: draft.category || null,
       capacity: draft.capacity,
       visibility: draft.visibility,
@@ -619,6 +711,8 @@
 
   form.addEventListener('input', readInputs);
   form.addEventListener('change', readInputs);
+  $('owner-venue').addEventListener('input', () => { if (!applyingPlace) clearPlaceMeta(); });
+  $('owner-address').addEventListener('input', () => { if (!applyingPlace) clearPlaceMeta(); });
   document.querySelectorAll('[data-owner-theme]').forEach(button => button.addEventListener('click', () => {
     previewTheme(button.dataset.ownerTheme);
     syncDirtyState();
