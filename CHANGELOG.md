@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.52
+
+Released September 5, 2026.
+
+### Added
+
+* Added **Default wall** as an explicit adaptive background that derives a dark, readable palette from the event image and previews it in both event editors.
+
+### Improved
+
+* Made Show guest list, Allow +1s, and Enable comments preview their real event-page sections immediately for the host while remaining private and reversible until Save changes is selected.
+
 ## 1.0.51
 
 Released September 5, 2026.
