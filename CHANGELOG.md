@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Fixed
+
+* Made video backgrounds and animated TV static start immediately in the owner’s live appearance preview, while pausing and unloading previews after another background is selected.
+* Kept motion-reduction, data-saving, and autoplay-fallback behavior intact during live previews.
+
 ## 1.0.45
 
 Released September 5, 2026.

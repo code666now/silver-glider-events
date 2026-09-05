@@ -13,7 +13,12 @@
   const toastNode = $('owner-editor-toast');
   const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const effectKeys = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
-  const videoKeys = ['halloween', 'last-guest', 'disco', 'fog'];
+  const videoEffects = {
+    halloween: 'sg-events/effects/halloween',
+    'last-guest': 'sg-events/effects/the-last-guest',
+    disco: 'sg-events/effects/disco',
+    fog: 'sg-events/effects/fog'
+  };
   const photoCategories = [
     ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
     ['🍂 Fall', 'autumn leaves cozy harvest warm'],
@@ -221,15 +226,128 @@
     }
   }
 
+  function videoEffectUrl(publicId, format) {
+    const transform = format === 'jpg'
+      ? 'so_0,f_jpg,q_auto,w_1600'
+      : 'f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive';
+    return `https://res.cloudinary.com/dhvavjgnw/video/upload/${transform}/${publicId}.${format}`;
+  }
+
+  function mountPreviewVideo(theme, background) {
+    const publicId = videoEffects[theme];
+    if (!publicId) return;
+
+    let video = background.querySelector(`.fx-video-media[data-effect-theme="${theme}"]`);
+    if (!video) {
+      video = document.createElement('video');
+      video.className = 'fx-video-media';
+      video.dataset.effectTheme = theme;
+      video.dataset.ownerPreview = 'true';
+      video.autoplay = true;
+      video.muted = true;
+      video.defaultMuted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.poster = videoEffectUrl(publicId, 'jpg');
+      video.src = videoEffectUrl(publicId, 'mp4');
+      video.setAttribute('aria-hidden', 'true');
+      video.tabIndex = -1;
+      background.appendChild(video);
+    }
+
+    video.hidden = false;
+    video.muted = true;
+    video.defaultMuted = true;
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const saveData = Boolean(navigator.connection?.saveData);
+    if (reduceMotion || saveData) {
+      video.pause();
+      video.classList.remove('is-playing');
+      return;
+    }
+
+    if (!video.dataset.ownerPlaybackBound) {
+      const reveal = () => {
+        if (draft.backgroundTheme === video.dataset.effectTheme && !video.hidden) video.classList.add('is-playing');
+      };
+      video.addEventListener('playing', reveal);
+      video.addEventListener('loadeddata', () => { if (!video.paused) reveal(); });
+      video.dataset.ownerPlaybackBound = 'true';
+    }
+    video.play().then(() => {
+      if (draft.backgroundTheme === theme && video.isConnected) video.classList.add('is-playing');
+    }).catch(() => {
+      // The CSS poster remains visible if autoplay is blocked.
+    });
+  }
+
+  function mountPreviewStatic(background) {
+    let canvas = background.querySelector('.fx-static-canvas[data-effect-theme="static"]');
+    if (canvas) {
+      canvas.hidden = false;
+      return;
+    }
+
+    canvas = document.createElement('canvas');
+    canvas.className = 'fx-static-canvas';
+    canvas.dataset.effectTheme = 'static';
+    canvas.dataset.ownerPreview = 'true';
+    canvas.width = 220;
+    canvas.height = 140;
+    background.appendChild(canvas);
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const draw = () => {
+      const image = context.createImageData(canvas.width, canvas.height);
+      for (let index = 0; index < image.data.length; index += 4) {
+        const value = Math.random() * 255 | 0;
+        image.data[index] = image.data[index + 1] = image.data[index + 2] = value;
+        image.data[index + 3] = 255;
+      }
+      context.putImageData(image, 0, 0);
+    };
+    draw();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let lastFrame = 0;
+    const animate = timestamp => {
+      if (!canvas.isConnected || draft.backgroundTheme !== 'static') return;
+      if (timestamp - lastFrame > 66) {
+        draw();
+        lastFrame = timestamp;
+      }
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }
+
+  function syncEffectMedia(theme, background) {
+    background.querySelectorAll('.fx-video-media').forEach(video => {
+      const selected = video.dataset.effectTheme === theme;
+      video.hidden = !selected;
+      if (!selected) {
+        video.pause();
+        video.classList.remove('is-playing');
+        if (video.dataset.ownerPreview) video.remove();
+      }
+    });
+    background.querySelectorAll('.fx-static-canvas').forEach(canvas => {
+      const selected = theme === 'static';
+      canvas.hidden = !selected;
+      if (!selected && canvas.dataset.ownerPreview) canvas.remove();
+    });
+
+    if (videoEffects[theme]) mountPreviewVideo(theme, background);
+    else if (theme === 'static') mountPreviewStatic(background);
+  }
+
   function previewTheme(theme) {
     draft.backgroundTheme = themeKeys.includes(theme) ? theme : 'midnight';
     const background = document.querySelector('.event-bg');
     if (background) {
       background.classList.remove('image-palette', ...themeKeys.flatMap(key => [`bg-${key}`, `fx-${key}`]));
       background.classList.add('bg-theme', `${effectKeys.includes(draft.backgroundTheme) ? 'fx' : 'bg'}-${draft.backgroundTheme}`);
-      background.querySelectorAll('.fx-video-media, .fx-static-canvas').forEach(media => {
-        media.hidden = draft.backgroundTheme !== saved.backgroundTheme;
-      });
+      syncEffectMedia(draft.backgroundTheme, background);
     }
     const veil = $('event-fx-veil');
     if (veil) {

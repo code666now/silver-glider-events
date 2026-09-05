@@ -62,3 +62,22 @@ test('appearance editing reuses protected uploads and rate-conscious photo searc
   assert.match(client, /autumn leaves cozy harvest warm/);
   assert.doesNotMatch(client, /addEventListener\('input',[\s\S]{0,120}loadPhotos/);
 });
+
+test('appearance previews mount only the selected animated effect', () => {
+  const route = read('src/routes/public.js');
+  const publicClient = read('public/js/public-event.js');
+  const ownerClient = read('public/js/event-owner-editor.js');
+
+  assert.match(route, /data-effect-theme="\$\{theme\}"/);
+  assert.match(publicClient, /canvas\.dataset\.effectTheme = 'static'/);
+  assert.match(ownerClient, /const videoEffects = \{[\s\S]*disco: 'sg-events\/effects\/disco'[\s\S]*fog: 'sg-events\/effects\/fog'/);
+  assert.match(ownerClient, /function syncEffectMedia\(theme, background\)/);
+  assert.match(ownerClient, /document\.createElement\('video'\)/);
+  assert.match(ownerClient, /video\.play\(\)\.then/);
+  assert.match(ownerClient, /video\.pause\(\)/);
+  assert.match(ownerClient, /if \(video\.dataset\.ownerPreview\) video\.remove\(\)/);
+  assert.match(ownerClient, /navigator\.connection\?\.saveData/);
+  assert.match(ownerClient, /prefers-reduced-motion: reduce/);
+  assert.match(ownerClient, /document\.createElement\('canvas'\)/);
+  assert.match(ownerClient, /requestAnimationFrame\(animate\)/);
+});

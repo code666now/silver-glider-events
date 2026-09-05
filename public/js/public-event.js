@@ -98,6 +98,7 @@ function mountStaticEffect() {
   if (!host) return;
   const canvas = document.createElement('canvas');
   canvas.className = 'fx-static-canvas';
+  canvas.dataset.effectTheme = 'static';
   canvas.width = 220; canvas.height = 140;   // small; CSS stretches it
   host.appendChild(canvas);
   const ctx = canvas.getContext('2d');
