@@ -14,6 +14,7 @@ const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action')
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
+const { renderOwnerEditor } = require('../lib/event-owner-editor');
 const {
   ensureAttemptSession,
   hasUnlockCookie,
@@ -483,9 +484,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<video class="fx-video-media" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"></video>`
       : '';
     // Effects sit behind everything and need a darkening veil for legibility
-    const fxVeil = isEffect
-      ? `<div class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"></div>`
-      : '';
+    const fxVeil = `<div id="event-fx-veil" class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"${isEffect ? '' : ' hidden'}></div>`;
     const isFlyerPresentation = event.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
     const coverFitMode = ['contain', 'cover'].includes(event.cover_fit_mode) ? event.cover_fit_mode : 'auto';
     const flyerImageUrl = isFlyerPresentation ? event.flyer_image_url : null;
@@ -515,6 +514,7 @@ router.get('/e/:slug', async (req, res, next) => {
       coverFitMode,
       bgEffect: isEffect ? theme : null
     };
+    const ownerEditorHtml = organizerViewer(req, event) ? renderOwnerEditor(event) : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate
@@ -550,6 +550,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{SECONDARY_ACTION_HTML}}/g, flyerSecondaryActionHtml)
       .replace(/{{ADDITIONAL_DETAILS_HTML}}/g, flyerAdditionalDetailsHtml)
       .replace(/{{MOBILE_PRIMARY_ACTION_HTML}}/g, flyerMobileActionHtml)
+      .replace(/{{OWNER_EDITOR_HTML}}/g, ownerEditorHtml)
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);

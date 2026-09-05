@@ -1,0 +1,591 @@
+(() => {
+  const root = document.getElementById('owner-edit-root');
+  const dataNode = document.getElementById('owner-event-data');
+  if (!root || !dataNode) return;
+
+  const EVENT = JSON.parse(dataNode.textContent);
+  const $ = id => document.getElementById(id);
+  const editor = $('owner-editor');
+  const form = $('owner-editor-form');
+  const trigger = $('owner-edit-trigger');
+  const saveButton = $('owner-editor-save');
+  const saveStatus = $('owner-save-status');
+  const toastNode = $('owner-editor-toast');
+  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+  const effectKeys = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+  const videoKeys = ['halloween', 'last-guest', 'disco', 'fog'];
+  const photoCategories = [
+    ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
+    ['🍂 Fall', 'autumn leaves cozy harvest warm'],
+    ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event'],
+    ['📼 Nostalgia', 'vintage retro analog 90s nostalgic background'],
+    ['🎨 Textures', 'concrete paper grain fabric texture background'],
+    ['📐 Patterns', 'geometric repeating patterns graphic design background'],
+    ['🎞️ Film', 'cinematic film moody lighting grain dramatic shadows'],
+    ['🏙️ Urban', 'city architecture streets nightlife urban lights'],
+    ['🌿 Nature', 'forest mountains plants sky natural light background'],
+    ['✨ Abstract', 'abstract gradients shapes soft color background'],
+    ['🌈 Colorful', 'vibrant colors neon rainbow bright abstract background'],
+    ['🌙 Dark', 'black shadows low light dark moody background'],
+    ['🖤 Minimal', 'clean simple negative space minimal background']
+  ];
+
+  const clone = value => JSON.parse(JSON.stringify(value));
+  const dateValue = value => String(value || '').slice(0, 10);
+  const timeValue = value => String(value || '').slice(0, 5);
+  const normalized = source => ({
+    ...source,
+    eventDate: dateValue(source.eventDate),
+    startTime: timeValue(source.startTime),
+    endTime: timeValue(source.endTime),
+    capacity: source.capacity === '' || source.capacity == null ? null : Number(source.capacity),
+    coverImageUrl: source.coverImageUrl || '',
+    flyerImageUrl: source.flyerImageUrl || '',
+    coverCreditName: source.coverCreditName || '',
+    coverCreditLink: source.coverCreditLink || '',
+    artworkAccentColor: source.artworkAccentColor || ''
+  });
+  let saved = normalized(EVENT);
+  let draft = clone(saved);
+  let activeTab = 'appearance';
+  let lastFocus = null;
+  let toastTimer;
+  let photoPage = 1;
+  let photoTotalPages = 1;
+  let photoQuery = photoCategories[0][1];
+  let photoCategory = photoCategories[0][0];
+  let photoLoading = false;
+  let photosReady = false;
+
+  async function request(path, options = {}) {
+    const response = await fetch(path, {
+      credentials: 'same-origin',
+      headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+      ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    if (response.status === 401) {
+      location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+      throw new Error('Your session expired. Sign in again to continue.');
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'The event could not be updated.');
+    return data;
+  }
+
+  function isDirty() {
+    return JSON.stringify(normalized(draft)) !== JSON.stringify(normalized(saved));
+  }
+
+  function showToast(message) {
+    toastNode.textContent = message;
+    toastNode.classList.add('is-visible');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastNode.classList.remove('is-visible'), 2800);
+  }
+
+  function sensitiveChanges() {
+    return ['eventDate', 'startTime', 'endTime', 'venueName', 'venueAddress', 'visibility', 'capacity']
+      .some(key => String(draft[key] ?? '') !== String(saved[key] ?? ''));
+  }
+
+  function syncDirtyState() {
+    const dirty = isDirty();
+    saveButton.disabled = !dirty;
+    saveStatus.textContent = dirty ? 'Unsaved changes' : 'No unsaved changes';
+    const warning = $('owner-rsvp-warning');
+    const needsWarning = saved.rsvpCount > 0 && sensitiveChanges();
+    warning.hidden = !needsWarning;
+    warning.textContent = needsWarning
+      ? `${saved.rsvpCount} ${saved.rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d. This change may affect their plans.`
+      : '';
+  }
+
+  function formatDate(value) {
+    if (!value) return 'Choose a date';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
+  function formatTime(value) {
+    if (!value) return '';
+    const [hourValue, minute = '00'] = value.split(':');
+    const hour = Number(hourValue);
+    if (!Number.isFinite(hour)) return value;
+    return `${hour % 12 || 12}:${minute} ${hour >= 12 ? 'PM' : 'AM'}`;
+  }
+
+  function previewDetails() {
+    const title = document.querySelector('.event-title');
+    if (title) title.textContent = draft.title || saved.title;
+    const category = document.querySelector('.cat, .detail-category strong');
+    if (category) category.textContent = draft.category || '';
+    const when = document.querySelector('.when');
+    if (when) {
+      const spans = when.querySelectorAll('span');
+      if (spans[0]) spans[0].textContent = formatDate(draft.eventDate);
+      if (spans[2]) spans[2].textContent = `${formatTime(draft.startTime)}${draft.endTime ? ` – ${formatTime(draft.endTime)}` : ''}`;
+    }
+    const venue = document.querySelector('.venue, .flyer-venue');
+    if (venue) {
+      const name = venue.querySelector('strong');
+      const address = venue.querySelector('span');
+      const maps = venue.querySelector('a');
+      if (name) name.textContent = draft.venueName || saved.venueName;
+      if (address) address.textContent = draft.venueAddress || '';
+      if (maps) maps.href = `https://maps.google.com/?q=${encodeURIComponent([draft.venueName, draft.venueAddress].filter(Boolean).join(', '))}`;
+    }
+    const description = document.querySelector('.desc');
+    if (description) description.textContent = draft.description || '';
+  }
+
+  function setCoverFit(mode) {
+    draft.coverFitMode = ['contain', 'cover'].includes(mode) ? mode : 'auto';
+    document.querySelectorAll('input[name="owner_cover_fit"]').forEach(input => { input.checked = input.value === draft.coverFitMode; });
+    const hero = $('hero');
+    if (hero && draft.presentationMode === 'standard') {
+      hero.classList.remove('cover-fit-auto', 'cover-fit-contain', 'cover-fit-cover');
+      hero.classList.add(`cover-fit-${draft.coverFitMode}`);
+    }
+  }
+
+  function updateOwnerImageCard(url) {
+    const card = $('owner-image-card');
+    const image = $('owner-image-preview');
+    if (url) {
+      image.src = url;
+      card.classList.add('has-image');
+    } else {
+      image.removeAttribute('src');
+      card.classList.remove('has-image');
+    }
+    $('owner-remove-image').disabled = !url;
+  }
+
+  async function applyArtworkPalette(url) {
+    if (!url || draft.presentationMode === 'flyer' || effectKeys.includes(draft.backgroundTheme) || !window.SGArtworkColor) return;
+    try {
+      const colors = window.SGArtworkColor.paletteForBackground(await window.SGArtworkColor.extractPalette(url));
+      const hero = $('hero');
+      const background = document.querySelector('.event-bg');
+      if (hero) {
+        hero.style.setProperty('--hero-bg-a', window.SGArtworkColor.rgba(colors[0], .76));
+        hero.style.setProperty('--hero-bg-b', window.SGArtworkColor.rgba(colors[1], .62));
+        hero.style.setProperty('--hero-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .54));
+        hero.classList.add('image-palette');
+      }
+      if (background) {
+        background.style.setProperty('--event-bg-a', window.SGArtworkColor.rgba(colors[0], .82));
+        background.style.setProperty('--event-bg-b', window.SGArtworkColor.rgba(colors[1], .68));
+        background.style.setProperty('--event-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .52));
+        background.classList.add('image-palette');
+      }
+    } catch (_) {
+      // The selected theme remains a reliable fallback if the image blocks sampling.
+    }
+  }
+
+  function previewImage() {
+    const url = draft.presentationMode === 'flyer' ? draft.flyerImageUrl : draft.coverImageUrl;
+    const hero = $('hero');
+    if (!hero) return;
+    let image = hero.querySelector('img');
+    if (url) {
+      if (!image) {
+        image = document.createElement('img');
+        image.alt = draft.presentationMode === 'flyer' ? `${draft.title} flyer` : '';
+        hero.appendChild(image);
+      }
+      image.src = url;
+      hero.classList.remove('no-image');
+      if (draft.presentationMode === 'standard') {
+        const resolveShape = () => {
+          const portrait = image.naturalHeight > image.naturalWidth;
+          hero.classList.toggle('cover-image-portrait', portrait);
+          hero.classList.toggle('cover-fit-resolved-cover', draft.coverFitMode === 'auto' && !portrait);
+        };
+        if (image.complete) resolveShape();
+        else image.addEventListener('load', resolveShape, { once: true });
+      }
+      applyArtworkPalette(url);
+    } else {
+      image?.remove();
+      hero.classList.add('no-image');
+    }
+    updateOwnerImageCard(url);
+    const credit = document.querySelector('.photo-credit');
+    if (credit && draft.presentationMode === 'standard') {
+      credit.hidden = !draft.coverCreditName;
+      if (draft.coverCreditName) credit.textContent = `Photo by ${draft.coverCreditName} on Unsplash`;
+    }
+  }
+
+  function previewTheme(theme) {
+    draft.backgroundTheme = themeKeys.includes(theme) ? theme : 'midnight';
+    const background = document.querySelector('.event-bg');
+    if (background) {
+      background.classList.remove('image-palette', ...themeKeys.flatMap(key => [`bg-${key}`, `fx-${key}`]));
+      background.classList.add('bg-theme', `${effectKeys.includes(draft.backgroundTheme) ? 'fx' : 'bg'}-${draft.backgroundTheme}`);
+      background.querySelectorAll('.fx-video-media, .fx-static-canvas').forEach(media => {
+        media.hidden = draft.backgroundTheme !== saved.backgroundTheme;
+      });
+    }
+    const veil = $('event-fx-veil');
+    if (veil) {
+      veil.hidden = !effectKeys.includes(draft.backgroundTheme);
+      veil.className = `fx-veil${draft.backgroundTheme === 'paper' ? ' fx-veil-soft' : ''}${draft.backgroundTheme === 'saloon' ? ' fx-veil-warm' : ''}`;
+    }
+    document.querySelectorAll('[data-owner-theme]').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.ownerTheme === draft.backgroundTheme));
+    });
+    if (!effectKeys.includes(draft.backgroundTheme)) applyArtworkPalette(draft.coverImageUrl);
+  }
+
+  function populate() {
+    $('owner-title').value = draft.title;
+    $('owner-description').value = draft.description;
+    $('owner-date').value = draft.eventDate;
+    $('owner-start-time').value = draft.startTime;
+    $('owner-end-time').value = draft.endTime;
+    $('owner-venue').value = draft.venueName;
+    $('owner-address').value = draft.venueAddress;
+    $('owner-category').value = draft.category;
+    $('owner-capacity').value = draft.capacity == null ? '' : draft.capacity;
+    document.querySelectorAll('input[name="owner_visibility"]').forEach(input => { input.checked = input.value === draft.visibility; });
+    $('owner-show-guests').checked = draft.showGuestList;
+    $('owner-allow-guests').checked = draft.allowGuests;
+    $('owner-comments').checked = draft.commentsEnabled;
+    $('owner-secret-note').hidden = !draft.secretShowEnabled;
+    const publicChoice = document.querySelector('input[name="owner_visibility"][value="public"]');
+    publicChoice.disabled = draft.secretShowEnabled;
+    $('owner-browse-photos').hidden = draft.presentationMode === 'flyer';
+    $('owner-upload-image').textContent = draft.presentationMode === 'flyer' ? 'Replace flyer' : 'Upload image';
+    $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
+    document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
+    document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
+    setCoverFit(draft.coverFitMode);
+    previewDetails();
+    previewImage();
+    previewTheme(draft.backgroundTheme);
+    syncDirtyState();
+  }
+
+  function activateTab(name, { focus = false } = {}) {
+    activeTab = ['appearance', 'details', 'settings'].includes(name) ? name : 'appearance';
+    document.querySelectorAll('[data-owner-tab]').forEach(button => {
+      const active = button.dataset.ownerTab === activeTab;
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    });
+    document.querySelectorAll('[data-owner-panel]').forEach(panel => { panel.hidden = panel.dataset.ownerPanel !== activeTab; });
+    document.querySelector('.owner-editor-scroll').scrollTop = 0;
+  }
+
+  function openEditor() {
+    lastFocus = document.activeElement;
+    editor.classList.add('is-open');
+    editor.classList.remove('is-peeking');
+    editor.setAttribute('aria-hidden', 'false');
+    trigger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('owner-editor-open');
+    document.body.classList.remove('owner-editor-peeking');
+    setTimeout(() => document.querySelector(`[data-owner-tab="${activeTab}"]`)?.focus(), 0);
+  }
+
+  function restoreSavedPreview() {
+    draft = clone(saved);
+    populate();
+    closePhotoBrowser();
+  }
+
+  function closeEditor({ confirmDiscard = true } = {}) {
+    if (confirmDiscard && isDirty() && !window.confirm('Discard your unsaved event changes?')) return;
+    if (isDirty()) restoreSavedPreview();
+    editor.classList.remove('is-open', 'is-peeking');
+    editor.setAttribute('aria-hidden', 'true');
+    trigger.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('owner-editor-open', 'owner-editor-peeking');
+    (lastFocus instanceof HTMLElement ? lastFocus : trigger).focus({ preventScroll: true });
+  }
+
+  function openPhotoBrowser() {
+    $('owner-photo-browser').hidden = false;
+    $('owner-panel-appearance').classList.add('is-photo-browser');
+    $('owner-photo-query').focus();
+    if (!photosReady) {
+      renderPhotoCategories();
+      loadPhotos(photoQuery, { category: photoCategory });
+    }
+  }
+
+  function closePhotoBrowser() {
+    $('owner-photo-browser').hidden = true;
+    $('owner-panel-appearance').classList.remove('is-photo-browser');
+  }
+
+  function renderPhotoCategories() {
+    const host = $('owner-photo-categories');
+    host.innerHTML = '';
+    photoCategories.forEach(([label, query]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'owner-photo-category';
+      button.textContent = label;
+      button.setAttribute('aria-pressed', String(label === photoCategory));
+      button.addEventListener('click', () => loadPhotos(query, { category: label }));
+      host.appendChild(button);
+    });
+  }
+
+  function renderPhotos(photos, { append = false } = {}) {
+    const grid = $('owner-photo-grid');
+    if (!append) grid.innerHTML = '';
+    photos.forEach(photo => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'owner-photo';
+      button.setAttribute('aria-label', `Use photo by ${photo.credit_name}`);
+      button.setAttribute('aria-pressed', String(photo.full === draft.coverImageUrl));
+      const image = document.createElement('img');
+      image.src = photo.thumb;
+      image.alt = '';
+      image.loading = 'lazy';
+      button.appendChild(image);
+      button.addEventListener('click', () => {
+        draft.coverImageUrl = photo.full;
+        draft.coverCreditName = photo.credit_name || '';
+        draft.coverCreditLink = photo.credit_link || '';
+        draft.artworkAccentColor = '';
+        setCoverFit('auto');
+        previewImage();
+        syncDirtyState();
+        closePhotoBrowser();
+        request('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
+      });
+      grid.appendChild(button);
+    });
+  }
+
+  async function loadPhotos(query, { category = '', page = 1, append = false } = {}) {
+    if (photoLoading) return;
+    photoLoading = true;
+    photoQuery = query;
+    photoCategory = category;
+    photoPage = page;
+    $('owner-photo-status').textContent = append ? 'Loading more photos…' : 'Loading photos…';
+    $('owner-photo-more').disabled = true;
+    document.querySelectorAll('.owner-photo-category').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.textContent === photoCategory));
+    });
+    try {
+      const data = await request(`/api/photos/search?q=${encodeURIComponent(query)}&page=${page}&per_page=12`);
+      const photos = data.results || [];
+      photoTotalPages = data.totalPages || 1;
+      renderPhotos(photos, { append });
+      $('owner-photo-status').textContent = photos.length ? (category || `Results for “${query}”`) : 'No photos found. Try another search.';
+      photosReady = true;
+    } catch (error) {
+      if (!append) $('owner-photo-grid').innerHTML = '';
+      $('owner-photo-status').textContent = error.message;
+      photoTotalPages = photoPage;
+    } finally {
+      photoLoading = false;
+      $('owner-photo-more').hidden = photoPage >= photoTotalPages;
+      $('owner-photo-more').disabled = false;
+    }
+  }
+
+  async function uploadImage(file) {
+    if (!file) return;
+    const status = $('owner-upload-status');
+    status.textContent = 'Uploading image…';
+    const body = new FormData();
+    body.append('image', file);
+    try {
+      const response = await fetch(draft.presentationMode === 'flyer' ? '/api/uploads/flyer' : '/api/uploads/cover', {
+        method: 'POST', credentials: 'same-origin', body
+      });
+      if (response.status === 401) {
+        location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Upload failed.');
+      if (draft.presentationMode === 'flyer') draft.flyerImageUrl = data.url;
+      else {
+        draft.coverImageUrl = data.url;
+        draft.coverCreditName = '';
+        draft.coverCreditLink = '';
+        setCoverFit('auto');
+      }
+      draft.artworkAccentColor = data.accentColor || '';
+      previewImage();
+      $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
+      status.textContent = 'Image ready to save.';
+      syncDirtyState();
+    } catch (error) {
+      status.textContent = error.message;
+    } finally {
+      $('owner-image-input').value = '';
+    }
+  }
+
+  function readInputs() {
+    draft.title = $('owner-title').value.trim();
+    draft.description = $('owner-description').value.trim();
+    draft.eventDate = $('owner-date').value;
+    draft.startTime = $('owner-start-time').value;
+    draft.endTime = $('owner-end-time').value;
+    draft.venueName = $('owner-venue').value.trim();
+    draft.venueAddress = $('owner-address').value.trim();
+    draft.category = $('owner-category').value;
+    draft.capacity = $('owner-capacity').value ? Number($('owner-capacity').value) : null;
+    draft.visibility = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    draft.showGuestList = $('owner-show-guests').checked;
+    draft.allowGuests = $('owner-allow-guests').checked;
+    draft.commentsEnabled = $('owner-comments').checked;
+    previewDetails();
+    syncDirtyState();
+  }
+
+  function payload() {
+    const body = {
+      title: draft.title,
+      description: draft.description,
+      event_date: draft.eventDate,
+      start_time: draft.startTime,
+      end_time: draft.endTime || null,
+      venue_name: draft.venueName,
+      venue_address: draft.venueAddress,
+      category: draft.category || null,
+      capacity: draft.capacity,
+      visibility: draft.visibility,
+      show_guest_list: draft.showGuestList,
+      allow_guests: draft.allowGuests,
+      comments_enabled: draft.commentsEnabled,
+      background_theme: draft.backgroundTheme,
+      artwork_accent_color: draft.artworkAccentColor || null
+    };
+    if (draft.presentationMode === 'flyer') body.flyer_image_url = draft.flyerImageUrl || null;
+    else Object.assign(body, {
+      cover_image_url: draft.coverImageUrl || null,
+      cover_fit_mode: draft.coverFitMode,
+      cover_credit_name: draft.coverCreditName || null,
+      cover_credit_link: draft.coverCreditLink || null
+    });
+    return body;
+  }
+
+  trigger.addEventListener('click', openEditor);
+  $('owner-editor-close').addEventListener('click', () => closeEditor());
+  $('owner-editor-cancel').addEventListener('click', () => closeEditor({ confirmDiscard: false }));
+  $('owner-editor-peek').addEventListener('click', () => {
+    const peeking = editor.classList.toggle('is-peeking');
+    document.body.classList.toggle('owner-editor-peeking', peeking);
+    $('owner-editor-peek').textContent = peeking ? 'Continue editing' : 'Preview';
+    $('owner-editor-peek').setAttribute('aria-expanded', String(!peeking));
+  });
+
+  document.querySelectorAll('[data-owner-tab]').forEach((button, index, buttons) => {
+    button.addEventListener('click', () => activateTab(button.dataset.ownerTab));
+    button.addEventListener('keydown', event => {
+      let next = index;
+      if (event.key === 'ArrowRight') next = (index + 1) % buttons.length;
+      else if (event.key === 'ArrowLeft') next = (index - 1 + buttons.length) % buttons.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = buttons.length - 1;
+      else return;
+      event.preventDefault();
+      activateTab(buttons[next].dataset.ownerTab, { focus: true });
+    });
+  });
+
+  form.addEventListener('input', readInputs);
+  form.addEventListener('change', readInputs);
+  document.querySelectorAll('[data-owner-theme]').forEach(button => button.addEventListener('click', () => {
+    previewTheme(button.dataset.ownerTheme);
+    syncDirtyState();
+  }));
+  document.querySelectorAll('input[name="owner_cover_fit"]').forEach(input => input.addEventListener('change', () => {
+    setCoverFit(input.value);
+    syncDirtyState();
+  }));
+
+  $('owner-upload-image').addEventListener('click', () => $('owner-image-input').click());
+  $('owner-image-card').addEventListener('click', () => $('owner-image-input').click());
+  $('owner-image-card').addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('owner-image-input').click(); }
+  });
+  $('owner-image-input').addEventListener('change', () => uploadImage($('owner-image-input').files[0]));
+  $('owner-remove-image').addEventListener('click', () => {
+    if (draft.presentationMode === 'flyer') return;
+    draft.coverImageUrl = '';
+    draft.coverCreditName = '';
+    draft.coverCreditLink = '';
+    draft.artworkAccentColor = '';
+    previewImage();
+    $('owner-fit-field').hidden = true;
+    syncDirtyState();
+  });
+  $('owner-browse-photos').addEventListener('click', openPhotoBrowser);
+  $('owner-photo-back').addEventListener('click', closePhotoBrowser);
+  $('owner-photo-search').addEventListener('click', () => {
+    const query = $('owner-photo-query').value.trim();
+    if (query) loadPhotos(query);
+  });
+  $('owner-photo-query').addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const query = event.currentTarget.value.trim();
+      if (query) loadPhotos(query);
+    }
+  });
+  $('owner-photo-more').addEventListener('click', () => loadPhotos(photoQuery, { category: photoCategory, page: photoPage + 1, append: true }));
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    readInputs();
+    if (!draft.title || !draft.eventDate || !draft.startTime || !draft.venueName) {
+      activateTab('details');
+      saveStatus.textContent = 'Add the title, date, time, and venue before saving.';
+      return;
+    }
+    saveButton.disabled = true;
+    saveButton.textContent = 'Saving…';
+    saveStatus.textContent = 'Saving changes…';
+    try {
+      await request(`/api/events/${EVENT.id}`, { method: 'PUT', body: payload() });
+      saved = clone(draft);
+      sessionStorage.setItem('sge-owner-editor-reopen', EVENT.slug);
+      sessionStorage.setItem('sge-owner-editor-saved', 'Event updated');
+      location.reload();
+    } catch (error) {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save changes';
+      saveStatus.textContent = error.message;
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !editor.classList.contains('is-open')) return;
+    if (!$('owner-photo-browser').hidden) closePhotoBrowser();
+    else closeEditor();
+  });
+  window.addEventListener('beforeunload', event => {
+    if (!isDirty()) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
+  populate();
+  activateTab('appearance');
+  if (sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug) {
+    sessionStorage.removeItem('sge-owner-editor-reopen');
+    openEditor();
+    const message = sessionStorage.getItem('sge-owner-editor-saved');
+    sessionStorage.removeItem('sge-owner-editor-saved');
+    if (message) setTimeout(() => showToast(message), 180);
+  }
+})();

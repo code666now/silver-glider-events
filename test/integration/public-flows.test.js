@@ -193,6 +193,65 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
 });
 
+test('live event editing is visible only to the owner and saves through the protected event API', async () => {
+  const event = await createEvent({ slug: 'owner-edit-night', title: 'Owner Edit Night' });
+  const sessionCookie = `sge_session=${signSession(organizerId)}`;
+
+  const visitorPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  const visitorHtml = await visitorPage.text();
+  assert.equal(visitorPage.status, 200);
+  assert.doesNotMatch(visitorHtml, /id="owner-edit-trigger"/);
+  assert.doesNotMatch(visitorHtml, /id="owner-event-data"/);
+
+  const { rows: otherOrganizers } = await pool.query(
+    "INSERT INTO organizers (email, name) VALUES ('other-host@example.test','Other Host') RETURNING id"
+  );
+  const otherPage = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(otherOrganizers[0].id)}` }
+  });
+  assert.doesNotMatch(await otherPage.text(), /id="owner-edit-trigger"/);
+
+  const ownerPage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
+  const ownerHtml = await ownerPage.text();
+  assert.equal(ownerPage.status, 200);
+  assert.match(ownerHtml, /id="owner-edit-trigger"/);
+  assert.match(ownerHtml, /id="owner-editor"/);
+  assert.match(ownerHtml, /id="owner-event-data"/);
+  assert.match(ownerHtml, new RegExp(`"id":${event.id}`));
+
+  const signedOutUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title: 'Unauthorized change' })
+  });
+  assert.equal(signedOutUpdate.status, 401);
+
+  const update = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({
+      title: 'Edited On The Event Page',
+      background_theme: 'aurora',
+      visibility: 'private',
+      show_guest_list: true,
+      allow_guests: true,
+      comments_enabled: true
+    })
+  });
+  assert.equal(update.status, 200);
+  const updated = (await update.json()).event;
+  assert.equal(updated.title, 'Edited On The Event Page');
+  assert.equal(updated.background_theme, 'aurora');
+  assert.equal(updated.visibility, 'private');
+  assert.equal(updated.show_guest_list, true);
+
+  const refreshed = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
+  const refreshedHtml = await refreshed.text();
+  assert.match(refreshedHtml, /Edited On The Event Page/);
+  assert.match(refreshedHtml, /class="event-bg bg-theme bg-aurora"/);
+  assert.match(refreshedHtml, /class="public-guest-list"/);
+});
+
 test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {
   const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
   const historicalEvent = await createEvent({ slug: 'historical-avatar-night', title: 'Historical Avatar Night', show_guest_list: true });
