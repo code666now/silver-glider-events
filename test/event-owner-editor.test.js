@@ -28,7 +28,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
 
   assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}`/);
   assert.match(client, /method: 'PUT'/);
-  assert.match(client, /function previewImage\(\)/);
+  assert.match(client, /function previewImage\(/);
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
   assert.match(client, /Discard your unsaved event changes\?/);
@@ -43,6 +43,27 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /venue_city: draft\.venueCity \|\| null/);
   assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
   assert.match(client, /if \(!applyingPlace\) clearPlaceMeta\(\)/);
+});
+
+test('appearance panel matches dashboard cover-fit preview behavior', () => {
+  const client = read('public/js/event-owner-editor.js');
+  const styles = read('public/css/event-owner-editor.css');
+
+  assert.match(client, /function previewImage\(\{ resolveAutoFit = false \} = \{\}\)/);
+  assert.match(client, /function defaultCoverFitFromImage\(image\)/);
+  assert.match(client, /image\.naturalHeight > image\.naturalWidth \? 'contain' : 'cover'/);
+  assert.match(client, /classList\.toggle\('fit-contain', draft\.coverFitMode === 'contain'\)/);
+  assert.match(client, /previewImage\(\{ resolveAutoFit: true \}\)/);
+  assert.match(styles, /\.owner-image-card\.fit-contain \{[\s\S]*var\(--sg-surface\);/);
+  assert.match(styles, /\.owner-image-card\.fit-contain img \{ object-fit: contain; \}/);
+});
+
+test('owner edit trigger uses the neutral platform treatment', () => {
+  const styles = read('public/css/event-owner-editor.css');
+
+  assert.match(styles, /\.owner-edit-trigger \{[\s\S]*background: rgba\(35,35,39,\.9\);/);
+  assert.match(styles, /\.owner-edit-trigger:hover \{[^}]*border-color: rgba\(28,197,190,\.45\);[^}]*background: rgba\(47,47,52,\.95\);/);
+  assert.doesNotMatch(styles, /rgba\(38,10,83|rgba\(92,28,205/);
 });
 
 test('desktop uses a right editing rail while mobile uses a collapsible bottom sheet', () => {

@@ -234,11 +234,18 @@
   function setCoverFit(mode) {
     draft.coverFitMode = ['contain', 'cover'].includes(mode) ? mode : 'auto';
     document.querySelectorAll('input[name="owner_cover_fit"]').forEach(input => { input.checked = input.value === draft.coverFitMode; });
+    $('owner-image-card')?.classList.toggle('fit-contain', draft.coverFitMode === 'contain');
     const hero = $('hero');
     if (hero && draft.presentationMode === 'standard') {
       hero.classList.remove('cover-fit-auto', 'cover-fit-contain', 'cover-fit-cover');
       hero.classList.add(`cover-fit-${draft.coverFitMode}`);
+      if (draft.coverFitMode !== 'auto') hero.classList.remove('cover-fit-resolved-cover');
     }
+  }
+
+  function defaultCoverFitFromImage(image) {
+    if (draft.coverFitMode !== 'auto' || !image.naturalWidth || !image.naturalHeight) return;
+    setCoverFit(image.naturalHeight > image.naturalWidth ? 'contain' : 'cover');
   }
 
   function updateOwnerImageCard(url) {
@@ -277,7 +284,7 @@
     }
   }
 
-  function previewImage() {
+  function previewImage({ resolveAutoFit = false } = {}) {
     const url = draft.presentationMode === 'flyer' ? draft.flyerImageUrl : draft.coverImageUrl;
     const hero = $('hero');
     if (!hero) return;
@@ -292,6 +299,7 @@
       hero.classList.remove('no-image');
       if (draft.presentationMode === 'standard') {
         const resolveShape = () => {
+          if (resolveAutoFit) defaultCoverFitFromImage(image);
           const portrait = image.naturalHeight > image.naturalWidth;
           hero.classList.toggle('cover-image-portrait', portrait);
           hero.classList.toggle('cover-fit-resolved-cover', draft.coverFitMode === 'auto' && !portrait);
@@ -563,7 +571,7 @@
         draft.coverCreditLink = photo.credit_link || '';
         draft.artworkAccentColor = '';
         setCoverFit('auto');
-        previewImage();
+        previewImage({ resolveAutoFit: true });
         syncDirtyState();
         closePhotoBrowser();
         request('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
@@ -625,7 +633,7 @@
         setCoverFit('auto');
       }
       draft.artworkAccentColor = data.accentColor || '';
-      previewImage();
+      previewImage({ resolveAutoFit: draft.presentationMode === 'standard' });
       $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
       status.textContent = 'Image ready to save.';
       syncDirtyState();

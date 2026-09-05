@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Improved
+
+* Matched the on-page appearance editor to the dashboard’s full-image and fill-space preview behavior, including automatic portrait and landscape defaults for newly selected photos.
+* Replaced the purple owner edit button with a neutral charcoal treatment that fits the rest of the platform while retaining teal interaction cues.
+
 ## 1.0.49
 
 Released September 5, 2026.
