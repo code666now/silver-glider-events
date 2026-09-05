@@ -190,10 +190,36 @@
 }
 .owner-theme[aria-pressed="true"] { border-color: var(--sg-accent); background: rgba(28,197,190,.09); color: #fff; box-shadow: 0 0 0 1px rgba(28,197,190,.12); }
 .owner-theme-preview { width: 56px; height: 42px; border-radius: 9px; background: #151515 center/cover no-repeat; }
-.owner-theme-midnight { background: radial-gradient(circle at 20% 20%,#264166,#0c0d18 70%); }
-.owner-theme-aurora { background: linear-gradient(135deg,#0e6964,#192047 54%,#553075); }
-.owner-theme-sunset { background: linear-gradient(135deg,#fc653e,#8f285a 52%,#26133f); }
-.owner-theme-ocean { background: linear-gradient(135deg,#1b769c,#07435e 55%,#081d30); }
+.owner-theme-midnight,
+.owner-theme-aurora,
+.owner-theme-sunset,
+.owner-theme-ocean { background-color: var(--sg-bg); background-position: center -6px; background-size: 140% 200%; }
+.owner-theme-midnight {
+  background-image:
+    radial-gradient(60% 45% at 20% 2%, #26262f, transparent 62%),
+    radial-gradient(60% 50% at 85% 98%, #202028, transparent 62%);
+}
+.owner-theme-aurora {
+  background-image:
+    radial-gradient(58% 45% at 10% 4%, rgba(28,197,190,.55), transparent 60%),
+    radial-gradient(58% 45% at 92% 12%, rgba(255,138,42,.5), transparent 60%),
+    radial-gradient(65% 52% at 86% 96%, rgba(28,197,190,.4), transparent 62%),
+    radial-gradient(58% 48% at 12% 90%, rgba(255,138,42,.35), transparent 62%);
+}
+.owner-theme-sunset {
+  background-image:
+    radial-gradient(60% 46% at 45% 2%, rgba(255,92,58,.6), transparent 62%),
+    radial-gradient(55% 42% at 88% 14%, rgba(255,193,92,.45), transparent 60%),
+    radial-gradient(68% 54% at 18% 98%, rgba(255,92,58,.42), transparent 62%),
+    radial-gradient(55% 46% at 90% 88%, rgba(255,150,90,.35), transparent 62%);
+}
+.owner-theme-ocean {
+  background-image:
+    radial-gradient(58% 45% at 24% 3%, rgba(0,140,255,.5), transparent 62%),
+    radial-gradient(58% 44% at 90% 12%, rgba(28,197,190,.5), transparent 60%),
+    radial-gradient(68% 54% at 80% 97%, rgba(0,140,255,.4), transparent 62%),
+    radial-gradient(55% 46% at 12% 90%, rgba(28,197,190,.35), transparent 62%);
+}
 .owner-theme-plaster { background-image: linear-gradient(rgba(10,10,10,.38),rgba(10,10,10,.38)),url('/images/flyer-plaster-wall.jpg'); }
 .owner-theme-halloween { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/halloween.jpg"); }
 .owner-theme-last-guest { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/the-last-guest.jpg"); }

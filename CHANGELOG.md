@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Fixed
+
+* Matched the on-page gradient swatches to the dashboard colors and made gradient selections preview immediately instead of being hidden by the artwork-derived page palette.
+
 ## 1.0.50
 
 Released September 5, 2026.

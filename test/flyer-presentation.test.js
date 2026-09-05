@@ -262,7 +262,7 @@ test('flyer public rendering uses an isolated poster-first template without repl
   assert.match(route, /const flyerAction = flyerPrimaryAction\(event\)/);
 });
 
-test('Flyer pages use a fixed plaster background while Standard pages retain adaptive palettes', () => {
+test('Flyer pages use a fixed plaster background while Standard pages keep artwork-aware heroes', () => {
   const standardTemplate = read('src/views/event-public.html');
   const flyerTemplate = read('src/views/event-public-flyer.html');
   const flyerStyles = read('public/css/event-public-flyer.css');
@@ -275,8 +275,8 @@ test('Flyer pages use a fixed plaster background while Standard pages retain ada
   assert.doesNotMatch(flyerStyles, /image-palette|flyer-bg-drift|has-adaptive-print/);
   assert.match(standardTemplate, /\.event-bg\.image-palette/);
   assert.match(publicClient, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
-  assert.match(publicClient, /bg\.classList\.add\('image-palette'\)/);
-  assert.match(publicClient, /if \(EVENT\.bgEffect\) return/);
+  assert.match(publicClient, /hero\.classList\.add\('image-palette'\)/);
+  assert.doesNotMatch(publicClient, /bg\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /ArtworkColor\.extractPalette/);
   assert.match(artworkColor, /function selectAccentColor/);
   assert.doesNotMatch(publicClient, /function extractCoverPalette/);

@@ -115,3 +115,26 @@ test('appearance previews mount only the selected animated effect', () => {
   assert.match(ownerClient, /document\.createElement\('canvas'\)/);
   assert.match(ownerClient, /requestAnimationFrame\(animate\)/);
 });
+
+test('appearance gradients match the dashboard and visibly replace the artwork palette', () => {
+  const brand = read('public/css/brand.css');
+  const ownerStyles = read('public/css/event-owner-editor.css');
+  const ownerClient = read('public/js/event-owner-editor.js');
+  const publicClient = read('public/js/public-event.js');
+
+  for (const theme of ['midnight', 'aurora', 'sunset', 'ocean']) {
+    const dashboardTheme = brand.match(new RegExp(`\\.bg-${theme} \\{([\\s\\S]*?)\\n\\}`));
+    const ownerTheme = ownerStyles.match(new RegExp(`\\.owner-theme-${theme} \\{\\n([\\s\\S]*?)\\n\\}`));
+    assert.ok(dashboardTheme && ownerTheme, `${theme} should exist in both pickers`);
+    assert.equal(
+      ownerTheme[1].match(/background-image:([\s\S]*)/)[1].replace(/\s+/g, ''),
+      dashboardTheme[1].match(/background-image:([\s\S]*)/)[1].replace(/\s+/g, ''),
+      `${theme} colors should match the dashboard`
+    );
+  }
+
+  assert.match(ownerClient, /background\.classList\.remove\('image-palette'/);
+  assert.match(ownerClient, /background\.classList\.add\('bg-theme', `\$\{effectKeys\.includes/);
+  assert.doesNotMatch(ownerClient, /background\.classList\.add\('image-palette'\)/);
+  assert.doesNotMatch(publicClient, /bg\.classList\.add\('image-palette'\)/);
+});

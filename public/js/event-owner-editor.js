@@ -266,18 +266,11 @@
     try {
       const colors = window.SGArtworkColor.paletteForBackground(await window.SGArtworkColor.extractPalette(url));
       const hero = $('hero');
-      const background = document.querySelector('.event-bg');
       if (hero) {
         hero.style.setProperty('--hero-bg-a', window.SGArtworkColor.rgba(colors[0], .76));
         hero.style.setProperty('--hero-bg-b', window.SGArtworkColor.rgba(colors[1], .62));
         hero.style.setProperty('--hero-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .54));
         hero.classList.add('image-palette');
-      }
-      if (background) {
-        background.style.setProperty('--event-bg-a', window.SGArtworkColor.rgba(colors[0], .82));
-        background.style.setProperty('--event-bg-b', window.SGArtworkColor.rgba(colors[1], .68));
-        background.style.setProperty('--event-bg-c', window.SGArtworkColor.rgba(colors[2] || colors[0], .52));
-        background.classList.add('image-palette');
       }
     } catch (_) {
       // The selected theme remains a reliable fallback if the image blocks sampling.
@@ -451,7 +444,6 @@
     document.querySelectorAll('[data-owner-theme]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.ownerTheme === draft.backgroundTheme));
     });
-    if (!effectKeys.includes(draft.backgroundTheme)) applyArtworkPalette(draft.coverImageUrl);
   }
 
   function populate() {

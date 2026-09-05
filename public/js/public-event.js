@@ -59,13 +59,6 @@ async function applyCoverPalette() {
       hero.style.setProperty('--hero-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .54));
       hero.classList.add('image-palette');
     }
-    if (EVENT.bgEffect) return;   // an explicit effect still overrides the page background
-    const bg = document.querySelector('.event-bg');
-    if (!bg) return;
-    bg.style.setProperty('--event-bg-a', ArtworkColor.rgba(colors[0], .82));
-    bg.style.setProperty('--event-bg-b', ArtworkColor.rgba(colors[1], .68));
-    bg.style.setProperty('--event-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
-    bg.classList.add('image-palette');
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
   }
