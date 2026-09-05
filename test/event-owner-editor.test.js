@@ -23,6 +23,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /role="switch"/);
   assert.match(renderer, /Admission, music &amp; advanced settings/);
   assert.match(renderer, /owner-flyer-default[\s\S]*Default wall/);
+  assert.doesNotMatch(renderer, /id="owner-end-time"/);
 
   assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}`/);
   assert.match(client, /method: 'PUT'/);
@@ -32,6 +33,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /Discard your unsaved event changes\?/);
   assert.match(client, /sessionStorage\.setItem\('sge-owner-editor-reopen'/);
   assert.match(client, /people have'\} RSVP’d\. This change may affect their plans\./);
+  assert.doesNotMatch(client, /\$\('owner-end-time'\)/);
+  assert.doesNotMatch(client, /end_time:/);
 });
 
 test('desktop uses a right editing rail while mobile uses a collapsible bottom sheet', () => {

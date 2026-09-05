@@ -365,7 +365,6 @@
     $('owner-description').value = draft.description;
     $('owner-date').value = draft.eventDate;
     $('owner-start-time').value = draft.startTime;
-    $('owner-end-time').value = draft.endTime;
     $('owner-venue').value = draft.venueName;
     $('owner-address').value = draft.venueAddress;
     $('owner-category').value = draft.category;
@@ -555,7 +554,6 @@
     draft.description = $('owner-description').value.trim();
     draft.eventDate = $('owner-date').value;
     draft.startTime = $('owner-start-time').value;
-    draft.endTime = $('owner-end-time').value;
     draft.venueName = $('owner-venue').value.trim();
     draft.venueAddress = $('owner-address').value.trim();
     draft.category = $('owner-category').value;
@@ -574,7 +572,6 @@
       description: draft.description,
       event_date: draft.eventDate,
       start_time: draft.startTime,
-      end_time: draft.endTime || null,
       venue_name: draft.venueName,
       venue_address: draft.venueAddress,
       category: draft.category || null,

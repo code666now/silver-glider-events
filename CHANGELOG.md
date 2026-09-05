@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Improved
+
+* Removed the optional End time control from the streamlined on-page event editor without changing existing event times or the full dashboard editor.
+
 ## 1.0.46
 
 Released September 5, 2026.

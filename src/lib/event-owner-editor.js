@@ -147,7 +147,6 @@ function renderOwnerEditor(event) {
               <label class="owner-field"><span>Date</span><input class="owner-input" id="owner-date" type="date" required></label>
               <label class="owner-field"><span>Start time</span><input class="owner-input" id="owner-start-time" type="time" required></label>
             </div>
-            <label class="owner-field"><span>End time <small>Optional</small></span><input class="owner-input" id="owner-end-time" type="time"></label>
             <label class="owner-field"><span>Venue</span><input class="owner-input" id="owner-venue" maxlength="140" required></label>
             <label class="owner-field"><span>Address <small>Optional</small></span><input class="owner-input" id="owner-address"></label>
             <label class="owner-field"><span>Category</span>
