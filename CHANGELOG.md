@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## Unreleased
+
+### Improved
+
+* Replaced the Public visibility megaphone with a clearer globe icon.
+* Reworked Guest Experience and Secret Show checkboxes into explicit, keyboard-accessible On/Off switches without changing their saved behavior.
+* Replaced the Summer photo collection with Halloween and added a separate Fall collection, each using focused multi-query image results.
+
 ## 1.0.42
 
 Released September 4, 2026.

@@ -390,7 +390,7 @@ const fileInput = $('cover-input');
 const imageModal = $('image-modal');
 const pickerUpload = $('picker-upload');
 let photosEnabled = false;
-let activeImageCategory = '☀️ Summer';
+let activeImageCategory = '🎃 Halloween';
 let lastPhotos = [];
 let searchTimer;
 let currentPhotoQuery = '';
@@ -422,13 +422,36 @@ let pickerBgTimer;
 // User-facing visual themes stay simple; hidden queries are tuned for
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
-  { label: '☀️ Summer', query: 'pool party', bgClass: 'picker-bg-summer', colors: ['#6c5017', '#88472c', '#1d6470'] },
+  {
+    label: '🎃 Halloween',
+    query: 'halloween jack o lantern dark',
+    queries: [
+      'halloween jack o lantern dark',
+      'halloween costume party spooky',
+      'haunted house fog moon',
+      'halloween decorations candles skull'
+    ],
+    bgClass: 'picker-bg-halloween',
+    colors: ['#4f210d', '#321143', '#151810']
+  },
+  {
+    label: '🍂 Fall',
+    query: 'autumn leaves golden forest',
+    queries: [
+      'autumn leaves golden forest',
+      'cozy autumn table candles',
+      'fall harvest apples outdoors',
+      'autumn city park warm'
+    ],
+    bgClass: 'picker-bg-fall',
+    colors: ['#6d3518', '#7a541d', '#29341f']
+  },
   {
     label: '⭐ Silver Glider Picks',
     query: 'nightlife live music crowd neon',
     queries: [
       'nightlife live music crowd neon',
-      'pool party friends colorful summer',
+      'community dinner friends warm lights',
       'fashion art gallery creative event',
       'urban rooftop dinner party'
     ],
@@ -503,7 +526,7 @@ function openImageModal() {
   document.body.style.overflow = 'hidden';
   const theme = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
   applyPickerBackground(theme);
-  if (photosEnabled) loadCategory(activeImageCategory || '☀️ Summer');
+  if (photosEnabled) loadCategory(activeImageCategory || '🎃 Halloween');
 }
 
 function closeImageModal() {
@@ -798,7 +821,7 @@ $('unsplash-q').addEventListener('input', e => {
   searchTimer = setTimeout(() => {
     const q = e.target.value.trim();
     if (q) runSearch();
-    else loadCategory(activeImageCategory || '☀️ Summer');
+    else loadCategory(activeImageCategory || '🎃 Halloween');
   }, 350);
 });
 

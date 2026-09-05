@@ -152,10 +152,17 @@ test('event editor keeps venue, admission, and event settings visible while prog
   assert.match(form, /id="audience-settings-title">Event settings/);
   assert.doesNotMatch(form, /Tickets and visibility/);
   assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your Host Page and may appear in Silver Glider discovery/);
+  assert.match(form, /id="vis-public"[\s\S]*<circle cx="12" cy="12" r="9"\/>[\s\S]*<path d="M3 12h18"\/>/);
   assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your Host Page and discovery/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Show guest list[\s\S]*Show attendee first names and avatars on the event page/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Allow \+1s[\s\S]*Let each RSVP bring one guest/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Enable comments[\s\S]*Confirmed attendees can join the conversation/);
+  for (const id of ['show_guest_list', 'allow_guests', 'comments_enabled', 'secret_show_enabled']) {
+    assert.match(form, new RegExp(`id="${id}" role="switch"[\\s\\S]*experience-switch`));
+  }
+  assert.match(html, /\.experience-switch::after[\s\S]*content: 'Off'/);
+  assert.match(html, /input:checked ~ \.experience-switch::after[\s\S]*content: 'On'/);
+  assert.match(html, /input:focus-visible ~ \.experience-switch/);
   assert.match(form, /id="private-settings"[\s\S]*Private event options[\s\S]*Secret Show Mode/);
   assert.ok(form.indexOf('id="guest-experience-settings"') < form.indexOf('id="private-settings"'));
   assert.match(js, /vis-public'\)\.setAttribute\('aria-pressed'/);
@@ -182,6 +189,18 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   assert.match(html, /id="background-field"/);
   const setCoverSource = js.slice(js.indexOf('function setCover'), js.indexOf('function openImageModal'));
   assert.doesNotMatch(setCoverSource, /background[^\n]*style\.display|fallback-background-field/);
+});
+
+test('free-photo browsing starts with distinct Halloween and Fall collections', () => {
+  const js = read('public/js/event-form.js');
+  const halloweenIndex = js.indexOf("label: '🎃 Halloween'");
+  const fallIndex = js.indexOf("label: '🍂 Fall'");
+  const picksIndex = js.indexOf("label: '⭐ Silver Glider Picks'");
+  assert.ok(halloweenIndex > -1 && halloweenIndex < fallIndex && fallIndex < picksIndex);
+  assert.match(js, /let activeImageCategory = '🎃 Halloween'/);
+  assert.match(js, /halloween jack o lantern dark[\s\S]*halloween costume party spooky[\s\S]*haunted house fog moon/);
+  assert.match(js, /autumn leaves golden forest[\s\S]*cozy autumn table candles[\s\S]*fall harvest apples outdoors/);
+  assert.doesNotMatch(js, /☀️ Summer|pool party friends colorful summer/);
 });
 
 test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {

@@ -229,22 +229,81 @@
     }
     .settings-group-heading span { display:block;margin-top:4px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
     .experience-option {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      min-height: 54px;
       color: var(--sg-text-dim);
       font-size: 14px;
       cursor: pointer;
     }
     .experience-option input {
-      width: 18px;
-      height: 18px;
-      margin-top: 2px;
-      flex: 0 0 auto;
-      accent-color: var(--sg-accent);
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
     .experience-option strong { display: block; color: var(--sg-text); font-size: 14px; }
-    .experience-option span { display: block; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
+    .experience-copy { display: block; min-width: 0; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
+    .experience-switch {
+      position: relative;
+      width: 72px;
+      height: 34px;
+      flex: 0 0 auto;
+      border: 1px solid var(--sg-border);
+      border-radius: 999px;
+      background: rgba(255,255,255,.035);
+      color: var(--sg-text-faint);
+      transition: border-color .18s ease, background .18s ease, color .18s ease;
+    }
+    .experience-switch::before {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--sg-text-dim);
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+      transition: transform .18s ease, background .18s ease;
+    }
+    .experience-switch::after {
+      content: 'Off';
+      position: absolute;
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .experience-option input:checked ~ .experience-switch {
+      border-color: rgba(28,197,190,.72);
+      background: rgba(28,197,190,.17);
+      color: var(--sg-accent);
+    }
+    .experience-option input:checked ~ .experience-switch::before {
+      transform: translateX(38px);
+      background: var(--sg-accent);
+    }
+    .experience-option input:checked ~ .experience-switch::after {
+      content: 'On';
+      left: 11px;
+      right: auto;
+    }
+    .experience-option input:focus-visible ~ .experience-switch {
+      outline: 2px solid var(--sg-accent);
+      outline-offset: 3px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .experience-switch,
+      .experience-switch::before { transition: none; }
+    }
     .secret-shortcut {
       display:flex;align-items:center;justify-content:space-between;gap:18px;
       margin:0 0 24px;padding:18px 20px;border:1px solid rgba(28,197,190,.18);
@@ -1026,7 +1085,7 @@
             <div class="vis-toggle">
               <button type="button" id="vis-public" class="on" aria-pressed="true">
                 <span class="visibility-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false"><path d="M4 10.5v3A1.5 1.5 0 0 0 5.5 15H8l3.5 4.5a1 1 0 0 0 1.77-.83L12 15l7-3V6l-7 3H5.5A1.5 1.5 0 0 0 4 10.5Z"/><path d="M19 8.5a3.5 3.5 0 0 1 0 7"/></svg>
+                  <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 0 18"/><path d="M12 3a15.3 15.3 0 0 0 0 18"/></svg>
                 </span>
                 <span class="visibility-copy"><strong>Public</strong><span>Shown on your Host Page and may appear in Silver Glider discovery. Anyone can share it.</span></span>
               </button>
@@ -1041,14 +1100,14 @@
 
           <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title">
             <div class="settings-group-heading"><strong id="guest-experience-title">Guest experience</strong></div>
-            <label class="experience-option"><input type="checkbox" id="show_guest_list"><span><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span></label>
-            <label class="experience-option"><input type="checkbox" id="allow_guests"><span><strong>Allow +1s</strong>Let each RSVP bring one guest.</span></label>
-            <label class="experience-option"><input type="checkbox" id="comments_enabled"><span><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span></label>
+            <label class="experience-option"><input type="checkbox" id="show_guest_list" role="switch"><span class="experience-copy"><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option"><input type="checkbox" id="allow_guests" role="switch"><span class="experience-copy"><strong>Allow +1s</strong>Let each RSVP bring one guest.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option"><input type="checkbox" id="comments_enabled" role="switch"><span class="experience-copy"><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span><span class="experience-switch" aria-hidden="true"></span></label>
           </section>
 
           <section class="private-settings" id="private-settings" aria-labelledby="private-options-title">
             <div class="settings-group-heading"><strong id="private-options-title">Private event options</strong></div>
-            <label class="experience-option secret-option"><input type="checkbox" id="secret_show_enabled"><span><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span></label>
+            <label class="experience-option secret-option"><input type="checkbox" id="secret_show_enabled" role="switch"><span class="experience-copy"><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span><span class="experience-switch" aria-hidden="true"></span></label>
             <div class="secret-code-fields" id="secret-code-fields">
               <div class="sg-field"><label for="secret_code">Access code</label><input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers"></div>
               <div class="sg-field"><label for="secret_code_confirm">Confirm access code</label><input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again"></div>
