@@ -15,6 +15,7 @@ const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission')
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
+const LocationUtils = require('../../public/js/location-utils');
 const {
   ensureAttemptSession,
   hasUnlockCookie,
@@ -461,9 +462,11 @@ router.get('/e/:slug', async (req, res, next) => {
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
     const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
-    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`;
-    const flyerVenueText = event.venue_address || venueSummary;
-    const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(event.venue_name)}</strong>${flyerVenueText ? `<span>${esc(flyerVenueText)}</span>` : ''}<a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`;
+    const locationDisplay = LocationUtils.displayParts(event.venue_name, event.venue_address);
+    const locationQuery = LocationUtils.locationQuery(event.venue_name, event.venue_address);
+    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(locationQuery)}`;
+    const flyerVenueText = locationDisplay.address || (!event.venue_address ? venueSummary : '');
+    const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(locationDisplay.name)}</strong>${flyerVenueText ? `<span>${esc(flyerVenueText)}</span>` : ''}<a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`;
     const detailParts = [];
     if (event.category) detailParts.push(`<p class="detail-category"><span>Category</span><strong>${esc(event.category)}</strong></p>`);
     if (event.description) detailParts.push(`<div class="desc">${esc(event.description).replace(/\n/g, '<br>')}</div>`);
@@ -529,7 +532,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const html = activePublicTemplate
       .replace(/{{TITLE}}/g, esc(event.title))
       .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(robotsDirective(event.visibility)))
-      .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${event.venue_name}`))
+      .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${locationDisplay.name}`))
       .replace(/{{OG_IMAGE}}/g, esc(primaryImageUrl || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))
       .replace(/{{BODY_CLASS}}/g, bgClass)
@@ -539,8 +542,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
       .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))
       .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
-      .replace(/{{VENUE_NAME}}/g, esc(event.venue_name))
-      .replace(/{{VENUE_ADDRESS}}/g, esc(event.venue_address || ''))
+      .replace(/{{VENUE_NAME}}/g, esc(locationDisplay.name))
+      .replace(/{{VENUE_ADDRESS}}/g, esc(locationDisplay.address))
       .replace(/{{MAPS_URL}}/g, esc(mapsUrl))
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))

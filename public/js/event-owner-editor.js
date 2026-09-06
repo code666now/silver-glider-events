@@ -11,6 +11,7 @@
   const saveButton = $('owner-editor-save');
   const saveStatus = $('owner-save-status');
   const toastNode = $('owner-editor-toast');
+  const LocationUtils = window.SGLocation;
   const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const effectKeys = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const videoEffects = {
@@ -69,6 +70,8 @@
   let applyingPlace = false;
   let placesLoader;
   let placesInitPromise;
+  let locationKind = null;
+  let manualLocationMode = false;
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -153,9 +156,15 @@
       const name = venue.querySelector('strong');
       const address = venue.querySelector('span');
       const maps = venue.querySelector('a');
-      if (name) name.textContent = draft.venueName || saved.venueName;
-      if (address) address.textContent = draft.venueAddress || '';
-      if (maps) maps.href = `https://maps.google.com/?q=${encodeURIComponent([draft.venueName, draft.venueAddress].filter(Boolean).join(', '))}`;
+      const activeName = draft.venueName || draft.venueAddress ? draft.venueName : saved.venueName;
+      const activeAddress = draft.venueName || draft.venueAddress ? draft.venueAddress : saved.venueAddress;
+      const parts = LocationUtils.displayParts(activeName, activeAddress);
+      if (name) name.textContent = parts.name;
+      if (address) {
+        address.textContent = parts.address;
+        address.hidden = !parts.address;
+      }
+      if (maps) maps.href = `https://maps.google.com/?q=${encodeURIComponent(LocationUtils.locationQuery(activeName, activeAddress))}`;
     }
     const description = document.querySelector('.desc');
     if (description) description.textContent = draft.description || '';
@@ -173,16 +182,84 @@
     draft.googlePlaceId = '';
   }
 
+  function renderOwnerLocation() {
+    const parts = LocationUtils.displayParts(draft.venueName, draft.venueAddress);
+    const selection = $('owner-location-selection');
+    selection.hidden = !parts.name;
+    $('owner-location-selection-name').textContent = parts.name;
+    $('owner-location-selection-address').textContent = parts.address;
+    $('owner-location-selection-address').hidden = !parts.address;
+    $('owner-location-name-field').hidden = locationKind !== 'address';
+  }
+
+  function populateOwnerLocation() {
+    const name = LocationUtils.clean(draft.venueName);
+    const address = LocationUtils.clean(draft.venueAddress);
+    const addressOnly = Boolean(address) && LocationUtils.isAddressFallback(name, address);
+    locationKind = addressOnly ? 'address' : (name || address ? 'business' : null);
+    manualLocationMode = false;
+    $('owner-location-search-mode').hidden = false;
+    $('owner-location-manual-mode').hidden = true;
+    $('owner-location-search').value = addressOnly ? address : (name || address);
+    $('owner-location-manual-address').value = address;
+    $('owner-location-name').value = addressOnly ? '' : name;
+    renderOwnerLocation();
+  }
+
+  function locationChanged() {
+    renderOwnerLocation();
+    previewDetails();
+    syncDirtyState();
+  }
+
+  function syncOwnerManualLocation() {
+    const address = $('owner-location-manual-address').value.trim();
+    const locationName = $('owner-location-name').value.trim();
+    locationKind = 'address';
+    draft.venueAddress = address;
+    draft.venueName = locationName || LocationUtils.addressFallback(address);
+    clearPlaceMeta();
+    setPlacesStatus('');
+    locationChanged();
+  }
+
+  function setOwnerManualLocationMode(enabled, { focus = true } = {}) {
+    manualLocationMode = Boolean(enabled);
+    $('owner-location-search-mode').hidden = manualLocationMode;
+    $('owner-location-manual-mode').hidden = !manualLocationMode;
+    if (manualLocationMode) {
+      const address = draft.venueAddress || (!draft.venueName ? $('owner-location-search').value.trim() : '');
+      const currentName = LocationUtils.isAddressFallback(draft.venueName, address) ? '' : draft.venueName;
+      locationKind = 'address';
+      $('owner-location-manual-address').value = address;
+      $('owner-location-name').value = currentName;
+      renderOwnerLocation();
+      setPlacesStatus('');
+      if (focus) $('owner-location-manual-address').focus();
+    } else {
+      locationKind = LocationUtils.isAddressFallback(draft.venueName, draft.venueAddress) ? 'address' : (draft.venueName || draft.venueAddress ? 'business' : null);
+      $('owner-location-search').value = draft.venueAddress || draft.venueName;
+      renderOwnerLocation();
+      if (focus) {
+        $('owner-location-search').focus();
+        $('owner-location-search').select();
+      }
+    }
+  }
+
   function placeComponent(place, types, name = 'long_name') {
     const component = (place.address_components || []).find(part => types.some(type => part.types.includes(type)));
     return component ? component[name] : '';
   }
 
   function applySelectedPlace(place) {
-    if (!place) return;
+    if (!place?.formatted_address && !place?.name) return;
     applyingPlace = true;
-    draft.venueName = place.name || $('owner-venue').value.trim();
-    draft.venueAddress = place.formatted_address || $('owner-address').value.trim();
+    const selected = LocationUtils.recordForPlace(place);
+    locationKind = selected.addressOnly ? 'address' : 'business';
+    manualLocationMode = false;
+    draft.venueName = selected.venueName;
+    draft.venueAddress = selected.venueAddress;
     draft.venueCity =
       placeComponent(place, ['locality']) ||
       placeComponent(place, ['postal_town']) ||
@@ -192,11 +269,13 @@
     const location = place.geometry?.location;
     draft.venueLatitude = location ? Number(location.lat()) : null;
     draft.venueLongitude = location ? Number(location.lng()) : null;
-    $('owner-venue').value = draft.venueName;
-    $('owner-address').value = draft.venueAddress;
+    $('owner-location-search-mode').hidden = false;
+    $('owner-location-manual-mode').hidden = true;
+    $('owner-location-search').value = selected.addressOnly ? selected.venueAddress : selected.venueName;
+    $('owner-location-manual-address').value = selected.venueAddress;
+    $('owner-location-name').value = '';
     setPlacesStatus('');
-    previewDetails();
-    syncDirtyState();
+    locationChanged();
     setTimeout(() => { applyingPlace = false; }, 0);
   }
 
@@ -219,21 +298,20 @@
     if (placesInitPromise) return placesInitPromise;
     placesInitPromise = (async () => {
       try {
-        setPlacesStatus('Loading venue suggestions…');
+        setPlacesStatus('Loading location suggestions…');
         const { enabled, apiKey } = await request('/api/places/config');
         if (!enabled || !apiKey) {
           setPlacesStatus('');
           return;
         }
         await loadGooglePlaces(apiKey);
-        const autocomplete = new google.maps.places.Autocomplete($('owner-venue'), {
-          fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id'],
-          types: ['establishment']
+        const autocomplete = new google.maps.places.Autocomplete($('owner-location-search'), {
+          fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id', 'types']
         });
         autocomplete.addListener('place_changed', () => applySelectedPlace(autocomplete.getPlace()));
         setPlacesStatus('');
       } catch (_) {
-        setPlacesStatus('Venue suggestions unavailable. You can enter the venue manually.');
+        setPlacesStatus('Search suggestions are unavailable. Enter the location manually.');
       }
     })();
     return placesInitPromise;
@@ -487,8 +565,7 @@
     $('owner-description').value = draft.description;
     $('owner-date').value = draft.eventDate;
     $('owner-start-time').value = draft.startTime;
-    $('owner-venue').value = draft.venueName;
-    $('owner-address').value = draft.venueAddress;
+    populateOwnerLocation();
     $('owner-category').value = draft.category;
     $('owner-capacity').value = draft.capacity == null ? '' : draft.capacity;
     document.querySelectorAll('input[name="owner_visibility"]').forEach(input => { input.checked = input.value === draft.visibility; });
@@ -679,8 +756,6 @@
     draft.description = $('owner-description').value.trim();
     draft.eventDate = $('owner-date').value;
     draft.startTime = $('owner-start-time').value;
-    draft.venueName = $('owner-venue').value.trim();
-    draft.venueAddress = $('owner-address').value.trim();
     draft.category = $('owner-category').value;
     draft.capacity = $('owner-capacity').value ? Number($('owner-capacity').value) : null;
     draft.visibility = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
@@ -750,8 +825,35 @@
 
   form.addEventListener('input', readInputs);
   form.addEventListener('change', readInputs);
-  $('owner-venue').addEventListener('input', () => { if (!applyingPlace) clearPlaceMeta(); });
-  $('owner-address').addEventListener('input', () => { if (!applyingPlace) clearPlaceMeta(); });
+  $('owner-location-search').addEventListener('input', () => {
+    if (applyingPlace) return;
+    locationKind = null;
+    draft.venueName = '';
+    draft.venueAddress = '';
+    $('owner-location-name').value = '';
+    clearPlaceMeta();
+    renderOwnerLocation();
+    previewDetails();
+    syncDirtyState();
+    setPlacesStatus($('owner-location-search').value.trim() ? 'Choose a suggestion or enter the address manually.' : '');
+  });
+  $('owner-location-manual-address').addEventListener('input', syncOwnerManualLocation);
+  $('owner-location-name').addEventListener('input', () => {
+    if (locationKind !== 'address') return;
+    draft.venueName = $('owner-location-name').value.trim() || LocationUtils.addressFallback(draft.venueAddress);
+    locationChanged();
+  });
+  $('owner-location-manual-toggle').addEventListener('click', () => setOwnerManualLocationMode(true));
+  $('owner-location-search-toggle').addEventListener('click', () => setOwnerManualLocationMode(false));
+  $('owner-location-change').addEventListener('click', () => {
+    if (manualLocationMode) {
+      $('owner-location-manual-address').focus();
+      $('owner-location-manual-address').select();
+    } else {
+      $('owner-location-search').focus();
+      $('owner-location-search').select();
+    }
+  });
   document.querySelectorAll('[data-owner-theme]').forEach(button => button.addEventListener('click', () => {
     previewTheme(button.dataset.ownerTheme);
     syncDirtyState();
@@ -795,9 +897,13 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     readInputs();
-    if (!draft.title || !draft.eventDate || !draft.startTime || !draft.venueName) {
+    if (!draft.title || !draft.eventDate || !draft.startTime || (!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
       activateTab('details');
-      saveStatus.textContent = 'Add the title, date, time, and venue before saving.';
+      if ((!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
+        setPlacesStatus(manualLocationMode ? 'Add an address for this location.' : 'Choose a venue or address, or enter the location manually.');
+        (manualLocationMode ? $('owner-location-manual-address') : $('owner-location-search')).focus();
+      }
+      saveStatus.textContent = 'Add the title, date, time, and location before saving.';
       return;
     }
     saveButton.disabled = true;

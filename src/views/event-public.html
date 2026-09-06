@@ -297,6 +297,7 @@
     .when .dot { color: var(--sg-accent); }
     .venue { margin: 4px 0 28px; }
     .venue strong { font-size: 16px; display: block; }
+    .venue span:empty, .venue span:empty + br { display: none; }
     .venue a { font-size: 13px; font-weight: 600; }
     .ticket-note {
       display: flex;
@@ -832,6 +833,7 @@
 
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
   <script src="/js/artwork-color.js"></script>
+  <script src="/js/location-utils.js"></script>
   <script src="/js/public-event.js"></script>
   <script src="/js/event-owner-editor.js"></script>
 </body>

@@ -38,12 +38,22 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.doesNotMatch(client, /\$\('owner-end-time'\)/);
   assert.doesNotMatch(client, /end_time:/);
   assert.match(renderer, /id="owner-places-status" role="status"/);
+  assert.match(renderer, /id="owner-location-search"[^>]+placeholder="Search venue or address"/);
+  assert.match(renderer, /id="owner-location-manual-toggle"[^>]*>Enter manually</);
+  assert.match(renderer, /Location name <small>Optional<\/small>/);
+  assert.match(renderer, /id="owner-location-name"/);
+  assert.doesNotMatch(renderer, /id="owner-venue"|id="owner-address"/);
   assert.match(client, /request\('\/api\/places\/config'\)/);
-  assert.match(client, /new google\.maps\.places\.Autocomplete\(\$\('owner-venue'\)/);
-  assert.match(client, /fields: \['name', 'formatted_address', 'address_components', 'geometry', 'place_id'\]/);
+  assert.match(client, /new google\.maps\.places\.Autocomplete\(\$\('owner-location-search'\)/);
+  assert.match(client, /fields: \['name', 'formatted_address', 'address_components', 'geometry', 'place_id', 'types'\]/);
+  assert.doesNotMatch(client, /types:\s*\['establishment'\]/);
+  assert.match(client, /function populateOwnerLocation\(\)/);
+  assert.match(client, /function syncOwnerManualLocation\(\)/);
+  assert.match(client, /LocationUtils\.recordForPlace\(place\)/);
+  assert.match(client, /LocationUtils\.displayParts\(activeName, activeAddress\)/);
   assert.match(client, /venue_city: draft\.venueCity \|\| null/);
   assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
-  assert.match(client, /if \(!applyingPlace\) clearPlaceMeta\(\)/);
+  assert.match(client, /clearPlaceMeta\(\);[\s\S]*renderOwnerLocation\(\);[\s\S]*previewDetails\(\);[\s\S]*syncDirtyState\(\)/);
 });
 
 test('appearance panel matches dashboard cover-fit preview behavior', () => {

@@ -153,8 +153,31 @@ function renderOwnerEditor(event) {
               <label class="owner-field"><span>Date</span><input class="owner-input" id="owner-date" type="date" required></label>
               <label class="owner-field"><span>Start time</span><input class="owner-input" id="owner-start-time" type="time" required></label>
             </div>
-            <label class="owner-field"><span>Venue</span><input class="owner-input" id="owner-venue" maxlength="140" autocomplete="off" required><small class="owner-places-status" id="owner-places-status" role="status"></small></label>
-            <label class="owner-field"><span>Address <small>Optional</small></span><input class="owner-input" id="owner-address"></label>
+            <div class="owner-field owner-location-picker">
+              <label class="owner-field-label" for="owner-location-search">Location</label>
+              <div class="owner-location-search-mode" id="owner-location-search-mode">
+                <input class="owner-input" id="owner-location-search" autocomplete="off" aria-required="true" aria-describedby="owner-places-status" placeholder="Search venue or address">
+                <button class="owner-location-mode-button" id="owner-location-manual-toggle" type="button">Enter manually</button>
+              </div>
+              <div class="owner-location-manual-mode" id="owner-location-manual-mode" hidden>
+                <label for="owner-location-manual-address">Address</label>
+                <div class="owner-location-manual-actions">
+                  <input class="owner-input" id="owner-location-manual-address" autocomplete="street-address" placeholder="346 Corbett Ave, San Francisco">
+                  <button class="owner-location-mode-button" id="owner-location-search-toggle" type="button">Search instead</button>
+                </div>
+              </div>
+              <small class="owner-places-status" id="owner-places-status" role="status" aria-live="polite"></small>
+              <div class="owner-location-selection" id="owner-location-selection" hidden>
+                <span class="owner-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+                <span class="owner-location-copy"><strong id="owner-location-selection-name"></strong><small id="owner-location-selection-address"></small></span>
+                <button class="owner-location-change" id="owner-location-change" type="button">Change</button>
+              </div>
+              <label class="owner-location-name-field" id="owner-location-name-field" for="owner-location-name" hidden>
+                <span>Location name <small>Optional</small></span>
+                <input class="owner-input" id="owner-location-name" maxlength="140" placeholder="Adrian’s place or Rooftop">
+                <small>Add a friendly name for this address, or leave it blank.</small>
+              </label>
+            </div>
             <label class="owner-field"><span>Category</span>
               <select class="owner-input" id="owner-category">
                 <option value="">Choose category</option><option>Music</option><option>Art</option><option>Market</option><option>Party</option><option>Community</option><option>Food &amp; Drink</option><option>Film</option><option>Other</option>

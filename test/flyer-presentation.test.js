@@ -80,7 +80,7 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /presentation_mode: presentationMode/);
   assert.match(js, /cover_fit_mode: coverFitMode/);
   assert.match(js, /artwork_accent_color: artworkAccents\.get\(activeArtworkUrl\(\)\) \|\| null/);
-  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
+  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/location-utils\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
   assert.match(js, /img\.naturalHeight > img\.naturalWidth \? 'contain' : 'cover'/);
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);
@@ -174,6 +174,22 @@ test('event editor keeps venue, admission, and event settings visible while prog
   assert.doesNotMatch(form, /id="more-details"[^>]*open/);
   assert.match(js, /\$\('more-details'\)\.open = Boolean/);
   assert.doesNotMatch(js, /\$\('audience-settings'\)\.open/);
+});
+
+test('create and edit dashboard use one searchable location with address-only manual fallback', () => {
+  const html = read('src/views/event-form.html');
+  const js = read('public/js/event-form.js');
+
+  assert.match(html, /id="location_search"[^>]+placeholder="Search venue or address"/);
+  assert.match(html, /id="location-manual-toggle"[^>]*>Enter manually</);
+  assert.match(html, /id="location_name"[^>]+placeholder="Adrian’s place or Rooftop"/);
+  assert.match(html, /type="hidden" id="venue_name"/);
+  assert.match(html, /type="hidden" id="venue_address"/);
+  assert.match(js, /new google\.maps\.places\.Autocomplete\(\$\('location_search'\)/);
+  assert.match(js, /fields: \['name', 'formatted_address', 'address_components', 'geometry', 'place_id', 'types'\]/);
+  assert.doesNotMatch(js, /types:\s*\['establishment'\]/);
+  assert.match(js, /LocationUtils\.recordForPlace\(place\)/);
+  assert.match(js, /venue_name: venueName \|\| LocationUtils\.addressFallback\(venueAddress\)/);
 });
 
 test('Standard artwork actions keep local upload separate from free-photo browsing', () => {

@@ -13,6 +13,7 @@ let hasSavedSecretCode = false;
 
 const $ = id => document.getElementById(id);
 const ArtworkColor = window.SGArtworkColor;
+const LocationUtils = window.SGLocation;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
 
@@ -319,10 +320,12 @@ THEMES.forEach(key => {
 });
 setTheme('midnight');
 
-// ── Venue autocomplete: optional Google Places helper, manual flow remains intact ──
+// ── Unified location search: venues and normal addresses share one flow ──
 const placeFields = ['venue_city', 'venue_state', 'venue_latitude', 'venue_longitude', 'google_place_id'];
 let applyingPlace = false;
 let placesLoader;
+let locationKind = null;
+let manualLocationMode = false;
 
 function setPlacesStatus(message) {
   const el = $('places-status');
@@ -333,18 +336,87 @@ function clearPlaceMeta() {
   placeFields.forEach(id => { $(id).value = ''; });
 }
 
+function setStoredLocation(venueName, venueAddress) {
+  $('venue_name').value = LocationUtils.clean(venueName).slice(0, 140);
+  $('venue_address').value = LocationUtils.clean(venueAddress);
+}
+
+function renderLocationSelection() {
+  const parts = LocationUtils.displayParts($('venue_name').value, $('venue_address').value);
+  const selection = $('location-selection');
+  selection.hidden = !parts.name;
+  $('location-selection-name').textContent = parts.name;
+  $('location-selection-address').textContent = parts.address;
+  $('location-selection-address').hidden = !parts.address;
+  $('location-name-field').hidden = locationKind !== 'address';
+}
+
+function populateLocationEditor(venueName, venueAddress) {
+  const name = LocationUtils.clean(venueName);
+  const address = LocationUtils.clean(venueAddress);
+  const addressOnly = Boolean(address) && LocationUtils.isAddressFallback(name, address);
+  locationKind = addressOnly ? 'address' : (name || address ? 'business' : null);
+  manualLocationMode = false;
+  $('location-search-mode').hidden = false;
+  $('location-manual-mode').hidden = true;
+  setStoredLocation(name, address);
+  $('location_search').value = addressOnly ? address : (name || address);
+  $('location_manual_address').value = address;
+  $('location_name').value = addressOnly ? '' : name;
+  renderLocationSelection();
+}
+
+function syncManualLocation() {
+  const address = $('location_manual_address').value.trim();
+  const locationName = $('location_name').value.trim();
+  locationKind = 'address';
+  setStoredLocation(locationName || LocationUtils.addressFallback(address), address);
+  clearPlaceMeta();
+  renderLocationSelection();
+  setPlacesStatus('');
+}
+
+function setManualLocationMode(enabled, { focus = true } = {}) {
+  manualLocationMode = Boolean(enabled);
+  $('location-search-mode').hidden = manualLocationMode;
+  $('location-manual-mode').hidden = !manualLocationMode;
+  if (manualLocationMode) {
+    const address = $('venue_address').value || (!$('venue_name').value ? $('location_search').value.trim() : '');
+    const currentName = LocationUtils.isAddressFallback($('venue_name').value, address) ? '' : $('venue_name').value;
+    locationKind = 'address';
+    $('location_manual_address').value = address;
+    $('location_name').value = currentName;
+    renderLocationSelection();
+    setPlacesStatus('');
+    if (focus) $('location_manual_address').focus();
+  } else {
+    locationKind = LocationUtils.isAddressFallback($('venue_name').value, $('venue_address').value) ? 'address' : ($('venue_name').value || $('venue_address').value ? 'business' : null);
+    $('location_search').value = $('venue_address').value || $('venue_name').value;
+    renderLocationSelection();
+    if (focus) {
+      $('location_search').focus();
+      $('location_search').select();
+    }
+  }
+}
+
 function placeComponent(place, types, name = 'long_name') {
   const component = (place.address_components || []).find(part => types.some(type => part.types.includes(type)));
   return component ? component[name] : '';
 }
 
 function applySelectedPlace(place) {
-  if (!place) return;
+  if (!place?.formatted_address && !place?.name) return;
   applyingPlace = true;
-  const venueName = place.name || $('venue_name').value.trim();
-  const address = place.formatted_address || '';
-  $('venue_name').value = venueName;
-  if (address) $('venue_address').value = address;
+  const selected = LocationUtils.recordForPlace(place);
+  locationKind = selected.addressOnly ? 'address' : 'business';
+  manualLocationMode = false;
+  setStoredLocation(selected.venueName, selected.venueAddress);
+  $('location-search-mode').hidden = false;
+  $('location-manual-mode').hidden = true;
+  $('location_search').value = selected.addressOnly ? selected.venueAddress : selected.venueName;
+  $('location_manual_address').value = selected.venueAddress;
+  $('location_name').value = '';
   $('venue_city').value =
     placeComponent(place, ['locality']) ||
     placeComponent(place, ['postal_town']) ||
@@ -355,6 +427,7 @@ function applySelectedPlace(place) {
   $('venue_latitude').value = location ? String(location.lat()) : '';
   $('venue_longitude').value = location ? String(location.lng()) : '';
   setPlacesStatus('');
+  renderLocationSelection();
   window.setTimeout(() => { applyingPlace = false; }, 0);
 }
 
@@ -373,33 +446,50 @@ function loadGooglePlaces(apiKey) {
   return placesLoader;
 }
 
-async function initVenueAutocomplete() {
+async function initLocationAutocomplete() {
   try {
-    setPlacesStatus('Loading venue suggestions...');
+    setPlacesStatus('Loading location suggestions…');
     const { enabled, apiKey } = await api('/api/places/config');
     if (!enabled || !apiKey) {
-      setPlacesStatus('');
+      setPlacesStatus('Search suggestions are unavailable. Enter the location manually.');
       return;
     }
     await loadGooglePlaces(apiKey);
-    const autocomplete = new google.maps.places.Autocomplete($('venue_name'), {
-      fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id'],
-      types: ['establishment']
+    const autocomplete = new google.maps.places.Autocomplete($('location_search'), {
+      fields: ['name', 'formatted_address', 'address_components', 'geometry', 'place_id', 'types']
     });
     autocomplete.addListener('place_changed', () => applySelectedPlace(autocomplete.getPlace()));
     setPlacesStatus('');
   } catch (_) {
-    setPlacesStatus('Venue suggestions unavailable. You can enter the venue manually.');
+    setPlacesStatus('Search suggestions are unavailable. Enter the location manually.');
   }
 }
 
-$('venue_name').addEventListener('input', () => {
-  if (!applyingPlace) clearPlaceMeta();
+$('location_search').addEventListener('input', () => {
+  if (applyingPlace) return;
+  locationKind = null;
+  $('location_name').value = '';
+  setStoredLocation('', '');
+  clearPlaceMeta();
+  renderLocationSelection();
+  setPlacesStatus($('location_search').value.trim() ? 'Choose a suggestion or enter the address manually.' : '');
 });
-$('venue_address').addEventListener('input', () => {
-  if (!applyingPlace) clearPlaceMeta();
+$('location_manual_address').addEventListener('input', syncManualLocation);
+$('location_name').addEventListener('input', () => {
+  if (locationKind !== 'address') return;
+  const address = $('venue_address').value;
+  setStoredLocation($('location_name').value.trim() || LocationUtils.addressFallback(address), address);
+  renderLocationSelection();
 });
-initVenueAutocomplete();
+$('location-manual-toggle').addEventListener('click', () => setManualLocationMode(true));
+$('location-search-toggle').addEventListener('click', () => setManualLocationMode(false));
+$('location-change').addEventListener('click', () => {
+  const input = manualLocationMode ? $('location_manual_address') : $('location_search');
+  input.focus();
+  input.select();
+});
+populateLocationEditor('', '');
+initLocationAutocomplete();
 
 // ── Cover image: upload, Unsplash search, or none ──
 const drop = $('cover-drop');
@@ -833,6 +923,14 @@ function showError(msg) {
 
 function collect() {
   const hasSecondVibe = !$('vibe-choice-two').hidden;
+  const venueName = $('venue_name').value.trim();
+  const venueAddress = $('venue_address').value.trim();
+  if (!venueName && !venueAddress) {
+    throw new Error('Choose a venue or address, or enter the location manually');
+  }
+  if (manualLocationMode && !venueAddress) {
+    throw new Error('Add an address for this location');
+  }
   const body = {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
@@ -847,8 +945,8 @@ function collect() {
     artwork_accent_color: artworkAccents.get(activeArtworkUrl()) || null,
     event_date: $('event_date').value,
     start_time: $('start_time').value,
-    venue_name: $('venue_name').value.trim(),
-    venue_address: $('venue_address').value.trim(),
+    venue_name: venueName || LocationUtils.addressFallback(venueAddress),
+    venue_address: venueAddress,
     venue_city: $('venue_city').value || null,
     venue_state: $('venue_state').value || null,
     venue_latitude: $('venue_latitude').value || null,
@@ -895,8 +993,7 @@ if (editId) {
     }
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
-    $('venue_name').value = event.venue_name;
-    $('venue_address').value = event.venue_address || '';
+    populateLocationEditor(event.venue_name, event.venue_address || '');
     $('venue_city').value = event.venue_city || '';
     $('venue_state').value = event.venue_state || '';
     $('venue_latitude').value = event.venue_latitude || '';

@@ -1,5 +1,6 @@
 const { Resend } = require('resend');
 const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
+const LocationUtils = require('../../public/js/location-utils');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -211,7 +212,7 @@ function confirmationDetailsCard(event) {
     }
   }
   if (event.start_time && /^\d{1,2}:\d{2}/.test(String(event.start_time))) rows.push(['Time', formatTime(event.start_time)]);
-  const venue = String(event.venue_name || event.venue_address || '').trim();
+  const venue = LocationUtils.displayParts(event.venue_name, event.venue_address).name;
   if (venue) rows.push(['Venue', venue]);
   if (!rows.length) return '';
 
@@ -227,7 +228,7 @@ function confirmationDetailsCard(event) {
 
 function confirmationActionLinks(event, rsvp, theme) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const location = [event.venue_name, event.venue_address].filter(Boolean).join(', ');
+  const location = LocationUtils.locationQuery(event.venue_name, event.venue_address);
   const actions = [
     {
       label: 'Add to Calendar',
@@ -266,7 +267,8 @@ function eventCard(event) {
   const dateStr = new Date(event.event_date).toLocaleDateString('en-US',
     { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const timeStr = formatTime(event.start_time);
-  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent([event.venue_name, event.venue_address].filter(Boolean).join(', '))}`;
+  const location = LocationUtils.displayParts(event.venue_name, event.venue_address);
+  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(LocationUtils.locationQuery(event.venue_name, event.venue_address))}`;
   return `
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 10px">
         <tr><td style="padding:0 0 14px">
@@ -282,7 +284,7 @@ function eventCard(event) {
         </td></tr>
         <tr><td style="padding:10px 0 0;border-top:1px solid #1a1a1a">
           <span style="color:#777;font-size:13px">Venue</span>
-          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(event.venue_name)}</span>
+          <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(location.name)}</span>
         </td></tr>
       </table>
       <p style="margin:0 0 4px;text-align:right"><a href="${esc(mapsUrl)}" style="color:#1CC5BE;font-size:13px;text-decoration:none;font-weight:700">Open in Maps →</a></p>`;

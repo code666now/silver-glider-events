@@ -290,6 +290,29 @@ test('live event editing is visible only to the owner and saves through the prot
   assert.match(adaptiveHtml, /"adaptiveBackground":true/);
 });
 
+test('address-only locations render once and keep Maps and calendar destinations intact', async () => {
+  const event = await createEvent({
+    slug: 'address-only-night',
+    title: 'Address Only Night',
+    venue_name: '987 Cedar Lane',
+    venue_address: '987 Cedar Lane, Testville, CA 90000'
+  });
+
+  const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(publicPage.status, 200);
+  const html = await publicPage.text();
+  assert.match(html, /<strong>987 Cedar Lane, Testville, CA 90000<\/strong>/);
+  assert.doesNotMatch(html, /<strong>987 Cedar Lane<\/strong>\s*<span[^>]*>987 Cedar Lane, Testville/);
+  assert.match(html, /maps\.google\.com\/\?q=987%20Cedar%20Lane%2C%20Testville%2C%20CA%2090000/);
+  assert.doesNotMatch(html, /q=987%20Cedar%20Lane%2C%20987%20Cedar%20Lane/);
+
+  const calendar = await fetch(`${baseUrl}/e/${event.slug}/calendar.ics`);
+  assert.equal(calendar.status, 200);
+  const ics = await calendar.text();
+  assert.match(ics, /LOCATION:987 Cedar Lane\\, Testville\\, CA 90000/);
+  assert.doesNotMatch(ics, /LOCATION:987 Cedar Lane\\, 987 Cedar Lane/);
+});
+
 test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {
   const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
   const historicalEvent = await createEvent({ slug: 'historical-avatar-night', title: 'Historical Avatar Night', show_guest_list: true });

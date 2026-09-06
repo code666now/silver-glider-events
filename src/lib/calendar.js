@@ -1,4 +1,5 @@
 const { createEvent } = require('ics');
+const LocationUtils = require('../../public/js/location-utils');
 
 // Build an .ics string for an event. Times are floating local times —
 // correct for in-person events regardless of the attendee's device timezone.
@@ -14,7 +15,7 @@ function buildIcs(event) {
     startOutputType: 'local',
     title: event.title,
     description: event.description || undefined,
-    location: [event.venue_name, event.venue_address].filter(Boolean).join(', '),
+    location: LocationUtils.locationQuery(event.venue_name, event.venue_address),
     url: `${process.env.APP_URL}/e/${event.slug}`,
     status: event.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED',
     calName: 'Silver Glider Events'
