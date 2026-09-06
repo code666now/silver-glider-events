@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.53
+
+Released September 5, 2026.
+
+### Added
+
+* Added one unified **Location** search for venues and normal addresses in the Create/Edit dashboard and published-event owner editor, with an optional friendly name for address-only locations and a clear manual-entry fallback.
+
+### Improved
+
+* Made location edits preview immediately on the published event page while remaining reversible until **Save changes**.
+* Kept existing event storage, Maps links, calendar files, and RSVP emails compatible while preventing address-only locations from displaying the same address twice.
+
 ## 1.0.52
 
 Released September 5, 2026.
