@@ -22,6 +22,7 @@
     disco: 'sg-events/effects/disco',
     fog: 'sg-events/effects/fog'
   };
+  const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static']);
   const photoCategories = [
     ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
     ['🍂 Fall', 'autumn leaves cozy harvest warm'],
@@ -467,6 +468,9 @@
       video.classList.remove('is-playing');
       return;
     }
+    const seamlessLoop = seamlessVideoEffects.has(theme)
+      ? window.SGSeamlessVideoLoop?.attach(video)
+      : null;
 
     if (!video.dataset.ownerPlaybackBound) {
       const reveal = () => {
@@ -476,7 +480,7 @@
       video.addEventListener('loadeddata', () => { if (!video.paused) reveal(); });
       video.dataset.ownerPlaybackBound = 'true';
     }
-    video.play().then(() => {
+    (seamlessLoop ? seamlessLoop.play() : video.play()).then(() => {
       if (draft.backgroundTheme === theme && video.isConnected) video.classList.add('is-playing');
     }).catch(() => {
       // The CSS poster remains visible if autoplay is blocked.

@@ -102,6 +102,12 @@
   transition: opacity .45s ease;
 }
 .fx-video-media.is-playing { opacity: 1; }
+.fx-video-media.is-seamless-loop {
+  opacity: 0;
+  transition-duration: .9s;
+  transition-timing-function: linear;
+}
+.fx-video-media.is-seamless-loop.is-playing.is-seamless-active { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .fx-video-media { display: none; }
 }

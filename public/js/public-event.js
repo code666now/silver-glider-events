@@ -141,6 +141,9 @@ function mountVideoEffect() {
     video.removeAttribute('autoplay');
     return;
   }
+  const seamlessLoop = ['liquid-stardust', 'color-static'].includes(EVENT.bgEffect)
+    ? window.SGSeamlessVideoLoop?.attach(video)
+    : null;
   const reveal = () => video.classList.add('is-playing');
   video.addEventListener('playing', reveal);
   video.addEventListener('loadeddata', () => { if (!video.paused) reveal(); });
@@ -148,7 +151,7 @@ function mountVideoEffect() {
 
   let interactionRetryArmed = false;
   const retryAfterInteraction = () => {
-    video.play().then(reveal).catch(() => {});
+    attemptPlay().then(reveal).catch(() => {});
     document.removeEventListener('touchstart', retryAfterInteraction);
     document.removeEventListener('pointerdown', retryAfterInteraction);
     interactionRetryArmed = false;
@@ -159,9 +162,12 @@ function mountVideoEffect() {
     document.addEventListener('touchstart', retryAfterInteraction, { once: true, passive: true });
     document.addEventListener('pointerdown', retryAfterInteraction, { once: true, passive: true });
   };
-  const attemptPlay = () => video.play().then(reveal).catch(armInteractionRetry);
+  const attemptPlay = () => (seamlessLoop ? seamlessLoop.play() : video.play()).then(reveal).catch(armInteractionRetry);
   const syncPlayback = () => {
-    if (document.hidden || motionPreference.matches) video.pause();
+    if (document.hidden || motionPreference.matches) {
+      if (seamlessLoop) seamlessLoop.pause();
+      else video.pause();
+    }
     else attemptPlay();
   };
   document.addEventListener('visibilitychange', syncPlayback);

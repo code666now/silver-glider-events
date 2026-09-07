@@ -108,6 +108,8 @@
       object-fit: cover; opacity: 0; transition: opacity .45s ease;
     }
     .fx-video-media.is-playing { opacity: 1; }
+    .fx-video-media.is-seamless-loop { opacity: 0; transition-duration: .9s; transition-timing-function: linear; }
+    .fx-video-media.is-seamless-loop.is-playing.is-seamless-active { opacity: 1; }
     @media (prefers-reduced-motion: reduce) { .fx-video-media { display: none; } }
 
     /* Darkening veil so text stays legible over an effect */
@@ -842,6 +844,7 @@
   <script id="event-data" type="application/json">{{EVENT_JSON}}</script>
   <script src="/js/artwork-color.js"></script>
   <script src="/js/location-utils.js"></script>
+  <script src="/js/seamless-video-loop.js"></script>
   <script src="/js/public-event.js"></script>
   <script src="/js/event-owner-editor.js"></script>
 </body>

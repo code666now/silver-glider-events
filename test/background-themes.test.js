@@ -7,9 +7,12 @@ function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('Halloween leads the effect picker and Match Photo comes last', () => {
+test('seasonal effects lead, new static effects stay together, and Match Photo comes last', () => {
   const form = source('public/js/event-form.js');
-  assert.match(form, /const EFFECTS = \['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'\]/);
+  const ownerRenderer = source('src/lib/event-owner-editor.js');
+  const expectedOrder = /'halloween'[\s\S]*'last-guest'[\s\S]*'static'[\s\S]*'liquid-stardust'[\s\S]*'color-static'[\s\S]*'saloon'[\s\S]*'adaptive'/;
+  assert.match(form, /const EFFECTS = \['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'adaptive'\]/);
+  assert.match(ownerRenderer, expectedOrder);
   assert.match(form, /adaptive: 'Match Photo'/);
   assert.match(form, /halloween: 'Halloween', 'liquid-stardust': 'Liquid Stardust', 'color-static': 'Color Static'/);
   assert.match(form, /saloon: 'After Hours Saloon'/);
@@ -71,6 +74,21 @@ test('seasonal video effects are accepted and render from dedicated assets', () 
   assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/liquid-stardust\.jpg/);
   assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/color-static\.jpg/);
   assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/halloween\.jpg/);
+});
+
+test('new video backgrounds crossfade their end-to-start seam in both live views', () => {
+  const seamlessLoop = source('public/js/seamless-video-loop.js');
+  const publicClient = source('public/js/public-event.js');
+  const ownerClient = source('public/js/event-owner-editor.js');
+  const standardTemplate = source('src/views/event-public.html');
+  const flyerTemplate = source('src/views/event-public-flyer.html');
+  assert.match(seamlessLoop, /cloneNode\(true\)/);
+  assert.match(seamlessLoop, /remaining <= leadSeconds/);
+  assert.match(seamlessLoop, /is-seamless-active/);
+  assert.match(publicClient, /\['liquid-stardust', 'color-static'\][\s\S]*SGSeamlessVideoLoop/);
+  assert.match(ownerClient, /new Set\(\['liquid-stardust', 'color-static'\]\)[\s\S]*SGSeamlessVideoLoop/);
+  assert.match(standardTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
+  assert.match(flyerTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
 });
 
 test('After Hours Saloon remains accepted and renders from its dedicated asset', () => {
