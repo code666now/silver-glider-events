@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.54
+
+Released September 7, 2026.
+
+### Improved
+
+* Renamed the adaptive **Default wall** effect to **Match Photo**, placed **Halloween** first in the Effects picker, and moved **Match Photo** to the final position in both event editors.
+
 ## 1.0.53
 
 Released September 5, 2026.
