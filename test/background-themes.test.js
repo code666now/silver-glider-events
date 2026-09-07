@@ -7,15 +7,15 @@ function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('seasonal video effects lead the effect picker', () => {
+test('Halloween leads the effect picker and Match Photo comes last', () => {
   const form = source('public/js/event-form.js');
-  assert.match(form, /const EFFECTS = \['adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'\]/);
-  assert.match(form, /adaptive: 'Default wall'/);
+  assert.match(form, /const EFFECTS = \['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'\]/);
+  assert.match(form, /adaptive: 'Match Photo'/);
   assert.match(form, /halloween: 'Halloween', 'last-guest': 'The Last Guest'/);
   assert.match(form, /saloon: 'After Hours Saloon'/);
 });
 
-test('Default wall reuses the artwork palette as an explicit adaptive background', () => {
+test('Match Photo reuses the artwork palette as an explicit adaptive background', () => {
   const form = source('public/js/event-form.js');
   const ownerRenderer = source('src/lib/event-owner-editor.js');
   const ownerClient = source('public/js/event-owner-editor.js');
@@ -26,7 +26,7 @@ test('Default wall reuses the artwork palette as an explicit adaptive background
 
   assert.match(form, /function updateAdaptiveThemeSwatch\(colors\)/);
   assert.match(form, /updateAdaptiveThemeSwatch\(ArtworkColor\.paletteForBackground\(candidates\)\)/);
-  assert.match(ownerRenderer, /\['adaptive', 'Default wall', 'effect'\]/);
+  assert.match(ownerRenderer, /\['adaptive', 'Match Photo', 'effect'\]/);
   assert.match(ownerClient, /if \(pageBackground && draft\.backgroundTheme === 'adaptive'\)/);
   assert.match(ownerClient, /background\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);

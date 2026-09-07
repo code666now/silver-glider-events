@@ -24,7 +24,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /role="switch"/);
   assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 3);
   assert.match(renderer, /Admission, music &amp; advanced settings/);
-  assert.match(renderer, /owner-flyer-default[\s\S]*Default wall/);
+  assert.match(renderer, /owner-flyer-default[\s\S]*Match Photo/);
   assert.doesNotMatch(renderer, /id="owner-end-time"/);
 
   assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}`/);

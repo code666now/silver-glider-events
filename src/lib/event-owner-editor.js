@@ -5,14 +5,14 @@ const THEMES = [
   ['aurora', 'Aurora', 'gradient'],
   ['sunset', 'Sunset', 'gradient'],
   ['ocean', 'Ocean', 'gradient'],
-  ['adaptive', 'Default wall', 'effect'],
   ['halloween', 'Halloween', 'effect'],
   ['last-guest', 'The Last Guest', 'effect'],
   ['disco', 'Disco', 'effect'],
   ['fog', 'Fog', 'effect'],
   ['paper', 'Kraft paper', 'effect'],
   ['static', 'TV static', 'effect'],
-  ['saloon', 'After Hours Saloon', 'effect']
+  ['saloon', 'After Hours Saloon', 'effect'],
+  ['adaptive', 'Match Photo', 'effect']
 ];
 
 function themeButtons(kind) {
@@ -138,7 +138,7 @@ function renderOwnerEditor(event) {
                 <div class="owner-theme-grid">
                   <button class="owner-theme owner-flyer-default" type="button" data-owner-theme="midnight" aria-pressed="false" hidden>
                     <span class="owner-theme-preview owner-theme-plaster" aria-hidden="true"></span>
-                    <span>Default wall</span>
+                    <span>Match Photo</span>
                   </button>
                   ${themeButtons('effect')}
                 </div>
