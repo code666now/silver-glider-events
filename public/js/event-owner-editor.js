@@ -69,6 +69,11 @@
     }
     return { value: handle, error: null };
   }
+  function comparableInstagramHandle(value) {
+    const raw = String(value ?? '').trim();
+    const parsed = cleanInstagramHandleInput(raw);
+    return parsed.error ? `invalid:${raw}` : (parsed.value || '');
+  }
   const normalized = source => ({
     ...source,
     eventDate: dateValue(source.eventDate),
@@ -83,7 +88,7 @@
     coverImageUrl: source.coverImageUrl || '',
     flyerImageUrl: source.flyerImageUrl || '',
     flyerDesignerName: source.flyerDesignerName || '',
-    flyerDesignerInstagramHandle: source.flyerDesignerInstagramHandle || '',
+    flyerDesignerInstagramHandle: comparableInstagramHandle(source.flyerDesignerInstagramHandle),
     coverCreditName: source.coverCreditName || '',
     coverCreditLink: source.coverCreditLink || '',
     artworkAccentColor: source.artworkAccentColor || ''
@@ -99,6 +104,7 @@
   let photoCategory = photoCategories[0][0];
   let photoLoading = false;
   let photosReady = false;
+  let editorFieldSyncTimer;
   let applyingPlace = false;
   let placesLoader;
   let placesInitPromise;
@@ -147,6 +153,39 @@
     warning.textContent = needsWarning
       ? `${saved.rsvpCount} ${saved.rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d. This change may affect their plans.`
       : '';
+  }
+
+  function editorFieldsDifferFromDraft() {
+    const capacity = $('owner-capacity').value ? Number($('owner-capacity').value) : null;
+    const visibility = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    return $('owner-title').value.trim() !== draft.title ||
+      $('owner-description').value.trim() !== draft.description ||
+      $('owner-date').value !== draft.eventDate ||
+      $('owner-start-time').value !== draft.startTime ||
+      $('owner-category').value !== draft.category ||
+      capacity !== draft.capacity ||
+      visibility !== draft.visibility ||
+      $('owner-show-guests').checked !== draft.showGuestList ||
+      $('owner-allow-guests').checked !== draft.allowGuests ||
+      $('owner-comments').checked !== draft.commentsEnabled ||
+      (draft.presentationMode === 'flyer' && (
+        $('owner-flyer-designer-name').value.trim() !== draft.flyerDesignerName ||
+        comparableInstagramHandle($('owner-flyer-designer-instagram').value) !== comparableInstagramHandle(draft.flyerDesignerInstagramHandle)
+      ));
+  }
+
+  function reconcileEditorFields() {
+    if (editor.classList.contains('is-open') && editorFieldsDifferFromDraft()) readInputs();
+  }
+
+  function startEditorFieldSync() {
+    window.clearInterval(editorFieldSyncTimer);
+    editorFieldSyncTimer = window.setInterval(reconcileEditorFields, 200);
+  }
+
+  function stopEditorFieldSync() {
+    window.clearInterval(editorFieldSyncTimer);
+    editorFieldSyncTimer = undefined;
   }
 
   function previewGuestSettings() {
@@ -702,6 +741,7 @@
     trigger.setAttribute('aria-expanded', 'true');
     document.body.classList.add('owner-editor-open');
     document.body.classList.remove('owner-editor-peeking');
+    startEditorFieldSync();
     setTimeout(() => document.querySelector(`[data-owner-tab="${activeTab}"]`)?.focus(), 0);
   }
 
@@ -712,8 +752,10 @@
   }
 
   function closeEditor({ confirmDiscard = true } = {}) {
+    reconcileEditorFields();
     if (confirmDiscard && isDirty() && !window.confirm('Discard your unsaved event changes?')) return;
     if (isDirty()) restoreSavedPreview();
+    stopEditorFieldSync();
     editor.classList.remove('is-open', 'is-peeking');
     editor.setAttribute('aria-hidden', 'true');
     trigger.setAttribute('aria-expanded', 'false');
@@ -856,7 +898,9 @@
     draft.commentsEnabled = $('owner-comments').checked;
     if (draft.presentationMode === 'flyer') {
       draft.flyerDesignerName = $('owner-flyer-designer-name').value.trim();
-      draft.flyerDesignerInstagramHandle = $('owner-flyer-designer-instagram').value.trim();
+      const flyerInstagramRaw = $('owner-flyer-designer-instagram').value.trim();
+      const flyerInstagram = cleanInstagramHandleInput(flyerInstagramRaw);
+      draft.flyerDesignerInstagramHandle = flyerInstagram.error ? flyerInstagramRaw : (flyerInstagram.value || '');
       previewFlyerDesignCredit();
     }
     previewDetails();
@@ -1040,6 +1084,7 @@
     else closeEditor();
   });
   window.addEventListener('beforeunload', event => {
+    reconcileEditorFields();
     if (!isDirty()) return;
     event.preventDefault();
     event.returnValue = '';

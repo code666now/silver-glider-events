@@ -204,6 +204,15 @@ test('secondary text and form focus use readable shared contrast tokens', () => 
   assert.match(brand, /\.sg-input:focus[\s\S]*outline: 2px solid rgba\(28, 197, 190, 0\.32\)/);
 });
 
+test('public descriptions and essential RSVP surfaces stay readable over artwork', () => {
+  for (const templatePath of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
+    const styles = source(templatePath);
+    assert.match(styles, /\.desc \{[\s\S]*color: rgba\(255,255,255,\.8\);[\s\S]*font-weight: 500;[\s\S]*white-space: pre-line;/);
+    assert.match(styles, /\.when \{[\s\S]*background: rgba\(255,255,255,\.065\);[\s\S]*backdrop-filter: blur\(10px\);/);
+    assert.match(styles, /#rsvp-form-box \.sg-input \{[\s\S]*background-color: rgba\(255,255,255,\.07\);[\s\S]*border-color: rgba\(255,255,255,\.16\);/);
+  }
+});
+
 test('public RSVP success state clearly confirms the RSVP without implying guest-list access', () => {
   for (const templatePath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
     const view = source(templatePath);

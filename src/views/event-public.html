@@ -296,13 +296,16 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      background: var(--sg-surface);
-      border: 1px solid var(--sg-border);
+      background: rgba(255,255,255,.065);
+      border: 1px solid rgba(255,255,255,.15);
       border-radius: 999px;
       padding: 10px 20px;
       font-size: 14px;
       font-weight: 600;
       margin-bottom: 14px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
     .when .dot { color: var(--sg-accent); }
     .venue { margin: 4px 0 28px; }
@@ -325,7 +328,15 @@
     .ticket-note span { color: var(--sg-text); font-weight: 700; }
     .ticket-note a { font-weight: 700; white-space: nowrap; }
     .ticket-note em { font-style: normal; color: var(--sg-text-dim); white-space: nowrap; }
-    .desc { color: var(--sg-text-dim); font-size: 15px; line-height: 1.75; margin-bottom: 36px; }
+    .desc {
+      color: rgba(255,255,255,.8);
+      font-size: 15px;
+      font-weight: 500;
+      line-height: 1.75;
+      margin-bottom: 36px;
+      white-space: pre-line;
+      text-shadow: 0 1px 16px rgba(0,0,0,.38);
+    }
     .vibe-section {
       margin: -8px 0 34px;
       padding: 16px;
@@ -385,6 +396,13 @@
     .mobile-rsvp-dock { display: none; }
     .mobile-rsvp-dock[hidden] { display: none; }
     #rsvp-form-box { display: none; margin-top: 20px; }
+    #rsvp-form-box .sg-input {
+      background-color: rgba(255,255,255,.07);
+      border-color: rgba(255,255,255,.16);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
     .rsvp-form-head {
       display: flex;
       align-items: center;

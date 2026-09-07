@@ -32,6 +32,9 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function previewImage\(/);
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
+  assert.match(client, /function reconcileEditorFields\(\)/);
+  assert.match(client, /setInterval\(reconcileEditorFields, 200\)/);
+  assert.match(client, /function closeEditor[\s\S]*reconcileEditorFields\(\)/);
   assert.match(client, /Discard your unsaved event changes\?/);
   assert.match(client, /sessionStorage\.setItem\('sge-owner-editor-reopen'/);
   assert.match(client, /people have'\} RSVP’d\. This change may affect their plans\./);
@@ -54,6 +57,18 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /venue_city: draft\.venueCity \|\| null/);
   assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
   assert.match(client, /clearPlaceMeta\(\);[\s\S]*renderOwnerLocation\(\);[\s\S]*previewDetails\(\);[\s\S]*syncDirtyState\(\)/);
+});
+
+test('event descriptions preserve paragraph spacing in live previews and published pages', () => {
+  const route = read('src/routes/public.js');
+  const standard = read('src/views/event-public.html');
+  const flyerStyles = read('public/css/event-public-flyer.css');
+  const client = read('public/js/event-owner-editor.js');
+
+  assert.match(route, /event\.description[\s\S]*replace\(\/\\n\/g, '<br>'\)/);
+  assert.match(standard, /\.desc \{[^}]*white-space: pre-line;/);
+  assert.match(flyerStyles, /\.desc \{[^}]*white-space: pre-line;/);
+  assert.match(client, /description\.textContent = draft\.description \|\| ''/);
 });
 
 test('appearance panel matches dashboard cover-fit preview behavior', () => {
