@@ -12,10 +12,12 @@
   const saveStatus = $('owner-save-status');
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
-  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
-  const effectKeys = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'];
+  const effectKeys = ['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const videoEffects = {
     halloween: 'sg-events/effects/halloween',
+    'liquid-stardust': 'sg-events/effects/liquid-stardust',
+    'color-static': 'sg-events/effects/color-static',
     'last-guest': 'sg-events/effects/the-last-guest',
     disco: 'sg-events/effects/disco',
     fog: 'sg-events/effects/fog'

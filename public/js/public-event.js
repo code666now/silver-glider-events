@@ -129,7 +129,7 @@ mountStaticEffect();
 // poster frame underneath if autoplay is blocked, the video fails, or the user
 // has requested reduced motion.
 function mountVideoEffect() {
-  if (!['halloween', 'last-guest', 'disco', 'fog'].includes(EVENT.bgEffect)) return;
+  if (!['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog'].includes(EVENT.bgEffect)) return;
   const video = document.querySelector('.fx-video-media');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
   const saveData = navigator.connection && navigator.connection.saveData;

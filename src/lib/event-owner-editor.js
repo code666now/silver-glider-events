@@ -6,6 +6,8 @@ const THEMES = [
   ['sunset', 'Sunset', 'gradient'],
   ['ocean', 'Ocean', 'gradient'],
   ['halloween', 'Halloween', 'effect'],
+  ['liquid-stardust', 'Liquid Stardust', 'effect'],
+  ['color-static', 'Color Static', 'effect'],
   ['last-guest', 'The Last Guest', 'effect'],
   ['disco', 'Disco', 'effect'],
   ['fog', 'Fog', 'effect'],

@@ -104,7 +104,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.54');
+  assert.equal((await health.json()).version, '1.0.55');
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -127,7 +127,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
     start_time: '20:00',
     venue_name: 'Integration Hall',
     visibility: 'public',
-    background_theme: 'halloween',
+    background_theme: 'liquid-stardust',
     presentation_mode: 'standard',
     show_guest_list: true,
     allow_guests: true,
@@ -155,7 +155,7 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.equal(payload.event.show_guest_list, true);
   assert.equal(payload.event.allow_guests, true);
   assert.equal(payload.event.comments_enabled, true);
-  assert.equal(payload.event.background_theme, 'halloween');
+  assert.equal(payload.event.background_theme, 'liquid-stardust');
 
   const publicPage = await fetch(`${baseUrl}/e/${payload.event.slug}`);
   assert.equal(publicPage.status, 200);
@@ -164,8 +164,8 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(publicHtml, /class="public-guest-list"/);
   assert.match(publicHtml, /name="party_size"/);
   assert.match(publicHtml, /class="event-wall"/);
-  assert.match(publicHtml, /class="event-bg bg-theme fx-halloween"/);
-  assert.match(publicHtml, /sg-events\/effects\/halloween/);
+  assert.match(publicHtml, /class="event-bg bg-theme fx-liquid-stardust"/);
+  assert.match(publicHtml, /sg-events\/effects\/liquid-stardust/);
 
   const rsvp = await fetch(`${baseUrl}/api/public/events/${payload.event.slug}/rsvp`, {
     method: 'POST',
@@ -288,6 +288,19 @@ test('live event editing is visible only to the owner and saves through the prot
   const adaptiveHtml = await adaptivePage.text();
   assert.match(adaptiveHtml, /class="event-bg bg-theme bg-adaptive"/);
   assert.match(adaptiveHtml, /"adaptiveBackground":true/);
+
+  const colorStaticUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ background_theme: 'color-static' })
+  });
+  assert.equal(colorStaticUpdate.status, 200);
+  assert.equal((await colorStaticUpdate.json()).event.background_theme, 'color-static');
+
+  const colorStaticPage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
+  const colorStaticHtml = await colorStaticPage.text();
+  assert.match(colorStaticHtml, /class="event-bg bg-theme fx-color-static"/);
+  assert.match(colorStaticHtml, /sg-events\/effects\/color-static/);
 });
 
 test('address-only locations render once and keep Maps and calendar destinations intact', async () => {

@@ -21,6 +21,8 @@ function safeHttpUrl(value) {
 const EMAIL_EFFECT_POSTERS = Object.freeze({
   paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/textures/kraft-paper.jpg',
   halloween: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/halloween.jpg',
+  'liquid-stardust': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/liquid-stardust.jpg',
+  'color-static': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/color-static.jpg',
   'last-guest': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/the-last-guest.jpg',
   disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/disco.jpg',
   fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/fog.jpg',

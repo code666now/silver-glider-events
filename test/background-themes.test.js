@@ -9,9 +9,9 @@ function source(relativePath) {
 
 test('Halloween leads the effect picker and Match Photo comes last', () => {
   const form = source('public/js/event-form.js');
-  assert.match(form, /const EFFECTS = \['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'\]/);
+  assert.match(form, /const EFFECTS = \['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'\]/);
   assert.match(form, /adaptive: 'Match Photo'/);
-  assert.match(form, /halloween: 'Halloween', 'last-guest': 'The Last Guest'/);
+  assert.match(form, /halloween: 'Halloween', 'liquid-stardust': 'Liquid Stardust', 'color-static': 'Color Static'/);
   assert.match(form, /saloon: 'After Hours Saloon'/);
 });
 
@@ -38,24 +38,38 @@ test('Match Photo reuses the artwork palette as an explicit adaptive background'
 });
 
 test('seasonal video effects are accepted and render from dedicated assets', () => {
-  assert.match(source('src/routes/events.js'), /'halloween', 'last-guest'/);
+  assert.match(source('src/routes/events.js'), /'halloween', 'liquid-stardust', 'color-static', 'last-guest'/);
   const publicRoute = source('src/routes/public.js');
   assert.match(publicRoute, /halloween: 'sg-events\/effects\/halloween'/);
+  assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
+  assert.match(publicRoute, /'color-static': 'sg-events\/effects\/color-static'/);
   assert.match(publicRoute, /'last-guest': 'sg-events\/effects\/the-last-guest'/);
-  assert.match(source('public/js/public-event.js'), /\['halloween', 'last-guest', 'disco', 'fog'\]/);
+  assert.match(source('public/js/public-event.js'), /\['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog'\]/);
 
   for (const view of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
     const css = source(view);
     assert.match(css, /\.event-bg\.fx-halloween/);
+    assert.match(css, /\.event-bg\.fx-liquid-stardust/);
+    assert.match(css, /\.event-bg\.fx-color-static/);
     assert.match(css, /\.event-bg\.fx-last-guest/);
     assert.match(css, /sg-events\/effects\/halloween\.jpg/);
+    assert.match(css, /sg-events\/effects\/liquid-stardust\.jpg/);
+    assert.match(css, /sg-events\/effects\/color-static\.jpg/);
     assert.match(css, /sg-events\/effects\/the-last-guest\.jpg/);
   }
 
   const pickerCss = source('public/css/brand.css');
   assert.match(pickerCss, /\.sg-swatch\.fx-halloween/);
+  assert.match(pickerCss, /\.sg-swatch\.fx-liquid-stardust/);
+  assert.match(pickerCss, /\.sg-swatch\.fx-color-static/);
   assert.match(pickerCss, /\.sg-swatch\.fx-last-guest/);
+  assert.match(source('public/css/event-owner-editor.css'), /\.owner-theme-liquid-stardust/);
+  assert.match(source('public/css/event-owner-editor.css'), /\.owner-theme-color-static/);
+  assert.match(source('src/routes/public-hosts.js'), /sg-events\/effects\/liquid-stardust\.jpg/);
+  assert.match(source('src/routes/public-hosts.js'), /sg-events\/effects\/color-static\.jpg/);
   assert.match(source('src/routes/public-hosts.js'), /sg-events\/effects\/the-last-guest\.jpg/);
+  assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/liquid-stardust\.jpg/);
+  assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/color-static\.jpg/);
   assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/halloween\.jpg/);
 });
 

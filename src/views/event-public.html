@@ -46,7 +46,7 @@
     @media (prefers-reduced-motion: reduce) { .event-bg { animation: none; } }
 
     /* ── Background effects — replace the gradient ── */
-    .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-halloween, .event-bg.fx-last-guest,
+    .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-halloween, .event-bg.fx-liquid-stardust, .event-bg.fx-color-static, .event-bg.fx-last-guest,
     .event-bg.fx-disco, .event-bg.fx-fog, .event-bg.fx-saloon {
       animation: none;
       background-image: none;
@@ -68,7 +68,7 @@
       background-repeat: no-repeat;
     }
     /* Video loops retain their first frame as a no-motion/autoplay fallback. */
-    .event-bg.fx-halloween, .event-bg.fx-last-guest, .event-bg.fx-disco, .event-bg.fx-fog {
+    .event-bg.fx-halloween, .event-bg.fx-liquid-stardust, .event-bg.fx-color-static, .event-bg.fx-last-guest, .event-bg.fx-disco, .event-bg.fx-fog {
       background-color: #100d18;
       background-size: cover;
       background-position: center;
@@ -77,6 +77,14 @@
     .event-bg.fx-halloween {
       background-color: #070704;
       background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/halloween.jpg");
+    }
+    .event-bg.fx-liquid-stardust {
+      background-color: #17103a;
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/liquid-stardust.jpg");
+    }
+    .event-bg.fx-color-static {
+      background-color: #050508;
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/color-static.jpg");
     }
     .event-bg.fx-last-guest {
       background-color: #0c0b09;

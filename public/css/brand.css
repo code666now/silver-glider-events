@@ -345,6 +345,22 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-size: cover;
   background-position: center;
 }
+.sg-swatch.fx-liquid-stardust {
+  background-color: #17103a;
+  background-image:
+    linear-gradient(rgba(12,7,31,.08), rgba(12,7,31,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/liquid-stardust.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-color-static {
+  background-color: #050508;
+  background-image:
+    linear-gradient(rgba(5,5,8,.02), rgba(5,5,8,.2)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/color-static.jpg");
+  background-size: cover;
+  background-position: center;
+}
 .sg-swatch.fx-last-guest {
   background-color: #0c0b09;
   background-image:

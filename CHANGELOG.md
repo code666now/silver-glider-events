@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.55
+
+Released September 7, 2026.
+
+### Added
+
+* Added **Liquid Stardust** and **Color Static** as optimized moving backgrounds in both event editors, published Standard and Flyer pages, Host Page cards, and email-safe poster fallbacks.
+* Kept **Halloween** first in the Effects picker and **Match Photo** last, with the two new effects placed directly after Halloween.
+
 ## 1.0.54
 
 Released September 7, 2026.

@@ -24,6 +24,8 @@
 .event-bg.fx-static,
 .event-bg.fx-paper,
 .event-bg.fx-halloween,
+.event-bg.fx-liquid-stardust,
+.event-bg.fx-color-static,
 .event-bg.fx-last-guest,
 .event-bg.fx-disco,
 .event-bg.fx-fog,
@@ -51,6 +53,8 @@
   background-repeat: no-repeat;
 }
 .event-bg.fx-halloween,
+.event-bg.fx-liquid-stardust,
+.event-bg.fx-color-static,
 .event-bg.fx-last-guest,
 .event-bg.fx-disco,
 .event-bg.fx-fog {
@@ -62,6 +66,14 @@
 .event-bg.fx-halloween {
   background-color: #070704;
   background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/halloween.jpg");
+}
+.event-bg.fx-liquid-stardust {
+  background-color: #17103a;
+  background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/liquid-stardust.jpg");
+}
+.event-bg.fx-color-static {
+  background-color: #050508;
+  background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/color-static.jpg");
 }
 .event-bg.fx-last-guest {
   background-color: #0c0b09;

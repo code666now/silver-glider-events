@@ -238,6 +238,8 @@ body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: o
 }
 .owner-theme-plaster { background-image: linear-gradient(rgba(10,10,10,.38),rgba(10,10,10,.38)),url('/images/flyer-plaster-wall.jpg'); }
 .owner-theme-halloween { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/halloween.jpg"); }
+.owner-theme-liquid-stardust { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/liquid-stardust.jpg"); }
+.owner-theme-color-static { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/color-static.jpg"); }
 .owner-theme-last-guest { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/the-last-guest.jpg"); }
 .owner-theme-disco { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/disco.jpg"); }
 .owner-theme-fog { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/fog.jpg"); }

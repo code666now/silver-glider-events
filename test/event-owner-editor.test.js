@@ -115,7 +115,7 @@ test('appearance previews mount only the selected animated effect', () => {
 
   assert.match(route, /data-effect-theme="\$\{theme\}"/);
   assert.match(publicClient, /canvas\.dataset\.effectTheme = 'static'/);
-  assert.match(ownerClient, /const videoEffects = \{[\s\S]*disco: 'sg-events\/effects\/disco'[\s\S]*fog: 'sg-events\/effects\/fog'/);
+  assert.match(ownerClient, /const videoEffects = \{[\s\S]*'liquid-stardust': 'sg-events\/effects\/liquid-stardust'[\s\S]*'color-static': 'sg-events\/effects\/color-static'[\s\S]*disco: 'sg-events\/effects\/disco'[\s\S]*fog: 'sg-events\/effects\/fog'/);
   assert.match(ownerClient, /function syncEffectMedia\(theme, background\)/);
   assert.match(ownerClient, /document\.createElement\('video'\)/);
   assert.match(ownerClient, /video\.play\(\)\.then/);
