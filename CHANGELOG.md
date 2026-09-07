@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.57
+
+Released September 7, 2026.
+
+### Added
+
+* Added optional flyer designer name and Instagram attribution to Flyer creation and the published-event owner editor, with immediate reversible preview and subtle linked credit on Flyer public pages.
+* Preserved designer credit when duplicating Flyer events while keeping Standard pages, cards, and emails unchanged.
+
 ## 1.0.56
 
 Released September 7, 2026.

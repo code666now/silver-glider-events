@@ -35,6 +35,7 @@ test('migration safely defaults and constrains flyer presentation on the existin
   const migration = read('src/db/migrations/016_flyer_presentation_mode.sql');
   const coverFitMigration = read('src/db/migrations/017_standard_mobile_cover_fit.sql');
   const accentMigration = read('src/db/migrations/018_event_artwork_accent.sql');
+  const designerCreditMigration = read('src/db/migrations/027_flyer_designer_credit.sql');
   assert.match(migration, /ALTER TABLE events/);
   assert.match(migration, /presentation_mode TEXT NOT NULL DEFAULT 'standard'/);
   assert.match(migration, /flyer_image_url TEXT/);
@@ -45,6 +46,10 @@ test('migration safely defaults and constrains flyer presentation on the existin
   assert.match(coverFitMigration, /cover_fit_mode IN \('auto', 'contain', 'cover'\)/);
   assert.match(accentMigration, /artwork_accent_color TEXT/);
   assert.match(accentMigration, /events_artwork_accent_color_check/);
+  assert.match(designerCreditMigration, /ADD COLUMN IF NOT EXISTS flyer_designer_name TEXT/);
+  assert.match(designerCreditMigration, /ADD COLUMN IF NOT EXISTS flyer_designer_instagram_handle TEXT/);
+  assert.match(designerCreditMigration, /flyer_designer_name IS NULL OR LENGTH\(flyer_designer_name\) <= 120/);
+  assert.match(designerCreditMigration, /flyer_designer_instagram_handle IS NULL/);
 });
 
 test('flyer uploads and event writes reuse authenticated, size-limited infrastructure', () => {
@@ -85,6 +90,26 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);
   assert.match(js, /Upload a flyer before publishing this event/);
+});
+
+test('Flyer designer credit is progressively disclosed, validated inline, and saved with the event', () => {
+  const html = read('src/views/event-form.html');
+  const js = read('public/js/event-form.js');
+  const events = read('src/routes/events.js');
+
+  assert.match(html, /id="flyer-credit-fields"[^>]*hidden/);
+  assert.match(html, /Who designed this flyer\?/);
+  assert.match(html, /Give them a shoutout\./);
+  assert.match(html, /id="flyer-designer-name"[^>]+maxlength="120"/);
+  assert.match(html, /id="flyer-designer-instagram"[^>]+aria-describedby="flyer-designer-instagram-error"/);
+  assert.match(js, /\$\('flyer-credit-fields'\)\.hidden = !url/);
+  assert.match(js, /setFlyerDesignerError\(parsed\.error\)/);
+  assert.match(js, /flyer_designer_name: presentationMode === 'flyer'/);
+  assert.match(js, /flyer_designer_instagram_handle: flyerInstagram\.value/);
+  assert.match(js, /event\.flyer_designer_instagram_handle \? `@\$\{event\.flyer_designer_instagram_handle\}`/);
+  assert.match(events, /cleanInstagramHandle\(body\.flyer_designer_instagram_handle\)/);
+  assert.match(events, /flyer_designer_name, flyer_designer_instagram_handle/);
+  assert.match(events, /e\.flyer_designer_name \|\| null, e\.flyer_designer_instagram_handle \|\| null/);
 });
 
 test('event editor expands into two columns on desktop without changing the mobile flow', () => {
@@ -276,6 +301,38 @@ test('flyer public rendering uses an isolated poster-first template without repl
   assert.doesNotMatch(flyerTemplate, /<p class="sg-label cat">/);
   assert.match(route, /flyerPrimaryAction\(event\)/);
   assert.match(route, /const flyerAction = flyerPrimaryAction\(event\)/);
+});
+
+test('Flyer public pages show subtle designer credit with Instagram precedence while Standard stays unchanged', () => {
+  const route = read('src/routes/public.js');
+  const standardTemplate = read('src/views/event-public.html');
+  const flyerTemplate = read('src/views/event-public-flyer.html');
+  const flyerStyles = read('public/css/event-public-flyer.css');
+
+  assert.match(route, /cleanInstagramHandle\(event\.flyer_designer_instagram_handle\)\.value/);
+  assert.match(route, /Design by <a href="https:\/\/www\.instagram\.com\/\$\{encodeURIComponent\(flyerInstagramHandle\)\}\//);
+  assert.match(route, /isFlyerPresentation && flyerDesignerName[\s\S]*Design by \$\{esc\(flyerDesignerName\)\}/);
+  assert.match(route, /replace\(\/\{\{FLYER_DESIGN_CREDIT\}\}\/g, flyerDesignCreditHtml\)/);
+  assert.match(flyerTemplate, /<div class="flyer-poster">\{\{HERO\}\}\{\{FLYER_DESIGN_CREDIT\}\}<\/div>/);
+  assert.doesNotMatch(standardTemplate, /FLYER_DESIGN_CREDIT|flyer-design-credit/);
+  assert.match(flyerStyles, /\.flyer-design-credit \{[\s\S]*font-size: 13px/);
+  assert.match(flyerStyles, /\.flyer-design-credit a \{[\s\S]*text-decoration: underline/);
+});
+
+test('published-event owner editor previews Flyer designer credit and restores it on Cancel', () => {
+  const ownerMarkup = read('src/lib/event-owner-editor.js');
+  const ownerClient = read('public/js/event-owner-editor.js');
+  const ownerStyles = read('public/css/event-owner-editor.css');
+
+  assert.match(ownerMarkup, /flyerDesignerName: event\.flyer_designer_name \|\| ''/);
+  assert.match(ownerMarkup, /id="owner-flyer-credit-fields"[^>]*hidden/);
+  assert.match(ownerMarkup, /id="owner-flyer-designer-instagram-error"[^>]+aria-live="polite"/);
+  assert.match(ownerClient, /function previewFlyerDesignCredit\(\)/);
+  assert.match(ownerClient, /credit\.append\('Design by '\)/);
+  assert.match(ownerClient, /link\.href = `https:\/\/www\.instagram\.com\/\$\{encodeURIComponent\(parsed\.value\)\}\//);
+  assert.match(ownerClient, /flyer_designer_instagram_handle: cleanInstagramHandleInput\(draft\.flyerDesignerInstagramHandle\)\.value/);
+  assert.match(ownerClient, /function restoreSavedPreview\(\) \{[\s\S]*draft = clone\(saved\);[\s\S]*populate\(\)/);
+  assert.match(ownerStyles, /\.owner-flyer-credit-fields\[hidden\] \{ display: none; \}/);
 });
 
 test('Flyer pages use a fixed plaster background while Standard pages keep artwork-aware heroes', () => {

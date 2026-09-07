@@ -53,6 +53,8 @@ function ownerEventData(event) {
     backgroundTheme: event.background_theme || 'midnight',
     coverImageUrl: event.cover_image_url || '',
     flyerImageUrl: event.flyer_image_url || '',
+    flyerDesignerName: event.flyer_designer_name || '',
+    flyerDesignerInstagramHandle: event.flyer_designer_instagram_handle || '',
     coverFitMode: ['contain', 'cover'].includes(event.cover_fit_mode) ? event.cover_fit_mode : 'auto',
     coverCreditName: event.cover_credit_name || '',
     coverCreditLink: event.cover_credit_link || '',
@@ -105,6 +107,16 @@ function renderOwnerEditor(event) {
               <button class="owner-action-button owner-action-muted" id="owner-remove-image" type="button">Remove</button>
             </div>
             <p class="owner-inline-status" id="owner-upload-status" role="status"></p>
+
+            <section class="owner-flyer-credit-fields" id="owner-flyer-credit-fields" aria-labelledby="owner-flyer-credit-title" hidden>
+              <div class="owner-flyer-credit-heading">
+                <h4 id="owner-flyer-credit-title">Who designed this flyer?</h4>
+                <p>Give them a shoutout.</p>
+              </div>
+              <label class="owner-field"><span>Designer name <small>Optional</small></span><input class="owner-input" id="owner-flyer-designer-name" maxlength="120" autocomplete="name"></label>
+              <label class="owner-field"><span>Instagram @handle <small>Optional</small></span><input class="owner-input" id="owner-flyer-designer-instagram" maxlength="500" autocomplete="off" placeholder="@artistname" aria-describedby="owner-flyer-designer-instagram-error"></label>
+              <small class="owner-flyer-credit-error" id="owner-flyer-designer-instagram-error" role="status" aria-live="polite" hidden></small>
+            </section>
 
             <fieldset class="owner-fit-field" id="owner-fit-field">
               <legend>Phone image fit</legend>

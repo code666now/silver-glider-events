@@ -15,6 +15,7 @@ const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission')
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
+const { cleanInstagramHandle } = require('../lib/host-profile');
 const LocationUtils = require('../../public/js/location-utils');
 const {
   ensureAttemptSession,
@@ -513,6 +514,13 @@ router.get('/e/:slug', async (req, res, next) => {
     const creditHtml = (!isFlyerPresentation && event.cover_image_url && event.cover_credit_name)
       ? `<p class="photo-credit">Photo by <a href="${esc(event.cover_credit_link || '#')}" target="_blank" rel="noopener">${esc(event.cover_credit_name)}</a> on <a href="https://unsplash.com/?utm_source=silver_glider_events&utm_medium=referral" target="_blank" rel="noopener">Unsplash</a></p>`
       : '';
+    const flyerInstagramHandle = cleanInstagramHandle(event.flyer_designer_instagram_handle).value;
+    const flyerDesignerName = String(event.flyer_designer_name || '').trim();
+    const flyerDesignCreditHtml = isFlyerPresentation && flyerInstagramHandle
+      ? `<p class="flyer-design-credit">Design by <a href="https://www.instagram.com/${encodeURIComponent(flyerInstagramHandle)}/" target="_blank" rel="noopener noreferrer">@${esc(flyerInstagramHandle)}</a></p>`
+      : isFlyerPresentation && flyerDesignerName
+        ? `<p class="flyer-design-credit">Design by ${esc(flyerDesignerName)}</p>`
+        : '';
 
     const eventJson = {
       slug: event.slug,
@@ -542,6 +550,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{FX_VEIL}}/g, fxVeil)
       .replace(/{{HERO}}/g, heroHtml)
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
+      .replace(/{{FLYER_DESIGN_CREDIT}}/g, flyerDesignCreditHtml)
       .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))
       .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
       .replace(/{{VENUE_NAME}}/g, esc(locationDisplay.name))

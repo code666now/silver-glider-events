@@ -156,6 +156,22 @@ body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: o
 .owner-action-muted { padding-inline: 12px; color: var(--sg-text-faint); }
 .owner-inline-status { min-height: 18px; margin: 7px 2px 0; color: var(--sg-text-dim); font-size: 11px; }
 
+.owner-flyer-credit-fields {
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  background: rgba(255,255,255,.025);
+}
+.owner-flyer-credit-fields[hidden] { display: none; }
+.owner-flyer-credit-heading { margin-bottom: 14px; }
+.owner-flyer-credit-heading h4 { margin: 0 0 3px; color: var(--sg-text); font-size: 14px; line-height: 1.3; }
+.owner-flyer-credit-heading p { margin: 0; color: var(--sg-text-faint); font-size: 11px; }
+.owner-flyer-credit-fields .owner-field { margin-bottom: 12px; }
+.owner-flyer-credit-fields .owner-field:last-of-type { margin-bottom: 0; }
+.owner-flyer-credit-error { display: block; margin-top: 6px; color: var(--sg-danger); font-size: 10px; line-height: 1.45; }
+.owner-flyer-credit-error[hidden] { display: none; }
+
 .owner-fit-field,
 .owner-choice-field { margin: 18px 0 0; padding: 0; border: 0; }
 .owner-fit-field[hidden] { display: none; }
@@ -254,6 +270,7 @@ body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: o
 .owner-editor-panel.is-photo-browser > #owner-image-input,
 .owner-editor-panel.is-photo-browser > .owner-image-actions,
 .owner-editor-panel.is-photo-browser > .owner-inline-status,
+.owner-editor-panel.is-photo-browser > .owner-flyer-credit-fields,
 .owner-editor-panel.is-photo-browser > .owner-fit-field,
 .owner-editor-panel.is-photo-browser > .owner-theme-picker { display: none; }
 .owner-photo-browser:not([hidden]) ~ .owner-theme-picker,

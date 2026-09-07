@@ -42,6 +42,33 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const dateValue = value => String(value || '').slice(0, 10);
   const timeValue = value => String(value || '').slice(0, 5);
+  function cleanInstagramHandleInput(value) {
+    let raw = String(value ?? '').trim();
+    if (!raw) return { value: null, error: null };
+    if (raw.length > 500) return { value: null, error: 'Instagram handle is too long' };
+
+    let handle = raw;
+    try {
+      if (/instagram\.com\//i.test(raw)) {
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `https://${raw}`;
+        const url = new URL(raw);
+        const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+        const parts = url.pathname.split('/').filter(Boolean);
+        if (!['http:', 'https:'].includes(url.protocol) || hostname !== 'instagram.com' || parts.length !== 1) throw new Error('profile');
+        handle = decodeURIComponent(parts[0]);
+      } else {
+        handle = raw.replace(/^@/, '');
+      }
+    } catch (_) {
+      return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+    }
+
+    handle = handle.trim().toLowerCase();
+    if (handle.length > 30 || !/^[a-z0-9._]+$/.test(handle) || handle.startsWith('.') || handle.endsWith('.') || handle.includes('..')) {
+      return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+    }
+    return { value: handle, error: null };
+  }
   const normalized = source => ({
     ...source,
     eventDate: dateValue(source.eventDate),
@@ -55,6 +82,8 @@
     googlePlaceId: source.googlePlaceId || '',
     coverImageUrl: source.coverImageUrl || '',
     flyerImageUrl: source.flyerImageUrl || '',
+    flyerDesignerName: source.flyerDesignerName || '',
+    flyerDesignerInstagramHandle: source.flyerDesignerInstagramHandle || '',
     coverCreditName: source.coverCreditName || '',
     coverCreditLink: source.coverCreditLink || '',
     artworkAccentColor: source.artworkAccentColor || ''
@@ -349,6 +378,58 @@
       updateAdaptiveSwatch([]);
     }
     $('owner-remove-image').disabled = !url;
+    const showFlyerCredit = draft.presentationMode === 'flyer' && Boolean(url);
+    $('owner-flyer-credit-fields').hidden = !showFlyerCredit;
+    if (!showFlyerCredit) setOwnerFlyerDesignerError('');
+  }
+
+  function setOwnerFlyerDesignerError(message) {
+    const input = $('owner-flyer-designer-instagram');
+    const error = $('owner-flyer-designer-instagram-error');
+    input.setAttribute('aria-invalid', String(Boolean(message)));
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+
+  function validateOwnerFlyerDesignerHandle({ normalize = false } = {}) {
+    const input = $('owner-flyer-designer-instagram');
+    const parsed = cleanInstagramHandleInput(input.value);
+    setOwnerFlyerDesignerError(parsed.error);
+    if (!parsed.error && normalize) {
+      input.value = parsed.value ? `@${parsed.value}` : '';
+      draft.flyerDesignerInstagramHandle = parsed.value || '';
+      previewFlyerDesignCredit();
+      syncDirtyState();
+    }
+    return parsed;
+  }
+
+  function previewFlyerDesignCredit() {
+    if (draft.presentationMode !== 'flyer') return;
+    const poster = document.querySelector('.flyer-poster');
+    if (!poster) return;
+    const parsed = cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle);
+    const designerName = String(draft.flyerDesignerName || '').trim();
+    let credit = poster.querySelector('.flyer-design-credit');
+    if (!credit && (parsed.value || designerName)) {
+      credit = document.createElement('p');
+      credit.className = 'flyer-design-credit';
+      poster.appendChild(credit);
+    }
+    if (!credit) return;
+    credit.replaceChildren();
+    credit.hidden = !(parsed.value || designerName);
+    if (parsed.value) {
+      credit.append('Design by ');
+      const link = document.createElement('a');
+      link.href = `https://www.instagram.com/${encodeURIComponent(parsed.value)}/`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = `@${parsed.value}`;
+      credit.appendChild(link);
+    } else if (designerName) {
+      credit.textContent = `Design by ${designerName}`;
+    }
   }
 
   function updateAdaptiveSwatch(colors) {
@@ -426,6 +507,7 @@
       credit.hidden = !draft.coverCreditName;
       if (draft.coverCreditName) credit.textContent = `Photo by ${draft.coverCreditName} on Unsplash`;
     }
+    previewFlyerDesignCredit();
   }
 
   function videoEffectUrl(publicId, format) {
@@ -578,6 +660,10 @@
     $('owner-show-guests').checked = draft.showGuestList;
     $('owner-allow-guests').checked = draft.allowGuests;
     $('owner-comments').checked = draft.commentsEnabled;
+    $('owner-flyer-designer-name').value = draft.flyerDesignerName;
+    const flyerInstagram = cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle).value;
+    $('owner-flyer-designer-instagram').value = flyerInstagram ? `@${flyerInstagram}` : '';
+    setOwnerFlyerDesignerError('');
     $('owner-secret-note').hidden = !draft.secretShowEnabled;
     const publicChoice = document.querySelector('input[name="owner_visibility"][value="public"]');
     publicChoice.disabled = draft.secretShowEnabled;
@@ -768,6 +854,11 @@
     draft.showGuestList = $('owner-show-guests').checked;
     draft.allowGuests = $('owner-allow-guests').checked;
     draft.commentsEnabled = $('owner-comments').checked;
+    if (draft.presentationMode === 'flyer') {
+      draft.flyerDesignerName = $('owner-flyer-designer-name').value.trim();
+      draft.flyerDesignerInstagramHandle = $('owner-flyer-designer-instagram').value.trim();
+      previewFlyerDesignCredit();
+    }
     previewDetails();
     previewGuestSettings();
     syncDirtyState();
@@ -795,7 +886,11 @@
       background_theme: draft.backgroundTheme,
       artwork_accent_color: draft.artworkAccentColor || null
     };
-    if (draft.presentationMode === 'flyer') body.flyer_image_url = draft.flyerImageUrl || null;
+    if (draft.presentationMode === 'flyer') Object.assign(body, {
+      flyer_image_url: draft.flyerImageUrl || null,
+      flyer_designer_name: draft.flyerDesignerName || null,
+      flyer_designer_instagram_handle: cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle).value
+    });
     else Object.assign(body, {
       cover_image_url: draft.coverImageUrl || null,
       cover_fit_mode: draft.coverFitMode,
@@ -831,6 +926,8 @@
 
   form.addEventListener('input', readInputs);
   form.addEventListener('change', readInputs);
+  $('owner-flyer-designer-instagram').addEventListener('input', () => setOwnerFlyerDesignerError(''));
+  $('owner-flyer-designer-instagram').addEventListener('blur', () => validateOwnerFlyerDesignerHandle({ normalize: true }));
   $('owner-location-search').addEventListener('input', () => {
     if (applyingPlace) return;
     locationKind = null;
@@ -903,6 +1000,15 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     readInputs();
+    if (draft.presentationMode === 'flyer') {
+      const flyerInstagram = validateOwnerFlyerDesignerHandle({ normalize: true });
+      if (flyerInstagram.error) {
+        activateTab('appearance');
+        $('owner-flyer-designer-instagram').focus();
+        saveStatus.textContent = flyerInstagram.error;
+        return;
+      }
+    }
     if (!draft.title || !draft.eventDate || !draft.startTime || (!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
       activateTab('details');
       if ((!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {

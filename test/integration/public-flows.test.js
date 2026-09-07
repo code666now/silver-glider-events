@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { PNG } = require('pngjs');
+const { version: appVersion } = require('../../package.json');
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://localhost:5432/sge_test';
 if (!/(?:^|\/)sge_test(?:\?|$)/.test(TEST_DATABASE_URL)) {
@@ -104,7 +105,7 @@ test.after(async () => {
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
-  assert.equal((await health.json()).version, '1.0.56');
+  assert.equal((await health.json()).version, appVersion);
 
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
   const dashboard = await fetch(`${baseUrl}/dashboard`, {
@@ -468,6 +469,87 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.match(hostHtml, /Flyer Night/);
   assert.match(hostHtml, /sg-events\/effects\/the-last-guest\.jpg/);
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
+});
+
+test('Flyer designer credits normalize, render only on Flyer pages, and survive editing and duplication', async () => {
+  const organizerCookie = `sge_session=${signSession(organizerId)}`;
+  const createdResponse = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({
+      title: 'Designed Flyer Night',
+      event_date: '2030-10-04',
+      start_time: '20:00',
+      venue_name: 'Poster Hall',
+      presentation_mode: 'flyer',
+      flyer_image_url: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events-dev/flyers/designed-night.jpg',
+      flyer_designer_name: 'Poster Lab',
+      flyer_designer_instagram_handle: '@Poster.Lab'
+    })
+  });
+  assert.equal(createdResponse.status, 201);
+  const createdEvent = (await createdResponse.json()).event;
+  assert.equal(createdEvent.flyer_designer_name, 'Poster Lab');
+  assert.equal(createdEvent.flyer_designer_instagram_handle, 'poster.lab');
+
+  const flyerHtml = await (await fetch(`${baseUrl}/e/${createdEvent.slug}`)).text();
+  assert.match(flyerHtml, /class="flyer-design-credit">Design by <a href="https:\/\/www\.instagram\.com\/poster\.lab\/"[^>]*>@poster\.lab<\/a><\/p>/);
+  assert.doesNotMatch(flyerHtml, /Design by Poster Lab/);
+
+  const nameOnlyEvent = await createEvent({
+    slug: 'designer-name-only',
+    title: 'Name Only Flyer',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/flyers/name-only.jpg',
+    flyer_designer_name: 'Analog Studio',
+    flyer_designer_instagram_handle: null
+  });
+  const nameOnlyHtml = await (await fetch(`${baseUrl}/e/${nameOnlyEvent.slug}`)).text();
+  assert.match(nameOnlyHtml, /class="flyer-design-credit">Design by Analog Studio<\/p>/);
+
+  const standardEvent = await createEvent({
+    slug: 'standard-with-hidden-designer',
+    flyer_designer_name: 'Hidden Designer',
+    flyer_designer_instagram_handle: 'hidden.designer'
+  });
+  const standardHtml = await (await fetch(`${baseUrl}/e/${standardEvent.slug}`)).text();
+  assert.doesNotMatch(standardHtml, /flyer-design-credit|Design by/);
+
+  const invalidUpdate = await fetch(`${baseUrl}/api/events/${createdEvent.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ flyer_designer_instagram_handle: 'bad handle' })
+  });
+  assert.equal(invalidUpdate.status, 400);
+  assert.match((await invalidUpdate.json()).error, /Instagram handle/);
+
+  const validUpdate = await fetch(`${baseUrl}/api/events/${createdEvent.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({
+      flyer_designer_name: '  New   Poster Lab  ',
+      flyer_designer_instagram_handle: 'New.Artist'
+    })
+  });
+  assert.equal(validUpdate.status, 200);
+  const updatedEvent = (await validUpdate.json()).event;
+  assert.equal(updatedEvent.flyer_designer_name, 'New Poster Lab');
+  assert.equal(updatedEvent.flyer_designer_instagram_handle, 'new.artist');
+
+  const ownerPage = await fetch(`${baseUrl}/e/${createdEvent.slug}`, { headers: { cookie: organizerCookie } });
+  const ownerHtml = await ownerPage.text();
+  assert.match(ownerHtml, /id="owner-flyer-credit-fields"/);
+  assert.match(ownerHtml, /"flyerDesignerInstagramHandle":"new\.artist"/);
+
+  const duplicate = await fetch(`${baseUrl}/api/events/${createdEvent.id}/duplicate`, {
+    method: 'POST',
+    headers: { cookie: organizerCookie }
+  });
+  assert.equal(duplicate.status, 201);
+  const duplicateEvent = (await duplicate.json()).event;
+  assert.equal(duplicateEvent.flyer_designer_name, 'New Poster Lab');
+  assert.equal(duplicateEvent.flyer_designer_instagram_handle, 'new.artist');
+  assert.equal(duplicateEvent.status, 'draft');
 });
 
 test('Commerce ticket events use Get Tickets, reject RSVP, and never duplicate the Commerce reference', async () => {

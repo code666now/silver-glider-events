@@ -17,6 +17,54 @@ const LocationUtils = window.SGLocation;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
 
+function cleanInstagramHandleInput(value) {
+  let raw = String(value ?? '').trim();
+  if (!raw) return { value: null, error: null };
+  if (raw.length > 500) return { value: null, error: 'Instagram handle is too long' };
+
+  let handle = raw;
+  try {
+    if (/instagram\.com\//i.test(raw)) {
+      if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `https://${raw}`;
+      const url = new URL(raw);
+      const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (!['http:', 'https:'].includes(url.protocol) || hostname !== 'instagram.com' || parts.length !== 1) throw new Error('profile');
+      handle = decodeURIComponent(parts[0]);
+    } else {
+      handle = raw.replace(/^@/, '');
+    }
+  } catch (_) {
+    return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+  }
+
+  handle = handle.trim().toLowerCase();
+  if (handle.length > 30 || !/^[a-z0-9._]+$/.test(handle) || handle.startsWith('.') || handle.endsWith('.') || handle.includes('..')) {
+    return { value: null, error: 'Enter an Instagram handle like @silverglidertix' };
+  }
+  return { value: handle, error: null };
+}
+
+function setFlyerDesignerError(message) {
+  const input = $('flyer-designer-instagram');
+  const error = $('flyer-designer-instagram-error');
+  input.setAttribute('aria-invalid', String(Boolean(message)));
+  error.textContent = message || '';
+  error.hidden = !message;
+}
+
+function normalizeFlyerDesignerHandle({ focus = false } = {}) {
+  const input = $('flyer-designer-instagram');
+  const parsed = cleanInstagramHandleInput(input.value);
+  setFlyerDesignerError(parsed.error);
+  if (parsed.error) {
+    if (focus) input.focus();
+    return parsed;
+  }
+  input.value = parsed.value ? `@${parsed.value}` : '';
+  return parsed;
+}
+
 function updateAdaptiveThemeSwatch(colors) {
   const swatch = document.querySelector('.sg-swatch.fx-adaptive');
   if (!swatch) return;
@@ -702,6 +750,8 @@ function setFlyer(url) {
     flyerDrop.classList.remove('has-image');
     $('btn-clear-flyer').style.display = 'none';
   }
+  $('flyer-credit-fields').hidden = !url;
+  if (!url) setFlyerDesignerError('');
 }
 
 function uploadFlyer(file) {
@@ -732,6 +782,8 @@ function uploadFlyer(file) {
 flyerDrop.addEventListener('click', () => flyerInput.click());
 $('btn-flyer-upload').addEventListener('click', () => flyerInput.click());
 $('btn-clear-flyer').addEventListener('click', () => setFlyer(''));
+$('flyer-designer-instagram').addEventListener('input', () => setFlyerDesignerError(''));
+$('flyer-designer-instagram').addEventListener('blur', () => normalizeFlyerDesignerHandle());
 flyerDrop.addEventListener('dragover', handleImageDragover);
 flyerDrop.addEventListener('dragleave', handleImageDragleave);
 flyerDrop.addEventListener('drop', event => {
@@ -932,6 +984,10 @@ function collect() {
   if (manualLocationMode && !venueAddress) {
     throw new Error('Add an address for this location');
   }
+  const flyerInstagram = presentationMode === 'flyer'
+    ? normalizeFlyerDesignerHandle({ focus: true })
+    : { value: null, error: null };
+  if (flyerInstagram.error) throw new Error(flyerInstagram.error);
   const body = {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
@@ -943,6 +999,8 @@ function collect() {
     cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
     flyer_image_url: $('flyer_image_url').value || null,
+    flyer_designer_name: presentationMode === 'flyer' ? ($('flyer-designer-name').value.trim() || null) : null,
+    flyer_designer_instagram_handle: flyerInstagram.value,
     artwork_accent_color: artworkAccents.get(activeArtworkUrl()) || null,
     event_date: $('event_date').value,
     start_time: $('start_time').value,
@@ -1015,6 +1073,8 @@ if (editId) {
     setPresentationMode(event.presentation_mode === 'flyer' ? 'flyer' : 'standard');
     setCoverFitMode(event.cover_fit_mode || 'auto');
     if (event.flyer_image_url) setFlyer(event.flyer_image_url);
+    $('flyer-designer-name').value = event.flyer_designer_name || '';
+    $('flyer-designer-instagram').value = event.flyer_designer_instagram_handle ? `@${event.flyer_designer_instagram_handle}` : '';
     commerceEventId = event.commerce_event_id || null;
     $('commerce_event_id').value = commerceEventId || '';
     setAdmission(event.admission_type === 'silver_glider_tickets'
