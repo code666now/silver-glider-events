@@ -327,9 +327,10 @@ test('address-only locations render once and keep Maps and calendar destinations
   assert.doesNotMatch(ics, /LOCATION:987 Cedar Lane\\, 987 Cedar Lane/);
 });
 
-test('personal RSVP photos are session-owned, email-matched, and separate from Host Page logos', async () => {
+test('personal RSVP photos require verified identity or attendee ownership and stay separate from Host Page logos', async () => {
   const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
   const historicalEvent = await createEvent({ slug: 'historical-avatar-night', title: 'Historical Avatar Night', show_guest_list: true });
+  const browserOwnedEvent = await createEvent({ slug: 'browser-owned-avatar-night', title: 'Browser-owned Avatar Night', show_guest_list: true });
   const avatarUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/avatars/attendee.jpg';
   const logoUrl = 'https://res.cloudinary.com/demo/image/upload/v1/sg-events-dev/hosts/attendee-logo.jpg';
   const { rows: accounts } = await pool.query(
@@ -390,6 +391,35 @@ test('personal RSVP photos are session-owned, email-matched, and separate from H
     { email: 'avatar@example.test', account_id: accountId },
     { email: 'different@example.test', account_id: null }
   ]);
+
+  await pool.query(
+    `INSERT INTO rsvps (event_id, first_name, last_name, email, status, manage_token)
+     VALUES ($1,'Avatar','Alias','alias@example.test','confirmed','browser-owned-avatar-token')`,
+    [browserOwnedEvent.id]
+  );
+  const mismatchedWithoutOwnership = await fetch(`${baseUrl}/api/me/link-rsvps`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: accountCookie },
+    body: JSON.stringify({ eventSlug: browserOwnedEvent.slug })
+  });
+  assert.equal(mismatchedWithoutOwnership.status, 200);
+  assert.deepEqual(await mismatchedWithoutOwnership.json(), { ok: true, linked: 0 });
+
+  const ownedCookie = `${accountCookie}; sge_attendee_${browserOwnedEvent.id}=browser-owned-avatar-token`;
+  const linkBrowserOwned = await fetch(`${baseUrl}/api/me/link-rsvps`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: ownedCookie },
+    body: JSON.stringify({ eventSlug: browserOwnedEvent.slug })
+  });
+  assert.equal(linkBrowserOwned.status, 200);
+  assert.deepEqual(await linkBrowserOwned.json(), { ok: true, linked: 1 });
+  const { rows: browserOwnedRsvps } = await pool.query(
+    'SELECT account_id FROM rsvps WHERE event_id=$1',
+    [browserOwnedEvent.id]
+  );
+  assert.equal(browserOwnedRsvps[0].account_id, accountId);
+  const browserOwnedPage = await fetch(`${baseUrl}/e/${browserOwnedEvent.slug}`);
+  assert.match(await browserOwnedPage.text(), new RegExp(avatarUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   const page = await fetch(`${baseUrl}/e/${event.slug}`);
   const html = await page.text();

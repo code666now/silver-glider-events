@@ -251,6 +251,52 @@ window.addEventListener('resize', queueMobileRsvpDockSync);
 mobileRsvpMedia.addEventListener?.('change', queueMobileRsvpDockSync);
 queueMobileRsvpDockSync();
 
+function prefillRsvpIdentity(user) {
+  if (EVENT.isPast) return;
+  const nameInput = $('full_name');
+  const emailInput = $('email');
+  if (user?.name && nameInput && !nameInput.value.trim()) {
+    nameInput.value = user.name;
+    nameInput.defaultValue = user.name;
+  }
+  if (user?.email && emailInput && !emailInput.value.trim()) {
+    emailInput.value = user.email;
+    emailInput.defaultValue = user.email;
+  }
+}
+
+async function syncSignedInRsvpProfile() {
+  if (EVENT.rsvpEnabled === false) return;
+  try {
+    const profileResponse = await fetch('/api/me', {
+      headers: { Accept: 'application/json' }
+    });
+    if (!profileResponse.ok) return;
+    const { user } = await profileResponse.json();
+    prefillRsvpIdentity(user);
+    // Browsers may restore form controls just after page scripts finish. Reapply
+    // only to still-empty fields so saved profile data wins without overwriting
+    // anything the attendee has typed.
+    setTimeout(() => prefillRsvpIdentity(user), 120);
+
+    // A profile can predate an RSVP, and an RSVP can be made with another
+    // inbox. Link only when the verified account email matches or this browser
+    // owns the attendee token issued for this event.
+    const linkResponse = await fetch('/api/me/link-rsvps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ eventSlug: EVENT.slug })
+    });
+    if (!linkResponse.ok) return;
+    const { linked } = await linkResponse.json();
+    if (Number(linked) > 0) window.location.reload();
+  } catch (_) {
+    // Public RSVP remains fully usable while signed out or if profile sync fails.
+  }
+}
+
+syncSignedInRsvpProfile();
+
 const guestFields = $('guest-fields');
 if (guestFields) {
   document.querySelectorAll('input[name="party_size"]').forEach(input => {

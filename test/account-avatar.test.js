@@ -25,6 +25,7 @@ test('profile-photo changes are bound to the authenticated session', () => {
   const auth = read('src/routes/auth.js');
   const accountRsvps = read('src/lib/account-rsvps.js');
   const settings = read('src/views/settings.html');
+  const publicClient = read('public/js/public-event.js');
 
   assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requireOrganizer, handleUpload/);
   assert.match(uploads, /UPDATE organizers SET avatar_url=\$2[\s\S]*WHERE id=\$1/);
@@ -42,9 +43,20 @@ test('profile-photo changes are bound to the authenticated session', () => {
   assert.match(accountRsvps, /WHERE account_id IS NULL AND LOWER\(email\)=LOWER\(\$2\)/);
   assert.match(accountRsvps, /\[id, verifiedEmail\]/);
   assert.doesNotMatch(accountRsvps, /req\.body|userId|organizerId/);
+  assert.match(auth, /linkOwnedRsvpForEvent/);
+  assert.match(auth, /readCookie\(req, attendeeCookieName\(eventId\)\)/);
+  assert.match(accountRsvps, /WHERE event_id=\$2 AND account_id IS NULL/);
+  assert.match(accountRsvps, /LOWER\(email\)=LOWER\(\$3\) OR \(\$4 <> '' AND manage_token=\$4\)/);
+  assert.match(publicClient, /fetch\('\/api\/me'/);
+  assert.match(publicClient, /function prefillRsvpIdentity\(user\)/);
+  assert.match(publicClient, /nameInput\.value = user\.name/);
+  assert.match(publicClient, /emailInput\.value = user\.email/);
+  assert.match(publicClient, /setTimeout\(\(\) => prefillRsvpIdentity\(user\), 120\)/);
+  assert.match(publicClient, /body: JSON\.stringify\(\{ eventSlug: EVENT\.slug \}\)/);
+  assert.match(publicClient, /Number\(linked\) > 0\) window\.location\.reload\(\)/);
 });
 
-test('guest-list avatars link only through a verified matching session and keep emoji fallbacks', () => {
+test('guest-list avatars link only through verified identity or attendee ownership and keep emoji fallbacks', () => {
   const routes = read('src/routes/public.js');
   const cloudinary = read('src/lib/cloudinary.js');
   const standard = read('src/views/event-public.html');

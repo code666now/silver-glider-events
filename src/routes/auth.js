@@ -5,7 +5,8 @@ const { sendMagicLink } = require('../lib/mailer');
 const { setSessionCookie, clearSessionCookie } = require('../lib/session');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { findPublicHost, followHost } = require('../lib/host-follows');
-const { linkVerifiedRsvps } = require('../lib/account-rsvps');
+const { linkOwnedRsvpForEvent, linkVerifiedRsvps } = require('../lib/account-rsvps');
+const { attendeeCookieName, readCookie } = require('../lib/private-events');
 
 const router = express.Router();
 
@@ -170,7 +171,23 @@ router.get('/api/me', requireOrganizer, (req, res) => {
 
 router.post('/api/me/link-rsvps', requireOrganizer, async (req, res, next) => {
   try {
-    const linked = await linkVerifiedRsvps(pool, req.organizer.id, req.organizer.email);
+    const eventSlug = String(req.body?.eventSlug || '').trim().slice(0, 180);
+    let linked;
+    if (eventSlug) {
+      const { rows } = await pool.query('SELECT id FROM events WHERE slug=$1', [eventSlug]);
+      if (!rows.length) return res.json({ ok: true, linked: 0 });
+      const eventId = rows[0].id;
+      const attendeeToken = readCookie(req, attendeeCookieName(eventId));
+      linked = await linkOwnedRsvpForEvent(
+        pool,
+        req.organizer.id,
+        req.organizer.email,
+        eventId,
+        attendeeToken
+      );
+    } else {
+      linked = await linkVerifiedRsvps(pool, req.organizer.id, req.organizer.email);
+    }
     res.json({ ok: true, linked });
   } catch (err) { next(err); }
 });
