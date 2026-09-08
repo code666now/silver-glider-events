@@ -31,7 +31,8 @@ async function processReminders(messageType, targetHour, dayOffset) {
       const { rows: claimed } = await pool.query(
         `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
          VALUES ($1,$2,$3,$4,'email','pending')
-         ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL DO NOTHING
+         ON CONFLICT (rsvp_id, message_type, channel)
+           WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL DO NOTHING
          RETURNING id`,
         [rsvp.id, event.id, rsvp.email, messageType]
       );

@@ -72,6 +72,30 @@ async function createEvent(overrides = {}) {
   return rows[0];
 }
 
+async function createRsvp(eventId, overrides = {}) {
+  const rsvp = {
+    first_name: 'Guest',
+    last_name: 'Person',
+    email: `guest-${Date.now()}-${Math.random()}@example.test`,
+    wants_reminders: true,
+    organizer_optin: false,
+    status: 'confirmed',
+    manage_token: `token-${Date.now()}-${Math.random()}`,
+    guest_first_name: null,
+    guest_last_name: null,
+    guest_email: null,
+    ...overrides
+  };
+  const columns = Object.keys(rsvp);
+  const values = Object.values(rsvp);
+  const placeholders = values.map((_, index) => `$${index + 2}`);
+  return (await pool.query(
+    `INSERT INTO rsvps (event_id, ${columns.join(', ')})
+     VALUES ($1, ${placeholders.join(', ')}) RETURNING *`,
+    [eventId, ...values]
+  )).rows[0];
+}
+
 async function waitForConfirmation(email) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const { rows } = await pool.query(
@@ -302,6 +326,83 @@ test('live event editing is visible only to the owner and saves through the prot
   const colorStaticHtml = await colorStaticPage.text();
   assert.match(colorStaticHtml, /class="event-bg bg-theme fx-color-static"/);
   assert.match(colorStaticHtml, /sg-events\/effects\/color-static/);
+});
+
+test('important edits and cancellations can notify every confirmed RSVP exactly once', async () => {
+  const event = await createEvent({ slug: 'important-update-night' });
+  const sessionCookie = `sge_session=${signSession(organizerId)}`;
+  const reminderOptOut = await createRsvp(event.id, {
+    email: 'critical-optout@example.test',
+    wants_reminders: false,
+    guest_first_name: 'Plus',
+    guest_last_name: 'One',
+    guest_email: 'named-guest@example.test'
+  });
+  const reminderOptIn = await createRsvp(event.id, { email: 'critical-optin@example.test' });
+  await createRsvp(event.id, { email: 'cancelled-rsvp@example.test', status: 'cancelled' });
+
+  const ordinaryEdit = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ description: 'This should not email anyone.', notify_attendees: true })
+  });
+  assert.equal(ordinaryEdit.status, 200);
+  assert.deepEqual((await ordinaryEdit.json()).importantChanges, []);
+
+  const silentImportantEdit = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ event_date: '2030-08-11', start_time: '20:15', notify_attendees: false })
+  });
+  assert.equal(silentImportantEdit.status, 200);
+  const silentPayload = await silentImportantEdit.json();
+  assert.equal(silentPayload.notification, null);
+  assert.equal(silentPayload.importantChanges.length, 2);
+
+  const notifiedEdit = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({
+      event_date: '2030-08-12',
+      venue_name: 'Updated Hall',
+      venue_address: '99 Updated Way',
+      notify_attendees: true
+    })
+  });
+  assert.equal(notifiedEdit.status, 200);
+  const updatePayload = await notifiedEdit.json();
+  assert.equal(updatePayload.notification.queued, 2);
+  assert.deepEqual(updatePayload.importantChanges.map(change => change.field), ['date', 'location']);
+
+  const { processEventNotificationBatch } = require('../../src/jobs/event-notifications');
+  await processEventNotificationBatch(updatePayload.notification.batchId);
+  const updateLogs = (await pool.query(
+    `SELECT rsvp_id, recipient FROM message_log
+      WHERE notification_batch_id=$1 ORDER BY recipient`,
+    [updatePayload.notification.batchId]
+  )).rows;
+  assert.deepEqual(updateLogs.map(row => row.recipient), ['critical-optin@example.test', 'critical-optout@example.test']);
+  assert.deepEqual(new Set(updateLogs.map(row => row.rsvp_id)), new Set([reminderOptOut.id, reminderOptIn.id]));
+  assert.equal(updateLogs.some(row => row.recipient === 'named-guest@example.test'), false);
+
+  const cancel = await fetch(`${baseUrl}/api/events/${event.id}/cancel`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ notify_attendees: true })
+  });
+  assert.equal(cancel.status, 200);
+  const cancelPayload = await cancel.json();
+  assert.equal(cancelPayload.notification.queued, 2);
+  await processEventNotificationBatch(cancelPayload.notification.batchId);
+
+  const finalEvent = (await pool.query('SELECT status, calendar_sequence FROM events WHERE id=$1', [event.id])).rows[0];
+  assert.equal(finalEvent.status, 'cancelled');
+  assert.equal(finalEvent.calendar_sequence, 3);
+  const cancellationRecipients = (await pool.query(
+    `SELECT recipient FROM message_log WHERE notification_batch_id=$1 ORDER BY recipient`,
+    [cancelPayload.notification.batchId]
+  )).rows.map(row => row.recipient);
+  assert.deepEqual(cancellationRecipients, ['critical-optin@example.test', 'critical-optout@example.test']);
 });
 
 test('address-only locations render once and keep Maps and calendar destinations intact', async () => {

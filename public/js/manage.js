@@ -22,6 +22,29 @@ function eventUrl() {
   return `${location.origin}/e/${eventData.slug}`;
 }
 
+function renderNotificationStatus(notification) {
+  const node = $('notification-status');
+  if (!notification) {
+    node.hidden = true;
+    return;
+  }
+  const count = Number(notification.recipientCount) || 0;
+  const sent = Number(notification.sentCount) || 0;
+  const failed = Number(notification.failedCount) || 0;
+  const label = notification.kind === 'event_cancelled' ? 'Cancellation notice' : 'Event update';
+  node.classList.toggle('is-warning', failed > 0);
+  if (notification.status === 'sent') {
+    node.innerHTML = `<strong>${label} sent.</strong> ${sent} ${sent === 1 ? 'guest was' : 'guests were'} notified.`;
+  } else if (notification.status === 'failed') {
+    node.innerHTML = `<strong>${label} could not be delivered.</strong> We’ll keep the delivery record for review.`;
+  } else if (notification.status === 'partial_failed' && failed > 0) {
+    node.innerHTML = `<strong>${label} partly delivered.</strong> ${sent} sent · ${failed} retrying or failed.`;
+  } else {
+    node.innerHTML = `<strong>${label} queued.</strong> We’re notifying ${count} ${count === 1 ? 'guest' : 'guests'}.`;
+  }
+  node.hidden = false;
+}
+
 function positionGuestSection() {
   const section = $('manage-guest-section');
   if (eventData?.is_past && desktopManageLayout.matches) {
@@ -101,6 +124,7 @@ async function loadEvent() {
   $('stat-attendance').textContent = event.total_attendance;
   $('stat-guests').textContent = event.guest_count;
   $('stat-comments').textContent = event.comment_count;
+  renderNotificationStatus(event.latest_notification);
   if (event.capacity) {
     $('cap-bar').style.display = 'block';
     $('cap-fill').style.width = `${Math.min(100, (event.total_attendance / event.capacity) * 100)}%`;
@@ -415,10 +439,24 @@ $('delete-event').addEventListener('click', async () => {
 });
 
 $('cancel-event').addEventListener('click', async () => {
-  if (!confirm('Cancel this event? The public page will show it as cancelled.')) return;
-  await api(`/api/events/${eventId}/cancel`, { method: 'POST' });
-  toast('Event cancelled');
-  loadEvent();
+  const choice = await window.SGEEventChanges.confirmCancellation({ count: Number(eventData.rsvp_count) || 0 });
+  if (choice === 'cancel') return;
+  const button = $('cancel-event');
+  button.disabled = true;
+  button.textContent = 'Cancelling…';
+  try {
+    const data = await api(`/api/events/${eventId}/cancel`, {
+      method: 'POST', body: { notify_attendees: choice === 'notify' }
+    });
+    toast(data.notification?.queued
+      ? `Event cancelled. We’re notifying ${data.notification.queued} ${data.notification.queued === 1 ? 'guest' : 'guests'}.`
+      : 'Event cancelled');
+    await loadEvent();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = 'Cancel event';
+    toast(error.message || 'Could not cancel this event');
+  }
 });
 
 document.addEventListener('click', event => {
@@ -434,8 +472,11 @@ $('search').addEventListener('input', e => {
 
 async function initializeManagePage() {
   try {
+    const savedMessage = sessionStorage.getItem('sge-manage-message');
+    sessionStorage.removeItem('sge-manage-message');
     await loadEvent();
     setManageReady();
+    if (savedMessage) toast(savedMessage);
     const secondaryTasks = eventData.is_past
       ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
       : [loadLineStatus(), loadFollowers()];

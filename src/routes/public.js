@@ -833,7 +833,8 @@ async function resendConfirmation(event, rsvp) {
     const { rows } = await pool.query(
       `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
        VALUES ($1,$2,$3,'rsvp_confirmation','email','pending')
-       ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL
+       ON CONFLICT (rsvp_id, message_type, channel)
+         WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL
        DO UPDATE SET event_id=EXCLUDED.event_id, recipient=EXCLUDED.recipient,
                      status='pending', provider_id=NULL, error=NULL,
                      created_at=NOW(), sent_at=NULL

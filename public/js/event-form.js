@@ -10,6 +10,8 @@ let commerceInterested = false;
 let presentationMode = 'standard';
 let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
+let savedEventDetails = null;
+let savedRsvpCount = 0;
 
 const $ = id => document.getElementById(id);
 const ArtworkColor = window.SGArtworkColor;
@@ -1040,6 +1042,8 @@ if (editId) {
   $('publish-btn').textContent = 'Save Changes';
   $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {
+    savedEventDetails = event;
+    savedRsvpCount = Number(event.rsvp_count) || 0;
     $('title').value = event.title;
     $('description').value = event.description || '';
     $('event_vibe_url').value = event.event_vibe_url || '';
@@ -1106,9 +1110,28 @@ $('event-form').addEventListener('submit', async e => {
     }
     await refreshActiveArtworkAccent();
     const body = collect();
+    if (editId && savedEventDetails && savedRsvpCount > 0) {
+      const changes = window.SGEEventChanges.compare(savedEventDetails, body);
+      if (changes.length) {
+        btn.textContent = 'Review changes…';
+        const choice = await window.SGEEventChanges.confirmUpdate({ changes, count: savedRsvpCount });
+        if (choice === 'cancel') {
+          btn.disabled = false;
+          btn.textContent = 'Save Changes';
+          return;
+        }
+        body.notify_attendees = choice === 'notify';
+        btn.textContent = 'Saving…';
+      }
+    }
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })
       : await api('/api/events', { method: 'POST', body });
+    if (data.notification?.queued) {
+      sessionStorage.setItem('sge-manage-message', `Event updated. We’re notifying ${data.notification.queued} ${data.notification.queued === 1 ? 'guest' : 'guests'}.`);
+    } else if (editId) {
+      sessionStorage.setItem('sge-manage-message', 'Event updated.');
+    }
     window.location.href = `/events/${data.event.id}/manage${editId ? '' : '?created=1'}`;
   } catch (err) {
     showError(err.message);

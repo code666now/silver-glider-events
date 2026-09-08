@@ -305,6 +305,13 @@ function attendeeEventUrl(event, rsvp) {
     : `${process.env.APP_URL}/e/${event.slug}`;
 }
 
+function criticalEventUrl(event, rsvp) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  return rsvp?.manage_token
+    ? `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/event`
+    : `${baseUrl}/e/${encodeURIComponent(event.slug)}`;
+}
+
 function isFlyerEvent(event) {
   return event?.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
 }
@@ -455,6 +462,70 @@ async function sendDayOfReminder({ to, event, rsvp }) {
   });
 }
 
+function renderImportantChanges(changes = []) {
+  if (!changes.length) return '';
+  const rows = changes.map(change => `<tr>
+    <td style="padding:13px 0;border-top:1px solid #242424;vertical-align:top">
+      <p style="color:#777;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;margin:0 0 7px">${esc(change.label)}</p>
+      <p style="color:#777;font-size:14px;line-height:1.5;margin:0;text-decoration:line-through">${esc(change.before)}</p>
+      <p style="color:#f0f0f0;font-size:15px;font-weight:700;line-height:1.5;margin:3px 0 0">${esc(change.after)}</p>
+    </td>
+  </tr>`).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 24px">${rows}</table>`;
+}
+
+function automatedNoticeFooter() {
+  return '<p style="color:#666;font-size:12px;text-align:center;line-height:1.65;margin:0">This is an automated event notice. Replies are not monitored.</p>';
+}
+
+function renderEventUpdateEmail({ event, rsvp, changes }) {
+  return layout({
+    kicker: 'Event update',
+    headline: 'Plans changed.',
+    sub: `${event.title} has updated event details.`,
+    bodyHtml: `${renderImportantChanges(changes)}${eventCard(event)}`,
+    cta: 'View updated event',
+    ctaUrl: criticalEventUrl(event, rsvp),
+    footerHtml: automatedNoticeFooter()
+  });
+}
+
+function renderEventCancellationEmail({ event, rsvp }) {
+  return layout({
+    kicker: 'Event cancelled',
+    headline: 'This event was cancelled.',
+    sub: event.title,
+    bodyHtml: eventCard(event),
+    cta: 'View event',
+    ctaUrl: criticalEventUrl(event, rsvp),
+    footerHtml: automatedNoticeFooter()
+  });
+}
+
+function calendarAttachment(icsContent, filename) {
+  return icsContent
+    ? [{ filename, content: Buffer.from(icsContent).toString('base64') }]
+    : undefined;
+}
+
+async function sendEventUpdate({ to, event, rsvp, changes, icsContent }) {
+  return send({
+    to,
+    subject: `Updated: ${event.title}`,
+    html: renderEventUpdateEmail({ event, rsvp, changes }),
+    attachments: calendarAttachment(icsContent, 'event-update.ics')
+  });
+}
+
+async function sendEventCancellation({ to, event, rsvp, icsContent }) {
+  return send({
+    to,
+    subject: `Cancelled: ${event.title}`,
+    html: renderEventCancellationEmail({ event, rsvp }),
+    attachments: calendarAttachment(icsContent, 'event-cancelled.ics')
+  });
+}
+
 // Organizer-triggered announcement to opted-in followers.
 async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsubscribeUrl }) {
   return send({
@@ -522,7 +593,8 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventAnnouncement, sendPhotoRequest, sendCommerceLaunch, formatTime, renderRsvpConfirmationEmail,
+  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPhotoRequest, sendCommerceLaunch,
+  formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, rsvpConfirmationSubject
 };

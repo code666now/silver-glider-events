@@ -59,7 +59,7 @@ function ownerEventData(event) {
     coverCreditName: event.cover_credit_name || '',
     coverCreditLink: event.cover_credit_link || '',
     artworkAccentColor: event.artwork_accent_color || '',
-    rsvpCount: Number(event.total_attendance) || 0
+    rsvpCount: Number(event.rsvp_count) || 0
   };
 }
 

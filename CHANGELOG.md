@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.63
+
+Released September 8, 2026.
+
+### Added
+
+* Added an explicit **Save & notify** or **Save without email** decision when a published event's date, start time, or location changes in either organizer editor.
+* Added the same notify-or-skip choice when cancelling an event, with delivery to every confirmed primary RSVP email regardless of ordinary reminder preferences.
+* Added one-way event-update and cancellation emails with secure attendee links, calendar update/cancellation attachments, transactional recipient snapshots, retry tracking, and delivery status on the event management page.
+
+### Improved
+
+* Added one shared accessible confirmation experience: a centered desktop modal and mobile bottom sheet that clearly summarizes each changed detail and guest count.
+* Gave calendar attachments stable event IDs and version sequences so future updates and cancellations can be recognized by calendar clients, while preserving all existing photo-request and follower-notification reply behavior.
+
 ## 1.0.62
 
 Released September 8, 2026.

@@ -243,7 +243,8 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
         const { rows } = await pool.query(
           `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
            VALUES ($1,$2,$3,'photo_request','email','pending')
-           ON CONFLICT (rsvp_id, message_type, channel) WHERE rsvp_id IS NOT NULL DO NOTHING
+           ON CONFLICT (rsvp_id, message_type, channel)
+             WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL DO NOTHING
            RETURNING id`,
           [recipient.id, event.id, recipient.email]
         );

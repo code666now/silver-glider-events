@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/event-change-dialog.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
@@ -144,6 +145,12 @@
       border-radius:14px;background:rgba(255,93,93,.06);color:var(--sg-text-dim);font-size:14px;
     }
     .manage-load-error strong { color:var(--sg-text); }
+    .notification-status {
+      margin:-6px 0 18px;padding:11px 13px;border:1px solid rgba(28,197,190,.2);border-radius:12px;
+      background:rgba(28,197,190,.055);color:var(--sg-text-dim);font-size:11px;line-height:1.5;
+    }
+    .notification-status strong { color:var(--sg-text); }
+    .notification-status.is-warning { border-color:rgba(245,185,66,.24);background:rgba(245,185,66,.055); }
     @media (min-width: 1024px) {
       .manage-shell {
         max-width:1260px;
@@ -358,6 +365,8 @@
       </div>
     </div>
 
+    <div class="notification-status" id="notification-status" role="status" hidden></div>
+
     <div class="toolbar" aria-label="Event actions">
       <button class="sg-btn sg-btn-primary" id="copy-link" disabled>Copy event link</button>
       <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank" aria-disabled="true" tabindex="-1">View page</a>
@@ -461,6 +470,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/event-change-dialog.js"></script>
   <script src="/js/manage.js"></script>
 </body>
 </html>

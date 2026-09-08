@@ -85,7 +85,7 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /presentation_mode: presentationMode/);
   assert.match(js, /cover_fit_mode: coverFitMode/);
   assert.match(js, /artwork_accent_color: artworkAccents\.get\(activeArtworkUrl\(\)\) \|\| null/);
-  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/location-utils\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
+  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/location-utils\.js"><\/script>\s*<script src="\/js\/event-change-dialog\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
   assert.match(js, /img\.naturalHeight > img\.naturalWidth \? 'contain' : 'cover'/);
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);

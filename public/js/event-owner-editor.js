@@ -139,7 +139,7 @@
   }
 
   function sensitiveChanges() {
-    return ['eventDate', 'startTime', 'endTime', 'venueName', 'venueAddress', 'visibility', 'capacity']
+    return ['eventDate', 'startTime', 'venueName', 'venueAddress']
       .some(key => String(draft[key] ?? '') !== String(saved[key] ?? ''));
   }
 
@@ -1066,10 +1066,30 @@
     saveButton.textContent = 'Saving…';
     saveStatus.textContent = 'Saving changes…';
     try {
-      await request(`/api/events/${EVENT.id}`, { method: 'PUT', body: payload() });
+      const body = payload();
+      if (saved.rsvpCount > 0) {
+        const changes = window.SGEEventChanges.compare(saved, draft);
+        if (changes.length) {
+          saveButton.textContent = 'Review changes…';
+          saveStatus.textContent = 'Choose whether to notify your guests.';
+          const choice = await window.SGEEventChanges.confirmUpdate({ changes, count: saved.rsvpCount });
+          if (choice === 'cancel') {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save changes';
+            saveStatus.textContent = 'Unsaved changes';
+            return;
+          }
+          body.notify_attendees = choice === 'notify';
+          saveButton.textContent = 'Saving…';
+          saveStatus.textContent = 'Saving changes…';
+        }
+      }
+      const data = await request(`/api/events/${EVENT.id}`, { method: 'PUT', body });
       saved = clone(draft);
       sessionStorage.setItem('sge-owner-editor-reopen', EVENT.slug);
-      sessionStorage.setItem('sge-owner-editor-saved', 'Event updated');
+      sessionStorage.setItem('sge-owner-editor-saved', data.notification?.queued
+        ? `Event updated. We’re notifying ${data.notification.queued} ${data.notification.queued === 1 ? 'guest' : 'guests'}.`
+        : 'Event updated');
       location.reload();
     } catch (error) {
       saveButton.disabled = false;

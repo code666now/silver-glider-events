@@ -12,6 +12,8 @@ const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
 const { normalizeHex } = require('../../public/js/artwork-color');
+const LocationUtils = require('../../public/js/location-utils');
+const { queueEventNotificationBatch } = require('../jobs/event-notifications');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -27,6 +29,80 @@ const COVER_FIT_MODES = ['auto', 'contain', 'cover'];
 
 function isTrue(value) {
   return value === true || value === 'true';
+}
+
+function canonicalDate(value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+function canonicalTime(value) {
+  return String(value || '').slice(0, 5);
+}
+
+function displayDate(value) {
+  const date = new Date(`${canonicalDate(value)}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? canonicalDate(value)
+    : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+function displayTime(value) {
+  const [hours, minutes] = canonicalTime(value).split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return canonicalTime(value);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+
+function displayLocation(venueName, venueAddress) {
+  const parts = LocationUtils.displayParts(venueName, venueAddress);
+  return [parts.name, parts.address].filter(Boolean).join(' — ') || 'Location not specified';
+}
+
+function importantEventChanges(current, updates) {
+  const next = { ...current, ...updates };
+  const changes = [];
+  if (updates.event_date !== undefined && canonicalDate(current.event_date) !== canonicalDate(next.event_date)) {
+    changes.push({ field: 'date', label: 'Date', before: displayDate(current.event_date), after: displayDate(next.event_date) });
+  }
+  if (updates.start_time !== undefined && canonicalTime(current.start_time) !== canonicalTime(next.start_time)) {
+    changes.push({ field: 'time', label: 'Start time', before: displayTime(current.start_time), after: displayTime(next.start_time) });
+  }
+  const locationTouched = updates.venue_name !== undefined || updates.venue_address !== undefined;
+  const beforeLocation = displayLocation(current.venue_name, current.venue_address);
+  const afterLocation = displayLocation(next.venue_name, next.venue_address);
+  if (locationTouched && beforeLocation !== afterLocation) {
+    changes.push({ field: 'location', label: 'Location', before: beforeLocation, after: afterLocation });
+  }
+  return changes;
+}
+
+async function createEventNotificationBatch(client, { eventId, kind, changes = [] }) {
+  const { rows: recipients } = await client.query(
+    `SELECT id, email FROM rsvps WHERE event_id=$1 AND status='confirmed' ORDER BY id`,
+    [eventId]
+  );
+  if (!recipients.length) return null;
+  const { rows: batches } = await client.query(
+    `INSERT INTO event_notification_batches (event_id, kind, changes, recipient_count)
+     VALUES ($1,$2,$3::jsonb,$4) RETURNING id`,
+    [eventId, kind, JSON.stringify(changes), recipients.length]
+  );
+  const batchId = batches[0].id;
+  for (const recipient of recipients) {
+    await client.query(
+      `INSERT INTO message_log
+         (rsvp_id, event_id, notification_batch_id, recipient, message_type, channel, status)
+       VALUES ($1,$2,$3,$4,$5,'email','pending')
+       ON CONFLICT (notification_batch_id, rsvp_id, channel)
+         WHERE notification_batch_id IS NOT NULL AND rsvp_id IS NOT NULL DO NOTHING`,
+      [recipient.id, eventId, batchId, recipient.email, kind]
+    );
+  }
+  return { batchId, queued: recipients.length, status: 'pending' };
 }
 
 function validateSecretCodePair(body) {
@@ -341,6 +417,14 @@ router.get('/api/events/:id', async (req, res, next) => {
               COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
               COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
               COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
+              ,(SELECT json_build_object(
+                  'id', b.id, 'kind', b.kind, 'status', b.status,
+                  'recipientCount', b.recipient_count, 'sentCount', b.sent_count,
+                  'failedCount', b.failed_count, 'createdAt', b.created_at
+                )
+                  FROM event_notification_batches b
+                 WHERE b.event_id=e.id
+                 ORDER BY b.id DESC LIMIT 1) AS latest_notification
          FROM events e WHERE e.id=$1 AND e.organizer_id=$2`,
       [req.params.id, req.organizer.id]
     );
@@ -361,7 +445,8 @@ router.put('/api/events/:id', async (req, res, next) => {
     const { rows: currentRows } = await client.query(
       `SELECT visibility, show_guest_list, allow_guests, comments_enabled,
               secret_show_enabled, secret_show_version, presentation_mode, flyer_image_url,
-              admission_type, ticket_price, ticket_url, commerce_event_id, status
+              admission_type, ticket_price, ticket_url, commerce_event_id, status,
+              event_date, start_time, venue_name, venue_address
          FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
@@ -370,6 +455,8 @@ router.put('/api/events/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Event not found' });
     }
     const current = currentRows[0];
+    const importantChanges = importantEventChanges(current, out);
+    const notifyAttendees = isTrue(req.body.notify_attendees) && current.status === 'published' && importantChanges.length > 0;
     const effectiveAdmission = out.admission_type || normalizeAdmissionType(current.admission_type) || ADMISSION_TYPES.FREE_RSVP;
     const effectiveCommerceEventId = out.commerce_event_id !== undefined
       ? out.commerce_event_id
@@ -426,8 +513,9 @@ router.put('/api/events/:id', async (req, res, next) => {
     }
 
     const sets = keys.map((k, i) => `${k}=$${i + 3}`).join(', ');
+    const calendarSequenceUpdate = importantChanges.length ? ', calendar_sequence=calendar_sequence+1' : '';
     const { rows } = await client.query(
-      `UPDATE events SET ${sets}, updated_at=NOW() WHERE id=$1 AND organizer_id=$2 RETURNING *`,
+      `UPDATE events SET ${sets}${calendarSequenceUpdate}, updated_at=NOW() WHERE id=$1 AND organizer_id=$2 RETURNING *`,
       [req.params.id, req.organizer.id, ...keys.map(k => out[k])]
     );
     if (secretShowEnabled && replacementHash) {
@@ -440,8 +528,16 @@ router.put('/api/events/:id', async (req, res, next) => {
     } else if (!secretShowEnabled) {
       await client.query('DELETE FROM event_secret_codes WHERE event_id=$1', [req.params.id]);
     }
+    const notification = notifyAttendees
+      ? await createEventNotificationBatch(client, {
+        eventId: rows[0].id,
+        kind: 'event_updated',
+        changes: importantChanges
+      })
+      : null;
     await client.query('COMMIT');
-    res.json({ event: rows[0] });
+    if (notification) queueEventNotificationBatch(notification.batchId);
+    res.json({ event: rows[0], importantChanges, notification });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);
@@ -497,15 +593,41 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
 
 // POST /api/events/:id/cancel
 router.post('/api/events/:id/cancel', async (req, res, next) => {
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
-      `UPDATE events SET status='cancelled', updated_at=NOW()
+    await client.query('BEGIN');
+    const { rows: currentRows } = await client.query(
+      `SELECT * FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!currentRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (currentRows[0].status === 'cancelled') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Event is already cancelled' });
+    }
+    const { rows } = await client.query(
+      `UPDATE events SET status='cancelled', calendar_sequence=calendar_sequence+1, updated_at=NOW()
         WHERE id=$1 AND organizer_id=$2 RETURNING *`,
       [req.params.id, req.organizer.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Event not found' });
-    res.json({ event: rows[0] });
-  } catch (err) { next(err); }
+    const notification = isTrue(req.body.notify_attendees) && currentRows[0].status === 'published'
+      ? await createEventNotificationBatch(client, {
+        eventId: rows[0].id,
+        kind: 'event_cancelled'
+      })
+      : null;
+    await client.query('COMMIT');
+    if (notification) queueEventNotificationBatch(notification.batchId);
+    res.json({ event: rows[0], notification });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // DELETE /api/events/:id — permanently remove an event (cascades to its RSVPs + logs)
