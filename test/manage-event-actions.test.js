@@ -75,6 +75,25 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.doesNotMatch(privateBranch, /line-card/);
 });
 
+test('duplicate event exposes progress, prevents repeat requests, and recovers from errors', () => {
+  const view = source('src/views/event-manage.html');
+  const client = source('public/js/manage.js');
+  const handler = client.slice(
+    client.indexOf("$('duplicate').addEventListener"),
+    client.indexOf('async function loadFollowers')
+  );
+
+  assert.match(view, /id="duplicate" type="button" disabled/);
+  assert.match(handler, /button\.dataset\.busy === 'true'/);
+  assert.match(handler, /button\.textContent = 'Duplicating…'/);
+  assert.match(handler, /button\.setAttribute\('aria-busy', 'true'\)/);
+  assert.match(handler, /api\(`\/api\/events\/\$\{eventId\}\/duplicate`, \{ method: 'POST' \}\)/);
+  assert.match(handler, /window\.location\.assign\(`\/events\/new\?id=\$\{encodeURIComponent\(event\.id\)\}`\)/);
+  assert.match(handler, /catch \(err\)/);
+  assert.match(handler, /button\.textContent = 'Duplicate event'/);
+  assert.match(handler, /toast\(err\.message \|\| 'Could not duplicate this event'\)/);
+});
+
 test('management metrics follow public and private event visibility', () => {
   const view = source('src/views/event-manage.html');
   const client = source('public/js/manage.js');

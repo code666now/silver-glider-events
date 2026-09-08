@@ -337,8 +337,26 @@ $('export-csv').addEventListener('click', () => {
 });
 
 $('duplicate').addEventListener('click', async () => {
-  const { event } = await api(`/api/events/${eventId}/duplicate`, { method: 'POST' });
-  window.location.href = `/events/${event.id}/edit`;
+  const button = $('duplicate');
+  if (button.dataset.busy === 'true') return;
+
+  button.dataset.busy = 'true';
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Duplicating…';
+  $('more-menu').removeAttribute('open');
+
+  try {
+    const { event } = await api(`/api/events/${eventId}/duplicate`, { method: 'POST' });
+    if (!event?.id) throw new Error('The duplicate was created without an editable event');
+    window.location.assign(`/events/new?id=${encodeURIComponent(event.id)}`);
+  } catch (err) {
+    delete button.dataset.busy;
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    button.textContent = 'Duplicate event';
+    toast(err.message || 'Could not duplicate this event');
+  }
 });
 
 async function loadFollowers() {

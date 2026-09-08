@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.62
+
+Released September 8, 2026.
+
+### Fixed
+
+* Made **Duplicate event** provide an immediate progress state, prevent repeat requests, open the new draft directly in the editor, and recover with a visible error instead of appearing unresponsive.
+* Added focused regression coverage for the duplicate-event dashboard interaction while retaining the existing API coverage for Flyer credits and Commerce-safe copies.
+
 ## 1.0.61
 
 Released September 7, 2026.

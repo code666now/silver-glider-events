@@ -36,6 +36,7 @@
       text-align: left; cursor: pointer;
     }
     .more-menu-panel button:hover { background: rgba(255,255,255,.055); }
+    .more-menu-panel button:disabled { cursor:wait;opacity:.58; }
     .more-menu-panel .danger { color: var(--sg-danger); }
     .more-menu-divider { height: 1px; margin: 6px 4px; background: var(--sg-border); }
     .promotion-card {
@@ -364,9 +365,9 @@
       <details class="more-menu" id="more-menu">
         <summary class="sg-btn sg-btn-ghost" aria-disabled="true">Event actions <span class="menu-chevron" aria-hidden="true">▾</span></summary>
         <div class="more-menu-panel">
-          <button id="duplicate" disabled>Duplicate event</button>
+          <button id="duplicate" type="button" disabled>Duplicate event</button>
           <div class="more-menu-divider" role="separator"></div>
-          <button class="danger" id="cancel-event" disabled>Cancel event</button>
+          <button class="danger" id="cancel-event" type="button" disabled>Cancel event</button>
         </div>
       </details>
     </div>
