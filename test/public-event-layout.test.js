@@ -48,6 +48,9 @@ test('guest list uses an inline mobile expansion and an accessible desktop modal
   const flyer = source('public/css/event-public-flyer.css');
 
   assert.match(route, /class="guest-avatar-stack"/);
+  assert.match(route, /names\.length > 0 && names\.length <= 5/);
+  assert.match(route, /data-preview-style="\$\{showPreviewNames \? 'named' : 'compact'\}"/);
+  assert.match(route, /class="guest-avatar-label"/);
   assert.match(route, /class="guest-avatar-more"/);
   assert.match(route, /aria-controls="guest-list-inline guest-list-modal"/);
   assert.match(route, /class="guest-list-inline" id="guest-list-inline" hidden/);
@@ -66,6 +69,9 @@ test('guest list uses an inline mobile expansion and an accessible desktop modal
 
   for (const styles of [standard, flyer]) {
     assert.match(styles, /\.guest-avatar-stack li \+ li \{ margin-left: -12px; \}/);
+    assert.match(styles, /\.guest-avatar-stack\[data-preview-style="named"\] \{[\s\S]*align-items: flex-start;[\s\S]*overflow: visible;/);
+    assert.match(styles, /\.guest-avatar-stack\[data-preview-style="named"\] li \+ li \{ margin-left: 0; \}/);
+    assert.match(styles, /\.guest-avatar-label \{[\s\S]*text-overflow: ellipsis;[\s\S]*white-space: nowrap;/);
     assert.match(styles, /\.guest-list-modal \{[\s\S]*position: fixed;[\s\S]*z-index: 100;/);
     assert.match(styles, /\.guest-list-modal \.guest-avatar \{[\s\S]*width: 80px;[\s\S]*height: 80px;/);
     assert.match(styles, /@media \(max-width: 599px\)[\s\S]*\.guest-list-modal \{ display: none !important; \}/);

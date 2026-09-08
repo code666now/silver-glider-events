@@ -1019,6 +1019,36 @@ test('uses past tense for attendance after a private event passes', async () => 
   assert.match(html, /First[\s\S]*Plus One[\s\S]*Second/);
 });
 
+test('guest preview shows first names for up to five attendees and compacts at six', async () => {
+  const event = await createEvent({ slug: 'guest-preview-night', show_guest_list: true });
+  const firstNames = ['Ada', 'Ben', 'Cleo', 'Drew', 'Esme', 'Finn'];
+
+  for (const [index, firstName] of firstNames.entries()) {
+    await pool.query(
+      `INSERT INTO rsvps (event_id, first_name, last_name, email, status, manage_token)
+       VALUES ($1,$2,'Guest',$3,'confirmed',$4)`,
+      [event.id, firstName, `preview-${index}@example.test`, `guest-preview-token-${index}`]
+    );
+
+    if (index !== 4) continue;
+    const fiveGuestPage = await fetch(`${baseUrl}/e/${event.slug}`);
+    const fiveGuestHtml = await fiveGuestPage.text();
+    assert.equal(fiveGuestPage.status, 200);
+    assert.match(fiveGuestHtml, /data-preview-style="named"/);
+    assert.equal((fiveGuestHtml.match(/class="guest-avatar-label"/g) || []).length, 5);
+    assert.match(fiveGuestHtml, /class="guest-avatar-label">Ada<\/span>/);
+    assert.match(fiveGuestHtml, /class="guest-avatar-label">Esme<\/span>/);
+    assert.match(fiveGuestHtml, /See everyone/);
+  }
+
+  const sixGuestPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  const sixGuestHtml = await sixGuestPage.text();
+  assert.equal(sixGuestPage.status, 200);
+  assert.match(sixGuestHtml, /data-preview-style="compact"/);
+  assert.doesNotMatch(sixGuestHtml, /class="guest-avatar-label"/);
+  assert.match(sixGuestHtml, /See everyone/);
+});
+
 test('past events no longer accept new RSVPs', async () => {
   await createEvent({ slug: 'ended-rsvp-night', event_date: '2020-08-10' });
 

@@ -196,12 +196,15 @@ function rejectLockedSecret(res) {
 function renderGuestList(event, rows, { ownerPreview = false } = {}) {
   if (!event.show_guest_list && !ownerPreview) return '';
   const names = publicGuestNames(rows);
+  const showPreviewNames = names.length > 0 && names.length <= 5;
   const visibleLimit = 8;
   const avatar = entry => `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
     ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
     : ''}</span>`;
   const previewItems = names.slice(0, visibleLimit).map(entry => {
-    return `<li aria-label="${esc(entry.firstName)}">${avatar(entry)}</li>`;
+    return showPreviewNames
+      ? `<li>${avatar(entry)}<span class="guest-avatar-label">${esc(entry.firstName)}</span></li>`
+      : `<li aria-label="${esc(entry.firstName)}">${avatar(entry)}</li>`;
   }).join('');
   const remaining = Math.max(0, names.length - visibleLimit);
   const more = remaining
@@ -223,7 +226,7 @@ function renderGuestList(event, rows, { ownerPreview = false } = {}) {
       <h2 id="guest-list-title">${peopleIcon}<span>${attendanceLabel}</span></h2>
       ${names.length ? '<button class="guest-list-toggle" id="guest-list-toggle" type="button" aria-expanded="false" aria-controls="guest-list-inline guest-list-modal">See everyone <span aria-hidden="true">→</span></button>' : ''}
     </div>
-    ${previewItems ? `<ul class="guest-avatar-stack" id="guest-avatar-preview" aria-label="Attendee preview">${previewItems}${more}</ul>
+    ${previewItems ? `<ul class="guest-avatar-stack" data-preview-style="${showPreviewNames ? 'named' : 'compact'}" id="guest-avatar-preview" aria-label="Attendee preview">${previewItems}${more}</ul>
     <div class="guest-list-inline" id="guest-list-inline" hidden><ul class="guest-name-list">${modalItems}</ul></div>` : '<p class="section-empty">Be the first to RSVP.</p>'}
   </section>
   ${names.length ? `<div class="guest-list-modal" id="guest-list-modal" hidden>

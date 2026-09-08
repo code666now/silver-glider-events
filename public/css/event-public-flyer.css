@@ -594,6 +594,31 @@
 }
 .guest-avatar-stack li + li { margin-left: -12px; }
 .guest-avatar-stack .guest-avatar { border-color: rgba(255,255,255,.16); }
+.guest-avatar-stack[data-preview-style="named"] {
+  align-items: flex-start;
+  gap: 14px;
+  overflow: visible;
+}
+.guest-avatar-stack[data-preview-style="named"] li {
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.guest-avatar-stack[data-preview-style="named"] li + li { margin-left: 0; }
+.guest-avatar-label {
+  width: 100%;
+  overflow: hidden;
+  color: var(--sg-text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .guest-avatar-more {
   width: 58px;
   height: 58px;
@@ -928,6 +953,11 @@ body.guest-list-modal-open { overflow: hidden; }
   .guest-avatar-more { width: 48px; height: 48px; }
   .guest-avatar-stack .guest-avatar { font-size: 24px; }
   .guest-avatar-stack li + li { margin-left: -10px; }
+  .guest-avatar-stack[data-preview-style="named"] { gap: clamp(6px, 2.6vw, 10px); }
+  .guest-avatar-stack[data-preview-style="named"] li { width: 48px; gap: 7px; }
+  .guest-avatar-stack[data-preview-style="named"] li + li { margin-left: 0; }
+  .guest-avatar-stack[data-preview-style="named"] .guest-avatar { width: 48px; height: 48px; }
+  .guest-avatar-label { font-size: 10px; }
   .guest-avatar-more { font-size: 12px; }
   .guest-list-modal { display: none !important; }
   .guest-list-inline:not([hidden]) { display: block; }
@@ -940,6 +970,15 @@ body.guest-list-modal-open { overflow: hidden; }
   .fx-veil.fx-veil-warm {
     background: linear-gradient(180deg, rgba(8,5,4,.58), rgba(8,5,4,.7));
   }
+}
+
+@media (max-width: 349px) {
+  .public-guest-list { padding: 14px; }
+  .public-guest-list .section-heading { flex-wrap: wrap; }
+  .public-guest-list .guest-list-toggle { margin-left: auto; }
+  .guest-avatar-stack[data-preview-style="named"] { gap: 6px; }
+  .guest-avatar-stack[data-preview-style="named"] li { width: 44px; }
+  .guest-avatar-stack[data-preview-style="named"] .guest-avatar { width: 44px; height: 44px; }
 }
 
 @media (max-width: 767px) {
