@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.61
+
+Released September 7, 2026.
+
+### Documentation
+
+* Updated the master handoff to match the current owner editor, unified Location flow, Flyer credits, background effects, RSVP profile linking, responsive guest previews, migrations, and 146-test suite.
+
+### Operations
+
+* Restored the GitHub repository backup by synchronizing the accumulated `main` history and release tags after verifying authenticated repository access.
+
 ## 1.0.60
 
 Released September 7, 2026.
