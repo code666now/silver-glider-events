@@ -383,6 +383,172 @@ $('duplicate').addEventListener('click', async () => {
   }
 });
 
+let previousGuestState = null;
+
+function shortEventDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+  });
+}
+
+function renderPreviousGuestAction(data) {
+  const button = $('invite-previous-guests');
+  if (data.batch) {
+    const count = Number(data.batch.recipientCount) || 0;
+    button.style.display = '';
+    button.disabled = true;
+    if (data.batch.status === 'sent') {
+      $('invite-previous-guests-title').textContent = `${count} ${count === 1 ? 'guest' : 'guests'} invited`;
+      $('invite-previous-guests-copy').textContent = 'Invitation sent. This action can only be used once.';
+    } else if (data.batch.status === 'partial_failed') {
+      const sent = Number(data.batch.sentCount) || 0;
+      $('invite-previous-guests-title').textContent = `${sent} of ${count} invitations delivered`;
+      $('invite-previous-guests-copy').textContent = 'Some invitations could not be delivered.';
+    } else if (data.batch.status === 'failed') {
+      $('invite-previous-guests-title').textContent = 'Invitation delivery failed';
+      $('invite-previous-guests-copy').textContent = 'The delivery record is saved for review.';
+    } else {
+      $('invite-previous-guests-title').textContent = `${count} ${count === 1 ? 'invitation' : 'invitations'} queued`;
+      $('invite-previous-guests-copy').textContent = 'Delivery is in progress.';
+    }
+    return;
+  }
+  const hasEligibleSource = data.canInvite && data.sources.some(source => Number(source.eligibleCount) > 0);
+  button.style.display = hasEligibleSource ? '' : 'none';
+  button.disabled = !hasEligibleSource;
+  if (hasEligibleSource) {
+    $('invite-previous-guests-title').textContent = 'Invite previous guests';
+    $('invite-previous-guests-copy').textContent = 'Bring back guests from one of your past events.';
+  }
+}
+
+async function loadPreviousGuests() {
+  const data = await api(`/api/events/${eventId}/previous-guests`);
+  previousGuestState = data;
+  renderPreviousGuestAction(data);
+  return data;
+}
+
+function updatePreviousGuestSelection() {
+  const boxes = [...$('previous-guests-content').querySelectorAll('[data-previous-guest]')];
+  const selected = boxes.filter(box => box.checked);
+  const selectAll = $('previous-guests-select-all');
+  if (selectAll) {
+    selectAll.checked = boxes.length > 0 && selected.length === boxes.length;
+    selectAll.indeterminate = selected.length > 0 && selected.length < boxes.length;
+  }
+  const button = $('previous-guests-send');
+  button.disabled = selected.length === 0;
+  button.textContent = `Send ${selected.length} ${selected.length === 1 ? 'invitation' : 'invitations'}`;
+}
+
+function renderPreviousGuestRecipients(data, sourceId) {
+  previousGuestState = data;
+  const source = data.sources.find(item => Number(item.id) === Number(sourceId));
+  const recipients = data.recipients || [];
+  const peopleCount = Number(source?.peopleCount) || 0;
+  const unavailableCount = Math.max(0, peopleCount - recipients.length);
+  const rows = recipients.map(recipient => {
+    const name = `${recipient.firstName || ''} ${recipient.lastName || ''}`.trim() || recipient.email;
+    const search = `${name} ${recipient.email}`.toLowerCase();
+    return `<label class="previous-guests-recipient" data-recipient-search="${escapeHtml(search)}">
+      <input type="checkbox" data-previous-guest value="${recipient.id}" checked>
+      <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(recipient.email)}</small></span>
+    </label>`;
+  }).join('');
+  $('previous-guests-content').innerHTML = `
+    <p class="previous-guests-summary"><strong>${peopleCount}</strong> ${peopleCount === 1 ? 'person was' : 'people were'} on this guest list · <strong>${recipients.length}</strong> can be emailed</p>
+    <p class="previous-guests-consent-note">Only primary guests who asked for future event emails appear here. Named +1s are never added automatically.</p>
+    ${recipients.length ? `<label class="previous-guests-field"><span>Review guests</span><input class="sg-input" id="previous-guests-search" type="search" placeholder="Search names or emails…"></label>
+      <div class="previous-guests-list-head"><span>Recipients</span><label class="previous-guests-select-all"><input id="previous-guests-select-all" type="checkbox" checked> Select all</label></div>
+      <div class="previous-guests-list">${rows}</div>` : '<p class="previous-guests-empty">No guests from this event are currently eligible for an email invitation.</p>'}
+    ${unavailableCount ? `<p class="previous-guests-unavailable">${unavailableCount} ${unavailableCount === 1 ? 'other person was' : 'others were'} a +1, did not request future emails, opted out, or already joined this event. Share your event link with them personally.</p>` : ''}
+    <details class="previous-guests-preview">
+      <summary>Preview invitation</summary>
+      <div class="previous-guests-preview-card"><strong>${escapeHtml(eventData.title)}</strong><span>An invitation from ${escapeHtml(previousGuestState.organizerLabel || 'your host page')}</span><span>${escapeHtml($('meta').textContent)}</span></div>
+    </details>`;
+
+  const search = $('previous-guests-search');
+  if (search) {
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      $('previous-guests-content').querySelectorAll('.previous-guests-recipient').forEach(row => {
+        row.hidden = Boolean(query) && !row.dataset.recipientSearch.includes(query);
+      });
+    });
+  }
+  $('previous-guests-content').querySelectorAll('[data-previous-guest]').forEach(box => {
+    box.addEventListener('change', updatePreviousGuestSelection);
+  });
+  $('previous-guests-select-all')?.addEventListener('change', event => {
+    $('previous-guests-content').querySelectorAll('[data-previous-guest]').forEach(box => {
+      box.checked = event.target.checked;
+    });
+    updatePreviousGuestSelection();
+  });
+  updatePreviousGuestSelection();
+}
+
+async function loadPreviousGuestRecipients(sourceId) {
+  $('previous-guests-content').innerHTML = '<div class="previous-guests-dialog-loading">Loading your previous guest list…</div>';
+  $('previous-guests-send').disabled = true;
+  try {
+    const data = await api(`/api/events/${eventId}/previous-guests?sourceEventId=${encodeURIComponent(sourceId)}`);
+    renderPreviousGuestRecipients(data, sourceId);
+  } catch (error) {
+    $('previous-guests-content').innerHTML = `<p class="previous-guests-empty">${escapeHtml(error.message || 'Could not load this guest list.')}</p>`;
+  }
+}
+
+$('invite-previous-guests').addEventListener('click', () => {
+  if (!previousGuestState?.sources?.length) return;
+  const sourceSelect = $('previous-guests-source');
+  sourceSelect.innerHTML = previousGuestState.sources.map(source =>
+    `<option value="${source.id}" ${Number(source.eligibleCount) ? '' : 'disabled'}>${escapeHtml(source.title)} — ${escapeHtml(shortEventDate(source.eventDate))} (${source.eligibleCount} eligible)</option>`
+  ).join('');
+  const initialSource = previousGuestState.sources.find(source => Number(source.eligibleCount) > 0);
+  if (!initialSource) return;
+  sourceSelect.value = String(initialSource.id);
+  $('previous-guests-dialog').showModal();
+  loadPreviousGuestRecipients(initialSource.id);
+});
+
+$('previous-guests-source').addEventListener('change', event => {
+  loadPreviousGuestRecipients(event.target.value);
+});
+
+$('previous-guests-form').addEventListener('submit', event => event.preventDefault());
+document.querySelectorAll('[data-close-previous-guests]').forEach(button => {
+  button.addEventListener('click', () => $('previous-guests-dialog').close());
+});
+
+$('previous-guests-send').addEventListener('click', async () => {
+  const button = $('previous-guests-send');
+  const rsvpIds = [...$('previous-guests-content').querySelectorAll('[data-previous-guest]:checked')]
+    .map(box => Number(box.value));
+  if (!rsvpIds.length || button.dataset.busy === 'true') return;
+  button.dataset.busy = 'true';
+  button.disabled = true;
+  button.textContent = 'Queuing invitations…';
+  try {
+    const data = await api(`/api/events/${eventId}/previous-guests/invite`, {
+      method: 'POST',
+      body: { sourceEventId: Number($('previous-guests-source').value), rsvpIds }
+    });
+    previousGuestState.batch = { ...data.batch, recipientCount: data.queued };
+    renderPreviousGuestAction(previousGuestState);
+    $('previous-guests-dialog').close();
+    toast(`${data.queued} ${data.queued === 1 ? 'invitation' : 'invitations'} queued`);
+    loadFollowers();
+  } catch (error) {
+    toast(error.message || 'Could not send invitations');
+    updatePreviousGuestSelection();
+  } finally {
+    delete button.dataset.busy;
+  }
+});
+
 async function loadFollowers() {
   try {
     const { count, announcedAt, announcedCount, canAnnounce } = await api(`/api/events/${eventId}/followers`);
@@ -479,7 +645,7 @@ async function initializeManagePage() {
     if (savedMessage) toast(savedMessage);
     const secondaryTasks = eventData.is_past
       ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
-      : [loadLineStatus(), loadFollowers()];
+      : [loadLineStatus(), loadPreviousGuests(), loadFollowers()];
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');

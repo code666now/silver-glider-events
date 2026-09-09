@@ -544,6 +544,29 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
   });
 }
 
+function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, unsubscribeUrl }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const firstName = String(recipientName || '').trim().split(/\s+/)[0];
+  const greeting = firstName ? `Hi ${firstName}. ` : '';
+  return layout({
+    kicker: `An invitation from ${organizerLabel}`,
+    headline: event.title,
+    sub: `${greeting}${organizerLabel} thought you’d like this next event.`,
+    bodyHtml: `${photoRequestArtwork(event)}${eventCard(event)}`,
+    cta: 'View event',
+    ctaUrl: `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
+    footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re receiving this because you asked ${esc(organizerLabel)} to invite you to future events.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from this host</a></p>`
+  });
+}
+
+async function sendPreviousGuestInvitation({ to, event, recipientName, organizerLabel, unsubscribeUrl }) {
+  return send({
+    to,
+    subject: `${organizerLabel} invited you: ${event.title}`,
+    html: renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, unsubscribeUrl })
+  });
+}
+
 function photoRequestArtwork(event) {
   const source = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
   const imageUrl = emailSafeImageUrl(source);
@@ -593,8 +616,10 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 
 module.exports = {
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPhotoRequest, sendCommerceLaunch,
+  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
+  sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
+  renderPreviousGuestInvitationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, rsvpConfirmationSubject
 };

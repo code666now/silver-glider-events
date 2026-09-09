@@ -8,6 +8,7 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
+  <link rel="stylesheet" href="/css/previous-guest-invites.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
@@ -396,6 +397,11 @@
           <span class="promotion-action-copy"><strong class="promotion-action-title">Download QR code</strong><span class="promotion-action-description">Use it on posters, flyers, and print.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">↓</span>
         </button>
+        <button class="promotion-action" id="invite-previous-guests" type="button" style="display:none" disabled>
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19 8v6m-3-3h6"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite previous guests</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Bring back guests from one of your past events.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
         <button class="promotion-action" id="announce" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 10a2.5 2.5 0 0 1 2 4M6 10a2.5 2.5 0 0 0-2 4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="announce-title">Email my followers</strong><span class="promotion-action-description" id="announce-copy">Send this event once to people following your host page.</span></span>
@@ -468,6 +474,32 @@
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>
   </div>
+
+  <dialog class="previous-guests-dialog" id="previous-guests-dialog" aria-labelledby="previous-guests-title">
+    <form class="previous-guests-dialog-form" id="previous-guests-form">
+      <header class="previous-guests-dialog-head">
+        <div>
+          <p class="previous-guests-kicker">Invitations</p>
+          <h2 id="previous-guests-title">Bring this crowd back</h2>
+          <p class="previous-guests-intro">Invite guests from a past event who asked to hear about future events.</p>
+        </div>
+        <button class="previous-guests-close" type="button" data-close-previous-guests aria-label="Close">×</button>
+      </header>
+      <div class="previous-guests-dialog-body">
+        <label class="previous-guests-field">
+          <span>Choose a past event</span>
+          <select class="sg-input" id="previous-guests-source"></select>
+        </label>
+        <div id="previous-guests-content" aria-live="polite">
+          <div class="previous-guests-dialog-loading">Loading your previous guest list…</div>
+        </div>
+      </div>
+      <footer class="previous-guests-dialog-foot">
+        <button class="sg-btn sg-btn-ghost" type="button" data-close-previous-guests>Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="previous-guests-send" type="button" disabled>Send invitations</button>
+      </footer>
+    </form>
+  </dialog>
 
   <script src="/js/api.js"></script>
   <script src="/js/event-change-dialog.js"></script>

@@ -1336,3 +1336,100 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   const hiddenShortUploadPage = await fetch(`${baseUrl}${shortPath}`);
   assert.equal(hiddenShortUploadPage.status, 404);
 });
+
+test('invites only consented primary guests from one past event and never emails them twice', async () => {
+  const source = await createEvent({
+    slug: 'past-birthday-crowd',
+    title: 'Past Birthday Crowd',
+    event_date: '2020-04-18'
+  });
+  const target = await createEvent({
+    slug: 'next-private-party',
+    title: 'Next Private Party',
+    event_date: '2030-11-14',
+    visibility: 'private'
+  });
+  const eligible = await createRsvp(source.id, {
+    first_name: 'Alice', last_name: 'Eligible', email: 'alice@example.test', organizer_optin: true,
+    guest_first_name: 'Plus', guest_last_name: 'One', guest_email: 'plus-one@example.test'
+  });
+  await createRsvp(source.id, {
+    first_name: 'Frank', last_name: 'Selectable', email: 'frank@example.test', organizer_optin: true
+  });
+  await createRsvp(source.id, {
+    first_name: 'No', last_name: 'Consent', email: 'no-consent@example.test', organizer_optin: false
+  });
+  await createRsvp(source.id, {
+    first_name: 'Cancelled', last_name: 'Guest', email: 'cancelled@example.test', organizer_optin: true, status: 'cancelled'
+  });
+  await createRsvp(source.id, {
+    first_name: 'Host', last_name: 'Optout', email: 'host-optout@example.test', organizer_optin: true
+  });
+  await pool.query(
+    `INSERT INTO follower_optouts (organizer_id,email) VALUES ($1,'host-optout@example.test')`,
+    [organizerId]
+  );
+  await createRsvp(source.id, {
+    first_name: 'Already', last_name: 'Going', email: 'already-going@example.test', organizer_optin: true
+  });
+  await createRsvp(target.id, {
+    first_name: 'Already', last_name: 'Going', email: 'already-going@example.test'
+  });
+
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const overviewResponse = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests`, {
+    headers: { cookie }
+  });
+  const overview = await overviewResponse.json();
+  assert.equal(overviewResponse.status, 200);
+  assert.equal(overview.canInvite, true);
+  assert.equal(overview.sources.length, 1);
+  assert.equal(overview.sources[0].peopleCount, 6);
+  assert.equal(overview.sources[0].eligibleCount, 2);
+
+  const reviewResponse = await fetch(
+    `${baseUrl}/api/events/${target.id}/previous-guests?sourceEventId=${source.id}`,
+    { headers: { cookie } }
+  );
+  const review = await reviewResponse.json();
+  assert.equal(reviewResponse.status, 200);
+  assert.deepEqual(review.recipients.map(person => person.email).sort(), [
+    'alice@example.test', 'frank@example.test'
+  ]);
+  assert.doesNotMatch(JSON.stringify(review.recipients), /plus-one|no-consent|cancelled|host-optout|already-going/);
+
+  const sendResponse = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [eligible.id] })
+  });
+  assert.equal(sendResponse.status, 202);
+  assert.equal((await sendResponse.json()).queued, 1);
+
+  let delivery;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const { rows } = await pool.query(
+      `SELECT recipient, recipient_name, status, attempt_count
+         FROM message_log WHERE event_id=$1 AND message_type='previous_guest_invite'`,
+      [target.id]
+    );
+    delivery = rows[0];
+    if (delivery?.status === 'sent') break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(delivery, {
+    recipient: 'alice@example.test', recipient_name: 'Alice Eligible', status: 'sent', attempt_count: 1
+  });
+
+  const repeated = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [eligible.id] })
+  });
+  assert.equal(repeated.status, 409);
+
+  const followers = await fetch(`${baseUrl}/api/events/${target.id}/followers`, { headers: { cookie } });
+  const followerData = await followers.json();
+  assert.equal(followerData.count, 1);
+  assert.equal(followerData.canAnnounce, false);
+});

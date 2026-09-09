@@ -14,6 +14,7 @@ const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
 const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { queueEventNotificationBatch } = require('../jobs/event-notifications');
+const { queuePreviousGuestInvitationBatch } = require('../jobs/previous-guest-invitations');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -683,6 +684,237 @@ router.get('/api/events/:id/rsvps.csv', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+function previousGuestBatchPayload(batch) {
+  if (!batch) return null;
+  return {
+    id: batch.id,
+    sourceEventId: batch.source_event_id,
+    sourceEventTitle: batch.source_event_title,
+    status: batch.status,
+    recipientCount: batch.recipient_count,
+    sentCount: batch.sent_count,
+    failedCount: batch.failed_count,
+    createdAt: batch.created_at
+  };
+}
+
+async function eligiblePreviousGuests(queryable, { organizerId, targetEventId, sourceEventId, rsvpIds }) {
+  const params = [organizerId, targetEventId, sourceEventId];
+  const selected = Array.isArray(rsvpIds);
+  if (selected) params.push(rsvpIds);
+  const { rows } = await queryable.query(
+    `SELECT DISTINCT ON (LOWER(r.email)) r.id, r.first_name, r.last_name, LOWER(r.email) AS email
+       FROM rsvps r
+       JOIN events source ON source.id=r.event_id
+      WHERE source.organizer_id=$1 AND source.id=$3 AND source.id<>$2
+        AND source.status='published'
+        AND source.event_date < (CURRENT_TIMESTAMP AT TIME ZONE source.timezone)::date
+        AND r.status='confirmed' AND r.organizer_optin=TRUE
+        AND NULLIF(TRIM(r.email),'') IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM follower_optouts fo
+           WHERE fo.organizer_id=$1 AND LOWER(fo.email)=LOWER(r.email)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM rsvps target_rsvp
+           WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
+             AND LOWER(target_rsvp.email)=LOWER(r.email)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM message_log ml
+           WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
+             AND ml.message_type IN ('announcement','previous_guest_invite')
+             AND ml.status IN ('pending','sent')
+        )
+        ${selected ? 'AND r.id=ANY($4::int[])' : ''}
+      ORDER BY LOWER(r.email), r.id DESC`,
+    params
+  );
+  return rows;
+}
+
+// GET /api/events/:id/previous-guests — past-event sources and consented recipients.
+router.get('/api/events/:id/previous-guests', async (req, res, next) => {
+  try {
+    const { rows: targets } = await pool.query(
+      `SELECT e.id, e.status, e.visibility, e.secret_show_enabled,
+              e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past
+         FROM events e WHERE e.id=$1 AND e.organizer_id=$2`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!targets.length) return res.status(404).json({ error: 'Event not found' });
+    const target = targets[0];
+    const canInvite = target.status === 'published' && !target.is_past && !target.secret_show_enabled;
+
+    const { rows: batchRows } = await pool.query(
+      `SELECT * FROM previous_guest_invitation_batches WHERE target_event_id=$1 LIMIT 1`,
+      [target.id]
+    );
+    const { rows: sources } = canInvite ? await pool.query(
+      `SELECT source.id, source.title, source.event_date,
+              (COUNT(r.id) FILTER (WHERE r.status='confirmed'))::int AS rsvp_count,
+              ((COUNT(r.id) FILTER (WHERE r.status='confirmed')) +
+               (COUNT(r.guest_first_name) FILTER (WHERE r.status='confirmed')))::int AS people_count,
+              (COUNT(DISTINCT LOWER(r.email)) FILTER (
+                WHERE r.status='confirmed' AND r.organizer_optin=TRUE
+                  AND NULLIF(TRIM(r.email),'') IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM follower_optouts fo
+                     WHERE fo.organizer_id=$1 AND LOWER(fo.email)=LOWER(r.email)
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM rsvps target_rsvp
+                     WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
+                       AND LOWER(target_rsvp.email)=LOWER(r.email)
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM message_log ml
+                     WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
+                       AND ml.message_type IN ('announcement','previous_guest_invite')
+                       AND ml.status IN ('pending','sent')
+                  )
+              ))::int AS eligible_count
+         FROM events source
+         LEFT JOIN rsvps r ON r.event_id=source.id
+        WHERE source.organizer_id=$1 AND source.id<>$2 AND source.status='published'
+          AND source.event_date < (CURRENT_TIMESTAMP AT TIME ZONE source.timezone)::date
+        GROUP BY source.id
+        HAVING COUNT(r.id) FILTER (WHERE r.status='confirmed') > 0
+        ORDER BY source.event_date DESC, source.id DESC`,
+      [req.organizer.id, target.id]
+    ) : { rows: [] };
+
+    let recipients = [];
+    const sourceEventId = Number.parseInt(req.query.sourceEventId, 10);
+    if (canInvite && !batchRows.length && Number.isInteger(sourceEventId) && sourceEventId > 0) {
+      recipients = await eligiblePreviousGuests(pool, {
+        organizerId: req.organizer.id,
+        targetEventId: target.id,
+        sourceEventId
+      });
+    }
+
+    res.json({
+      canInvite,
+      reason: target.secret_show_enabled ? 'Secret Shows are not included yet' : null,
+      organizerLabel: req.organizer.org_name || req.organizer.name || 'Silver Glider Events',
+      batch: previousGuestBatchPayload(batchRows[0]),
+      sources: sources.map(source => ({
+        id: source.id,
+        title: source.title,
+        eventDate: source.event_date,
+        rsvpCount: source.rsvp_count,
+        peopleCount: source.people_count,
+        eligibleCount: source.eligible_count
+      })),
+      recipients: recipients.map(recipient => ({
+        id: recipient.id,
+        firstName: recipient.first_name,
+        lastName: recipient.last_name,
+        email: recipient.email
+      }))
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/previous-guests/invite — queue one reviewed invitation batch.
+router.post('/api/events/:id/previous-guests/invite', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const sourceEventId = Number.parseInt(req.body.sourceEventId, 10);
+    const rsvpIds = [...new Set((Array.isArray(req.body.rsvpIds) ? req.body.rsvpIds : [])
+      .map(value => Number.parseInt(value, 10))
+      .filter(value => Number.isInteger(value) && value > 0))];
+    if (!Number.isInteger(sourceEventId) || sourceEventId < 1) {
+      return res.status(400).json({ error: 'Choose a past event' });
+    }
+    if (!rsvpIds.length) return res.status(400).json({ error: 'Choose at least one guest' });
+    if (rsvpIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 guests at a time' });
+
+    await client.query('BEGIN');
+    const { rows: targetRows } = await client.query(
+      `SELECT e.*, e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past
+         FROM events e WHERE e.id=$1 AND e.organizer_id=$2 FOR UPDATE`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!targetRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const target = targetRows[0];
+    if (target.status !== 'published') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Publish the event before inviting previous guests' });
+    }
+    if (target.is_past) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Previous guests can only be invited to an upcoming event' });
+    }
+    if (target.secret_show_enabled) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Previous guest invitations are not available for Secret Shows yet' });
+    }
+    const { rows: existingBatches } = await client.query(
+      `SELECT * FROM previous_guest_invitation_batches WHERE target_event_id=$1`,
+      [target.id]
+    );
+    if (existingBatches.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Previous guests were already invited to this event' });
+    }
+    const { rows: sourceRows } = await client.query(
+      `SELECT id, title FROM events
+        WHERE id=$1 AND organizer_id=$2 AND status='published'
+          AND event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date`,
+      [sourceEventId, req.organizer.id]
+    );
+    if (!sourceRows.length || sourceRows[0].id === target.id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Choose one of your past events' });
+    }
+
+    const recipients = await eligiblePreviousGuests(client, {
+      organizerId: req.organizer.id,
+      targetEventId: target.id,
+      sourceEventId,
+      rsvpIds
+    });
+    if (!recipients.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'None of the selected guests are eligible for this invitation' });
+    }
+    const { rows: batches } = await client.query(
+      `INSERT INTO previous_guest_invitation_batches
+         (target_event_id, source_event_id, source_event_title, recipient_count)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [target.id, sourceEventId, sourceRows[0].title, recipients.length]
+    );
+    const batch = batches[0];
+    for (const recipient of recipients) {
+      const recipientName = `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() || null;
+      await client.query(
+        `INSERT INTO message_log
+           (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+            message_type, channel, status)
+         VALUES ($1,$2,$3,$4,'previous_guest_invite','email','pending')`,
+        [target.id, batch.id, recipient.email, recipientName]
+      );
+    }
+    await client.query('COMMIT');
+    queuePreviousGuestInvitationBatch(batch.id);
+    res.status(202).json({
+      queued: recipients.length,
+      batch: previousGuestBatchPayload(batch)
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505') return res.status(409).json({ error: 'Previous guests were already invited to this event' });
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // POST /api/events/:id/submit-to-line
 router.post('/api/events/:id/submit-to-line', async (req, res, next) => {
   try {
@@ -734,9 +966,20 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
            FROM rsvps r JOIN events e ON e.id = r.event_id
           WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
             AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
+            AND NOT EXISTS (
+              SELECT 1 FROM rsvps target_rsvp
+               WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
+                 AND LOWER(target_rsvp.email)=LOWER(r.email)
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM message_log ml
+               WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
+                 AND ml.message_type IN ('announcement','previous_guest_invite')
+                 AND ml.status IN ('pending','sent')
+            )
           GROUP BY LOWER(r.email)
        ) f`,
-      [req.organizer.id]
+      [req.organizer.id, req.params.id]
     );
     const didSendAnnouncement = ev[0].announced_at && ev[0].announced_count > 0;
     res.json({
@@ -766,8 +1009,19 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
         FROM rsvps r JOIN events e ON e.id = r.event_id
        WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
           AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
+          AND NOT EXISTS (
+            SELECT 1 FROM rsvps target_rsvp
+             WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
+               AND LOWER(target_rsvp.email)=LOWER(r.email)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM message_log ml
+             WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
+               AND ml.message_type IN ('announcement','previous_guest_invite')
+               AND ml.status IN ('pending','sent')
+          )
         GROUP BY LOWER(r.email)`,
-      [req.organizer.id]
+      [req.organizer.id, event.id]
     );
 
     const organizerLabel = req.organizer.org_name || req.organizer.name || 'Silver Glider Events';

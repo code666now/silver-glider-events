@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.64
+
+Released September 9, 2026.
+
+### Added
+
+* Added **Invite previous guests** to upcoming-event management, with a past-event picker, searchable review list, individual recipient controls, a live send count, and responsive desktop/mobile presentation.
+* Added artwork-led, one-way invitation emails with per-recipient retry and delivery tracking plus host-specific unsubscribe links.
+
+### Privacy & reliability
+
+* Restricted invitations to confirmed primary RSVPs who explicitly opted into future emails from that host; named guests, cancelled RSVPs, host opt-outs, existing target attendees, and already-notified recipients are excluded server-side.
+* Prevented duplicate sends between previous-guest invitations and the existing follower announcement, and limited each target event to one previous-guest invitation batch.
+* Clarified RSVP consent copy to say that guests may be invited to future events from that host and can unsubscribe at any time.
+
 ## 1.0.63
 
 Released September 8, 2026.

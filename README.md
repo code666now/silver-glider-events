@@ -39,7 +39,7 @@ Never use the Railway production database for development or tests.
 ## Current product
 
 - Passwordless shared identity authentication with 30-day sliding sessions
-- Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and promotion tools
+- Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and promotion tools, including consent-aware invitations to guests from a past event
 - Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
 - Flyer events with a centered, uncropped poster-first public layout
@@ -75,11 +75,11 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 ## Project layout
 
 ```text
-src/index.js                 bootstrap, routes, health check, reminder cron
-src/db/migrations/           numbered SQL migrations (currently 001–025)
+src/index.js                 bootstrap, routes, health check, scheduled email jobs
+src/db/migrations/           numbered SQL migrations (currently 001–029)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
-src/jobs/reminders.js        idempotent day-before and day-of reminder job
+src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
 src/views/                   server-rendered HTML templates
 public/css/                  brand and page styles
 public/js/                   browser behavior
@@ -91,6 +91,7 @@ test/                        focused Node test suite
 
 - **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. The existing `organizers` row is the shared email identity; follower-only identities do not receive Host Page fields. RSVP remains a separate guest flow.
 - **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
+- **Previous guest invitations:** an upcoming public or private event can send one reviewed batch to confirmed primary RSVPs from one owned past event who opted into future host emails. Named guests, host opt-outs, existing target attendees, and already-notified recipients are excluded server-side; delivery is queued, retryable, and one-way.
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
@@ -105,7 +106,7 @@ npm test
 npm run check:static
 ```
 
-As of September 4, 2026, the suite contains 117 tests. The 101 focused tests cover personal RSVP-photo ownership and fallbacks, Commerce admission, client, and launch-interest boundaries, Follow Host contracts, Flyer/Standard isolation, Event Vibe switching, Standard mobile artwork fitting, artwork-derived email accents, uploads and emails, public and private guest-experience settings, Secret Show security, rate limits, named guests, comments, listing contracts, and the event editor's desktop/mobile layout and field affordances. Sixteen HTTP/PostgreSQL integration tests exercise the established RSVP, authentication, privacy, and rendering flows plus secure email-matched account linking, backward-compatible admission behavior, and the reversible, admin-only, one-time Commerce launch-notification workflow against `postgresql://localhost:5432/sge_test`.
+As of September 9, 2026, the suite contains 157 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and consent, previous-guest invitation filtering and delivery, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
