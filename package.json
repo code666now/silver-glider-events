@@ -1,6 +1,6 @@
 {
   "name": "silver-glider-events",
-  "version": "1.0.64",
+  "version": "1.0.65",
   "description": "Silver Glider Events — beautiful event pages, RSVPs, reminders",
   "type": "commonjs",
   "main": "src/index.js",
@@ -23,6 +23,7 @@
     "pg": "^8.20.0",
     "pngjs": "^5.0.0",
     "qrcode": "^1.5.4",
-    "resend": "^6.9.4"
+    "resend": "^6.9.4",
+    "twilio": "^6.1.0"
   }
 }

@@ -52,6 +52,7 @@ Never use the Railway production database for development or tests.
 - Optional six-character Secret Show gate
 - Public host pages at `/h/:hostSlug`
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
+- Admin-only Twilio Messaging Service delivery proof with a fixed server-generated test message; promoter SMS products and audience tools are not enabled
 - Feedback reporting and super-admin feedback inbox
 - Personalized host invitations and lightweight admin host tracking
 - Privacy Policy and Terms available throughout the app
@@ -92,6 +93,7 @@ test/                        focused Node test suite
 - **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. The existing `organizers` row is the shared email identity; follower-only identities do not receive Host Page fields. RSVP remains a separate guest flow.
 - **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
 - **Previous guest invitations:** an upcoming public or private event can send one reviewed batch to confirmed primary RSVPs from one owned past event who opted into future host emails. Named guests, host opt-outs, existing target attendees, and already-notified recipients are excluded server-side; delivery is queued, retryable, and one-way.
+- **SMS Go 1:** `src/lib/sms.js` owns E.164 normalization, Twilio environment validation, Messaging Service delivery, and sanitized results/errors. `POST /api/admin/sms/test` is the only caller and always uses fixed server copy; there is no browser composer, database state, scheduling, audience selection, or promoter access.
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
@@ -106,7 +108,7 @@ npm test
 npm run check:static
 ```
 
-As of September 9, 2026, the suite contains 157 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and consent, previous-guest invitation filtering and delivery, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 9, 2026, the suite contains 166 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and consent, previous-guest invitation filtering and delivery, admin-only Twilio SMS transport and route boundaries, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.65
+
+Released September 9, 2026.
+
+### Added
+
+* Added the Go 1 server-side Twilio transport, sending through the configured Messaging Service without a hard-coded sender number and returning only the message SID, initial status, and normalized recipient.
+* Added an admin-only, explicitly confirmed and rate-limited test endpoint that can send the fixed Silver Glider proof message to one supplied E.164 destination.
+
+### Security & reliability
+
+* Kept all Twilio credentials and message construction on the server, normalized common US phone formatting, required explicit country codes for international destinations, and sanitized provider errors before logging or returning them.
+* Added mocked transport and live HTTP route coverage without introducing a promoter-facing composer, credit system, scheduled SMS, audience selection, database migration, or changes to RSVP and email behavior.
+
 ## 1.0.64
 
 Released September 9, 2026.

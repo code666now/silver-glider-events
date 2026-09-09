@@ -23,6 +23,7 @@ const { app } = require('../../src/index');
 const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { signSession } = require('../../src/lib/session');
+const sms = require('../../src/lib/sms');
 
 let server;
 let baseUrl;
@@ -1432,4 +1433,66 @@ test('invites only consented primary guests from one past event and never emails
   const followerData = await followers.json();
   assert.equal(followerData.count, 1);
   assert.equal(followerData.canAnnounce, false);
+});
+
+test('admin-only SMS test route normalizes one recipient and cannot accept custom copy', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const { rows: currentRows } = await pool.query('SELECT is_admin FROM organizers WHERE id=$1', [organizerId]);
+  const wasAdmin = currentRows[0].is_admin;
+  const originalSendTestSms = sms.sendTestSms;
+  let deliveredTo = null;
+
+  try {
+    sms.sendTestSms = async recipient => {
+      deliveredTo = recipient;
+      return { sid: `SM${'d'.repeat(32)}`, status: 'accepted', recipient };
+    };
+
+    await pool.query('UPDATE organizers SET is_admin=FALSE WHERE id=$1', [organizerId]);
+    const denied = await fetch(`${baseUrl}/api/admin/sms/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ to: '+14155551234', confirm: 'SEND_TEST_SMS' })
+    });
+    assert.equal(denied.status, 403);
+    assert.equal(deliveredTo, null);
+
+    await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+    const unconfirmed = await fetch(`${baseUrl}/api/admin/sms/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ to: '+14155551234' })
+    });
+    assert.equal(unconfirmed.status, 400);
+    assert.equal(deliveredTo, null);
+
+    const invalid = await fetch(`${baseUrl}/api/admin/sms/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ to: 'not-a-phone', confirm: 'SEND_TEST_SMS' })
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(deliveredTo, null);
+
+    const sent = await fetch(`${baseUrl}/api/admin/sms/test`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({
+        to: '(415) 555-1234',
+        message: 'This browser-supplied text must never be sent.',
+        confirm: 'SEND_TEST_SMS'
+      })
+    });
+    assert.equal(sent.status, 200);
+    assert.equal(deliveredTo, '+14155551234');
+    assert.deepEqual(await sent.json(), {
+      sent: true,
+      sid: `SM${'d'.repeat(32)}`,
+      status: 'accepted',
+      recipient: '+14155551234'
+    });
+  } finally {
+    sms.sendTestSms = originalSendTestSms;
+    await pool.query('UPDATE organizers SET is_admin=$2 WHERE id=$1', [organizerId, wasAdmin]);
+  }
 });

@@ -3,9 +3,19 @@ const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
 const { ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
+const { createRateLimiter, clientIp } = require('../lib/rate-limit');
+const sms = require('../lib/sms');
 
 const router = express.Router();
 router.use('/api/admin', requireAdmin);
+
+const smsTestLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  rules: [
+    { name: 'admin', max: 5, key: context => context.organizerId },
+    { name: 'ip', max: 10, key: context => context.ip }
+  ]
+});
 
 function positiveId(value) {
   const id = Number(value);
@@ -214,6 +224,44 @@ router.patch('/api/admin/invitations/:id', async (req, res, next) => {
     if (!rows.length) return res.status(404).json({ error: 'Invitation not found' });
     res.json({ invitation: { ...rows[0], path: `/i/${rows[0].token}` } });
   } catch (err) { next(err); }
+});
+
+// POST /api/admin/sms/test — one fixed, admin-only Messaging Service proof.
+router.post('/api/admin/sms/test', async (req, res, next) => {
+  let recipient = null;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.body?.confirm !== 'SEND_TEST_SMS') {
+      return res.status(400).json({ error: 'Confirm the test SMS before sending', code: 'confirmation_required' });
+    }
+    recipient = sms.normalizeE164(req.body?.to);
+    const limit = smsTestLimiter.consume({
+      organizerId: String(req.organizer.id),
+      ip: clientIp(req)
+    });
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(limit.retryAfterMs / 1000)));
+      return res.status(429).json({ error: 'Too many test SMS requests. Try again later.', code: 'sms_test_rate_limited' });
+    }
+
+    const result = await sms.sendTestSms(recipient);
+    console.info('[sms:test] sent', result);
+    res.json({ sent: true, ...result });
+  } catch (error) {
+    if (!(error instanceof sms.SmsDeliveryError)) return next(error);
+    const detail = {
+      code: error.code,
+      status: error.status,
+      ...(error.providerCode ? { twilioCode: error.providerCode } : {}),
+      ...(recipient ? { recipient } : {})
+    };
+    console.warn('[sms:test] failed', detail);
+    res.status(error.status).json({
+      error: error.message,
+      code: error.code,
+      ...(error.providerCode ? { twilioCode: error.providerCode } : {})
+    });
+  }
 });
 
 // GET /api/admin/line-submissions?status=pending
