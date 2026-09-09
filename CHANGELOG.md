@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.66
+
+Released September 9, 2026.
+
+### Added
+
+* Added an admin-gated SMS credit wallet to Host Settings with fixed one-time packs of 300 credits for $20, 1,000 for $50, and 5,000 for $200.
+* Added PayPal Checkout with eligible Venmo presentation, server-created and server-captured orders, host-owned balances, and recent credit activity.
+
+### Security & reliability
+
+* Kept pack pricing authoritative on the server, isolated SMS credit payments from ticket commerce, and made capture fulfillment atomic and idempotent.
+* Added verified PayPal webhooks, an immutable transaction ledger, proportional refund and reversal handling, sanitized provider errors, checkout rate limits, and backward-compatible nullable/additive database storage.
+* Kept sandbox checkout visible only to super-admins until the verified webhook is configured and a real sandbox purchase is approved for testing. The complete 173-test suite and responsive desktop/mobile QA pass.
+
 ## 1.0.65
 
 Released September 9, 2026.

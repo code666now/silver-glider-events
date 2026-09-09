@@ -24,13 +24,14 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { signSession } = require('../../src/lib/session');
 const sms = require('../../src/lib/sms');
+const paypal = require('../../src/lib/paypal');
 
 let server;
 let baseUrl;
 let organizerId;
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE organizers RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -1494,5 +1495,164 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
   } finally {
     sms.sendTestSms = originalSendTestSms;
     await pool.query('UPDATE organizers SET is_admin=$2 WHERE id=$1', [organizerId, wasAdmin]);
+  }
+});
+
+test('host SMS credit checkout fulfills once and verified refund webhooks adjust the ledger', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const envKeys = [
+    'SMS_CREDITS_ENABLED', 'PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET',
+    'PAYPAL_ENV', 'PAYPAL_WEBHOOK_ID'
+  ];
+  const originalEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+  const originals = {
+    createOrder: paypal.paypalClient.createOrder,
+    getOrder: paypal.paypalClient.getOrder,
+    captureOrder: paypal.paypalClient.captureOrder,
+    verifyWebhook: paypal.paypalClient.verifyWebhook
+  };
+  let createdOrderInput = null;
+  const orderId = 'ORDER123456789';
+  const captureId = 'CAPTURE12345678';
+
+  try {
+    process.env.SMS_CREDITS_ENABLED = 'true';
+    process.env.PAYPAL_CLIENT_ID = 'integration-client-id';
+    process.env.PAYPAL_CLIENT_SECRET = 'integration-client-secret';
+    process.env.PAYPAL_ENV = 'live';
+    process.env.PAYPAL_WEBHOOK_ID = 'WEBHOOK12345678';
+
+    const signedOut = await fetch(`${baseUrl}/api/sms-credits`);
+    assert.equal(signedOut.status, 401);
+
+    const initialResponse = await fetch(`${baseUrl}/api/sms-credits`, { headers: { cookie } });
+    const initial = await initialResponse.json();
+    assert.equal(initialResponse.status, 200);
+    assert.equal(initial.enabled, true);
+    assert.equal(initial.checkoutReady, true);
+    assert.equal(initial.balance, 0);
+    assert.deepEqual(initial.packs.map(pack => [pack.credits, pack.amountCents]), [
+      [300, 2000], [1000, 5000], [5000, 20000]
+    ]);
+    assert.equal(JSON.stringify(initial).includes('integration-client-secret'), false);
+
+    paypal.paypalClient.createOrder = async input => {
+      createdOrderInput = input;
+      return { id: orderId, status: 'CREATED' };
+    };
+    const orderResponse = await fetch(`${baseUrl}/api/sms-credits/orders`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ packKey: 'starter', amountCents: 1, credits: 999999 })
+    });
+    assert.equal(orderResponse.status, 201);
+    assert.deepEqual(await orderResponse.json(), { orderId });
+    assert.equal(createdOrderInput.amountCents, 2000);
+    assert.equal(createdOrderInput.description, '300 Silver Glider SMS credits');
+    const purchase = (await pool.query(
+      'SELECT * FROM sms_credit_purchases WHERE provider_order_id=$1', [orderId]
+    )).rows[0];
+    assert.equal(purchase.organizer_id, organizerId);
+    assert.equal(purchase.credits, 300);
+    assert.equal(purchase.amount_cents, 2000);
+
+    paypal.paypalClient.getOrder = async requestedOrderId => ({
+      id: requestedOrderId,
+      status: 'APPROVED',
+      purchase_units: [{
+        custom_id: purchase.reference,
+        amount: { value: '20.00', currency_code: 'USD' }
+      }]
+    });
+    paypal.paypalClient.captureOrder = async requestedOrderId => ({
+      id: requestedOrderId,
+      status: 'COMPLETED',
+      purchase_units: [{
+        custom_id: purchase.reference,
+        amount: { value: '20.00', currency_code: 'USD' },
+        payments: { captures: [{
+          id: captureId,
+          status: 'COMPLETED',
+          amount: { value: '20.00', currency_code: 'USD' }
+        }] }
+      }]
+    });
+    const capturedResponse = await fetch(`${baseUrl}/api/sms-credits/orders/${orderId}/capture`, {
+      method: 'POST', headers: { cookie }
+    });
+    const captured = await capturedResponse.json();
+    assert.equal(capturedResponse.status, 200);
+    assert.equal(captured.completed, true);
+    assert.equal(captured.duplicate, false);
+    assert.equal(captured.balance, 300);
+    assert.equal(captured.transactions[0].creditsDelta, 300);
+
+    const duplicateResponse = await fetch(`${baseUrl}/api/sms-credits/orders/${orderId}/capture`, {
+      method: 'POST', headers: { cookie }
+    });
+    const duplicate = await duplicateResponse.json();
+    assert.equal(duplicateResponse.status, 200);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(duplicate.balance, 300);
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM sms_credit_transactions WHERE kind='purchase'"
+    )).rows[0].count, 1);
+
+    const otherId = (await pool.query(
+      "INSERT INTO organizers (email,name) VALUES ('credit-other@example.test','Credit Other') RETURNING id"
+    )).rows[0].id;
+    const forbiddenCapture = await fetch(`${baseUrl}/api/sms-credits/orders/${orderId}/capture`, {
+      method: 'POST', headers: { cookie: `sge_session=${signSession(otherId)}` }
+    });
+    assert.equal(forbiddenCapture.status, 404);
+
+    paypal.paypalClient.verifyWebhook = async () => true;
+    const refundEvent = {
+      id: 'WH-REFUND-12345',
+      event_type: 'PAYMENT.CAPTURE.REFUNDED',
+      resource: {
+        id: 'REFUND123456789',
+        amount: { value: '10.00', currency_code: 'USD' },
+        supplementary_data: { related_ids: { capture_id: captureId } }
+      }
+    };
+    const refundResponse = await fetch(`${baseUrl}/api/webhooks/paypal`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'paypal-transmission-id': 'transmission' },
+      body: JSON.stringify(refundEvent)
+    });
+    assert.equal(refundResponse.status, 200);
+    assert.deepEqual(await refundResponse.json(), { received: true });
+    assert.equal((await pool.query(
+      'SELECT sms_credits FROM organizers WHERE id=$1', [organizerId]
+    )).rows[0].sms_credits, 150);
+
+    const repeatedRefund = await fetch(`${baseUrl}/api/webhooks/paypal`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(refundEvent)
+    });
+    assert.equal(repeatedRefund.status, 200);
+    assert.equal((await repeatedRefund.json()).duplicate, true);
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM sms_credit_transactions WHERE kind='refund'"
+    )).rows[0].count, 1);
+
+    paypal.paypalClient.verifyWebhook = async () => false;
+    const rejectedWebhook = await fetch(`${baseUrl}/api/webhooks/paypal`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...refundEvent, id: 'WH-INVALID-1234' })
+    });
+    assert.equal(rejectedWebhook.status, 400);
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM paypal_webhook_events WHERE id='WH-INVALID-1234'"
+    )).rows[0].count, 0);
+  } finally {
+    Object.assign(paypal.paypalClient, originals);
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
   }
 });

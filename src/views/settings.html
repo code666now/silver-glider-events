@@ -60,6 +60,44 @@
     .settings-plan { display:flex;align-items:center;gap:12px; }
     .settings-plan .settings-eyebrow { margin:0; }
     .settings-footer-card .sg-btn { padding:10px 16px;font-size:11px; }
+    .settings-credits-card { position:relative;overflow:hidden; }
+    .settings-credits-card[hidden] { display:none; }
+    .credits-head { display:flex;align-items:flex-start;justify-content:space-between;gap:22px;margin-bottom:24px; }
+    .credits-balance { flex:0 0 auto;text-align:right; }
+    .credits-balance strong { display:block;color:var(--sg-text);font-family:var(--sg-font-display);font-size:34px;line-height:1; }
+    .credits-balance span { display:block;margin-top:6px;color:var(--sg-text-faint);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.13em; }
+    .credits-env { display:inline-flex;margin-top:9px;padding:5px 8px;border:1px solid rgba(255,193,92,.28);border-radius:999px;color:#efc978;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.11em; }
+    .credits-env[hidden] { display:none; }
+    .credits-setup { margin-bottom:18px;padding:14px 16px;border:1px solid rgba(255,193,92,.25);border-radius:15px;background:rgba(255,193,92,.055);color:#d8c18f;font-size:12px;line-height:1.55; }
+    .credits-setup[hidden] { display:none; }
+    .credit-packs { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px; }
+    .credit-pack { min-width:0;padding:17px;text-align:left;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(255,255,255,.018);color:var(--sg-text);cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease; }
+    .credit-pack:hover:not(:disabled) { border-color:rgba(28,197,190,.5);transform:translateY(-1px); }
+    .credit-pack[aria-pressed="true"] { border-color:var(--sg-accent);background:rgba(28,197,190,.075); }
+    .credit-pack:focus-visible { outline:2px solid rgba(28,197,190,.45);outline-offset:3px; }
+    .credit-pack:disabled { opacity:.46;cursor:not-allowed; }
+    .credit-pack strong { display:block;font-family:var(--sg-font-display);font-size:20px; }
+    .credit-pack span { display:block;margin-top:5px;color:var(--sg-text-dim);font-size:12px; }
+    .credit-pack em { display:block;margin-top:16px;color:var(--sg-accent);font-size:11px;font-style:normal;font-weight:800; }
+    .credits-checkout { display:grid;grid-template-columns:minmax(0,.75fr) minmax(280px,1.25fr);gap:24px;margin-top:18px;padding:19px;border:1px solid rgba(28,197,190,.24);border-radius:19px;background:rgba(28,197,190,.04); }
+    .credits-checkout[hidden] { display:none; }
+    .credits-checkout-copy h3 { margin-bottom:6px;font-size:19px; }
+    .credits-checkout-copy p { color:var(--sg-text-faint);font-size:11px;line-height:1.55; }
+    .credits-payment-methods { display:grid;gap:9px;min-width:0; }
+    .credits-payment-methods paypal-button,.credits-payment-methods venmo-button { display:block;width:100%;min-height:48px; }
+    .credits-payment-methods paypal-button[hidden],.credits-payment-methods venmo-button[hidden] { display:none; }
+    .credits-status { min-height:18px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
+    .credits-status.error { color:var(--sg-danger); }
+    .credits-history { margin-top:26px;padding-top:23px;border-top:1px solid var(--sg-border-soft); }
+    .credits-history[hidden] { display:none; }
+    .credits-history h3 { margin-bottom:12px;font-size:16px; }
+    .credits-history-list { display:grid; }
+    .credits-transaction { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:12px 0;border-top:1px solid rgba(255,255,255,.045); }
+    .credits-transaction:first-child { border-top:0; }
+    .credits-transaction strong { display:block;font-size:12px; }
+    .credits-transaction time { display:block;margin-top:3px;color:var(--sg-text-faint);font-size:10px; }
+    .credits-transaction-delta { color:var(--sg-accent);font-size:13px;font-weight:800; }
+    .credits-transaction-delta.negative { color:#df9b9b; }
     .settings-loading[hidden],.settings-wrap[hidden] { display:none; }
     .settings-loading { display:grid;gap:18px; }
     .settings-loading-card {
@@ -123,6 +161,7 @@
         grid-column:1/-1;
         padding:18px 24px;
       }
+      .settings-credits-card { grid-column:1/-1; }
       .settings-account-card .account-grid { grid-template-columns:1fr; }
       .settings-account-card .settings-actions .sg-btn { width:100%;min-height:48px; }
       .host-summary-avatar { width:86px;height:86px;border-radius:22px; }
@@ -145,6 +184,13 @@
       .host-summary-actions .sg-btn { flex:1;text-align:center; }
       .profile-upload { align-items:center; }
       .settings-footer-card { align-items:flex-start;flex-direction:column; }
+      .credits-head { align-items:flex-start; }
+      .credits-balance strong { font-size:29px; }
+      .credit-packs { grid-template-columns:1fr; }
+      .credit-pack { display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:12px; }
+      .credit-pack span { grid-column:1; }
+      .credit-pack em { grid-column:2;grid-row:1/3;margin:0; }
+      .credits-checkout { grid-template-columns:1fr;gap:16px;padding:16px; }
       .settings-loading-card { min-height:240px;padding:21px 19px;border-radius:21px; }
       .settings-loading-fields { grid-template-columns:1fr; }
       .settings-loading-host { align-items:flex-start;flex-wrap:wrap; }
@@ -283,6 +329,41 @@
         </div>
       </section>
 
+      <section class="settings-card settings-credits-card" id="sms-credits-card" aria-labelledby="sms-credits-title" hidden>
+        <div class="credits-head">
+          <div class="settings-card-head" style="margin-bottom:0">
+            <p class="settings-eyebrow">Messaging</p>
+            <h2 id="sms-credits-title">SMS credits</h2>
+            <p class="settings-card-copy">Credits belong to this host and never expire. Email stays included.</p>
+          </div>
+          <div class="credits-balance" aria-live="polite">
+            <strong id="sms-credit-balance">0</strong>
+            <span>credits available</span>
+            <small class="credits-env" id="sms-credit-env" hidden>Sandbox test</small>
+          </div>
+        </div>
+
+        <p class="credits-setup" id="sms-credit-setup" hidden>PayPal is connected, but the verified webhook still needs to be added before checkout can open.</p>
+        <div class="credit-packs" id="sms-credit-packs" aria-label="Choose an SMS credit pack"></div>
+
+        <div class="credits-checkout" id="sms-credit-checkout" hidden>
+          <div class="credits-checkout-copy">
+            <h3 id="sms-credit-selection">Complete your purchase</h3>
+            <p>Pay securely with PayPal. Venmo appears automatically when it is available for your device and account.</p>
+          </div>
+          <div class="credits-payment-methods" id="sms-credit-methods">
+            <paypal-button id="sms-paypal-button" type="pay" hidden></paypal-button>
+            <venmo-button id="sms-venmo-button" type="pay" hidden></venmo-button>
+            <p class="credits-status" id="sms-credit-status" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="credits-history" id="sms-credit-history" hidden>
+          <h3>Credit activity</h3>
+          <div class="credits-history-list" id="sms-credit-transactions"></div>
+        </div>
+      </section>
+
       <section class="settings-card settings-footer-card" aria-label="Plan and account actions">
         <div class="settings-plan"><p class="settings-eyebrow">Plan</p><span class="sg-badge" id="plan-badge">Free</span></div>
         <button class="sg-btn sg-btn-ghost" type="button" id="logout-btn" disabled>Sign out</button>
@@ -296,6 +377,11 @@
     const $ = id => document.getElementById(id);
     let currentOrganizer = null;
     let hostEditorOpen = false;
+    let smsCreditState = null;
+    let selectedCreditPack = null;
+    let paypalSdkPromise = null;
+    let paypalSessionsPromise = null;
+    let paymentBusy = false;
 
     function hostInitials(name) {
       return String(name || 'SG').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
@@ -399,6 +485,229 @@
       populateHostFields(organizer);
     }
 
+    function creditMoney(amountCents) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency', currency: 'USD', maximumFractionDigits: 0
+      }).format(Number(amountCents || 0) / 100);
+    }
+
+    function creditDate(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+    }
+
+    function transactionLabel(transaction) {
+      if (transaction.kind === 'purchase') return 'Credit pack purchased';
+      if (transaction.kind === 'refund') return 'Payment refunded';
+      if (transaction.kind === 'reversal') return 'Payment reversed';
+      if (transaction.kind === 'send') return 'SMS delivery';
+      return 'Credit adjustment';
+    }
+
+    function renderCreditHistory(transactions) {
+      const history = $('sms-credit-history');
+      const list = $('sms-credit-transactions');
+      list.replaceChildren();
+      history.hidden = !transactions.length;
+      transactions.forEach(transaction => {
+        const row = document.createElement('div');
+        row.className = 'credits-transaction';
+        const copy = document.createElement('div');
+        const label = document.createElement('strong');
+        label.textContent = transactionLabel(transaction);
+        const time = document.createElement('time');
+        time.dateTime = transaction.createdAt;
+        time.textContent = creditDate(transaction.createdAt);
+        copy.append(label, time);
+        const delta = document.createElement('span');
+        delta.className = `credits-transaction-delta${transaction.creditsDelta < 0 ? ' negative' : ''}`;
+        delta.textContent = `${transaction.creditsDelta > 0 ? '+' : ''}${Number(transaction.creditsDelta).toLocaleString('en-US')}`;
+        row.append(copy, delta);
+        list.appendChild(row);
+      });
+    }
+
+    function chooseCreditPack(pack) {
+      if (!smsCreditState?.checkoutReady || paymentBusy) return;
+      selectedCreditPack = pack;
+      document.querySelectorAll('.credit-pack').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.packKey === pack.key));
+      });
+      $('sms-credit-selection').textContent = `${pack.credits.toLocaleString('en-US')} credits · ${creditMoney(pack.amountCents)}`;
+      $('sms-credit-checkout').hidden = false;
+      $('sms-credit-status').textContent = 'Loading secure payment options…';
+      $('sms-credit-status').classList.remove('error');
+      initializePayPalPayments();
+    }
+
+    function renderCreditPacks(packs, checkoutReady) {
+      const container = $('sms-credit-packs');
+      container.replaceChildren();
+      packs.forEach(pack => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'credit-pack';
+        button.dataset.packKey = pack.key;
+        button.setAttribute('aria-pressed', String(selectedCreditPack?.key === pack.key));
+        button.disabled = !checkoutReady;
+        const amount = document.createElement('strong');
+        amount.textContent = `${Number(pack.credits).toLocaleString('en-US')} credits`;
+        const detail = document.createElement('span');
+        detail.textContent = 'One-time purchase';
+        const price = document.createElement('em');
+        price.textContent = creditMoney(pack.amountCents);
+        button.append(amount, detail, price);
+        button.addEventListener('click', () => chooseCreditPack(pack));
+        container.appendChild(button);
+      });
+    }
+
+    function renderSmsCredits(state) {
+      smsCreditState = state;
+      const card = $('sms-credits-card');
+      card.hidden = !state.enabled;
+      if (!state.enabled) return;
+      $('sms-credit-balance').textContent = Number(state.balance || 0).toLocaleString('en-US');
+      $('sms-credit-env').hidden = state.paypal?.environment !== 'sandbox';
+      $('sms-credit-setup').hidden = !state.setupRequired;
+      renderCreditPacks(state.packs || [], state.checkoutReady);
+      renderCreditHistory(state.transactions || []);
+      if (!state.checkoutReady) {
+        selectedCreditPack = null;
+        $('sms-credit-checkout').hidden = true;
+      }
+    }
+
+    async function loadSmsCredits() {
+      try {
+        const state = await api('/api/sms-credits');
+        renderSmsCredits(state);
+        return state;
+      } catch (_) {
+        $('sms-credits-card').hidden = true;
+        return null;
+      }
+    }
+
+    function loadPayPalSdk() {
+      if (window.paypal?.createInstance) return Promise.resolve(window.paypal);
+      if (paypalSdkPromise) return paypalSdkPromise;
+      paypalSdkPromise = new Promise((resolve, reject) => {
+        const environment = smsCreditState?.paypal?.environment;
+        const expected = environment === 'live'
+          ? 'https://www.paypal.com/web-sdk/v6/core'
+          : 'https://www.sandbox.paypal.com/web-sdk/v6/core';
+        if (smsCreditState?.paypal?.sdkUrl !== expected) {
+          reject(new Error('Invalid PayPal configuration'));
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = expected;
+        script.async = true;
+        script.addEventListener('load', () => resolve(window.paypal));
+        script.addEventListener('error', () => reject(new Error('PayPal could not load'));
+        document.head.appendChild(script);
+      });
+      return paypalSdkPromise;
+    }
+
+    async function createCreditOrder() {
+      if (!selectedCreditPack) throw new Error('Choose a credit pack');
+      const result = await api('/api/sms-credits/orders', {
+        method: 'POST', body: { packKey: selectedCreditPack.key }
+      });
+      return { orderId: result.orderId };
+    }
+
+    async function finishCreditPurchase(data) {
+      const pack = selectedCreditPack;
+      if (!pack || !data?.orderId) throw new Error('PayPal did not return an order');
+      paymentBusy = true;
+      $('sms-credit-status').textContent = 'Confirming your credits…';
+      $('sms-credit-status').classList.remove('error');
+      try {
+        await api(`/api/sms-credits/orders/${encodeURIComponent(data.orderId)}/capture`, { method: 'POST' });
+        selectedCreditPack = null;
+        await loadSmsCredits();
+        $('sms-credit-checkout').hidden = true;
+        toast(`${pack.credits.toLocaleString('en-US')} SMS credits added`);
+      } catch (error) {
+        $('sms-credit-status').textContent = error.message;
+        $('sms-credit-status').classList.add('error');
+        throw error;
+      } finally {
+        paymentBusy = false;
+      }
+    }
+
+    async function startPayPalSession(session) {
+      if (!session || paymentBusy || !selectedCreditPack) return;
+      paymentBusy = true;
+      $('sms-credit-status').textContent = 'Opening PayPal…';
+      $('sms-credit-status').classList.remove('error');
+      try {
+        const createOrderPromise = createCreditOrder();
+        await session.start({ presentationMode: 'auto' }, createOrderPromise);
+      } catch (error) {
+        $('sms-credit-status').textContent = error.message || 'Payment could not be opened.';
+        $('sms-credit-status').classList.add('error');
+      } finally {
+        paymentBusy = false;
+      }
+    }
+
+    async function initializePayPalPayments() {
+      if (paypalSessionsPromise) return paypalSessionsPromise;
+      paypalSessionsPromise = (async () => {
+        const sdk = await loadPayPalSdk();
+        if (!sdk?.createInstance) throw new Error('PayPal could not load');
+        const instance = await sdk.createInstance({
+          clientId: smsCreditState.paypal.clientId,
+          components: ['paypal-payments', 'venmo-payments'],
+          pageType: 'checkout'
+        });
+        const methods = await instance.findEligibleMethods({ currencyCode: 'USD' });
+        const options = {
+          onApprove: finishCreditPurchase,
+          onCancel: () => {
+            paymentBusy = false;
+            $('sms-credit-status').textContent = 'Payment cancelled. No credits were added.';
+          },
+          onError: () => {
+            paymentBusy = false;
+            $('sms-credit-status').textContent = 'Payment could not be completed. Please try again.';
+            $('sms-credit-status').classList.add('error');
+          }
+        };
+        let available = 0;
+        if (methods.isEligible('paypal')) {
+          const session = await instance.createPayPalOneTimePaymentSession(options);
+          const button = $('sms-paypal-button');
+          button.hidden = false;
+          button.addEventListener('click', () => startPayPalSession(session));
+          available += 1;
+        }
+        if (methods.isEligible('venmo')) {
+          const session = await instance.createVenmoOneTimePaymentSession(options);
+          const button = $('sms-venmo-button');
+          button.hidden = false;
+          button.addEventListener('click', () => startPayPalSession(session));
+          available += 1;
+        }
+        $('sms-credit-status').textContent = available
+          ? 'Choose PayPal or Venmo to continue.'
+          : 'PayPal and Venmo are not available for this browser.';
+        if (!available) $('sms-credit-status').classList.add('error');
+      })().catch(error => {
+        paypalSessionsPromise = null;
+        $('sms-credit-status').textContent = error.message || 'Payment options could not load.';
+        $('sms-credit-status').classList.add('error');
+      });
+      return paypalSessionsPromise;
+    }
+
     function showSettings() {
       $('settings-loading').hidden = true;
       $('settings-content').hidden = false;
@@ -437,6 +746,7 @@
         const nav = document.querySelector('.sg-nav-links');
         nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/ticketing">Ticketing</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
       }
+      loadSmsCredits();
     }).catch(showSettingsError);
 
     $('account-form').addEventListener('submit', async e => {

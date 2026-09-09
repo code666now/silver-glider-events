@@ -127,7 +127,7 @@ test('host and super-admin settings expose only the requested profile controls',
   assert.match(admin, /id="host-profile-form"/);
   assert.match(admin, /\/api\/admin\/hosts\/\$\{activeHostId\}\/profile/);
   assert.doesNotMatch(admin, /profile-contact-email|>Contact email</);
-  for (const excluded of ['Follow Host', 'Mailchimp', 'ticket-click', 'CRM', 'SMS']) {
+  for (const excluded of ['Follow Host', 'Mailchimp', 'ticket-click', 'CRM']) {
     assert.equal(settings.includes(excluded), false);
     assert.equal(admin.includes(excluded), false);
   }
