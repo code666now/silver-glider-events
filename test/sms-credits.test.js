@@ -79,6 +79,29 @@ test('PayPal client creates fixed orders with server credentials and no secret i
   assert.doesNotMatch(orderRequest.options.body, /sandbox-client-secret/);
 });
 
+test('PayPal capture sends an explicit JSON body and keeps its idempotency key', async () => {
+  const requests = [];
+  const client = new PayPalClient({
+    env: validEnv,
+    fetchImpl: async (url, options) => {
+      requests.push({ url: String(url), options });
+      if (String(url).endsWith('/v1/oauth2/token')) {
+        return response(200, { access_token: 'access-token', expires_in: 3600 });
+      }
+      return response(201, { id: 'ORDER123456789', status: 'COMPLETED' });
+    }
+  });
+
+  const order = await client.captureOrder('ORDER123456789', 'capture-reference');
+  assert.equal(order.status, 'COMPLETED');
+  const captureRequest = requests[1];
+  assert.equal(captureRequest.url, 'https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER123456789/capture');
+  assert.equal(captureRequest.options.method, 'POST');
+  assert.equal(captureRequest.options.headers['Content-Type'], 'application/json');
+  assert.equal(captureRequest.options.headers['PayPal-Request-Id'], 'capture-reference');
+  assert.equal(captureRequest.options.body, '{}');
+});
+
 test('PayPal webhook verification uses the configured webhook ID', async () => {
   const requests = [];
   const client = new PayPalClient({

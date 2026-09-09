@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.68
+
+Released September 9, 2026.
+
+### Fixed
+
+* Completed approved PayPal and Venmo SMS-credit orders with PayPal's required JSON capture request so successful sandbox checkouts can credit the host wallet.
+* Removed the tall-desktop sticky account card that could overlap the SMS-credit wallet while scrolling Settings.
+* Added regression coverage for the capture request contract and non-overlapping Settings layout.
+
 ## 1.0.67
 
 Released September 9, 2026.

@@ -152,7 +152,7 @@ test('settings use progressive disclosure and separate account from host-page sa
   assert.match(settings, /settings-host-card/);
   assert.match(settings, /@media\(min-width:1024px\)[\s\S]*\.settings-shell\s*\{[\s\S]*max-width:1260px/);
   assert.match(settings, /grid-template-columns:minmax\(340px,\.78fr\) minmax\(0,1\.22fr\)/);
-  assert.match(settings, /@media\(min-width:1200px\) and \(min-height:900px\)[\s\S]*position:sticky/);
+  assert.doesNotMatch(settings, /\.settings-account-card\s*\{[^}]*position:sticky/);
   assert.match(settings, /@media\(max-width:560px\)/);
   assert.match(settings, /id="account-form"/);
   assert.match(settings, /id="account-save-btn" disabled>Save account</);

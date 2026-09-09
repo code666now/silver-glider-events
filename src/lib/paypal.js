@@ -194,7 +194,8 @@ class PayPalClient {
   captureOrder(orderId, idempotencyKey) {
     return this.request(`/v2/checkout/orders/${encodeURIComponent(cleanOrderId(orderId))}/capture`, {
       method: 'POST',
-      idempotencyKey
+      idempotencyKey,
+      body: {}
     });
   }
 
