@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const {
   cleanHostSlug,
@@ -13,6 +14,17 @@ const {
 function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
+
+test('Settings inline browser code compiles before the loading skeleton is shipped', () => {
+  const view = source('src/views/settings.html');
+  const scripts = [...view.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+    .map(match => match[1])
+    .filter(script => script.trim());
+  assert.ok(scripts.length > 0);
+  scripts.forEach((script, index) => {
+    assert.doesNotThrow(() => new vm.Script(script, { filename: `settings-inline-${index + 1}.js` }));
+  });
+});
 
 test('host profile migration extends organizers without replacing stable identity fields', () => {
   const migration = source('src/db/migrations/014_host_page_profiles.sql');

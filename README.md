@@ -110,7 +110,7 @@ npm test
 npm run check:static
 ```
 
-As of September 9, 2026, the suite contains 173 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and consent, previous-guest invitation filtering and delivery, admin-only Twilio SMS transport, PayPal/Venmo SMS credit pricing and ledger boundaries, webhook verification/refunds, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 9, 2026, the suite contains 174 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and consent, previous-guest invitation filtering and delivery, admin-only Twilio SMS transport, PayPal/Venmo SMS credit pricing and ledger boundaries, webhook verification/refunds, Settings browser-script compilation, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

@@ -607,7 +607,7 @@
         script.src = expected;
         script.async = true;
         script.addEventListener('load', () => resolve(window.paypal));
-        script.addEventListener('error', () => reject(new Error('PayPal could not load'));
+        script.addEventListener('error', () => reject(new Error('PayPal could not load')));
         document.head.appendChild(script);
       });
       return paypalSdkPromise;

@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.67
+
+Released September 9, 2026.
+
+### Fixed
+
+* Restored the Settings page by correcting the PayPal loader syntax error that prevented its browser script from starting and left the loading skeleton visible.
+* Added regression coverage that compiles every Settings inline script before release.
+
 ## 1.0.66
 
 Released September 9, 2026.
