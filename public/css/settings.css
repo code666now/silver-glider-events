@@ -112,27 +112,6 @@
 .credits-load-status { min-height:18px;margin-top:12px;color:var(--sg-text-faint);font-size:11px; }
 .credits-load-status.error { color:var(--sg-danger); }
 
-.payment-sheet { position:fixed;inset:0;z-index:110;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.72); }
-.payment-sheet[hidden] { display:none; }
-.payment-sheet-dialog { width:min(100%,500px);padding:24px;border:1px solid var(--sg-border);border-radius:22px;background:#151517;box-shadow:var(--sg-shadow); }
-.payment-sheet-head { display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:22px; }
-.payment-sheet-head h2 { font-size:25px; }
-.payment-sheet-head p { margin-top:5px;color:var(--sg-text-dim);font-size:12px; }
-.payment-sheet-close { width:36px;height:36px;flex:0 0 auto;border:1px solid var(--sg-border);border-radius:50%;background:transparent;color:var(--sg-text-dim);font-size:21px;line-height:1;cursor:pointer; }
-.payment-sheet-close:hover { color:var(--sg-text);border-color:rgba(255,255,255,.2); }
-.credits-payment-methods { display:grid;gap:10px; }
-.credits-payment-methods paypal-button,.credits-payment-methods venmo-button { display:block;width:100%;min-height:48px; }
-.credits-payment-methods paypal-button[hidden],.credits-payment-methods venmo-button[hidden] { display:none; }
-.payment-progress { display:grid;gap:8px;margin-bottom:4px; }
-.payment-progress[hidden] { display:none; }
-.payment-progress-copy { display:flex;align-items:center;justify-content:space-between;gap:16px;color:var(--sg-text-dim);font-size:11px; }
-.payment-progress-copy strong { color:var(--sg-text);font-variant-numeric:tabular-nums; }
-.payment-progress-track { height:5px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.09); }
-.payment-progress-track span { display:block;width:0;height:100%;border-radius:inherit;background:var(--sg-accent);transition:width .28s ease; }
-.credits-status { min-height:18px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
-.credits-status.error { color:var(--sg-danger); }
-body.payment-sheet-open { overflow:hidden; }
-
 .host-form-group { margin-top:38px; }
 .host-form-group:first-of-type { margin-top:0; }
 .host-form-group-head { margin-bottom:18px; }
@@ -188,12 +167,10 @@ body.payment-sheet-open { overflow:hidden; }
   .settings-form-actions .sg-btn { width:100%; }
   .credits-balance-block { min-height:124px;padding:21px; }
   .credits-balance-number { font-size:42px; }
-  .payment-sheet { align-items:end;padding:0; }
-  .payment-sheet-dialog { width:100%;padding:22px 20px max(24px,env(safe-area-inset-bottom));border-radius:24px 24px 0 0; }
   .host-image-row { grid-template-columns:1fr;gap:13px; }
   .host-image-action { width:100%; }
   .slug-field-prefix { max-width:55%;overflow:hidden;text-overflow:ellipsis; }
 }
 @media(prefers-reduced-motion:reduce) {
-  .settings-rail-link,.credit-pack,.payment-progress-track span { transition:none; }
+  .settings-rail-link,.credit-pack { transition:none; }
 }

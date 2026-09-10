@@ -26,11 +26,7 @@ let savedAccountName = '';
 let savedHostSnapshot = '';
 let smsCreditState = null;
 let selectedCreditPack = null;
-let paypalSdkPromise = null;
-let paypalSessionsPromise = null;
 let paymentBusy = false;
-let paymentSheetTrigger = null;
-let paymentMethodsReady = false;
 
 function settingsHostInitials(name) {
   return String(name || 'SG').trim().split(/\s+/).slice(0, 2)
@@ -254,7 +250,7 @@ function renderSmsCredits(state) {
   settingsElement('sms-credit-balance').textContent = balance;
   settingsElement('settings-index-credit-balance').textContent = `${balance} credits`;
   settingsElement('settings-rail-credit-balance').textContent = balance;
-  settingsElement('sms-credit-env').hidden = state.paypal?.environment !== 'sandbox';
+  settingsElement('sms-credit-env').hidden = state.environment !== 'sandbox';
   settingsElement('sms-credit-setup').hidden = !state.setupRequired;
   renderCreditPacks(state.packs || [], state.checkoutReady);
   renderCreditHistory(state.transactions || []);
@@ -278,173 +274,55 @@ async function loadSmsCredits() {
   }
 }
 
-function loadPayPalSdk() {
-  if (window.paypal?.createInstance) return Promise.resolve(window.paypal);
-  if (paypalSdkPromise) return paypalSdkPromise;
-  paypalSdkPromise = new Promise((resolve, reject) => {
-    const environment = smsCreditState?.paypal?.environment;
-    const expected = environment === 'live'
-      ? 'https://www.paypal.com/web-sdk/v6/core'
-      : 'https://www.sandbox.paypal.com/web-sdk/v6/core';
-    if (smsCreditState?.paypal?.sdkUrl !== expected) {
-      reject(new Error('Invalid PayPal configuration'));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = expected;
-    script.async = true;
-    script.addEventListener('load', () => resolve(window.paypal));
-    script.addEventListener('error', () => reject(new Error('Payment options could not load')));
-    document.head.appendChild(script);
-  });
-  return paypalSdkPromise;
-}
-
-function setPaymentProgress(percent, label, { hidden = false } = {}) {
-  const progress = settingsElement('sms-payment-progress');
-  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-  progress.hidden = hidden;
-  progress.setAttribute('aria-valuenow', String(value));
-  settingsElement('sms-payment-progress-value').textContent = `${value}%`;
-  settingsElement('sms-payment-progress-label').textContent = label;
-  settingsElement('sms-payment-progress-bar').style.width = `${value}%`;
-}
-
-async function createCreditOrder(paymentMethod) {
-  if (!selectedCreditPack) throw new Error('Choose a credit pack');
-  const result = await api('/api/sms-credits/orders', {
-    method: 'POST', body: { packKey: selectedCreditPack.key, paymentMethod }
-  });
-  return { orderId: result.orderId };
-}
-
-function closePaymentSheet({ restoreFocus = true } = {}) {
-  if (paymentBusy) return;
-  settingsElement('sms-payment-sheet').hidden = true;
-  settingsElement('sms-payment-sheet').setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('payment-sheet-open');
-  if (restoreFocus && paymentSheetTrigger) paymentSheetTrigger.focus();
-}
-
 function showCreditResult(message) {
   settingsElement('sms-credit-result').textContent = message;
   settingsElement('sms-credit-result').hidden = false;
 }
 
-async function finishCreditPurchase(data) {
-  const pack = selectedCreditPack;
-  if (!pack || !data?.orderId) throw new Error('PayPal did not return an order');
-  paymentBusy = true;
-  settingsElement('sms-credit-status').textContent = 'Confirming your credits…';
-  settingsElement('sms-credit-status').classList.remove('error');
-  try {
-    await api(`/api/sms-credits/orders/${encodeURIComponent(data.orderId)}/capture`, { method: 'POST' });
-    selectedCreditPack = null;
-    await loadSmsCredits();
-    paymentBusy = false;
-    closePaymentSheet({ restoreFocus: false });
-    showCreditResult(`${pack.credits.toLocaleString('en-US')} credits were added to your balance.`);
-    settingsElement('sms-credit-result').focus();
-  } catch (error) {
-    settingsElement('sms-credit-status').textContent = error.message || 'Payment could not be confirmed. Check your activity before trying again.';
-    settingsElement('sms-credit-status').classList.add('error');
-    throw error;
-  } finally {
-    paymentBusy = false;
-  }
-}
-
-async function startPayPalSession(session, paymentMethod) {
-  if (!session || paymentBusy || !selectedCreditPack) return;
-  paymentBusy = true;
-  settingsElement('sms-credit-status').textContent = 'Opening payment…';
-  settingsElement('sms-credit-status').classList.remove('error');
-  try {
-    await session.start({ presentationMode: 'auto' }, createCreditOrder(paymentMethod));
-  } catch (error) {
-    settingsElement('sms-credit-status').textContent = error.message || 'Payment could not be opened. Try again.';
-    settingsElement('sms-credit-status').classList.add('error');
-  } finally {
-    paymentBusy = false;
-  }
-}
-
-async function initializePayPalPayments() {
-  if (paypalSessionsPromise) {
-    if (paymentMethodsReady) setPaymentProgress(100, 'Payment options ready', { hidden: true });
-    return paypalSessionsPromise;
-  }
-  paypalSessionsPromise = (async () => {
-    setPaymentProgress(20, 'Connecting securely');
-    const sdk = await loadPayPalSdk();
-    if (!sdk?.createInstance) throw new Error('Payment options could not load');
-    setPaymentProgress(50, 'Secure connection ready');
-    const instance = await sdk.createInstance({
-      clientId: smsCreditState.paypal.clientId,
-      components: ['paypal-payments', 'venmo-payments'],
-      pageType: 'checkout'
-    });
-    setPaymentProgress(70, 'Checking payment methods');
-    const methods = await instance.findEligibleMethods({ currencyCode: 'USD' });
-    setPaymentProgress(85, 'Preparing payment buttons');
-    const options = {
-      onApprove: finishCreditPurchase,
-      onCancel: () => {
-        paymentBusy = false;
-        closePaymentSheet();
-        showCreditResult('Payment was cancelled. Your credit pack is still selected.');
-      },
-      onError: () => {
-        paymentBusy = false;
-        settingsElement('sms-credit-status').textContent = 'Payment could not be completed. Try again or choose another payment method.';
-        settingsElement('sms-credit-status').classList.add('error');
-      }
-    };
-    let paypalSession = null;
-    let venmoSession = null;
-    if (methods.isEligible('paypal')) {
-      paypalSession = await instance.createPayPalOneTimePaymentSession(options);
-    }
-    if (methods.isEligible('venmo')) {
-      venmoSession = await instance.createVenmoOneTimePaymentSession(options);
-    }
-    const available = Number(Boolean(paypalSession)) + Number(Boolean(venmoSession));
-    if (paypalSession) {
-      settingsElement('sms-paypal-button').hidden = false;
-      settingsElement('sms-paypal-button').addEventListener('click', () => startPayPalSession(paypalSession, 'paypal'));
-    }
-    if (venmoSession) {
-      settingsElement('sms-venmo-button').hidden = false;
-      settingsElement('sms-venmo-button').addEventListener('click', () => startPayPalSession(venmoSession, 'venmo'));
-    }
-    paymentMethodsReady = available > 0;
-    setPaymentProgress(100, available ? 'Payment options ready' : 'Payment check complete', { hidden: true });
-    settingsElement('sms-credit-status').textContent = available
-      ? 'Choose PayPal or Venmo to continue.'
-      : 'PayPal and Venmo are not available in this browser.';
-    settingsElement('sms-credit-status').classList.toggle('error', !available);
-  })().catch(error => {
-    paypalSessionsPromise = null;
-    paymentMethodsReady = false;
-    setPaymentProgress(0, 'Payment options could not load', { hidden: true });
-    settingsElement('sms-credit-status').textContent = error.message || 'Payment options could not load. Close this sheet and try again.';
-    settingsElement('sms-credit-status').classList.add('error');
+function setCheckoutBusy(busy) {
+  paymentBusy = busy;
+  document.querySelectorAll('.credit-pack').forEach(button => {
+    button.disabled = busy || !smsCreditState?.checkoutReady;
   });
-  return paypalSessionsPromise;
+  const continueButton = settingsElement('sms-credit-continue');
+  continueButton.disabled = busy || !smsCreditState?.checkoutReady || !selectedCreditPack;
+  continueButton.setAttribute('aria-busy', String(busy));
+  continueButton.textContent = busy ? 'Opening secure checkout…' : 'Continue to payment';
 }
 
-function openPaymentSheet() {
-  if (!selectedCreditPack || !smsCreditState?.checkoutReady) return;
-  paymentSheetTrigger = document.activeElement;
-  settingsElement('sms-credit-selection').textContent = `${selectedCreditPack.credits.toLocaleString('en-US')} credits · ${creditMoney(selectedCreditPack.amountCents)}`;
-  settingsElement('sms-credit-status').textContent = paymentMethodsReady ? 'Choose PayPal or Venmo to continue.' : '';
-  settingsElement('sms-credit-status').classList.remove('error');
-  setPaymentProgress(paymentMethodsReady ? 100 : 10, paymentMethodsReady ? 'Payment options ready' : 'Starting secure payment', { hidden: paymentMethodsReady });
-  settingsElement('sms-payment-sheet').hidden = false;
-  settingsElement('sms-payment-sheet').setAttribute('aria-hidden', 'false');
-  document.body.classList.add('payment-sheet-open');
-  settingsElement('sms-payment-close').focus();
-  initializePayPalPayments();
+async function startStripeCheckout() {
+  const pack = selectedCreditPack;
+  if (!pack || paymentBusy || !smsCreditState?.checkoutReady) return;
+  setCheckoutBusy(true);
+  settingsElement('sms-credit-load-status').textContent = 'Opening Stripe’s secure checkout…';
+  settingsElement('sms-credit-load-status').classList.remove('error');
+  try {
+    const result = await api('/api/sms-credits/checkout-sessions', {
+      method: 'POST', body: { packKey: pack.key }
+    });
+    const destination = new URL(result.checkoutUrl);
+    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com') {
+      throw new Error('Checkout returned an invalid destination.');
+    }
+    window.location.assign(destination.toString());
+  } catch (error) {
+    setCheckoutBusy(false);
+    settingsElement('sms-credit-load-status').textContent = error.message || 'Checkout could not be opened. Try again.';
+    settingsElement('sms-credit-load-status').classList.add('error');
+  }
+}
+
+function showCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const checkout = params.get('checkout');
+  if (checkout === 'success') {
+    showCreditResult('Checkout returned. Your balance includes only payments Stripe has confirmed. If it has not updated yet, refresh in a moment.');
+    settingsElement('sms-credit-result').focus();
+  } else if (checkout === 'cancelled') {
+    showCreditResult('Checkout cancelled. No charge was made.');
+    settingsElement('sms-credit-result').focus();
+  }
+  if (checkout) window.history.replaceState({}, '', window.location.pathname);
 }
 
 function showSettings() {
@@ -469,7 +347,7 @@ api('/api/auth/me').then(({ organizer }) => {
     const nav = document.querySelector('.sg-nav-links');
     nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/ticketing">Ticketing</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
   }
-  loadSmsCredits();
+  loadSmsCredits().then(showCheckoutReturn);
 }).catch(showSettingsError);
 
 settingsElement('name').addEventListener('input', updateAccountDirty);
@@ -625,29 +503,7 @@ settingsElement('logo-input').addEventListener('change', () => uploadProfileImag
 settingsElement('header-btn').addEventListener('click', () => settingsElement('header-input').click());
 settingsElement('header-input').addEventListener('change', () => uploadProfileImage('header'));
 
-settingsElement('sms-credit-continue').addEventListener('click', openPaymentSheet);
-settingsElement('sms-payment-close').addEventListener('click', () => closePaymentSheet());
-settingsElement('sms-payment-sheet').addEventListener('click', event => {
-  if (event.target === settingsElement('sms-payment-sheet')) closePaymentSheet();
-});
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && !settingsElement('sms-payment-sheet').hidden) closePaymentSheet();
-  if (event.key === 'Tab' && !settingsElement('sms-payment-sheet').hidden) {
-    const focusable = [...settingsElement('sms-payment-sheet').querySelectorAll(
-      'button:not([disabled]),paypal-button:not([hidden]),venmo-button:not([hidden])'
-    )];
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-});
+settingsElement('sms-credit-continue').addEventListener('click', startStripeCheckout);
 
 document.querySelectorAll('.settings-logout').forEach(button => {
   button.addEventListener('click', async () => {

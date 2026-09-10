@@ -19,12 +19,17 @@ const safeNext = value => {
   return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
 };
 
-// PayPal signature verification needs the unmodified request bytes. Keep this
-// listener ahead of the global JSON parser and all authenticated app routes.
+// Payment signature verification needs the unmodified request bytes. Keep both
+// listeners ahead of the global JSON parser and all authenticated app routes.
 app.use(
   '/api/webhooks/paypal',
   express.raw({ type: 'application/json', limit: '256kb' }),
   require('./routes/paypal-webhook')
+);
+app.use(
+  '/api/webhooks/stripe/sms',
+  express.raw({ type: 'application/json', limit: '256kb' }),
+  require('./routes/stripe-sms-webhook')
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

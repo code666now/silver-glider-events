@@ -40,7 +40,11 @@ function canAccessSmsCredits(organizer, env = process.env) {
   if (mode === 'false') return false;
   if (mode === 'admin') return Boolean(organizer?.is_admin);
   // Sandbox money must never be presented to ordinary production hosts.
-  if (String(env.PAYPAL_ENV || '').trim().toLowerCase() !== 'live') {
+  const stripeSecret = String(env.STRIPE_SMS_SECRET_KEY || '').trim();
+  const paymentEnvironment = stripeSecret
+    ? (stripeSecret.startsWith('sk_live_') ? 'live' : 'sandbox')
+    : String(env.PAYPAL_ENV || '').trim().toLowerCase();
+  if (paymentEnvironment !== 'live') {
     return Boolean(organizer?.is_admin);
   }
   return true;
@@ -74,24 +78,29 @@ function completedCapture(order) {
   });
 }
 
-async function createPendingPurchase(db, organizerId, pack) {
+async function createPendingPurchase(db, organizerId, pack, provider = 'paypal') {
+  if (!['paypal', 'stripe'].includes(provider)) {
+    throw new SmsCreditError('Unsupported SMS credit payment provider', {
+      code: 'invalid_sms_credit_provider', status: 500
+    });
+  }
   const reference = `sgsms_${crypto.randomUUID()}`;
   const { rows } = await db.query(
     `INSERT INTO sms_credit_purchases
-       (reference,organizer_id,pack_key,credits,amount_cents,currency)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [reference, organizerId, pack.key, pack.credits, pack.amountCents, pack.currency]
+       (reference,organizer_id,pack_key,credits,amount_cents,currency,provider)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [reference, organizerId, pack.key, pack.credits, pack.amountCents, pack.currency, provider]
   );
   return rows[0];
 }
 
-async function attachProviderOrder(db, purchaseId, organizerId, orderId) {
+async function attachProviderOrder(db, purchaseId, organizerId, orderId, provider = 'paypal') {
   const { rows } = await db.query(
     `UPDATE sms_credit_purchases
         SET provider_order_id=$3,updated_at=NOW(),failure_code=NULL
-      WHERE id=$1 AND organizer_id=$2 AND status='pending'
+      WHERE id=$1 AND organizer_id=$2 AND provider=$4 AND status='pending'
       RETURNING *`,
-    [purchaseId, organizerId, orderId]
+    [purchaseId, organizerId, orderId, provider]
   );
   if (!rows.length) {
     throw new SmsCreditError('This SMS credit purchase is no longer available', {
@@ -106,15 +115,15 @@ async function markPurchaseFailed(db, purchaseId, code) {
     `UPDATE sms_credit_purchases
         SET status='failed',failure_code=$2,updated_at=NOW()
       WHERE id=$1 AND status='pending'`,
-    [purchaseId, String(code || 'paypal_error').slice(0, 100)]
+    [purchaseId, String(code || 'payment_error').slice(0, 100)]
   );
 }
 
-async function purchaseForOrganizerOrder(db, organizerId, orderId) {
+async function purchaseForOrganizerOrder(db, organizerId, orderId, provider = 'paypal') {
   const { rows } = await db.query(
     `SELECT * FROM sms_credit_purchases
-      WHERE organizer_id=$1 AND provider='paypal' AND provider_order_id=$2`,
-    [organizerId, orderId]
+      WHERE organizer_id=$1 AND provider=$3 AND provider_order_id=$2`,
+    [organizerId, orderId, provider]
   );
   if (!rows.length) {
     throw new SmsCreditError('PayPal order does not belong to this host', {
@@ -125,13 +134,20 @@ async function purchaseForOrganizerOrder(db, organizerId, orderId) {
 }
 
 async function completePurchase(db, capture) {
+  const provider = capture.provider || 'paypal';
+  const providerName = provider === 'stripe' ? 'Stripe' : 'PayPal';
+  if (!['paypal', 'stripe'].includes(provider)) {
+    throw new SmsCreditError('Unsupported SMS credit payment provider', {
+      code: 'invalid_sms_credit_provider', status: 500
+    });
+  }
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
       `SELECT * FROM sms_credit_purchases
-        WHERE provider='paypal' AND provider_order_id=$1 FOR UPDATE`,
-      [capture.orderId]
+        WHERE provider=$2 AND provider_order_id=$1 FOR UPDATE`,
+      [capture.orderId, provider]
     );
     const purchase = rows[0];
     if (!purchase) {
@@ -141,7 +157,7 @@ async function completePurchase(db, capture) {
     }
     if (purchase.status === 'completed' || purchase.status === 'partially_refunded' || purchase.status === 'refunded' || purchase.status === 'reversed') {
       if (purchase.provider_capture_id !== capture.captureId) {
-        throw new SmsCreditError('PayPal capture does not match this purchase', {
+        throw new SmsCreditError(`${providerName} payment does not match this purchase`, {
           code: 'sms_credit_capture_conflict', status: 409
         });
       }
@@ -152,9 +168,12 @@ async function completePurchase(db, capture) {
       return { purchase, balance, duplicate: true };
     }
     if (purchase.reference !== capture.reference ||
+        (capture.purchaseId != null && Number(purchase.id) !== Number(capture.purchaseId)) ||
+        (capture.organizerId != null && Number(purchase.organizer_id) !== Number(capture.organizerId)) ||
+        (capture.packKey && purchase.pack_key !== capture.packKey) ||
         Number(purchase.amount_cents) !== Number(capture.amountCents) ||
         purchase.currency !== capture.currency) {
-      throw new SmsCreditError('PayPal payment does not match the selected credit pack', {
+      throw new SmsCreditError(`${providerName} payment does not match the selected credit pack`, {
         code: 'sms_credit_payment_mismatch', status: 409
       });
     }
@@ -168,11 +187,11 @@ async function completePurchase(db, capture) {
       `INSERT INTO sms_credit_transactions
          (organizer_id,purchase_id,kind,credits_delta,balance_after,amount_cents_delta,
           currency,provider,provider_transaction_id,external_key,metadata)
-       VALUES ($1,$2,'purchase',$3,$4,$5,$6,'paypal',$7,$8,$9::jsonb)`,
+       VALUES ($1,$2,'purchase',$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
       [
         purchase.organizer_id, purchase.id, purchase.credits, balance,
-        purchase.amount_cents, purchase.currency, capture.captureId,
-        `paypal:capture:${capture.captureId}`,
+        purchase.amount_cents, purchase.currency, provider, capture.captureId,
+        `${provider}:${provider === 'stripe' ? 'checkout' : 'capture'}:${provider === 'stripe' ? capture.orderId : capture.captureId}`,
         JSON.stringify({ packKey: purchase.pack_key, orderId: capture.orderId })
       ]
     );

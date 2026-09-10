@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.76
+
+Released September 10, 2026.
+
+### Changed
+
+* Replaced the embedded PayPal/Venmo SMS-credit modal with one direct handoff to Stripe-hosted Checkout while preserving the fixed 300/$20, 500/$35, and 1,000/$60 packs.
+* Kept SMS-credit funds isolated through dedicated Stripe credentials and Price IDs; ticket commerce remains a separate service and source of truth.
+
+### Security & reliability
+
+* Creates Checkout Sessions only on the authenticated server, maps each pack to an allowlisted Stripe Price, and returns only a validated Stripe-hosted URL to the browser.
+* Credits the existing host wallet only after a signature-verified `checkout.session.completed` webhook is re-fetched and confirmed paid, complete, correctly priced, and matched to its host purchase.
+* Makes Stripe event and Checkout Session retries idempotent in the existing atomic SMS ledger. Historical PayPal records, refund handling, and rollback endpoints remain intact without appearing in the current UI.
+
 ## 1.0.75
 
 Released September 9, 2026.

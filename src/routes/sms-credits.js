@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const paypal = require('../lib/paypal');
+const stripeSms = require('../lib/stripe-sms');
 const ledger = require('../lib/sms-credit-ledger');
 
 const router = express.Router();
@@ -14,16 +15,19 @@ const purchaseLimiter = createRateLimiter({
   ]
 });
 
-function paymentReady() {
-  return paypal.paypalClient.isConfigured({ requireWebhook: true });
+function stripePaymentReady() {
+  return stripeSms.stripeSmsClient.isConfigured({ requireWebhook: true });
 }
 
-function requireCreditAccess(req, res) {
+function requireCreditAccess(req, res, provider = 'stripe') {
   if (!ledger.canAccessSmsCredits(req.organizer)) {
     res.status(404).json({ error: 'SMS credits are not available', code: 'sms_credits_disabled' });
     return false;
   }
-  if (!paymentReady()) {
+  const ready = provider === 'paypal'
+    ? paypal.paypalClient.isConfigured({ requireWebhook: true })
+    : stripePaymentReady();
+  if (!ready) {
     res.status(503).json({ error: 'SMS credit checkout is not ready', code: 'sms_credits_not_configured' });
     return false;
   }
@@ -31,7 +35,9 @@ function requireCreditAccess(req, res) {
 }
 
 function handleKnownError(error, res, next) {
-  if (!(error instanceof paypal.PayPalError) && !(error instanceof ledger.SmsCreditError)) {
+  if (!(error instanceof paypal.PayPalError) &&
+      !(error instanceof stripeSms.StripeSmsError) &&
+      !(error instanceof ledger.SmsCreditError)) {
     return next(error);
   }
   const detail = {
@@ -53,27 +59,84 @@ router.get('/api/sms-credits', requireOrganizer, async (req, res, next) => {
     const allowed = ledger.canAccessSmsCredits(req.organizer);
     if (!allowed) return res.json({ enabled: false });
     const summary = await ledger.creditSummary(pool, req.organizer.id);
-    const configured = paypal.paypalClient.isConfigured();
-    const ready = paymentReady();
+    const configured = stripeSms.stripeSmsClient.isConfigured();
+    const ready = stripePaymentReady();
+    const publicConfig = configured ? stripeSms.stripeSmsClient.publicConfig() : null;
     res.json({
       enabled: true,
       checkoutReady: ready,
-      setupRequired: configured && !ready,
+      setupRequired: !ready,
       balance: summary.balance,
       transactions: summary.transactions,
       packs: ledger.publicPacks(),
-      paypal: configured ? paypal.paypalClient.publicConfig() : null
+      environment: publicConfig?.environment || null
     });
   } catch (error) {
     handleKnownError(error, res, next);
   }
 });
 
-router.post('/api/sms-credits/orders', requireOrganizer, async (req, res, next) => {
+function checkoutReturnUrl(req, result) {
+  const configured = String(process.env.APP_URL || '').trim();
+  const fallback = `${req.protocol}://${req.get('host')}`;
+  let origin;
+  try {
+    const url = new URL(configured || fallback);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid protocol');
+    origin = url.origin;
+  } catch (_) {
+    throw new ledger.SmsCreditError('Application checkout URL is not configured', {
+      code: 'sms_credit_return_url_invalid', status: 503
+    });
+  }
+  return `${origin}/settings/messaging?checkout=${result}`;
+}
+
+router.post('/api/sms-credits/checkout-sessions', requireOrganizer, async (req, res, next) => {
   let purchase = null;
   try {
     res.setHeader('Cache-Control', 'no-store');
     if (!requireCreditAccess(req, res)) return;
+    const limit = purchaseLimiter.consume({
+      organizerId: String(req.organizer.id),
+      ip: clientIp(req)
+    });
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(limit.retryAfterMs / 1000)));
+      return res.status(429).json({
+        error: 'Too many checkout attempts. Try again later.',
+        code: 'sms_credit_checkout_rate_limited'
+      });
+    }
+    const pack = ledger.packForKey(req.body?.packKey);
+    purchase = await ledger.createPendingPurchase(pool, req.organizer.id, pack, 'stripe');
+    const checkout = await stripeSms.stripeSmsClient.createCheckoutSession({
+      purchase,
+      pack,
+      organizerEmail: req.organizer.email,
+      successUrl: checkoutReturnUrl(req, 'success'),
+      cancelUrl: checkoutReturnUrl(req, 'cancelled')
+    });
+    const checkoutUrl = new URL(checkout.url);
+    if (checkoutUrl.protocol !== 'https:' || checkoutUrl.hostname !== 'checkout.stripe.com') {
+      throw new stripeSms.StripeSmsError('Stripe returned an invalid checkout destination', {
+        code: 'stripe_sms_destination_invalid', status: 502
+      });
+    }
+    await ledger.attachProviderOrder(pool, purchase.id, req.organizer.id, checkout.id, 'stripe');
+    res.status(201).json({ checkoutUrl: checkoutUrl.toString() });
+  } catch (error) {
+    if (purchase) await ledger.markPurchaseFailed(pool, purchase.id, error.code).catch(() => {});
+    handleKnownError(error, res, next);
+  }
+});
+
+// Legacy PayPal endpoints remain available for rollback and already-open orders.
+router.post('/api/sms-credits/orders', requireOrganizer, async (req, res, next) => {
+  let purchase = null;
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!requireCreditAccess(req, res, 'paypal')) return;
     const limit = purchaseLimiter.consume({
       organizerId: String(req.organizer.id),
       ip: clientIp(req)
@@ -108,7 +171,7 @@ router.post('/api/sms-credits/orders', requireOrganizer, async (req, res, next) 
 router.post('/api/sms-credits/orders/:orderId/capture', requireOrganizer, async (req, res, next) => {
   try {
     res.setHeader('Cache-Control', 'no-store');
-    if (!requireCreditAccess(req, res)) return;
+    if (!requireCreditAccess(req, res, 'paypal')) return;
     const orderId = paypal.cleanOrderId(req.params.orderId);
     const purchase = await ledger.purchaseForOrganizerOrder(pool, req.organizer.id, orderId);
     if (['completed', 'partially_refunded', 'refunded', 'reversed'].includes(purchase.status)) {

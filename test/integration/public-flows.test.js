@@ -25,13 +25,14 @@ const { hashCode } = require('../../src/lib/secret-show');
 const { signSession } = require('../../src/lib/session');
 const sms = require('../../src/lib/sms');
 const paypal = require('../../src/lib/paypal');
+const stripeSms = require('../../src/lib/stripe-sms');
 
 let server;
 let baseUrl;
 let organizerId;
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE stripe_sms_webhook_events, paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -1803,7 +1804,7 @@ test('host SMS credit checkout fulfills once and verified refund webhooks adjust
     const initial = await initialResponse.json();
     assert.equal(initialResponse.status, 200);
     assert.equal(initial.enabled, true);
-    assert.equal(initial.checkoutReady, true);
+    assert.equal(initial.checkoutReady, false);
     assert.equal(initial.balance, 0);
     assert.deepEqual(initial.packs.map(pack => [pack.credits, pack.amountCents]), [
       [300, 2000], [500, 3500], [1000, 6000]
@@ -1925,6 +1926,179 @@ test('host SMS credit checkout fulfills once and verified refund webhooks adjust
     )).rows[0].count, 0);
   } finally {
     Object.assign(paypal.paypalClient, originals);
+    for (const key of envKeys) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
+  }
+});
+
+test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempotent', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const envKeys = [
+    'SMS_CREDITS_ENABLED', 'STRIPE_SMS_SECRET_KEY', 'STRIPE_SMS_300_PRICE_ID',
+    'STRIPE_SMS_500_PRICE_ID', 'STRIPE_SMS_1000_PRICE_ID', 'STRIPE_SMS_WEBHOOK_SECRET'
+  ];
+  const originalEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+  const originals = {
+    createCheckoutSession: stripeSms.stripeSmsClient.createCheckoutSession,
+    retrieveCheckoutSession: stripeSms.stripeSmsClient.retrieveCheckoutSession,
+    constructWebhookEvent: stripeSms.stripeSmsClient.constructWebhookEvent
+  };
+  const priceIds = {
+    starter: 'price_integration300',
+    standard: 'price_integration500',
+    pro: 'price_integration1000'
+  };
+  let createdInput = null;
+  let authoritativeSession = null;
+
+  try {
+    process.env.SMS_CREDITS_ENABLED = 'true';
+    process.env.STRIPE_SMS_SECRET_KEY = 'sk_live_integration_sms_key';
+    process.env.STRIPE_SMS_300_PRICE_ID = priceIds.starter;
+    process.env.STRIPE_SMS_500_PRICE_ID = priceIds.standard;
+    process.env.STRIPE_SMS_1000_PRICE_ID = priceIds.pro;
+    process.env.STRIPE_SMS_WEBHOOK_SECRET = 'whsec_integration_sms_secret';
+
+    stripeSms.stripeSmsClient.createCheckoutSession = async input => {
+      createdInput = input;
+      return {
+        id: 'cs_live_integration12345678',
+        url: 'https://checkout.stripe.com/c/pay/integration'
+      };
+    };
+    stripeSms.stripeSmsClient.constructWebhookEvent = (rawBody, signature) => {
+      if (signature !== 'valid-signature') {
+        throw new stripeSms.StripeSmsError('Invalid Stripe webhook signature', {
+          code: 'stripe_sms_signature_invalid', status: 400
+        });
+      }
+      assert.ok(Buffer.isBuffer(rawBody));
+      return JSON.parse(rawBody.toString('utf8'));
+    };
+    stripeSms.stripeSmsClient.retrieveCheckoutSession = async sessionId => ({
+      ...authoritativeSession,
+      id: sessionId
+    });
+
+    const signedOut = await fetch(`${baseUrl}/api/sms-credits/checkout-sessions`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ packKey: 'standard' })
+    });
+    assert.equal(signedOut.status, 401);
+
+    const initialResponse = await fetch(`${baseUrl}/api/sms-credits`, { headers: { cookie } });
+    const initial = await initialResponse.json();
+    assert.equal(initialResponse.status, 200);
+    assert.equal(initial.checkoutReady, true);
+    assert.equal(initial.environment, 'live');
+    assert.equal(JSON.stringify(initial).includes('sk_live_integration_sms_key'), false);
+    assert.equal(JSON.stringify(initial).includes(priceIds.standard), false);
+
+    const checkoutResponse = await fetch(`${baseUrl}/api/sms-credits/checkout-sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ packKey: 'standard', amountCents: 1, credits: 999999 })
+    });
+    assert.equal(checkoutResponse.status, 201);
+    assert.deepEqual(await checkoutResponse.json(), {
+      checkoutUrl: 'https://checkout.stripe.com/c/pay/integration'
+    });
+    assert.equal(createdInput.pack.key, 'standard');
+    assert.equal(createdInput.pack.credits, 500);
+    assert.equal(createdInput.pack.amountCents, 3500);
+    assert.equal(createdInput.organizerEmail, 'host@example.test');
+    assert.equal(createdInput.successUrl, 'http://127.0.0.1/settings/messaging?checkout=success');
+    assert.equal(createdInput.cancelUrl, 'http://127.0.0.1/settings/messaging?checkout=cancelled');
+
+    const purchase = (await pool.query(
+      "SELECT * FROM sms_credit_purchases WHERE provider='stripe' AND provider_order_id=$1",
+      ['cs_live_integration12345678']
+    )).rows[0];
+    assert.equal(purchase.organizer_id, organizerId);
+    assert.equal(purchase.credits, 500);
+    assert.equal(purchase.amount_cents, 3500);
+
+    authoritativeSession = {
+      payment_status: 'paid',
+      mode: 'payment',
+      status: 'complete',
+      client_reference_id: purchase.reference,
+      payment_intent: 'pi_integration12345678',
+      amount_total: 3500,
+      currency: 'usd',
+      metadata: {
+        purchaseId: String(purchase.id),
+        purchaseReference: purchase.reference,
+        organizerId: String(organizerId),
+        packKey: 'standard'
+      },
+      line_items: { data: [{ quantity: 1, price: { id: priceIds.standard } }] }
+    };
+    const completedEvent = {
+      id: 'evt_integration12345678',
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_live_integration12345678' } }
+    };
+    const sendWebhook = (event, signature = 'valid-signature') => fetch(
+      `${baseUrl}/api/webhooks/stripe/sms`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+        body: JSON.stringify(event)
+      }
+    );
+
+    const completedResponse = await sendWebhook(completedEvent);
+    assert.equal(completedResponse.status, 200);
+    assert.deepEqual(await completedResponse.json(), { received: true, ignored: false });
+    assert.equal((await pool.query(
+      'SELECT sms_credits FROM organizers WHERE id=$1', [organizerId]
+    )).rows[0].sms_credits, 500);
+    const transaction = (await pool.query(
+      "SELECT * FROM sms_credit_transactions WHERE kind='purchase'"
+    )).rows[0];
+    assert.equal(transaction.provider, 'stripe');
+    assert.equal(transaction.credits_delta, 500);
+    assert.equal(transaction.amount_cents_delta, 3500);
+
+    const duplicateEventResponse = await sendWebhook(completedEvent);
+    assert.equal(duplicateEventResponse.status, 200);
+    assert.equal((await duplicateEventResponse.json()).duplicate, true);
+
+    const duplicateSessionResponse = await sendWebhook({
+      ...completedEvent, id: 'evt_integration87654321'
+    });
+    assert.equal(duplicateSessionResponse.status, 200);
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM sms_credit_transactions WHERE kind='purchase'"
+    )).rows[0].count, 1);
+    assert.equal((await pool.query(
+      'SELECT sms_credits FROM organizers WHERE id=$1', [organizerId]
+    )).rows[0].sms_credits, 500);
+
+    const invalidSignature = await sendWebhook({
+      ...completedEvent, id: 'evt_invalidsig12345678'
+    }, 'bad-signature');
+    assert.equal(invalidSignature.status, 400);
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM stripe_sms_webhook_events WHERE id='evt_invalidsig12345678'"
+    )).rows[0].count, 0);
+
+    authoritativeSession = {
+      ...authoritativeSession,
+      line_items: { data: [{ quantity: 1, price: { id: 'price_notapproved123' } }] }
+    };
+    const mismatchedPrice = await sendWebhook({
+      ...completedEvent, id: 'evt_badprice123456789'
+    });
+    assert.equal(mismatchedPrice.status, 500);
+    assert.equal((await pool.query(
+      'SELECT sms_credits FROM organizers WHERE id=$1', [organizerId]
+    )).rows[0].sms_credits, 500);
+  } finally {
+    Object.assign(stripeSms.stripeSmsClient, originals);
     for (const key of envKeys) {
       if (originalEnv[key] === undefined) delete process.env[key];
       else process.env[key] = originalEnv[key];
