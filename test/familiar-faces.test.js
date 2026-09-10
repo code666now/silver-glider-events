@@ -18,10 +18,12 @@ test('Familiar Faces replaces CRM rows while preserving search and CSV export', 
   assert.match(view, /id="export-csv"[^>]*>Export CSV/);
   assert.doesNotMatch(view, /<th>Attendee<\/th>|Attendee email|Guest email/);
   assert.match(client, /face\.avatarUrl/);
+  assert.match(client, /face\.avatarEmoji \|\| familiarInitials/);
   assert.match(client, /class="familiar-face-name"/);
   assert.match(client, /face\.status/);
   assert.doesNotMatch(client, /guest-inline-email/);
   assert.match(styles, /border-radius:50%/);
+  assert.match(styles, /\.familiar-face-emoji/);
   assert.match(styles, /@media \(max-width:720px\)/);
 });
 
@@ -58,6 +60,7 @@ test('Familiar Faces photo identity is verified, reusable, and never attached by
   const client = read('public/js/add-photo.js');
 
   assert.match(routes, /LEFT JOIN organizers o ON o\.id=r\.account_id/);
+  assert.match(routes, /attendeeAvatar\(`email:/);
   assert.doesNotMatch(routes, /JOIN organizers o ON LOWER\(o\.email\)=LOWER\(r\.email\)/);
   assert.match(index, /app\.get\('\/add-photo', requireOrganizer/);
   assert.match(page, />Add your photo</);

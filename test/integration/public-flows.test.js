@@ -22,6 +22,7 @@ const migrate = require('../../src/db/migrate');
 const { app } = require('../../src/index');
 const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
+const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
 const sms = require('../../src/lib/sms');
 const paypal = require('../../src/lib/paypal');
@@ -1838,6 +1839,8 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
   assert.deepEqual(new Set(list.faces.map(face => face.status)), new Set(['RSVP’d', 'Invited']));
   assert.equal(list.faces.find(face => face.id === `rsvp:${maya.id}`).avatarUrl,
     'https://res.cloudinary.com/demo/image/upload/v1/maya.jpg');
+  const ariFace = list.faces.find(face => face.id === `rsvp:${ari.id}`);
+  assert.equal(ariFace.avatarEmoji, attendeeAvatar('email:ari@example.test'));
   assert.equal(list.faces.find(face => face.name === 'Sam Friend').canInvite, false);
   assert.equal(list.faces.find(face => face.name === 'No Consent').canInvite, false);
   assert.doesNotMatch(JSON.stringify(list), /maya@example|ari@example|private@example|invited@example/);
@@ -1898,6 +1901,13 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
     [targetOne.id]
   );
   assert.equal(targetOneBatches.rows[0].count, 2);
+
+  const targetFacesResponse = await fetch(`${baseUrl}/api/events/${targetOne.id}/familiar-faces`, {
+    headers: { cookie }
+  });
+  assert.equal(targetFacesResponse.status, 200);
+  const targetFaces = await targetFacesResponse.json();
+  assert.equal(targetFaces.faces.find(face => face.name === 'Ari Lee').avatarEmoji, ariFace.avatarEmoji);
 });
 
 test('RSVP confirmation photo links verify one guest and reuse their persistent identity', async () => {

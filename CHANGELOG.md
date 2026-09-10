@@ -2,13 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.80
+
+Released September 10, 2026.
+
+### Changed
+
+* Restored the existing playful attendee emoji palette as the Familiar Faces fallback until a guest adds a photo.
+* Derives each fallback from the guest's server-side identity signal, so the emoji stays consistent across event pages and refreshes without exposing their email.
+* Keeps verified uploaded photos first and initials only as a defensive fallback; invitation, RSVP, consent, CSV, and guest data behavior are unchanged.
+
 ## 1.0.79
 
 Released September 10, 2026.
 
 ### Added
 
-* Replaced the event-management guest table with **Familiar Faces**, showing reusable verified photos or initials, guest names, and only the honest `RSVP’d` and `Invited` states while preserving search and CSV export.
+* Replaced the event-management guest table with **Familiar Faces**, showing reusable verified photos or fallback avatars, guest names, and only the honest `RSVP’d` and `Invited` states while preserving search and CSV export.
 * Added a source-first invitation flow from an old event: select individual people or all eligible faces, choose one of the host’s upcoming events, review the audience, and send one artwork-led email with one **RSVP** action.
 * Added a lightweight authenticated **Add your photo** page and an optional secondary photo prompt in RSVP confirmation emails when the guest does not already have a saved photo.
 

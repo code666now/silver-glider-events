@@ -260,7 +260,7 @@ function familiarAvatar(face) {
   const photo = sgSafeHttpUrl(face.avatarUrl);
   return photo
     ? `<img src="${escapeHtml(photo)}" alt="" loading="lazy">`
-    : `<span aria-hidden="true">${escapeHtml(familiarInitials(face.name))}</span>`;
+    : `<span class="familiar-face-emoji" aria-hidden="true">${escapeHtml(face.avatarEmoji || familiarInitials(face.name))}</span>`;
 }
 
 function renderFamiliarFaces() {

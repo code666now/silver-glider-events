@@ -7,7 +7,7 @@ const { cleanHostName, cleanInstagramHandle, ensureHostProfile, normalizeHostPro
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
-const { canAppearInPublicListings, normalizeGuestExperienceSettings, safeAvatarUrl } = require('../lib/private-events');
+const { attendeeAvatar, canAppearInPublicListings, normalizeGuestExperienceSettings, safeAvatarUrl } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
@@ -831,6 +831,7 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         name,
         status: 'RSVP’d',
         avatarUrl: safeAvatarUrl(rsvp.avatar_url),
+        avatarEmoji: attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
         canInvite: Boolean(rsvp.organizer_optin && rsvp.host_email_allowed && String(rsvp.email || '').trim()),
         searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
         sortTime: rsvp.created_at
@@ -841,6 +842,7 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         name: guestName,
         status: 'RSVP’d',
         avatarUrl: null,
+        avatarEmoji: attendeeAvatar(`guest:${rsvp.id}:${guestName.toLowerCase()}`),
         canInvite: false,
         searchText: guestName.toLowerCase(),
         sortTime: rsvp.created_at
@@ -853,6 +855,7 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         name,
         status: 'Invited',
         avatarUrl: safeAvatarUrl(invitation.avatar_url),
+        avatarEmoji: attendeeAvatar(`email:${String(invitation.recipient || '').trim().toLowerCase() || `invite:${invitation.id}`}`),
         canInvite: Boolean(invitation.host_email_allowed && String(invitation.recipient || '').trim()),
         searchText: `${name} ${invitation.recipient || ''}`.toLowerCase(),
         sortTime: invitation.created_at
