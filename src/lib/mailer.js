@@ -336,7 +336,7 @@ function flyerSecondaryLinks(event, rsvp, { includeManage = true, includeHost = 
   return `<p class="sg-email-secondary" style="color:#858585;font-size:13px;text-align:center;margin:0 0 34px;line-height:1.9">${links.join('<span style="color:#444"> &nbsp;·&nbsp; </span>')}</p>`;
 }
 
-function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
+function renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
   const theme = createEmailTheme(event.artwork_accent_color);
   const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   return rsvpConfirmationLayout({
@@ -346,7 +346,7 @@ function renderFlyerRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationFooterNote(rsvp)}`,
+    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`,
     footerBrand: 'Powered by Silver Glider'
   });
 }
@@ -387,8 +387,24 @@ async function sendMagicLink({ to, link, followHostName }) {
   });
 }
 
-function renderRsvpConfirmationEmail({ event, rsvp }) {
-  if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp });
+function confirmationPhotoOpportunity(addPhotoUrl, theme) {
+  const url = safeHttpUrl(addPhotoUrl);
+  if (!url) return '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;margin:0 0 24px;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
+    <tr>
+      <td valign="middle" style="padding:16px 18px">
+        <p style="color:#f0f0f0;font-size:15px;font-weight:800;line-height:1.35;margin:0 0 4px">Add your photo</p>
+        <p style="color:#8f8f8f;font-size:13px;line-height:1.5;margin:0">Help friends recognize you.</p>
+      </td>
+      <td width="112" valign="middle" align="right" style="width:112px;padding:16px 18px 16px 8px">
+        <a href="${esc(url)}" style="display:inline-block;color:${theme.secondaryAccentColor};font-size:14px;font-weight:800;line-height:1.4;text-decoration:none">Add photo</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+function renderRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
+  if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl });
   const theme = createEmailTheme(event.artwork_accent_color);
   const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   return rsvpConfirmationLayout({
@@ -398,7 +414,7 @@ function renderRsvpConfirmationEmail({ event, rsvp }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationFooterNote(rsvp)}`
+    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
   });
 }
 
@@ -415,11 +431,11 @@ function renderFlyerReminderEmail({ event, rsvp, kicker, headline }) {
   });
 }
 
-async function sendRsvpConfirmation({ to, event, rsvp, icsContent }) {
+async function sendRsvpConfirmation({ to, event, rsvp, icsContent, addPhotoUrl }) {
   return send({
     to,
     subject: rsvpConfirmationSubject(event),
-    html: renderRsvpConfirmationEmail({ event, rsvp }),
+    html: renderRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }),
     attachments: icsContent
       ? [{ filename: 'event.ics', content: Buffer.from(icsContent).toString('base64') }]
       : undefined
@@ -553,7 +569,7 @@ function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLab
     headline: event.title,
     sub: `${greeting}${organizerLabel} thought you’d like this next event.`,
     bodyHtml: `${photoRequestArtwork(event)}${eventCard(event)}`,
-    cta: 'View event',
+    cta: 'RSVP',
     ctaUrl: `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
     footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re receiving this because you asked ${esc(organizerLabel)} to invite you to future events.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from this host</a></p>`
   });

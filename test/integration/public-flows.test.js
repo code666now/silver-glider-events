@@ -1779,6 +1779,203 @@ test('invites only consented primary guests from one past event and never emails
   assert.equal(followerData.canAnnounce, false);
 });
 
+test('Familiar Faces keeps verified photos reusable and safely invites selected people across events', async () => {
+  const source = await createEvent({
+    slug: 'familiar-summer-party',
+    title: 'Familiar Summer Party',
+    event_date: '2020-07-18'
+  });
+  const targetOne = await createEvent({
+    slug: 'familiar-fall-party',
+    title: 'Familiar Fall Party',
+    event_date: '2030-10-17'
+  });
+  const targetTwo = await createEvent({
+    slug: 'familiar-winter-party',
+    title: 'Familiar Winter Party',
+    event_date: '2030-12-12',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://res.cloudinary.com/demo/image/upload/v1/winter.jpg'
+  });
+  const guestAccount = (await pool.query(
+    `INSERT INTO organizers (email, name, avatar_url)
+     VALUES ('maya@example.test','Maya Lopez','https://res.cloudinary.com/demo/image/upload/v1/maya.jpg')
+     RETURNING id`
+  )).rows[0];
+  const maya = await createRsvp(source.id, {
+    first_name: 'Maya', last_name: 'Lopez', email: 'maya@example.test',
+    organizer_optin: true, account_id: guestAccount.id,
+    guest_first_name: 'Sam', guest_last_name: 'Friend'
+  });
+  const ari = await createRsvp(source.id, {
+    first_name: 'Ari', last_name: 'Lee', email: 'ari@example.test', organizer_optin: true
+  });
+  await createRsvp(source.id, {
+    first_name: 'No', last_name: 'Consent', email: 'private@example.test', organizer_optin: false
+  });
+  const priorBatch = (await pool.query(
+    `INSERT INTO previous_guest_invitation_batches
+       (target_event_id, source_event_id, source_event_title, status, recipient_count, sent_count, completed_at)
+     VALUES ($1,NULL,'Earlier Event','sent',1,1,NOW()) RETURNING id`,
+    [source.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO message_log
+       (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+        message_type, channel, status, sent_at)
+     VALUES ($1,$2,'invited@example.test','Invited Person','previous_guest_invite','email','sent',NOW())`,
+    [source.id, priorBatch.id]
+  );
+
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const listResponse = await fetch(`${baseUrl}/api/events/${source.id}/familiar-faces`, {
+    headers: { cookie }
+  });
+  assert.equal(listResponse.status, 200);
+  const list = await listResponse.json();
+  assert.equal(list.canStartInvitation, true);
+  assert.equal(list.totalCount, 5);
+  assert.deepEqual(new Set(list.faces.map(face => face.status)), new Set(['RSVP’d', 'Invited']));
+  assert.equal(list.faces.find(face => face.id === `rsvp:${maya.id}`).avatarUrl,
+    'https://res.cloudinary.com/demo/image/upload/v1/maya.jpg');
+  assert.equal(list.faces.find(face => face.name === 'Sam Friend').canInvite, false);
+  assert.equal(list.faces.find(face => face.name === 'No Consent').canInvite, false);
+  assert.doesNotMatch(JSON.stringify(list), /maya@example|ari@example|private@example|invited@example/);
+
+  const emailSearch = await fetch(
+    `${baseUrl}/api/events/${source.id}/familiar-faces?search=${encodeURIComponent('maya@example.test')}`,
+    { headers: { cookie } }
+  );
+  const searchResults = await emailSearch.json();
+  assert.equal(searchResults.faces.length, 1);
+  assert.equal(searchResults.faces[0].name, 'Maya Lopez');
+  assert.doesNotMatch(JSON.stringify(searchResults), /maya@example/);
+
+  const previewResponse = await fetch(`${baseUrl}/api/events/${source.id}/familiar-faces/preview`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ faceIds: [`rsvp:${maya.id}`, `rsvp:${ari.id}`] })
+  });
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.equal(preview.selectedCount, 2);
+  assert.deepEqual(preview.events.map(event => event.id), [targetOne.id, targetTwo.id]);
+  assert.ok(preview.events.every(event => event.eligibleCount === 2));
+
+  async function invite(targetEventId, faceIds) {
+    return fetch(`${baseUrl}/api/events/${source.id}/familiar-faces/invite`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ targetEventId, faceIds })
+    });
+  }
+  const firstSend = await invite(targetOne.id, [`rsvp:${maya.id}`]);
+  assert.equal(firstSend.status, 202);
+  assert.equal((await firstSend.json()).queued, 1);
+
+  const repeatSend = await invite(targetOne.id, [`rsvp:${maya.id}`]);
+  assert.equal(repeatSend.status, 400);
+
+  const secondGroup = await invite(targetOne.id, [`rsvp:${ari.id}`]);
+  assert.equal(secondGroup.status, 202);
+  assert.equal((await secondGroup.json()).queued, 1);
+
+  const reuseForAnotherEvent = await invite(targetTwo.id, [`rsvp:${maya.id}`]);
+  assert.equal(reuseForAnotherEvent.status, 202);
+  assert.equal((await reuseForAnotherEvent.json()).queued, 1);
+
+  const targetOneLogs = await pool.query(
+    `SELECT LOWER(recipient) AS recipient FROM message_log
+      WHERE event_id=$1 AND message_type='previous_guest_invite' ORDER BY recipient`,
+    [targetOne.id]
+  );
+  assert.deepEqual(targetOneLogs.rows, [
+    { recipient: 'ari@example.test' },
+    { recipient: 'maya@example.test' }
+  ]);
+  const targetOneBatches = await pool.query(
+    'SELECT COUNT(*)::int AS count FROM previous_guest_invitation_batches WHERE target_event_id=$1',
+    [targetOne.id]
+  );
+  assert.equal(targetOneBatches.rows[0].count, 2);
+});
+
+test('RSVP confirmation photo links verify one guest and reuse their persistent identity', async () => {
+  const event = await createEvent({
+    slug: 'photo-opportunity-night',
+    title: 'Photo Opportunity Night',
+    event_date: '2030-09-20'
+  });
+  const email = 'photo-opportunity@example.test';
+  const rsvpResponse = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Photo Opportunity', email })
+  });
+  assert.equal(rsvpResponse.status, 201);
+  await waitForConfirmation(email);
+
+  const tokenRow = (await pool.query(
+    `SELECT token, return_path, expires_at, used_at FROM magic_link_tokens
+      WHERE email=$1 ORDER BY id DESC LIMIT 1`,
+    [email]
+  )).rows[0];
+  assert.equal(tokenRow.return_path, `/add-photo?event=${event.slug}`);
+  assert.equal(tokenRow.used_at, null);
+  assert.ok(new Date(tokenRow.expires_at) > new Date());
+
+  const verify = await fetch(`${baseUrl}/auth/verify?token=${tokenRow.token}`, { redirect: 'manual' });
+  assert.equal(verify.status, 302);
+  assert.equal(verify.headers.get('location'), `/add-photo?event=${event.slug}`);
+  const guestCookie = verify.headers.get('set-cookie').split(';')[0];
+  const page = await fetch(`${baseUrl}/add-photo?event=${event.slug}`, { headers: { cookie: guestCookie } });
+  assert.equal(page.status, 200);
+  const pageHtml = await page.text();
+  assert.match(pageHtml, /Add your photo/);
+  assert.match(pageHtml, /Help friends recognize you\./);
+
+  const identity = (await pool.query(
+    `SELECT r.account_id, o.email
+       FROM rsvps r JOIN organizers o ON o.id=r.account_id
+      WHERE r.event_id=$1 AND LOWER(r.email)=LOWER($2)`,
+    [event.id, email]
+  )).rows[0];
+  assert.ok(identity.account_id);
+  assert.equal(identity.email, email);
+
+  const reused = await fetch(`${baseUrl}/auth/verify?token=${tokenRow.token}`, { redirect: 'manual' });
+  assert.equal(reused.status, 302);
+  assert.equal(reused.headers.get('location'), '/login?error=expired');
+
+  await pool.query(
+    `INSERT INTO organizers (email, name, avatar_url)
+     VALUES ('already-visible@example.test','Already Visible',
+             'https://res.cloudinary.com/demo/image/upload/v1/already-visible.jpg')
+     RETURNING id`
+  );
+  const secondEvent = await createEvent({
+    slug: 'photo-not-needed-night',
+    title: 'Photo Not Needed Night',
+    event_date: '2030-09-21'
+  });
+  const withPhoto = await fetch(`${baseUrl}/api/public/events/${secondEvent.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Already Visible', email: 'already-visible@example.test' })
+  });
+  assert.equal(withPhoto.status, 201);
+  await waitForConfirmation('already-visible@example.test');
+  const noPromptToken = await pool.query(
+    `SELECT 1 FROM magic_link_tokens WHERE email='already-visible@example.test'`
+  );
+  assert.equal(noPromptToken.rowCount, 0);
+  const unverifiedRsvp = await pool.query(
+    `SELECT account_id FROM rsvps WHERE event_id=$1 AND email='already-visible@example.test'`,
+    [secondEvent.id]
+  );
+  assert.equal(unverifiedRsvp.rows[0].account_id, null);
+});
+
 test('admin-only SMS test route normalizes one recipient and cannot accept custom copy', async () => {
   const cookie = `sge_session=${signSession(organizerId)}`;
   const { rows: currentRows } = await pool.query('SELECT is_admin FROM organizers WHERE id=$1', [organizerId]);

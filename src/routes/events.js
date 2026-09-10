@@ -7,7 +7,7 @@ const { cleanHostName, cleanInstagramHandle, ensureHostProfile, normalizeHostPro
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
-const { canAppearInPublicListings, normalizeGuestExperienceSettings } = require('../lib/private-events');
+const { canAppearInPublicListings, normalizeGuestExperienceSettings, safeAvatarUrl } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
 const { isManagedFlyerUrl } = require('../lib/cloudinary');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
@@ -681,6 +681,348 @@ router.get('/api/events/:id/rsvps', async (req, res, next) => {
     );
     res.json({ rsvps: rows });
   } catch (err) { next(err); }
+});
+
+function familiarFaceKey(type, id) {
+  return `${type}:${Number(id)}`;
+}
+
+function parseFamiliarFaceIds(values) {
+  const parsed = { rsvpIds: [], invitationIds: [] };
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const match = String(value || '').match(/^(rsvp|invite):(\d+)$/);
+    if (!match || seen.has(match[0])) continue;
+    seen.add(match[0]);
+    const id = Number.parseInt(match[2], 10);
+    if (!Number.isInteger(id) || id < 1) continue;
+    if (match[1] === 'rsvp') parsed.rsvpIds.push(id);
+    else parsed.invitationIds.push(id);
+  }
+  return parsed;
+}
+
+async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEventId, faceIds }) {
+  const { rsvpIds, invitationIds } = parseFamiliarFaceIds(faceIds);
+  const recipients = [];
+  if (rsvpIds.length) {
+    const { rows } = await queryable.query(
+      `SELECT r.id, r.first_name, r.last_name, LOWER(r.email) AS email
+         FROM rsvps r
+         JOIN events source ON source.id=r.event_id
+        WHERE source.id=$1 AND source.organizer_id=$2
+          AND r.id=ANY($3::int[]) AND r.status='confirmed' AND r.organizer_optin=TRUE
+          AND NULLIF(TRIM(r.email),'') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM follower_optouts fo
+             WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
+          )`,
+      [sourceEventId, organizerId, rsvpIds]
+    );
+    for (const row of rows) recipients.push({
+      email: row.email,
+      name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || null
+    });
+  }
+  if (invitationIds.length) {
+    const { rows } = await queryable.query(
+      `SELECT ml.id, LOWER(ml.recipient) AS email, ml.recipient_name
+         FROM message_log ml
+         JOIN events source ON source.id=ml.event_id
+        WHERE source.id=$1 AND source.organizer_id=$2
+          AND ml.id=ANY($3::int[]) AND ml.message_type='previous_guest_invite'
+          AND ml.status IN ('pending','sent') AND NULLIF(TRIM(ml.recipient),'') IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM follower_optouts fo
+             WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(ml.recipient)
+          )`,
+      [sourceEventId, organizerId, invitationIds]
+    );
+    for (const row of rows) recipients.push({ email: row.email, name: row.recipient_name || null });
+  }
+  const deduped = new Map();
+  for (const recipient of recipients) {
+    const email = String(recipient.email || '').trim().toLowerCase();
+    if (email && !deduped.has(email)) deduped.set(email, { ...recipient, email });
+  }
+  return [...deduped.values()];
+}
+
+async function targetRecipientState(queryable, { targetEventId, emails }) {
+  if (!emails.length) return { rsvpd: new Set(), invited: new Set() };
+  const { rows: rsvpRows } = await queryable.query(
+    `SELECT DISTINCT LOWER(email) AS email FROM rsvps
+      WHERE event_id=$1 AND status='confirmed' AND LOWER(email)=ANY($2::text[])`,
+    [targetEventId, emails]
+  );
+  const { rows: invitedRows } = await queryable.query(
+    `SELECT DISTINCT LOWER(recipient) AS email FROM message_log
+      WHERE event_id=$1 AND LOWER(recipient)=ANY($2::text[])
+        AND message_type IN ('announcement','previous_guest_invite')
+        AND status IN ('pending','sent')`,
+    [targetEventId, emails]
+  );
+  return {
+    rsvpd: new Set(rsvpRows.map(row => row.email)),
+    invited: new Set(invitedRows.map(row => row.email))
+  };
+}
+
+function eligibleTargetRecipients(recipients, state) {
+  return recipients.filter(recipient => !state.rsvpd.has(recipient.email) && !state.invited.has(recipient.email));
+}
+
+// GET /api/events/:id/familiar-faces — visual, event-specific people view.
+router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
+  try {
+    const { rows: eventRows } = await pool.query(
+      `SELECT id, status,
+              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
+         FROM events WHERE id=$1 AND organizer_id=$2`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!eventRows.length) return res.status(404).json({ error: 'Event not found' });
+
+    const { rows: rsvps } = await pool.query(
+      `SELECT r.id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
+              r.organizer_optin, r.created_at, o.avatar_url,
+              NOT EXISTS (
+                SELECT 1 FROM follower_optouts fo
+                 WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
+              ) AS host_email_allowed
+         FROM rsvps r
+         LEFT JOIN organizers o ON o.id=r.account_id
+        WHERE r.event_id=$1 AND r.status='confirmed'
+        ORDER BY r.created_at DESC, r.id DESC`,
+      [req.params.id, req.organizer.id]
+    );
+    const { rows: invitations } = await pool.query(
+      `SELECT DISTINCT ON (LOWER(ml.recipient)) ml.id, ml.recipient, ml.recipient_name,
+              ml.created_at, identity.avatar_url,
+              NOT EXISTS (
+                SELECT 1 FROM follower_optouts fo
+                 WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(ml.recipient)
+              ) AS host_email_allowed
+         FROM message_log ml
+         LEFT JOIN LATERAL (
+           SELECT o.avatar_url
+             FROM rsvps linked
+             JOIN events linked_event ON linked_event.id=linked.event_id AND linked_event.organizer_id=$2
+             JOIN organizers o ON o.id=linked.account_id
+            WHERE LOWER(linked.email)=LOWER(ml.recipient)
+            ORDER BY linked.id DESC LIMIT 1
+         ) identity ON TRUE
+        WHERE ml.event_id=$1 AND ml.message_type='previous_guest_invite'
+          AND ml.status IN ('pending','sent')
+          AND NOT EXISTS (
+            SELECT 1 FROM rsvps current_rsvp
+             WHERE current_rsvp.event_id=$1 AND current_rsvp.status='confirmed'
+               AND LOWER(current_rsvp.email)=LOWER(ml.recipient)
+          )
+        ORDER BY LOWER(ml.recipient), ml.id DESC`,
+      [req.params.id, req.organizer.id]
+    );
+
+    const faces = [];
+    for (const rsvp of rsvps) {
+      const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
+      faces.push({
+        id: familiarFaceKey('rsvp', rsvp.id),
+        name,
+        status: 'RSVP’d',
+        avatarUrl: safeAvatarUrl(rsvp.avatar_url),
+        canInvite: Boolean(rsvp.organizer_optin && rsvp.host_email_allowed && String(rsvp.email || '').trim()),
+        searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
+        sortTime: rsvp.created_at
+      });
+      const guestName = `${rsvp.guest_first_name || ''} ${rsvp.guest_last_name || ''}`.trim();
+      if (guestName) faces.push({
+        id: familiarFaceKey('guest', rsvp.id),
+        name: guestName,
+        status: 'RSVP’d',
+        avatarUrl: null,
+        canInvite: false,
+        searchText: guestName.toLowerCase(),
+        sortTime: rsvp.created_at
+      });
+    }
+    for (const invitation of invitations) {
+      const name = String(invitation.recipient_name || '').trim() || 'Invited guest';
+      faces.push({
+        id: familiarFaceKey('invite', invitation.id),
+        name,
+        status: 'Invited',
+        avatarUrl: safeAvatarUrl(invitation.avatar_url),
+        canInvite: Boolean(invitation.host_email_allowed && String(invitation.recipient || '').trim()),
+        searchText: `${name} ${invitation.recipient || ''}`.toLowerCase(),
+        sortTime: invitation.created_at
+      });
+    }
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const filtered = search ? faces.filter(face => face.searchText.includes(search)) : faces;
+    filtered.sort((a, b) => new Date(b.sortTime) - new Date(a.sortTime));
+    res.json({
+      faces: filtered.map(({ searchText, sortTime, ...face }) => face),
+      totalCount: faces.length,
+      rsvpCount: rsvps.length,
+      selectableCount: faces.filter(face => face.canInvite).length,
+      canStartInvitation: Boolean(eventRows[0].is_past && eventRows[0].status === 'published')
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/familiar-faces/preview — recheck selected people and
+// show only eligible upcoming events owned by this host.
+router.post('/api/events/:id/familiar-faces/preview', async (req, res, next) => {
+  try {
+    const faceIds = Array.isArray(req.body.faceIds) ? req.body.faceIds : [];
+    if (!faceIds.length) return res.status(400).json({ error: 'Choose at least one person' });
+    if (faceIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
+    const { rows: sourceRows } = await pool.query(
+      `SELECT id, title, status,
+              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
+         FROM events WHERE id=$1 AND organizer_id=$2`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!sourceRows.length) return res.status(404).json({ error: 'Event not found' });
+    if (sourceRows[0].status !== 'published' || !sourceRows[0].is_past) {
+      return res.status(400).json({ error: 'Choose people from one of your past published events' });
+    }
+    const recipients = await selectedFamiliarFaceRecipients(pool, {
+      organizerId: req.organizer.id,
+      sourceEventId: sourceRows[0].id,
+      faceIds
+    });
+    if (!recipients.length) return res.status(400).json({ error: 'None of the selected people can receive an invitation' });
+
+    const { rows: targets } = await pool.query(
+      `SELECT id, title, event_date, start_time, timezone, presentation_mode,
+              flyer_image_url, cover_image_url
+         FROM events
+        WHERE organizer_id=$1 AND id<>$2 AND status='published' AND archived_at IS NULL
+          AND secret_show_enabled=FALSE
+          AND event_date >= (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date
+        ORDER BY event_date, start_time, id`,
+      [req.organizer.id, sourceRows[0].id]
+    );
+    const emails = recipients.map(recipient => recipient.email);
+    const events = [];
+    for (const target of targets) {
+      const state = await targetRecipientState(pool, { targetEventId: target.id, emails });
+      events.push({
+        id: target.id,
+        title: target.title,
+        eventDate: target.event_date,
+        startTime: target.start_time,
+        timezone: target.timezone,
+        thumbnailUrl: target.presentation_mode === 'flyer' ? target.flyer_image_url : target.cover_image_url,
+        selectedCount: recipients.length,
+        eligibleCount: eligibleTargetRecipients(recipients, state).length,
+        alreadyRsvpdCount: state.rsvpd.size,
+        alreadyInvitedCount: state.invited.size
+      });
+    }
+    res.json({ selectedCount: recipients.length, events });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/familiar-faces/invite — send a reviewed selection from
+// this old event to one upcoming event, with server-side consent and dedupe.
+router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const targetEventId = Number.parseInt(req.body.targetEventId, 10);
+    const faceIds = Array.isArray(req.body.faceIds) ? req.body.faceIds : [];
+    if (!Number.isInteger(targetEventId) || targetEventId < 1) return res.status(400).json({ error: 'Choose an upcoming event' });
+    if (!faceIds.length) return res.status(400).json({ error: 'Choose at least one person' });
+    if (faceIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
+
+    await client.query('BEGIN');
+    const { rows: sourceRows } = await client.query(
+      `SELECT id, title, status,
+              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
+         FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!sourceRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const source = sourceRows[0];
+    if (source.status !== 'published' || !source.is_past) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Choose people from one of your past published events' });
+    }
+    const { rows: targetRows } = await client.query(
+      `SELECT *, event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
+         FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
+      [targetEventId, req.organizer.id]
+    );
+    if (!targetRows.length || targetRows[0].id === source.id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Choose one of your upcoming events' });
+    }
+    const target = targetRows[0];
+    if (target.status !== 'published' || target.is_past || target.archived_at || target.secret_show_enabled) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invitations can only be sent to an upcoming published event' });
+    }
+    const selected = await selectedFamiliarFaceRecipients(client, {
+      organizerId: req.organizer.id,
+      sourceEventId: source.id,
+      faceIds
+    });
+    const state = await targetRecipientState(client, {
+      targetEventId: target.id,
+      emails: selected.map(recipient => recipient.email)
+    });
+    const recipients = eligibleTargetRecipients(selected, state);
+    if (!recipients.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'These people already RSVP’d, were invited, or are no longer eligible' });
+    }
+
+    const { rows: batches } = await client.query(
+      `INSERT INTO previous_guest_invitation_batches
+         (target_event_id, source_event_id, source_event_title, recipient_count)
+       VALUES ($1,$2,$3,0) RETURNING *`,
+      [target.id, source.id, source.title]
+    );
+    const batch = batches[0];
+    let queued = 0;
+    for (const recipient of recipients) {
+      const result = await client.query(
+        `INSERT INTO message_log
+           (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+            message_type, channel, status)
+         VALUES ($1,$2,$3,$4,'previous_guest_invite','email','pending')
+         ON CONFLICT (event_id, LOWER(recipient)) WHERE message_type='previous_guest_invite'
+         DO NOTHING RETURNING id`,
+        [target.id, batch.id, recipient.email, recipient.name]
+      );
+      queued += result.rowCount;
+    }
+    if (!queued) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'These people were already invited to that event' });
+    }
+    const { rows: updatedBatches } = await client.query(
+      `UPDATE previous_guest_invitation_batches SET recipient_count=$2 WHERE id=$1 RETURNING *`,
+      [batch.id, queued]
+    );
+    await client.query('COMMIT');
+    queuePreviousGuestInvitationBatch(batch.id);
+    res.status(202).json({
+      queued,
+      skipped: selected.length - queued,
+      batch: previousGuestBatchPayload(updatedBatches[0])
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // GET /api/events/:id/rsvps.csv

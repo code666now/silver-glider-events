@@ -1,6 +1,6 @@
 # Start Here — Silver Glider Events
 
-**Current as of August 2, 2026.** This is the short operational guide for a new Codex chat. Read this file first, then read [`HANDOFF.md`](HANDOFF.md) completely before editing.
+**Current as of September 10, 2026.** This is the short operational guide for a new Codex chat. Read this file first, then read [`HANDOFF.md`](HANDOFF.md) completely before editing.
 
 Silver Glider Events is a production Express/PostgreSQL app for beautiful event pages, RSVPs, external ticket links, reminders, private parties, Secret Shows, and public host pages. It does not process ticket payments.
 
@@ -29,7 +29,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - CommonJS Node.js + Express 5, raw SQL via `pg`, server-rendered HTML, vanilla JavaScript/CSS.
 - No build step and no frontend framework.
 - `src/index.js` mounts routes, runs migrations, exposes `/health`, and starts reminder jobs.
-- `src/db/migrations/` contains ordered migrations, currently `001` through `020_follow_host_v1.sql`.
+- `src/db/migrations/` contains ordered migrations, currently `001` through `035_familiar_faces.sql`.
 - `src/routes/` contains auth, organizer event, public event, public host, upload, photo, and admin flows. Public host pages are isolated in `public-hosts.js`; guest event/RSVP flows remain in `public.js`.
 - `src/lib/` contains sessions, mailer, calendar, Cloudinary, Unsplash, CSV, escaping, and validation helpers.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.
@@ -38,7 +38,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 ## Responsive organizer workspaces
 
 - Mobile remains the baseline and must not regress. Desktop enhancements begin at the existing large-screen breakpoints rather than replacing the mobile DOM or interaction flow.
-- Home, My Events, Settings, create/edit, and event management expand into wider desktop compositions. My Events uses a two-column upcoming-event grid; the event editor separates Page Design from Event Information; the Secret Show prompt spans the editor; and event management pairs artwork with a structured action panel above the full-width guest list.
+- Home, My Events, Settings, create/edit, and event management expand into wider desktop compositions. My Events uses a two-column upcoming-event grid; the event editor separates Page Design from Event Information; the Secret Show prompt spans the editor; and event management pairs artwork with a structured action panel above the full-width Familiar Faces view.
 - The Standard editor keeps background choices visible after a cover is selected. Local upload and free-photo browsing remain separate actions.
 - On desktop, keep **Create Event** in the My Events page header. The event-management promotion panel uses descriptive action rows and a distinct editorial-opportunity block rather than an undifferentiated pill group.
 - Free-photo modals must sit above native date/time controls and other form UI. Preserve the corrected stacking and modal isolation.
@@ -75,6 +75,7 @@ Keep Standard and Flyer behavior isolated.
 - Host pages live at `/h/:hostSlug`; public attribution links back to them.
 - Follow Host V1 reuses `organizers` as the shared authenticated identity. A follower-only row has no `org_name`/`public_slug`, so following never creates a Host Page. Signed-out follows use a server-stored `follow_host` magic-link intent; signed-in follows complete immediately. `/following` is an authenticated list only—no feed or recommendations.
 - Authenticated `host_follows` and legacy RSVP `organizer_optin` announcement recipients are deliberately separate in V1. Do not merge their consent, unsubscribe, or email behavior without an explicit product migration.
+- Event management renders Familiar Faces from event RSVPs and prior invitation logs. Reusable photos come only from an RSVP's verified `account_id`; never join arbitrary RSVP email input directly to an account image. Source-first invites recheck ownership, future-email consent, opt-outs, current target RSVPs, and previous delivery on the server.
 - Public event pages do not show a QR code; QR download belongs in the organizer promotion area.
 
 ## RSVP confirmation email
@@ -86,6 +87,7 @@ Keep Standard and Flyer behavior isolated.
 - Title and optional linked host attribution sit outside the details card. A valid `event_vibe_url` adds **Listen here**. Date, time, venue, maps, host, vibe, and artwork rows are omitted when unavailable.
 - Keep the CTA at least 48px high and full-width on mobile. Preserve inline critical styles, nested presentation tables, Outlook's conditional 620px wrapper, system-font fallbacks, high contrast, and safe HTTP(S) URL validation.
 - RSVP sending, resend limits, calendar attachment, reminders, manage link, and attendee/event URL logic must remain unchanged unless a task explicitly targets them. Previously delivered email cannot change when an event is edited; a new confirmation/resend renders the current event data.
+- Guests without a saved avatar may receive the secondary **Add your photo** block. It must use one-time magic-link authentication and save only to the persistent account avatar; guests with an existing avatar must not be prompted again.
 
 ## Security invariants
 
@@ -99,7 +101,7 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 83 tests: 74 focused unit/source-contract tests and 9 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 205 tests: 174 focused unit/source-contract tests and 31 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 

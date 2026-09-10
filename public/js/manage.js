@@ -79,8 +79,9 @@ function showManageLoadError() {
   $('title').textContent = 'Event unavailable';
   $('meta').textContent = 'Try loading this page again.';
   ['stat-rsvps', 'stat-attendance', 'stat-guests', 'stat-comments'].forEach(id => { $(id).textContent = '—'; });
-  $('guest-rows').innerHTML = '';
-  $('guests').style.display = 'none';
+  $('familiar-faces-grid').innerHTML = '';
+  $('no-guests').textContent = 'We could not load Familiar Faces. Try loading the page again.';
+  $('no-guests').hidden = false;
 }
 
 async function loadEvent() {
@@ -246,24 +247,225 @@ async function loadLineStatus() {
   }
 }
 
+const familiarFaceSelection = new Set();
+let familiarFaceState = { faces: [], totalCount: 0, rsvpCount: 0, selectableCount: 0, canStartInvitation: false };
+let familiarSelectionMode = false;
+let familiarInviteState = { step: 'targets', preview: null, targetId: null };
+
+function familiarInitials(name) {
+  return String(name || '').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
+}
+
+function familiarAvatar(face) {
+  const photo = sgSafeHttpUrl(face.avatarUrl);
+  return photo
+    ? `<img src="${escapeHtml(photo)}" alt="" loading="lazy">`
+    : `<span aria-hidden="true">${escapeHtml(familiarInitials(face.name))}</span>`;
+}
+
+function renderFamiliarFaces() {
+  const grid = $('familiar-faces-grid');
+  grid.innerHTML = familiarFaceState.faces.map(face => {
+    const selected = familiarFaceSelection.has(face.id);
+    const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
+      <span class="familiar-face-name">${escapeHtml(face.name)}</span>
+      <span class="familiar-face-status">${escapeHtml(face.status)}</span>
+      ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}`;
+    if (face.canInvite && familiarFaceState.canStartInvitation) {
+      return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)} ${selected ? 'from' : 'for'} an invitation">${content}</button>`;
+    }
+    return `<article class="familiar-face-card">${content}</article>`;
+  }).join('');
+  $('no-guests').hidden = familiarFaceState.faces.length > 0;
+}
+
+function updateFamiliarSelection() {
+  const count = familiarFaceSelection.size;
+  $('familiar-selected-count').textContent = `${count} selected`;
+  $('familiar-choose-event').disabled = count === 0;
+  $('familiar-choose-event').textContent = count
+    ? `Invite ${count} ${count === 1 ? 'person' : 'people'}`
+    : 'Choose event';
+  const shown = familiarFaceState.faces.filter(face => face.canInvite);
+  const allShownSelected = shown.length > 0 && shown.every(face => familiarFaceSelection.has(face.id));
+  $('familiar-select-all').textContent = allShownSelected ? 'Clear shown' : 'Select all';
+  renderFamiliarFaces();
+}
+
+function startFamiliarSelection(initialFaceId = '') {
+  familiarSelectionMode = true;
+  if (initialFaceId) familiarFaceSelection.add(initialFaceId);
+  $('familiar-faces-start').hidden = true;
+  $('familiar-faces-selection').hidden = false;
+  updateFamiliarSelection();
+}
+
+function stopFamiliarSelection() {
+  familiarSelectionMode = false;
+  familiarFaceSelection.clear();
+  $('familiar-faces-selection').hidden = true;
+  $('familiar-faces-start').hidden = !(familiarFaceState.canStartInvitation && familiarFaceState.selectableCount > 0);
+  renderFamiliarFaces();
+}
+
 async function loadGuests(search = '') {
-  const { rsvps } = await api(`/api/events/${eventId}/rsvps${search ? `?search=${encodeURIComponent(search)}` : ''}`);
-  const active = rsvps.filter(r => r.status === 'confirmed');
-  const tbody = $('guest-rows');
-  tbody.innerHTML = active.map(r => `
-    <tr>
-      <td>${escapeHtml(`${r.first_name} ${r.last_name}`.trim())}<span class="guest-inline-email">${escapeHtml(r.email)}</span></td>
-      <td class="dim guest-email-column">${escapeHtml(r.email)}</td>
-      <td>${r.guest_first_name ? `${escapeHtml(`${r.guest_first_name} ${r.guest_last_name || ''}`.trim())}<span class="guest-inline-email">${escapeHtml(r.guest_email || 'No email')}</span>` : '—'}</td>
-      <td class="dim guest-email-column">${escapeHtml(r.guest_email || '—')}</td>
-      <td class="dim">${new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-    </tr>`).join('');
-  $('no-guests').style.display = active.length ? 'none' : 'block';
-  $('guests').style.display = active.length ? 'table' : 'none';
-  $('export-csv').disabled = active.length === 0;
+  const data = await api(`/api/events/${eventId}/familiar-faces${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+  familiarFaceState = data;
+  $('familiar-faces-summary').textContent = data.totalCount
+    ? `${data.totalCount} ${data.totalCount === 1 ? 'person' : 'people'} · RSVP’d and invited`
+    : 'RSVPs and invitations, together.';
+  $('no-guests').textContent = search ? 'No people match that search.' : 'No faces yet. Share the event link to receive RSVPs.';
+  $('export-csv').disabled = Number(data.rsvpCount) === 0;
   $('search').disabled = false;
+  $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
+  renderFamiliarFaces();
   $('manage-guest-section').setAttribute('aria-busy', 'false');
 }
+
+$('familiar-faces-grid').addEventListener('click', event => {
+  const card = event.target.closest('[data-familiar-face]');
+  if (!card) return;
+  if (!familiarSelectionMode) return startFamiliarSelection(card.dataset.familiarFace);
+  if (familiarFaceSelection.has(card.dataset.familiarFace)) familiarFaceSelection.delete(card.dataset.familiarFace);
+  else familiarFaceSelection.add(card.dataset.familiarFace);
+  updateFamiliarSelection();
+});
+
+$('familiar-invite-start').addEventListener('click', () => startFamiliarSelection());
+$('familiar-selection-cancel').addEventListener('click', stopFamiliarSelection);
+$('familiar-select-all').addEventListener('click', () => {
+  const shown = familiarFaceState.faces.filter(face => face.canInvite);
+  const allShownSelected = shown.length > 0 && shown.every(face => familiarFaceSelection.has(face.id));
+  for (const face of shown) {
+    if (allShownSelected) familiarFaceSelection.delete(face.id);
+    else familiarFaceSelection.add(face.id);
+  }
+  updateFamiliarSelection();
+});
+
+function familiarTargetDate(target) {
+  const date = new Date(`${String(target.eventDate).slice(0, 10)}T00:00:00Z`);
+  const dateLabel = Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'
+  });
+  const time = String(target.startTime || '').slice(0, 5).split(':').map(Number);
+  const timeLabel = Number.isFinite(time[0])
+    ? `${time[0] % 12 || 12}:${String(time[1] || 0).padStart(2, '0')} ${time[0] >= 12 ? 'PM' : 'AM'}`
+    : '';
+  return [dateLabel, timeLabel].filter(Boolean).join(' · ');
+}
+
+function familiarTargetArt(target) {
+  const photo = sgSafeHttpUrl(target.thumbnailUrl);
+  return photo
+    ? `<img src="${escapeHtml(photo)}" alt="" loading="lazy">`
+    : `<span aria-hidden="true">${escapeHtml(familiarInitials(target.title))}</span>`;
+}
+
+function renderFamiliarTargets() {
+  familiarInviteState.step = 'targets';
+  const preview = familiarInviteState.preview;
+  $('familiar-invite-title').textContent = 'Invite them to…';
+  $('familiar-invite-intro').textContent = `Choose an upcoming event for ${preview.selectedCount} ${preview.selectedCount === 1 ? 'person' : 'people'}.`;
+  $('familiar-invite-back').textContent = 'Cancel';
+  $('familiar-invite-next').textContent = 'Review invitation';
+  $('familiar-invite-next').disabled = !familiarInviteState.targetId;
+  if (!preview.events.length) {
+    $('familiar-invite-content').innerHTML = '<div class="familiar-invite-empty">You do not have an upcoming published event yet.<br><a class="sg-btn sg-btn-ghost" href="/events/new">Create an event</a></div>';
+    return;
+  }
+  $('familiar-invite-content').innerHTML = `<div class="familiar-target-list">${preview.events.map(target => {
+    const selected = Number(familiarInviteState.targetId) === Number(target.id);
+    const unavailable = Number(target.eligibleCount) === 0;
+    const exclusions = [
+      target.alreadyRsvpdCount ? `${target.alreadyRsvpdCount} already RSVP’d` : '',
+      target.alreadyInvitedCount ? `${target.alreadyInvitedCount} already invited` : ''
+    ].filter(Boolean).join(' · ');
+    return `<button class="familiar-target-card${selected ? ' is-selected' : ''}" type="button" data-familiar-target="${target.id}" ${unavailable ? 'disabled' : ''} aria-pressed="${selected}">
+      <span class="familiar-target-art">${familiarTargetArt(target)}</span>
+      <span class="familiar-target-copy"><strong>${escapeHtml(target.title)}</strong><span>${escapeHtml(familiarTargetDate(target))}</span>${exclusions ? `<span>${escapeHtml(exclusions)}</span>` : ''}</span>
+      <span class="familiar-target-count">${target.eligibleCount ? `${target.eligibleCount} can invite` : 'Already reached'}</span>
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function renderFamiliarReview() {
+  const target = familiarInviteState.preview.events.find(event => Number(event.id) === Number(familiarInviteState.targetId));
+  if (!target) return renderFamiliarTargets();
+  familiarInviteState.step = 'review';
+  $('familiar-invite-title').textContent = 'Ready to invite';
+  $('familiar-invite-intro').textContent = 'Silver Glider will send one artwork-led email with one RSVP button.';
+  $('familiar-invite-back').textContent = 'Back';
+  $('familiar-invite-next').disabled = false;
+  $('familiar-invite-next').textContent = `Send ${target.eligibleCount} ${target.eligibleCount === 1 ? 'invitation' : 'invitations'}`;
+  const skipped = Number(target.selectedCount) - Number(target.eligibleCount);
+  $('familiar-invite-content').innerHTML = `<div class="familiar-invite-review">
+    <div class="familiar-invite-review-card"><span class="familiar-target-art">${familiarTargetArt(target)}</span><div><h3>${escapeHtml(target.title)}</h3><p>${escapeHtml(familiarTargetDate(target))}</p><p><strong>${target.eligibleCount}</strong> ${target.eligibleCount === 1 ? 'person will receive' : 'people will receive'} this invitation.</p></div></div>
+    ${skipped ? `<p class="familiar-invite-notice">${skipped} ${skipped === 1 ? 'person is' : 'people are'} already RSVP’d or already invited and will be skipped.</p>` : ''}
+    <p class="familiar-invite-notice">Consent and eligibility are checked again when you send. Guests can unsubscribe from future invitations.</p>
+  </div>`;
+}
+
+function closeFamiliarInviteDialog() {
+  $('familiar-invite-dialog').close();
+  familiarInviteState = { step: 'targets', preview: null, targetId: null };
+}
+
+$('familiar-choose-event').addEventListener('click', async () => {
+  const faceIds = [...familiarFaceSelection];
+  if (!faceIds.length) return;
+  familiarInviteState = { step: 'targets', preview: null, targetId: null };
+  $('familiar-invite-title').textContent = 'Invite them to…';
+  $('familiar-invite-intro').textContent = 'Checking your upcoming events…';
+  $('familiar-invite-content').innerHTML = '<div class="familiar-invite-loading">Finding eligible events…</div>';
+  $('familiar-invite-next').disabled = true;
+  $('familiar-invite-dialog').showModal();
+  try {
+    familiarInviteState.preview = await api(`/api/events/${eventId}/familiar-faces/preview`, {
+      method: 'POST', body: { faceIds }
+    });
+    renderFamiliarTargets();
+  } catch (error) {
+    $('familiar-invite-content').innerHTML = `<p class="familiar-invite-empty">${escapeHtml(error.message || 'Could not load upcoming events.')}</p>`;
+  }
+});
+
+$('familiar-invite-content').addEventListener('click', event => {
+  const card = event.target.closest('[data-familiar-target]');
+  if (!card) return;
+  familiarInviteState.targetId = Number(card.dataset.familiarTarget);
+  renderFamiliarTargets();
+});
+
+$('familiar-invite-next').addEventListener('click', async () => {
+  if (familiarInviteState.step === 'targets') return renderFamiliarReview();
+  const button = $('familiar-invite-next');
+  if (button.dataset.busy === 'true') return;
+  button.dataset.busy = 'true';
+  button.disabled = true;
+  button.textContent = 'Queuing invitations…';
+  try {
+    const result = await api(`/api/events/${eventId}/familiar-faces/invite`, {
+      method: 'POST',
+      body: { targetEventId: familiarInviteState.targetId, faceIds: [...familiarFaceSelection] }
+    });
+    closeFamiliarInviteDialog();
+    stopFamiliarSelection();
+    toast(`${result.queued} ${result.queued === 1 ? 'invitation' : 'invitations'} queued`);
+  } catch (error) {
+    toast(error.message || 'Could not send invitations');
+    renderFamiliarReview();
+  } finally {
+    delete button.dataset.busy;
+  }
+});
+
+$('familiar-invite-back').addEventListener('click', () => {
+  if (familiarInviteState.step === 'review') renderFamiliarTargets();
+  else closeFamiliarInviteDialog();
+});
+$('familiar-invite-close').addEventListener('click', closeFamiliarInviteDialog);
+$('familiar-invite-form').addEventListener('submit', event => event.preventDefault());
 
 $('copy-link').addEventListener('click', async () => {
   await navigator.clipboard.writeText(eventUrl());
@@ -728,10 +930,9 @@ async function initializeManagePage() {
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');
-      $('guest-rows').innerHTML = '';
-      $('guests').style.display = 'none';
+      $('familiar-faces-grid').innerHTML = '';
       $('no-guests').textContent = 'We could not load the guest list. Try loading the page again.';
-      $('no-guests').style.display = 'block';
+      $('no-guests').hidden = false;
     }
   } catch (_) {
     showManageLoadError();

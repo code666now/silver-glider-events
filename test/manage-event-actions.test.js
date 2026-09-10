@@ -11,7 +11,7 @@ test('event management and promotion actions remain clearly separated', () => {
   const view = source('src/views/event-manage.html');
   assert.match(view, /class="sg-shell manage-shell"/);
   assert.match(view, /class="manage-overview"/);
-  assert.match(view, /class="manage-guest-section"/);
+  assert.match(view, /class="manage-guest-section familiar-faces"/);
   assert.match(view, /@media \(min-width: 1024px\)[\s\S]*\.manage-shell\s*\{[\s\S]*max-width:1260px/);
   assert.match(view, /grid-template-columns:minmax\(0,1\.25fr\) minmax\(350px,\.75fr\)/);
   assert.match(view, /@media \(max-width: 620px\)/);
@@ -30,7 +30,7 @@ test('event management and promotion actions remain clearly separated', () => {
   assert.match(view, /id="copy-link" disabled/);
   assert.match(view, /id="view-link"[^>]+aria-disabled="true"/);
   const toolbar = view.slice(view.indexOf('<div class="toolbar"'), view.indexOf('<section class="promotion-card"'));
-  const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
+  const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<section class="manage-guest-section'));
 
   for (const label of ['Copy event link', 'View page', 'Edit', 'Event actions']) {
     assert.match(toolbar, new RegExp(`\\b${label}\\b`));
@@ -67,7 +67,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /manage-guest-desktop-slot'\)\.append\(section\)/);
   assert.match(client, /\$\('hero-link'\)\.href = manageImage/);
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);
-  assert.match(client, /class="guest-inline-email"/);
+  assert.match(client, /class="familiar-face-name"/);
   assert.match(source('src/views/event-manage.html'), /id="sms-audience"[^>]*hidden[^>]*disabled/);
   assert.match(client, /button\.hidden = !preview\.reminderEnabled && !preview\.batch/);
   assert.match(client, /smsPreviewState\?\.needsFunds/);

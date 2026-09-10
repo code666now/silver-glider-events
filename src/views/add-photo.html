@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add your photo — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/add-photo.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body>
+  <div class="sg-shell add-photo-shell">
+    <nav id="nav"></nav>
+    <main class="add-photo-main">
+      <section class="add-photo-card" aria-labelledby="add-photo-title" aria-busy="true">
+        <p class="add-photo-kicker">Your guest identity</p>
+        <h1 id="add-photo-title">Add your photo</h1>
+        <p class="add-photo-subtitle">Help friends recognize you.</p>
+
+        <div class="add-photo-preview" aria-label="Photo preview">
+          <span id="add-photo-fallback" aria-hidden="true">SG</span>
+          <img id="add-photo-image" alt="Your profile photo" hidden>
+        </div>
+
+        <p class="add-photo-status" id="add-photo-status" role="status">Loading your photo…</p>
+        <input id="add-photo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        <button class="sg-btn sg-btn-primary add-photo-action" id="add-photo-button" type="button" disabled>Add photo</button>
+        <a class="add-photo-skip" id="add-photo-skip" href="/dashboard">Skip for now</a>
+        <p class="add-photo-note">JPG, PNG, WebP, or GIF · 5 MB max</p>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/add-photo.js"></script>
+</body>
+</html>

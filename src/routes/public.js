@@ -34,7 +34,8 @@ const {
   parseNamedGuest,
   publicGuestNames,
   readCookie,
-  robotsDirective
+  robotsDirective,
+  safeAvatarUrl
 } = require('../lib/private-events');
 
 const router = express.Router();
@@ -870,6 +871,23 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 // Confirmation email — an atomic database claim prevents duplicate sends across
 // rapid retries, app restarts, or multiple app instances. One resend is allowed
 // after 15 minutes so an attendee can recover a lost confirmation safely.
+async function createAddPhotoMagicLink(event, rsvp) {
+  const identity = rsvp.account_id
+    ? await pool.query('SELECT avatar_url FROM organizers WHERE id=$1', [rsvp.account_id])
+    : await pool.query('SELECT avatar_url FROM organizers WHERE LOWER(email)=LOWER($1) LIMIT 1', [rsvp.email]);
+  if (safeAvatarUrl(identity.rows[0]?.avatar_url)) return null;
+  const token = crypto.randomBytes(32).toString('hex');
+  const returnPath = `/add-photo?event=${encodeURIComponent(event.slug)}`;
+  await pool.query(
+    `INSERT INTO magic_link_tokens
+       (token, email, expires_at, intent, target_organizer_id, return_path)
+     VALUES ($1,$2,NOW() + INTERVAL '7 days','sign_in',NULL,$3)`,
+    [token, rsvp.email, returnPath]
+  );
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  return `${baseUrl}/auth/verify?token=${token}`;
+}
+
 async function resendConfirmation(event, rsvp) {
   let logId = null;
   try {
@@ -889,7 +907,8 @@ async function resendConfirmation(event, rsvp) {
     logId = rows[0].id;
 
     const ics = buildIcs(event);
-    const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics });
+    const addPhotoUrl = await createAddPhotoMagicLink(event, rsvp);
+    const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics, addPhotoUrl });
     await pool.query(
       `UPDATE message_log
           SET status='sent', provider_id=$2, error=NULL, sent_at=NOW()

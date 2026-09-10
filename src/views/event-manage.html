@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
   <link rel="stylesheet" href="/css/previous-guest-invites.css">
+  <link rel="stylesheet" href="/css/familiar-faces.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -461,25 +462,36 @@
     </div>
 
     <div id="manage-guest-home" hidden></div>
-    <section class="manage-guest-section" id="manage-guest-section" aria-label="Guest management" aria-busy="true">
-    <div class="guest-head">
-      <p class="sg-label" style="margin:0">Guest list</p>
-      <div class="guest-tools">
-        <button class="sg-btn sg-btn-ghost" id="export-csv" disabled>Export CSV</button>
-        <input class="sg-input" id="search" placeholder="Search guests…" disabled>
+    <section class="manage-guest-section familiar-faces" id="manage-guest-section" aria-labelledby="familiar-faces-title" aria-busy="true">
+      <div class="familiar-faces-head">
+        <div>
+          <p class="sg-label" style="margin:0 0 7px">Familiar Faces</p>
+          <h2 id="familiar-faces-title">People connected to this event</h2>
+          <p id="familiar-faces-summary">RSVPs and invitations, together.</p>
+        </div>
+        <div class="familiar-faces-tools">
+          <label class="familiar-faces-search"><span class="sr-only">Search familiar faces</span><input class="sg-input" id="search" type="search" placeholder="Search people…" disabled></label>
+          <button class="sg-btn sg-btn-ghost" id="export-csv" type="button" disabled>Export CSV</button>
+        </div>
       </div>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="sg-table" id="guests">
-        <thead><tr><th>Attendee</th><th class="guest-email-column">Attendee email</th><th>Guest</th><th class="guest-email-column">Guest email</th><th>RSVP'd</th></tr></thead>
-        <tbody id="guest-rows">
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
-          <tr aria-hidden="true"><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td><td class="guest-email-column"><span class="sg-skeleton manage-guest-skeleton"></span></td><td><span class="sg-skeleton manage-guest-skeleton"></span></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p id="no-guests" style="display:none;color:var(--sg-text-dim);font-size:14px;padding:24px 0;text-align:center">No RSVPs yet. Share the event link to get the word out.</p>
+      <div class="familiar-faces-grid" id="familiar-faces-grid" aria-live="polite">
+        <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
+        <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
+        <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
+      </div>
+      <p class="familiar-faces-empty" id="no-guests" hidden>No faces yet. Share the event link to receive RSVPs.</p>
+      <div class="familiar-faces-start" id="familiar-faces-start" hidden>
+        <button class="sg-btn sg-btn-primary" id="familiar-invite-start" type="button">Invite to another event</button>
+        <p>Only people who asked for future event emails can be selected.</p>
+      </div>
+      <div class="familiar-faces-selection" id="familiar-faces-selection" hidden>
+        <div class="familiar-faces-selection-copy"><strong id="familiar-selected-count">0 selected</strong><span>Choose the people you want to invite.</span></div>
+        <div class="familiar-faces-selection-actions">
+          <button class="sg-btn sg-btn-ghost" id="familiar-select-all" type="button">Select all</button>
+          <button class="sg-btn sg-btn-ghost" id="familiar-selection-cancel" type="button">Cancel</button>
+          <button class="sg-btn sg-btn-primary" id="familiar-choose-event" type="button" disabled>Choose event</button>
+        </div>
+      </div>
     </section>
 
     <div class="manage-danger-zone" style="margin-top:56px;padding-top:24px;border-top:1px solid var(--sg-border-soft);text-align:center">
@@ -487,6 +499,24 @@
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>
   </div>
+
+  <dialog class="familiar-invite-dialog" id="familiar-invite-dialog" aria-labelledby="familiar-invite-title">
+    <form class="familiar-invite-dialog-form" id="familiar-invite-form">
+      <header class="familiar-invite-dialog-head">
+        <div>
+          <p class="familiar-invite-kicker">Invitations</p>
+          <h2 id="familiar-invite-title">Invite them to…</h2>
+          <p class="familiar-invite-intro" id="familiar-invite-intro">Choose one of your upcoming events.</p>
+        </div>
+        <button class="familiar-invite-close" id="familiar-invite-close" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="familiar-invite-dialog-body" id="familiar-invite-content" aria-live="polite"></div>
+      <footer class="familiar-invite-dialog-foot">
+        <button class="sg-btn sg-btn-ghost" id="familiar-invite-back" type="button">Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="familiar-invite-next" type="button" disabled>Review invitation</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog class="previous-guests-dialog" id="previous-guests-dialog" aria-labelledby="previous-guests-title">
     <form class="previous-guests-dialog-form" id="previous-guests-form">

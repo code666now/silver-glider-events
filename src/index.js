@@ -73,6 +73,7 @@ app.get('/login', (req, res) => {
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
 app.get('/following', requireOrganizer, view('following.html'));
+app.get('/add-photo', requireOrganizer, view('add-photo.html'));
 app.get('/events/new', requireOrganizer, async (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
   if (!invitationToken) return res.sendFile(path.join(VIEWS, 'event-form.html'));

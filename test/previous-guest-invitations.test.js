@@ -7,8 +7,9 @@ const { renderPreviousGuestInvitationEmail } = require('../src/lib/mailer');
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('previous-guest invitation storage is nullable, retryable, and one-shot per target event', () => {
+test('previous-guest invitation storage is nullable, retryable, and recipient-deduplicated', () => {
   const migration = read('src/db/migrations/029_previous_guest_invitations.sql');
+  const familiarFacesMigration = read('src/db/migrations/035_familiar_faces.sql');
   assert.match(migration, /CREATE TABLE IF NOT EXISTS previous_guest_invitation_batches/);
   assert.match(migration, /target_event_id\s+INT NOT NULL UNIQUE REFERENCES events\(id\) ON DELETE CASCADE/);
   assert.match(migration, /source_event_id\s+INT REFERENCES events\(id\) ON DELETE SET NULL/);
@@ -16,6 +17,8 @@ test('previous-guest invitation storage is nullable, retryable, and one-shot per
   assert.match(migration, /recipient_name TEXT/);
   assert.match(migration, /'previous_guest_invite'/);
   assert.match(migration, /message_log_previous_guest_invitation_dedupe_uq/);
+  assert.match(familiarFacesMigration, /DROP CONSTRAINT IF EXISTS previous_guest_invitation_batches_target_event_id_key/);
+  assert.match(familiarFacesMigration, /message_log_previous_guest_target_recipient_uq/);
 });
 
 test('manage page reviews one past crowd in a responsive, non-interruptive dialog', () => {
@@ -54,7 +57,7 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
   assert.match(html, /Hi Ari. Host &amp; Friends thought you’d like this next event./);
   assert.match(html, /Next &lt;Night&gt;/);
   assert.match(html, /next-night\.jpg/);
-  assert.match(html, /View event/);
+  assert.match(html, />RSVP<\/a>/);
   assert.match(html, /Unsubscribe from this host/);
   assert.match(html, /token=safe&amp;host=1/);
   assert.doesNotMatch(html, /<Night>/);

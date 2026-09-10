@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.79
+
+Released September 10, 2026.
+
+### Added
+
+* Replaced the event-management guest table with **Familiar Faces**, showing reusable verified photos or initials, guest names, and only the honest `RSVP’d` and `Invited` states while preserving search and CSV export.
+* Added a source-first invitation flow from an old event: select individual people or all eligible faces, choose one of the host’s upcoming events, review the audience, and send one artwork-led email with one **RSVP** action.
+* Added a lightweight authenticated **Add your photo** page and an optional secondary photo prompt in RSVP confirmation emails when the guest does not already have a saved photo.
+
+### Security & reliability
+
+* Reuses the verified account behind magic-link sessions for photos across events, never exposes raw identity IDs, never attaches photos through unverified RSVP email alone, and makes photo links single-use.
+* Rechecks host ownership, future-email consent, opt-outs, target RSVPs, and prior invitations at send time. Recipient-level database deduplication allows separate reviewed groups without emailing the same person twice for one event.
+* Leaves RSVP requirements, public guest lists, CSV data, ticketing, Stripe, Twilio consent, SMS pricing, and reminder copy unchanged. The optional photo link stays email-only so it does not add paid SMS segments.
+
 ## 1.0.78
 
 Released September 10, 2026.
