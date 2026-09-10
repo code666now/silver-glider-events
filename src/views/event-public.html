@@ -853,11 +853,10 @@
           <div class="sg-field"><label>Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
           {{GUEST_FIELDS_HTML}}
           <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
+          {{SMS_REMINDER_OPTIN_HTML}}
           <details class="rsvp-options">
-            <summary><span>More options</span><small>Phone and host updates</small></summary>
+            <summary><span>More options</span><small>Host updates</small></summary>
             <div class="rsvp-options-body">
-              <div class="sg-field"><label>Phone <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label><input class="sg-input" type="tel" id="phone" autocomplete="tel"></div>
-              <label class="check"><input type="checkbox" id="sms_optin"><span class="channel-consent-copy"><strong>{{SMS_CONSENT_HEADING}}</strong><small>{{SMS_CONSENT_DISCLOSURE}}</small></span></label>
               <label class="check"><input type="checkbox" id="organizer_optin"><span class="channel-consent-copy"><strong>{{EMAIL_CONSENT_HEADING}}</strong><small>Unsubscribe anytime.</small></span></label>
             </div>
           </details>

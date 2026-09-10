@@ -1,15 +1,15 @@
 const { normalizeE164, SmsDeliveryError } = require('./sms');
 
 const SMS_CONSENT_SOURCE = 'event_rsvp';
-const SMS_CONSENT_VERSION = 'rsvp_sms_v1';
-const SMS_CONSENT_DISCLOSURE = 'Message frequency varies. Msg & data rates may apply. Reply STOP to opt out. Consent isn’t required to RSVP.';
+const SMS_CONSENT_VERSION = 'rsvp_event_reminder_v1';
+const SMS_CONSENT_DISCLOSURE = 'One reminder for this event. Msg & data rates may apply. Reply STOP to opt out. Consent isn’t required to RSVP.';
 
 function cleanHostLabel(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 120) || 'this host';
 }
 
 function smsConsentHeading(hostName) {
-  return `Text me event updates and future invitations from ${cleanHostLabel(hostName)} through Silver Glider.`;
+  return `Text me a reminder the day before this event from ${cleanHostLabel(hostName)} through Silver Glider.`;
 }
 
 function smsConsentCopy(hostName) {

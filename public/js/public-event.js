@@ -314,13 +314,18 @@ if (guestFields) {
 
 const smsOptin = $('sms_optin');
 const phoneInput = $('phone');
+const smsPhoneField = $('sms-reminder-phone');
 function syncSmsPhoneRequirement() {
   if (!smsOptin || !phoneInput) return;
   phoneInput.required = smsOptin.checked;
+  if (smsPhoneField) smsPhoneField.hidden = !smsOptin.checked;
   if (smsOptin.checked) phoneInput.setAttribute('aria-required', 'true');
   else phoneInput.removeAttribute('aria-required');
 }
-smsOptin?.addEventListener('change', syncSmsPhoneRequirement);
+smsOptin?.addEventListener('change', () => {
+  syncSmsPhoneRequirement();
+  if (smsOptin.checked) phoneInput?.focus();
+});
 syncSmsPhoneRequirement();
 
 if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', async e => {
@@ -335,13 +340,13 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', asyn
       body: JSON.stringify({
         full_name: $('full_name').value.trim(),
         email: $('email').value.trim(),
-        phone: $('phone').value.trim() || null,
+        phone: phoneInput?.value.trim() || null,
         bringing_guest: document.querySelector('input[name="party_size"]:checked')?.value === 'guest',
         guest_name: $('guest_name')?.value.trim() || null,
         guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
         organizer_optin: $('organizer_optin').checked,
-        sms_optin: $('sms_optin').checked
+        sms_optin: Boolean(smsOptin?.checked)
       })
     });
     const data = await res.json().catch(() => ({}));

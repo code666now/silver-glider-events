@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.78
+
+Released September 10, 2026.
+
+### Added
+
+* Added an off-by-default **Day-before reminder** setting to event creation and editing. When enabled, the public RSVP form offers a separate unchecked phone opt-in only for that event.
+* Added a clear management state that shows the current opted-in guest count, estimated credit cost, available balance, and an **Add funds** path only when funds are actually needed.
+* Added automatic 4 PM event-local fulfillment on the day before the event, with one private per-recipient link that restores the guest's existing event access without creating an account.
+
+### Security & reliability
+
+* Reserves the complete event reminder cost atomically before queueing, never partially sends an underfunded audience, rechecks current consent, deduplicates phone numbers, and prevents duplicate batches.
+* Keeps all existing events opted out, excludes Secret Shows, expires one-tap links, preserves STOP handling and never-accepted-message refunds, and leaves email reminders, ticket commerce, Stripe pack pricing, and RSVP identity unchanged.
+
 ## 1.0.77
 
 Released September 10, 2026.

@@ -288,6 +288,11 @@ $('vis-private').addEventListener('click', () => setVisibility('private'));
 function setSecretShow(enabled, { focus = false } = {}) {
   if (enabled) setVisibility('private');
   $('secret_show_enabled').checked = enabled;
+  $('sms_reminder_enabled').disabled = enabled;
+  if (enabled) $('sms_reminder_enabled').checked = false;
+  $('sms-reminder-help').textContent = enabled
+    ? 'Day-before text reminders are not available for Secret Shows yet.'
+    : 'Uses your texting balance. The cost depends on how many guests opt in.';
   $('secret-code-fields').classList.toggle('show', enabled);
   const requiresCode = enabled && !hasSavedSecretCode;
   $('secret_code').required = requiresCode;
@@ -1019,6 +1024,7 @@ function collect() {
     show_guest_list: $('show_guest_list').checked,
     allow_guests: $('allow_guests').checked,
     comments_enabled: $('comments_enabled').checked,
+    sms_reminder_enabled: $('sms_reminder_enabled').checked,
     secret_show_enabled: visibility === 'private' && $('secret_show_enabled').checked,
     secret_code: $('secret_show_enabled').checked ? $('secret_code').value : '',
     secret_code_confirm: $('secret_show_enabled').checked ? $('secret_code_confirm').value : '',
@@ -1067,6 +1073,7 @@ if (editId) {
     $('show_guest_list').checked = event.show_guest_list === true;
     $('allow_guests').checked = event.allow_guests === true;
     $('comments_enabled').checked = event.comments_enabled === true;
+    $('sms_reminder_enabled').checked = event.sms_reminder_enabled === true;
     setVisibility(event.visibility);
     hasSavedSecretCode = event.secret_show_enabled === true;
     setSecretShow(hasSavedSecretCode);

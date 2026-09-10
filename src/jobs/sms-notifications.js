@@ -1,7 +1,13 @@
 const cron = require('node-cron');
 const pool = require('../config/db');
 const sms = require('../lib/sms');
-const { refundSendCredits } = require('../lib/sms-credit-ledger');
+const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
+const { refundSendCredits, SmsCreditError } = require('../lib/sms-credit-ledger');
+const {
+  createReminderBatch,
+  eventForSms,
+  makePreview
+} = require('../lib/sms-reminder-fulfillment');
 
 const MAX_ATTEMPTS = 3;
 const ACCEPTED_STATUSES = ['accepted', 'queued', 'sending', 'sent', 'delivered'];
@@ -79,7 +85,7 @@ async function processSmsBatch(batchId) {
   if (!batch) return null;
   await pool.query("UPDATE sms_notification_batches SET status='processing' WHERE id=$1", [batchId]);
   const { rows: deliveries } = await pool.query(
-    `SELECT sr.id, sr.rsvp_id, sr.recipient, sr.status_token
+    `SELECT sr.id, sr.rsvp_id, sr.recipient, sr.status_token, sr.message_body
        FROM sms_notification_recipients sr
       WHERE sr.batch_id=$1 AND sr.provider_message_sid IS NULL
         AND sr.status IN ('pending','failed') AND sr.attempt_count < $2
@@ -100,8 +106,9 @@ async function processSmsBatch(batchId) {
     if (!claimed) continue;
     const eligible = (await pool.query(
       `SELECT 1 FROM rsvps WHERE id=$1 AND status='confirmed' AND sms_optin=TRUE
-        AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL AND phone=$2`,
-      [delivery.rsvp_id, delivery.recipient]
+        AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
+        AND sms_consent_version=$3 AND phone=$2`,
+      [delivery.rsvp_id, delivery.recipient, SMS_CONSENT_VERSION]
     )).rows.length > 0;
     if (!eligible) {
       await pool.query(
@@ -116,7 +123,7 @@ async function processSmsBatch(batchId) {
     try {
       const result = await sms.sendSms({
         to: delivery.recipient,
-        body: batch.message_body,
+        body: delivery.message_body || batch.message_body,
         statusCallback: callbackUrl(delivery.status_token)
       });
       const providerStatus = ACCEPTED_STATUSES.includes(result.status) ? result.status : 'accepted';
@@ -159,10 +166,53 @@ function queueSmsBatch(batchId) {
   }));
 }
 
+async function runAutomaticReminderPass({ minimumLocalHour = 16 } = {}) {
+  const { rows: dueEvents } = await pool.query(
+    `SELECT e.id,e.organizer_id
+       FROM events e
+      WHERE e.sms_reminder_enabled=TRUE
+        AND e.status='published'
+        AND e.secret_show_enabled=FALSE
+        AND e.event_date=((CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date + 1)
+        AND EXTRACT(HOUR FROM (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)) >= $1
+        AND NOT EXISTS (
+          SELECT 1 FROM sms_notification_batches b
+           WHERE b.event_id=e.id AND b.kind='event_tomorrow'
+        )
+      ORDER BY e.id`,
+    [minimumLocalHour]
+  );
+  for (const due of dueEvents) {
+    const client = await pool.connect();
+    let queuedBatchId = null;
+    try {
+      await client.query('BEGIN');
+      const event = await eventForSms(client, due.id, due.organizer_id, { lock: true });
+      const preview = event ? await makePreview(client, event) : null;
+      if (!preview?.canSend) {
+        await client.query('ROLLBACK');
+        continue;
+      }
+      const { batch } = await createReminderBatch(client, event, preview);
+      queuedBatchId = batch.id;
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (error.code !== '23505' && !(error instanceof SmsCreditError)) {
+        console.error(`[sms-notifications] automatic reminder for event ${due.id} failed:`, error.message);
+      }
+    } finally {
+      client.release();
+    }
+    if (queuedBatchId) queueSmsBatch(queuedBatchId);
+  }
+}
+
 async function runSmsPass() {
   if (running) return;
   running = true;
   try {
+    await runAutomaticReminderPass();
     const { rows } = await pool.query(
       `SELECT id FROM sms_notification_batches
         WHERE status IN ('pending','processing','partial_failed')
@@ -180,7 +230,7 @@ function startSmsNotificationCron() {
   cron.schedule('* * * * *', () => runSmsPass());
   const initial = setTimeout(() => runSmsPass(), 2200);
   initial.unref?.();
-  console.log('[sms-notifications] minute retry cron scheduled');
+  console.log('[sms-notifications] automatic day-before and minute retry cron scheduled');
 }
 
 module.exports = {
@@ -188,6 +238,7 @@ module.exports = {
   finalizeSmsBatch,
   processSmsBatch,
   queueSmsBatch,
+  runAutomaticReminderPass,
   runSmsPass,
   startSmsNotificationCron
 };

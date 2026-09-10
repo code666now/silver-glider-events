@@ -69,7 +69,9 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);
   assert.match(client, /class="guest-inline-email"/);
   assert.match(source('src/views/event-manage.html'), /id="sms-audience"[^>]*hidden[^>]*disabled/);
-  assert.match(client, /button\.hidden = !preview\.batch && count === 0/);
+  assert.match(client, /button\.hidden = !preview\.reminderEnabled && !preview\.batch/);
+  assert.match(client, /smsPreviewState\?\.needsFunds/);
+  assert.match(client, /settings\/messaging/);
   assert.match(client, /\[loadLineStatus\(\), loadPreviousGuests\(\), loadFollowers\(\), loadSmsPreview\(\)\]/);
   assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), \.\.\.secondaryTasks\]\)/);
   assert.match(client, /function showManageLoadError\(\)/);

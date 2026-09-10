@@ -139,9 +139,10 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
     assert.ok(form.indexOf('id="full_name"') < form.indexOf('id="email"'));
     assert.ok(form.indexOf('id="email"') < form.indexOf('<details class="rsvp-options">'));
     assert.ok(form.indexOf('id="wants_reminders"') < form.indexOf('<details class="rsvp-options">'));
+    assert.ok(form.indexOf('{{SMS_REMINDER_OPTIN_HTML}}') < form.indexOf('<details class="rsvp-options">'));
     assert.doesNotMatch(form, /<details class="rsvp-options"\s+open/);
-    assert.match(options, /Phone and host updates/);
-    assert.match(options, /id="phone"/);
+    assert.match(options, /Host updates/);
+    assert.doesNotMatch(options, /id="phone"|id="sms_optin"/);
     assert.match(options, /id="organizer_optin"/);
     assert.doesNotMatch(options, /id="full_name"|id="email"|id="wants_reminders"/);
   }

@@ -25,6 +25,15 @@ test('tomorrow SMS copy is fixed from event data and includes opt-out language',
   }, 'https://silvergliderevents.com/');
   assert.equal(body, 'Heatwave Booking: The Mummies is tomorrow at Make Out Room. Details: https://silvergliderevents.com/e/the-mummies Reply STOP to opt out.');
   assert.equal(smsSegments(body).segments, 1);
+
+  const personal = buildTomorrowMessage({
+    organizer_label: 'Heatwave Booking',
+    title: 'The Mummies',
+    venue_name: 'Make Out Room',
+    slug: 'the-mummies'
+  }, 'https://silvergliderevents.com/', 'a'.repeat(32));
+  assert.match(personal, /https:\/\/silvergliderevents\.com\/t\/a{32}/);
+  assert.doesNotMatch(personal, /\/e\/the-mummies/);
 });
 
 test('SMS previews mask phone numbers and fingerprints change with audience or cost', () => {
@@ -49,13 +58,17 @@ test('paid tomorrow SMS stays server-generated, explicitly confirmed, and credit
   const fs = require('node:fs');
   const path = require('node:path');
   const route = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sms-notifications.js'), 'utf8');
+  const fulfillment = fs.readFileSync(path.join(__dirname, '..', 'src', 'lib', 'sms-reminder-fulfillment.js'), 'utf8');
+  const job = fs.readFileSync(path.join(__dirname, '..', 'src', 'jobs', 'sms-notifications.js'), 'utf8');
   const client = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'manage.js'), 'utf8');
-  assert.match(route, /buildTomorrowMessage\(event\)/);
-  assert.match(route, /reserveSendCredits\(client/);
+  assert.match(fulfillment, /buildTomorrowMessage\(event/);
+  assert.match(fulfillment, /reserveSendCredits\(client/);
   assert.match(route, /confirm !== 'SEND_TOMORROW_SMS'/);
-  assert.match(route, /event\.is_tomorrow/);
-  assert.match(route, /r\.sms_optin=TRUE/);
+  assert.match(fulfillment, /event\.is_tomorrow/);
+  assert.match(fulfillment, /r\.sms_optin=TRUE/);
+  assert.match(job, /runAutomaticReminderPass/);
+  assert.match(job, /minimumLocalHour = 16/);
   assert.match(route, /twilio\.webhook/);
-  assert.match(client, /fingerprint: smsPreviewState\.fingerprint/);
+  assert.doesNotMatch(client, /SEND_TOMORROW_SMS/);
   assert.doesNotMatch(client, /body:\s*\{[^}]*messageBody/);
 });

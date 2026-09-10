@@ -15,6 +15,7 @@ const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { queueEventNotificationBatch } = require('../jobs/event-notifications');
 const { queuePreviousGuestInvitationBatch } = require('../jobs/previous-guest-invitations');
+const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -216,6 +217,7 @@ function validateEventBody(body, { partial = false } = {}) {
     ticket_price:    v => (v === '' || v == null ? null : Math.round((Number(v) || 0) * 100) / 100),
     ticket_url:      cleanTicketUrl,
     commerce_event_id: cleanCommerceEventId,
+    sms_reminder_enabled: isTrue,
     status:          v => (['draft', 'published', 'cancelled'].includes(v) ? v : undefined)
   };
   for (const [key, clean] of Object.entries(fields)) {
@@ -347,6 +349,9 @@ router.post('/api/events', async (req, res, next) => {
     if (secretShowEnabled && out.visibility !== 'private') {
       return res.status(400).json({ error: 'Secret Show requires Private — Link Only' });
     }
+    if (secretShowEnabled && out.sms_reminder_enabled) {
+      return res.status(400).json({ error: 'Day-before text reminders are not available for Secret Shows yet' });
+    }
     let secretCodeHash = null;
     if (secretShowEnabled) {
       const validated = validateSecretCodePair(req.body);
@@ -372,8 +377,8 @@ router.post('/api/events', async (req, res, next) => {
                                venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
                                event_vibe_label, event_vibe_url_2, event_vibe_label_2,
                                show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
-                               artwork_accent_color, commerce_event_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40)
+                               artwork_accent_color, commerce_event_id, sms_reminder_enabled)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.cover_fit_mode, out.presentation_mode, out.flyer_image_url,
@@ -387,7 +392,7 @@ router.post('/api/events', async (req, res, next) => {
            out.event_vibe_label || null, out.event_vibe_url_2 || null, out.event_vibe_label_2 || null,
            out.show_guest_list, out.allow_guests, out.comments_enabled,
            secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
-           out.commerce_event_id || null]
+           out.commerce_event_id || null, out.sms_reminder_enabled === true]
         );
         if (secretShowEnabled) {
           await client.query(
@@ -420,6 +425,7 @@ router.get('/api/events/:id', async (req, res, next) => {
               COALESCE((SELECT COUNT(*) FROM rsvps
                          WHERE event_id=e.id AND status='confirmed' AND sms_optin=TRUE
                            AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
+                           AND sms_consent_version='${SMS_CONSENT_VERSION}'
                            AND phone ~ '^\\+[1-9][0-9]{7,14}$'), 0)::int AS sms_eligible_count,
               COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
               ,(SELECT json_build_object(
@@ -451,7 +457,7 @@ router.put('/api/events/:id', async (req, res, next) => {
       `SELECT visibility, show_guest_list, allow_guests, comments_enabled,
               secret_show_enabled, secret_show_version, presentation_mode, flyer_image_url,
               admission_type, ticket_price, ticket_url, commerce_event_id, status,
-              event_date, start_time, venue_name, venue_address
+              event_date, start_time, venue_name, venue_address, sms_reminder_enabled
          FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
@@ -493,6 +499,13 @@ router.put('/api/events/:id', async (req, res, next) => {
     if (secretShowEnabled && effectiveVisibility !== 'private') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Disable Secret Show before making this event public' });
+    }
+    const effectiveSmsReminderEnabled = out.sms_reminder_enabled === undefined
+      ? current.sms_reminder_enabled
+      : out.sms_reminder_enabled;
+    if (secretShowEnabled && effectiveSmsReminderEnabled) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Disable day-before text reminders before enabling Secret Show' });
     }
 
     const codeWasEntered = Boolean(String(req.body.secret_code || '').trim() || String(req.body.secret_code_confirm || '').trim());

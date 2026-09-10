@@ -412,7 +412,7 @@
         </button>
         <button class="promotion-action" id="sms-audience" type="button" hidden disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 6h6M10 18h4"/></svg></span>
-          <span class="promotion-action-copy"><strong class="promotion-action-title" id="sms-audience-title">Text alerts</strong><span class="promotion-action-description" id="sms-audience-copy">Checking SMS eligibility…</span></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="sms-audience-title">Day-before text reminder</strong><span class="promotion-action-description" id="sms-audience-copy">Checking opt-ins and texting balance…</span></span>
           <span class="promotion-action-count" id="sms-audience-count">—</span>
         </button>
         <button class="promotion-action" id="announce" type="button" style="display:none" disabled>
@@ -510,27 +510,6 @@
       <footer class="previous-guests-dialog-foot">
         <button class="sg-btn sg-btn-ghost" type="button" data-close-previous-guests>Cancel</button>
         <button class="sg-btn sg-btn-primary" id="previous-guests-send" type="button" disabled>Send invitations</button>
-      </footer>
-    </form>
-  </dialog>
-
-  <dialog class="sms-dialog" id="sms-dialog" aria-labelledby="sms-dialog-title">
-    <form class="sms-dialog-form" id="sms-dialog-form">
-      <header class="sms-dialog-head">
-        <div>
-          <p class="sms-dialog-kicker">Paid SMS</p>
-          <h2 id="sms-dialog-title">Text guests tomorrow</h2>
-          <p>Review the exact message, audience, and credit cost before anything sends.</p>
-        </div>
-        <button class="sms-dialog-close" type="button" data-close-sms aria-label="Close">×</button>
-      </header>
-      <div class="sms-dialog-body" id="sms-dialog-content" aria-live="polite">
-        <div class="sms-dialog-loading">Building a current preview…</div>
-      </div>
-      <footer class="sms-dialog-foot">
-        <a class="sms-buy-credits" id="sms-buy-credits" href="/settings" hidden>Buy SMS credits in Settings →</a>
-        <button class="sg-btn sg-btn-ghost" type="button" data-close-sms>Cancel</button>
-        <button class="sg-btn sg-btn-primary" id="sms-send" type="button" disabled>Send texts</button>
       </footer>
     </form>
   </dialog>

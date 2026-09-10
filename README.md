@@ -53,7 +53,7 @@ Never use the Railway production database for development or tests.
 - Optional six-character Secret Show gate
 - Public host pages at `/h/:hostSlug`
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
-- Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and a consent-aware tomorrow-reminder action
+- Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and an event-specific, consent-aware automatic day-before reminder
 - Feedback reporting and super-admin feedback inbox
 - Personalized host invitations and lightweight admin host tracking
 - Privacy Policy and Terms available throughout the app
@@ -78,7 +78,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, scheduled email jobs
-src/db/migrations/           numbered SQL migrations (currently 001–033)
+src/db/migrations/           numbered SQL migrations (currently 001–034)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
@@ -95,7 +95,7 @@ test/                        focused Node test suite
 - **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
 - **Previous guest invitations:** an upcoming public or private event can send one reviewed batch to confirmed primary RSVPs from one owned past event who opted into future host emails. Named guests, host opt-outs, existing target attendees, and already-notified recipients are excluded server-side; delivery is queued, retryable, and one-way.
 - **SMS Go 1:** `src/lib/sms.js` owns E.164 normalization, Twilio environment validation, Messaging Service delivery, status callbacks, and sanitized results/errors. The original admin proof endpoint still sends only fixed server copy.
-- **SMS Go 2/3:** `src/lib/stripe-sms.js`, `src/lib/sms-credit-ledger.js`, and the protected SMS routes provide fixed server-priced Stripe-hosted Checkout packs plus a paid **Add text notification** action. A verified Stripe webhook is the only purchase-crediting authority; the browser never chooses an amount or changes the wallet. Historical PayPal purchases and refunds remain supported server-side for rollback. The notification action progressively appears only after the current event has an eligible SMS subscriber and remains afterward for delivery history. On the day before an eligible event, the host reviews exact server-generated copy, masked opted-in recipients, segment cost, and balance before confirmation. Credits are reserved atomically, delivery is queued and audited, duplicate sends are blocked, and there is no free allowance or free-form composer.
+- **SMS fulfillment V1:** `src/lib/stripe-sms.js`, `src/lib/sms-credit-ledger.js`, and the protected SMS routes provide fixed server-priced Stripe-hosted Checkout packs. Hosts can independently enable an off-by-default **Day-before reminder** for a non-Secret event. That event's RSVP form then offers a separate unchecked phone opt-in; phone collection alone never grants permission. Event management always shows the automation state, eligible count, exact estimated cost, and balance, linking to **Add funds** only when a nonzero audience is underfunded. At 4 PM event-local on the day before the event, the worker atomically reserves the entire audience cost and queues one server-generated reminder per deduplicated, currently consented recipient. Underfunded events never partially send, duplicate batches are blocked, and each message contains an expiring private link that restores the existing event-scoped attendee cookie without creating an account. Delivery remains audited, never-accepted messages are refunded, STOP handling remains global, and there is no free allowance or free-form composer.
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
@@ -110,7 +110,7 @@ npm test
 npm run check:static
 ```
 
-As of September 10, 2026, the suite contains 193 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and separate SMS consent, paid tomorrow-SMS eligibility, exact pricing, atomic credit reservation, deduplication, Twilio delivery callbacks and STOP handling, previous-guest invitation filtering and delivery, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 10, 2026, the suite contains 197 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic credit reservation, one-tap attendee access, deduplication, Twilio delivery callbacks and STOP handling, previous-guest invitation filtering and delivery, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

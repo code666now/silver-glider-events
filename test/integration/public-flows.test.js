@@ -26,6 +26,7 @@ const { signSession } = require('../../src/lib/session');
 const sms = require('../../src/lib/sms');
 const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
+const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
 
 let server;
 let baseUrl;
@@ -250,13 +251,17 @@ test('creates an event only for an authenticated organizer and publishes its pag
   await waitForConfirmation('public-attendee@example.test');
 });
 
-test('RSVP SMS consent requires a valid phone and powers the host eligibility count', async () => {
-  const event = await createEvent({ slug: 'sms-consent-night', title: 'SMS Consent Night' });
+test('RSVP SMS consent requires an enabled reminder and valid phone, then powers the host eligibility count', async () => {
+  const event = await createEvent({
+    slug: 'sms-consent-night',
+    title: 'SMS Consent Night',
+    sms_reminder_enabled: true
+  });
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
 
   const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
   const publicHtml = await publicPage.text();
-  assert.match(publicHtml, /Text me event updates and future invitations from Test Host through Silver Glider\./);
+  assert.match(publicHtml, /Text me a reminder the day before this event from Test Host through Silver Glider\./);
   assert.match(publicHtml, /Email me invitations to future events from Test Host\./);
   assert.match(publicHtml, /Consent isn’t required to RSVP\./);
   assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
@@ -313,7 +318,7 @@ test('RSVP SMS consent requires a valid phone and powers the host eligibility co
   assert.equal(rows[1].sms_optin, true);
   assert.ok(rows[1].sms_consent_at instanceof Date);
   assert.equal(rows[1].sms_consent_source, 'event_rsvp');
-  assert.equal(rows[1].sms_consent_version, 'rsvp_sms_v1');
+  assert.equal(rows[1].sms_consent_version, 'rsvp_event_reminder_v1');
   assert.match(rows[1].sms_consent_text, /Test Host through Silver Glider/);
   assert.equal(rows[1].sms_opted_out_at, null);
 
@@ -336,7 +341,8 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
     slug: 'paid-tomorrow-sms',
     title: 'Tomorrow Night',
     event_date: tomorrow,
-    timezone: 'America/Los_Angeles'
+    timezone: 'America/Los_Angeles',
+    sms_reminder_enabled: true
   });
   const cookie = `sge_session=${signSession(organizerId)}`;
   const consent = {
@@ -344,8 +350,8 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
     sms_optin: true,
     sms_consent_at: new Date(),
     sms_consent_source: 'event_rsvp',
-    sms_consent_version: 'rsvp_sms_v1',
-    sms_consent_text: 'Text me event updates through Silver Glider.'
+    sms_consent_version: 'rsvp_event_reminder_v1',
+    sms_consent_text: 'One reminder for this event.'
   };
   await createRsvp(event.id, { email: 'sms-one@example.test', ...consent });
   const recipient = await createRsvp(event.id, {
@@ -366,7 +372,7 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
   const blockedPreview = await noCredits.json();
   assert.equal(blockedPreview.recipientCount, 1, 'the same phone is charged only once');
   assert.equal(blockedPreview.canSend, false);
-  assert.match(blockedPreview.reason, /Buy .* more SMS credit/);
+  assert.match(blockedPreview.reason, /Add .* more texting credit/);
 
   const blockedSend = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
     method: 'POST',
@@ -421,7 +427,9 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
     await waitForSmsBatch(payload.batch.id);
     assert.equal(sends.length, 1);
     assert.equal(sends[0].to, '+14155551234');
-    assert.equal(sends[0].body, readyPreview.messageBody);
+    assert.match(sends[0].body, /^Test Host: Tomorrow Night is tomorrow at Test Hall\./);
+    assert.match(sends[0].body, /\/t\/[0-9a-f]{32} Reply STOP to opt out\.$/);
+    assert.notEqual(sends[0].body, readyPreview.messageBody, 'each recipient receives a private link');
     assert.match(sends[0].statusCallback, /\/api\/webhooks\/twilio\/status\/[0-9a-f-]{36}$/);
 
     const ledger = (await pool.query(
@@ -438,6 +446,8 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
       'SELECT * FROM sms_notification_recipients WHERE batch_id=$1', [payload.batch.id]
     )).rows[0];
     assert.equal(delivery.rsvp_id, recipient.id);
+    assert.equal(delivery.message_body, sends[0].body);
+    assert.match(delivery.access_token, /^[0-9a-f]{32}$/);
     assert.equal(delivery.provider_message_sid, `SM${'d'.repeat(32)}`);
     assert.equal(delivery.status, 'delivered', 'the create response must not overwrite a newer callback');
 
@@ -451,6 +461,14 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
       'SELECT status FROM sms_notification_recipients WHERE id=$1', [delivery.id]
     )).rows[0];
     assert.equal(delivered.status, 'delivered');
+
+    const oneTap = await fetch(`${baseUrl}/t/${delivery.access_token}`, { redirect: 'manual' });
+    assert.equal(oneTap.status, 303);
+    assert.equal(oneTap.headers.get('location'), `/e/${event.slug}`);
+    assert.match(oneTap.headers.get('set-cookie') || '', new RegExp(`sge_attendee_${event.id}=`));
+    assert.ok((await pool.query(
+      'SELECT sms_phone_verified_at FROM rsvps WHERE id=$1', [recipient.id]
+    )).rows[0].sms_phone_verified_at instanceof Date);
 
     const duplicate = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
       method: 'POST',
@@ -469,6 +487,56 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
       'SELECT sms_optin,sms_opted_out_at FROM rsvps WHERE phone=$1', ['+14155551234']
     )).rows;
     assert.equal(optouts.every(row => row.sms_optin === false && row.sms_opted_out_at instanceof Date), true);
+  } finally {
+    sms.sendSms = originalSendSms;
+  }
+});
+
+test('enabled day-before reminders send automatically once when the full balance is available', async () => {
+  const tomorrow = (await pool.query(
+    "SELECT ((CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date + 1)::text AS date"
+  )).rows[0].date;
+  const event = await createEvent({
+    slug: 'automatic-tomorrow-sms',
+    title: 'Automatic Tomorrow Night',
+    event_date: tomorrow,
+    timezone: 'America/Los_Angeles',
+    sms_reminder_enabled: true
+  });
+  await pool.query('UPDATE organizers SET sms_credits=5 WHERE id=$1', [organizerId]);
+  await createRsvp(event.id, {
+    email: 'automatic-sms@example.test',
+    phone: '+14155550123',
+    sms_optin: true,
+    sms_consent_at: new Date(),
+    sms_consent_source: 'event_rsvp',
+    sms_consent_version: 'rsvp_event_reminder_v1',
+    sms_consent_text: 'One reminder for this event.'
+  });
+
+  const originalSendSms = sms.sendSms;
+  const sends = [];
+  sms.sendSms = async payload => {
+    sends.push(payload);
+    return { sid: `SM${'e'.repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+  try {
+    await runAutomaticReminderPass({ minimumLocalHour: 0 });
+    const batch = (await pool.query(
+      "SELECT * FROM sms_notification_batches WHERE event_id=$1 AND kind='event_tomorrow'",
+      [event.id]
+    )).rows[0];
+    assert.ok(batch);
+    await waitForSmsBatch(batch.id);
+    assert.equal(sends.length, 1);
+    assert.match(sends[0].body, /\/t\/[0-9a-f]{32}/);
+
+    await runAutomaticReminderPass({ minimumLocalHour: 0 });
+    assert.equal((await pool.query(
+      "SELECT COUNT(*)::int AS count FROM sms_notification_batches WHERE event_id=$1 AND kind='event_tomorrow'",
+      [event.id]
+    )).rows[0].count, 1);
+    assert.equal(sends.length, 1);
   } finally {
     sms.sendSms = originalSendSms;
   }

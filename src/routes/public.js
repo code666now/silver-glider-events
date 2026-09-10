@@ -311,6 +311,15 @@ function setAttendeeCookie(res, eventId, token) {
   res.append('Set-Cookie', `${attendeeCookieName(eventId)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${180 * 24 * 3600}${secure}`);
 }
 
+function renderSmsReminderOptin(event) {
+  if (!event.sms_reminder_enabled || event.secret_show_enabled) return '';
+  return `<section class="sms-reminder-optin" aria-labelledby="sms-reminder-optin-title">
+    <div class="sms-reminder-optin-head"><strong id="sms-reminder-optin-title">Text reminder</strong><span>Optional</span></div>
+    <label class="check"><input type="checkbox" id="sms_optin"><span class="channel-consent-copy"><strong>${esc(smsConsentHeading(event.org_name))}</strong><small>${esc(SMS_CONSENT_DISCLOSURE)}</small></span></label>
+    <div class="sg-field sms-reminder-phone" id="sms-reminder-phone" hidden><label for="phone">Mobile number</label><input class="sg-input" type="tel" id="phone" autocomplete="tel" inputmode="tel" placeholder="(555) 555-1234"></div>
+  </section>`;
+}
+
 async function confirmedAttendee(req, event) {
   const token = readCookie(req, attendeeCookieName(event.id));
   if (!token) return null;
@@ -575,8 +584,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
-      .replace(/{{SMS_CONSENT_HEADING}}/g, esc(smsConsentHeading(event.org_name)))
-      .replace(/{{SMS_CONSENT_DISCLOSURE}}/g, esc(SMS_CONSENT_DISCLOSURE))
+      .replace(/{{SMS_REMINDER_OPTIN_HTML}}/g, rsvpEnabled ? renderSmsReminderOptin(event) : '')
       .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
       .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
@@ -767,7 +775,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     let smsConsent;
     try {
       smsConsent = prepareRsvpSmsConsent({
-        optedIn: requestedSmsOptin,
+        optedIn: event.sms_reminder_enabled && requestedSmsOptin,
         phone,
         hostName: event.org_name
       });
@@ -962,6 +970,51 @@ router.get('/r/:token/event', async (req, res, next) => {
     setAttendeeCookie(res, rows[0].event_id, req.params.token);
     res.redirect(303, `/e/${encodeURIComponent(rows[0].slug)}`);
   } catch (err) { next(err); }
+});
+
+// A private link in each reminder restores the same event-scoped attendee
+// session as the email confirmation link. It verifies control of the supplied
+// phone without creating a Silver Glider account or organizer profile.
+router.get('/t/:token', async (req, res, next) => {
+  const token = String(req.params.token || '');
+  if (!/^[0-9a-f]{32}$/i.test(token)) return res.status(404).send(render404());
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT sr.id AS recipient_id,r.id AS rsvp_id,r.manage_token,e.id AS event_id,e.slug
+         FROM sms_notification_recipients sr
+         JOIN rsvps r ON r.id=sr.rsvp_id
+         JOIN events e ON e.id=r.event_id
+        WHERE sr.access_token=$1 AND sr.access_token_expires_at > NOW()
+          AND r.status='confirmed'
+        FOR UPDATE OF sr,r`,
+      [token]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).send(render404());
+    }
+    const row = rows[0];
+    await client.query(
+      'UPDATE sms_notification_recipients SET accessed_at=COALESCE(accessed_at,NOW()),updated_at=NOW() WHERE id=$1',
+      [row.recipient_id]
+    );
+    await client.query(
+      'UPDATE rsvps SET sms_phone_verified_at=COALESCE(sms_phone_verified_at,NOW()) WHERE id=$1',
+      [row.rsvp_id]
+    );
+    await client.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    setAttendeeCookie(res, row.event_id, row.manage_token);
+    res.redirect(303, `/e/${encodeURIComponent(row.slug)}`);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
 });
 
 router.get('/r/:token', async (req, res, next) => {

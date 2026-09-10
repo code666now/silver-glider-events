@@ -61,22 +61,23 @@ test('SMS consent stays separate from Follow Host and exposes only an eligibilit
   const manage = read('src/views/event-manage.html');
   const manageClient = read('public/js/manage.js');
   const host = read('src/routes/public-hosts.js');
+  const publicRoute = read('src/routes/public.js');
 
   for (const field of ['sms_optin', 'sms_consent_at', 'sms_consent_source', 'sms_consent_version', 'sms_consent_text', 'sms_opted_out_at']) {
     assert.match(migration, new RegExp(`ADD COLUMN IF NOT EXISTS ${field}`));
   }
   assert.match(migration, /rsvps_event_sms_eligible_idx/);
   for (const view of [standard, flyer]) {
-    assert.match(view, /id="sms_optin"/);
-    assert.doesNotMatch(view, /id="sms_optin"[^>]*checked/);
-    assert.match(view, /\{\{SMS_CONSENT_HEADING\}\}/);
-    assert.match(view, /\{\{SMS_CONSENT_DISCLOSURE\}\}/);
+    assert.match(view, /\{\{SMS_REMINDER_OPTIN_HTML\}\}/);
   }
+  assert.match(publicRoute, /id=\"sms_optin\"/);
+  assert.doesNotMatch(publicRoute, /id=\"sms_optin\"[^>]*checked/);
+  assert.match(publicRoute, /event\.sms_reminder_enabled/);
   assert.match(client, /phoneInput\.required = smsOptin\.checked/);
-  assert.match(client, /sms_optin: \$\('sms_optin'\)\.checked/);
+  assert.match(client, /sms_optin: Boolean\(smsOptin\?\.checked\)/);
   assert.match(manage, /id="sms-audience-count"/);
   assert.match(manageClient, /event\.sms_eligible_count/);
-  assert.match(manageClient, /smsEligibleCount === 0/);
+  assert.match(manageClient, /!event\.sms_reminder_enabled/);
   assert.doesNotMatch(host, /sms_optin|SMS_CONSENT/);
   assert.match(smsConsentCopy('Test Host'), /through Silver Glider/);
 });

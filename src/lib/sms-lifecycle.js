@@ -33,12 +33,14 @@ function compact(value, fallback) {
   return String(value || fallback || '').replace(/\s+/g, ' ').trim();
 }
 
-function buildTomorrowMessage(event, baseUrl = process.env.APP_URL) {
+function buildTomorrowMessage(event, baseUrl = process.env.APP_URL, accessToken = null) {
   const root = String(baseUrl || 'https://silvergliderevents.com').replace(/\/$/, '');
   const host = compact(event.organizer_label, 'Silver Glider Events');
   const title = compact(event.title, 'Your event');
   const venue = compact(event.venue_name, 'the venue');
-  const link = `${root}/e/${encodeURIComponent(event.slug)}`;
+  const link = accessToken
+    ? `${root}/t/${encodeURIComponent(accessToken)}`
+    : `${root}/e/${encodeURIComponent(event.slug)}`;
   const suffix = ` is tomorrow at ${venue}. Details: ${link} Reply STOP to opt out.`;
   const maxHostAndTitle = Math.max(30, 300 - suffix.length);
   const lead = `${host}: ${title}`.slice(0, maxHostAndTitle).trim();

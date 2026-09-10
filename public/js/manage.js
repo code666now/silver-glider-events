@@ -125,11 +125,12 @@ async function loadEvent() {
   $('stat-guests').textContent = event.guest_count;
   $('stat-comments').textContent = event.comment_count;
   const smsEligibleCount = Number(event.sms_eligible_count) || 0;
-  $('sms-audience').hidden = smsEligibleCount === 0;
+  $('sms-audience').hidden = !event.sms_reminder_enabled;
   $('sms-audience-count').textContent = smsEligibleCount.toLocaleString('en-US');
-  if (smsEligibleCount) {
-    $('sms-audience-title').textContent = 'Add text notification';
-    $('sms-audience-copy').textContent = `You have ${smsEligibleCount} text ${smsEligibleCount === 1 ? 'subscriber' : 'subscribers'}. Checking available notifications…`;
+  if (event.sms_reminder_enabled) {
+    $('sms-audience-title').textContent = 'Day-before text reminder';
+    $('sms-audience-copy').textContent = 'Checking opt-ins and texting balance…';
+    $('share-event').querySelector('.promotion-action-description').textContent = 'Share the RSVP link so guests can opt in to the reminder.';
   }
   renderNotificationStatus(event.latest_notification);
   if (event.capacity) {
@@ -442,11 +443,12 @@ function renderSmsAction(preview) {
   const button = $('sms-audience');
   const count = Number(preview.recipientCount) || 0;
   $('sms-audience-count').textContent = count.toLocaleString('en-US');
-  button.hidden = !preview.batch && count === 0;
+  button.hidden = !preview.reminderEnabled && !preview.batch;
   if (button.hidden) {
     button.disabled = true;
     return;
   }
+  delete button.dataset.needsFunds;
   if (preview.batch) {
     const batch = preview.batch;
     button.disabled = true;
@@ -465,24 +467,27 @@ function renderSmsAction(preview) {
     }
     return;
   }
-  $('sms-audience-title').textContent = 'Add text notification';
-  if (preview.eventStatus !== 'published') {
+  $('sms-audience-title').textContent = 'Day-before text reminder';
+  if (!preview.reminderEnabled) {
     button.disabled = true;
-    $('sms-audience-copy').textContent = 'Publish the event before texting guests.';
+    $('sms-audience-copy').textContent = 'This reminder is turned off.';
+  } else if (preview.eventStatus !== 'published') {
+    button.disabled = true;
+    $('sms-audience-copy').textContent = 'On · Publish the event before reminders can send.';
   } else if (preview.secretShowEnabled) {
     button.disabled = true;
-    $('sms-audience-copy').textContent = 'SMS reminders are not available for Secret Shows yet.';
-  } else if (!preview.eventIsTomorrow) {
-    button.disabled = true;
-    $('sms-audience-copy').textContent = `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'}. Tomorrow reminder unlocks one day before the event.`;
+    $('sms-audience-copy').textContent = 'Text reminders are not available for Secret Shows yet.';
   } else if (!count) {
     button.disabled = true;
-    $('sms-audience-copy').textContent = 'No confirmed guests have opted in to text messages.';
-  } else {
+    $('sms-audience-copy').textContent = 'On · No guests have opted in to text reminders yet.';
+  } else if (preview.needsFunds) {
     button.disabled = false;
-    $('sms-audience-copy').textContent = preview.canSend
-      ? `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'} · ${preview.creditCost} paid ${preview.creditCost === 1 ? 'credit' : 'credits'}. Review before sending.`
-      : `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'} · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed, ${preview.balance} available.`;
+    button.dataset.needsFunds = 'true';
+    $('sms-audience-count').textContent = 'Add funds';
+    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed · ${preview.balance} available. Add funds before it sends.`;
+  } else {
+    button.disabled = true;
+    $('sms-audience-copy').textContent = `${count} opted in · About ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${preview.balance} available. Sends automatically at 4 PM the day before.`;
   }
 }
 
@@ -493,78 +498,14 @@ async function loadSmsPreview() {
     return smsPreviewState;
   } catch (_) {
     $('sms-audience').disabled = true;
-    $('sms-audience-copy').textContent = 'SMS preview is temporarily unavailable.';
+    $('sms-audience-copy').textContent = 'Text reminder status is temporarily unavailable.';
     return null;
   }
 }
 
-function renderSmsDialog(preview) {
-  const cost = Number(preview.creditCost) || 0;
-  const balance = Number(preview.balance) || 0;
-  $('sms-send').hidden = false;
-  $('sms-dialog-content').innerHTML = `
-    <section class="sms-preview-message" aria-label="Exact text message">
-      <span>Exact message</span>
-      <p>${escapeHtml(preview.messageBody)}</p>
-    </section>
-    <div class="sms-preview-cost">
-      <div><strong>${preview.recipientCount}</strong><span>Recipients</span></div>
-      <div><strong>${cost}</strong><span>Credit cost</span></div>
-      <div><strong>${balance}</strong><span>Available</span></div>
-    </div>
-    <p class="sms-preview-note ${preview.canSend ? 'is-ready' : ''}">${escapeHtml(preview.canSend
-      ? `${cost} paid ${cost === 1 ? 'credit will' : 'credits will'} be deducted now. Your balance will be ${preview.balanceAfter}.`
-      : preview.reason || 'This text cannot be sent yet.')}</p>
-    <section class="sms-preview-recipients" aria-label="SMS recipients">
-      <h3>Consented guests</h3>
-      <div class="sms-recipient-list">${preview.recipients.map(recipient => `
-        <div class="sms-recipient"><strong>${escapeHtml(recipient.name)}</strong><span>${escapeHtml(recipient.phone)}</span></div>`).join('')}</div>
-    </section>`;
-  const insufficient = balance < cost;
-  $('sms-buy-credits').hidden = !insufficient;
-  $('sms-send').disabled = !preview.canSend;
-  $('sms-send').textContent = preview.canSend
-    ? `Send ${preview.recipientCount} ${preview.recipientCount === 1 ? 'text' : 'texts'} for ${cost} ${cost === 1 ? 'credit' : 'credits'}`
-    : 'Send unavailable';
-}
-
-$('sms-audience').addEventListener('click', async () => {
-  $('sms-dialog-content').innerHTML = '<div class="sms-dialog-loading">Building a current preview…</div>';
-  $('sms-send').disabled = true;
-  $('sms-buy-credits').hidden = true;
-  $('sms-dialog').showModal();
-  const preview = await loadSmsPreview();
-  if (preview) renderSmsDialog(preview);
-  else $('sms-dialog-content').innerHTML = '<p class="sms-preview-note">The preview could not be loaded. Close this window and try again.</p>';
-});
-
-$('sms-dialog-form').addEventListener('submit', event => event.preventDefault());
-document.querySelectorAll('[data-close-sms]').forEach(button => {
-  button.addEventListener('click', () => $('sms-dialog').close());
-});
-
-$('sms-send').addEventListener('click', async () => {
-  const button = $('sms-send');
-  if (!smsPreviewState?.canSend || button.dataset.busy === 'true') return;
-  button.dataset.busy = 'true';
-  button.disabled = true;
-  button.textContent = 'Queuing texts…';
-  try {
-    const data = await api(`/api/events/${eventId}/sms/tomorrow`, {
-      method: 'POST',
-      body: { confirm: 'SEND_TOMORROW_SMS', fingerprint: smsPreviewState.fingerprint }
-    });
-    $('sms-dialog-content').innerHTML = `<div class="sms-dialog-status"><strong>Tomorrow text queued</strong><p>${data.queued} ${data.queued === 1 ? 'guest' : 'guests'} will receive the reviewed message. Your remaining balance is ${data.balance}.</p></div>`;
-    button.hidden = true;
-    $('sms-buy-credits').hidden = true;
-    setTimeout(() => loadSmsPreview(), 350);
-    toast(`${data.queued} ${data.queued === 1 ? 'text' : 'texts'} queued`);
-  } catch (error) {
-    toast(error.message || 'Could not queue these texts');
-    const preview = await loadSmsPreview();
-    if (preview) renderSmsDialog(preview);
-  } finally {
-    delete button.dataset.busy;
+$('sms-audience').addEventListener('click', () => {
+  if (smsPreviewState?.needsFunds) {
+    window.location.assign(`/settings/messaging?return=${encodeURIComponent(location.pathname)}`);
   }
 });
 
@@ -798,3 +739,9 @@ async function initializeManagePage() {
 }
 
 initializeManagePage();
+
+window.setInterval(() => {
+  if (document.visibilityState === 'visible' && eventData?.sms_reminder_enabled && !eventData.is_past) {
+    loadSmsPreview();
+  }
+}, 60000);

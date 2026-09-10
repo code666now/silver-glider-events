@@ -2,103 +2,18 @@ const express = require('express');
 const twilio = require('twilio');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
-const { reserveSendCredits, SmsCreditError } = require('../lib/sms-credit-ledger');
-const { buildTomorrowMessage, maskPhone, previewFingerprint, smsSegments } = require('../lib/sms-lifecycle');
+const { SmsCreditError } = require('../lib/sms-credit-ledger');
+const {
+  batchPayload,
+  createReminderBatch,
+  eventForSms,
+  makePreview
+} = require('../lib/sms-reminder-fulfillment');
 const { normalizeE164 } = require('../lib/sms');
 const { finalizeSmsBatch, queueSmsBatch } = require('../jobs/sms-notifications');
 
 const router = express.Router();
 const verifyTwilio = twilio.webhook({ validate: process.env.NODE_ENV === 'production' });
-
-function batchPayload(batch) {
-  if (!batch) return null;
-  return {
-    id: String(batch.id),
-    kind: batch.kind,
-    status: batch.status,
-    recipientCount: Number(batch.recipient_count),
-    creditCost: Number(batch.credit_cost),
-    refundedCredits: Number(batch.refunded_credits),
-    acceptedCount: Number(batch.accepted_count),
-    deliveredCount: Number(batch.delivered_count),
-    failedCount: Number(batch.failed_count),
-    createdAt: batch.created_at
-  };
-}
-
-async function eligibleRecipients(queryable, eventId) {
-  const { rows } = await queryable.query(
-    `SELECT DISTINCT ON (r.phone) r.id,r.phone,r.first_name,r.last_name
-       FROM rsvps r
-      WHERE r.event_id=$1 AND r.status='confirmed' AND r.sms_optin=TRUE
-        AND r.sms_consent_at IS NOT NULL AND r.sms_opted_out_at IS NULL
-        AND r.phone ~ '^\\+[1-9][0-9]{7,14}$'
-      ORDER BY r.phone,r.id DESC`,
-    [eventId]
-  );
-  return rows;
-}
-
-async function eventForSms(queryable, eventId, organizerId, { lock = false } = {}) {
-  const { rows } = await queryable.query(
-    `SELECT e.*,o.sms_credits,
-            COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label,
-            e.event_date=((CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date + 1) AS is_tomorrow
-       FROM events e JOIN organizers o ON o.id=e.organizer_id
-      WHERE e.id=$1 AND e.organizer_id=$2${lock ? ' FOR UPDATE OF e,o' : ''}`,
-    [eventId, organizerId]
-  );
-  return rows[0] || null;
-}
-
-async function currentBatch(queryable, eventId) {
-  return (await queryable.query(
-    `SELECT * FROM sms_notification_batches
-      WHERE event_id=$1 AND kind='event_tomorrow' LIMIT 1`,
-    [eventId]
-  )).rows[0] || null;
-}
-
-async function makePreview(queryable, event) {
-  const [recipients, batch] = await Promise.all([
-    eligibleRecipients(queryable, event.id),
-    currentBatch(queryable, event.id)
-  ]);
-  const messageBody = buildTomorrowMessage(event);
-  const segmentInfo = smsSegments(messageBody);
-  const creditCost = segmentInfo.segments * recipients.length;
-  const balance = Number(event.sms_credits || 0);
-  let reason = null;
-  if (event.status !== 'published') reason = 'Publish the event before texting guests.';
-  else if (event.secret_show_enabled) reason = 'SMS reminders are not available for Secret Shows yet.';
-  else if (!event.is_tomorrow) reason = 'Tomorrow reminders become available one day before the event.';
-  else if (batch) reason = 'The tomorrow reminder has already been created for this event.';
-  else if (!recipients.length) reason = 'No confirmed guests have opted in to text messages.';
-  else if (balance < creditCost) reason = `Buy ${creditCost - balance} more SMS ${creditCost - balance === 1 ? 'credit' : 'credits'} before sending.`;
-  const fingerprint = previewFingerprint({ event, recipients, messageBody, creditCost });
-  return {
-    canSend: !reason,
-    reason,
-    eventIsTomorrow: Boolean(event.is_tomorrow),
-    eventStatus: event.status,
-    secretShowEnabled: Boolean(event.secret_show_enabled),
-    messageBody,
-    encoding: segmentInfo.encoding,
-    segmentCount: segmentInfo.segments,
-    recipientCount: recipients.length,
-    creditCost,
-    balance,
-    balanceAfter: Math.max(0, balance - creditCost),
-    fingerprint,
-    batch: batchPayload(batch),
-    recipients: recipients.map(recipient => ({
-      id: recipient.id,
-      name: `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() || 'Guest',
-      phone: maskPhone(recipient.phone)
-    })),
-    _recipients: recipients
-  };
-}
 
 router.post('/api/webhooks/twilio/status/:token', verifyTwilio, async (req, res, next) => {
   try {
@@ -182,29 +97,7 @@ router.post('/api/events/:id/sms/tomorrow', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'The audience or cost changed. Review the updated preview before sending.' });
     }
-    const batch = (await client.query(
-      `INSERT INTO sms_notification_batches
-         (event_id,organizer_id,kind,message_body,segment_count,recipient_count,credit_cost)
-       VALUES ($1,$2,'event_tomorrow',$3,$4,$5,$6) RETURNING *`,
-      [event.id, event.organizer_id, preview.messageBody, preview.segmentCount,
-       preview.recipientCount, preview.creditCost]
-    )).rows[0];
-    const balance = await reserveSendCredits(client, {
-      organizerId: event.organizer_id,
-      batchId: batch.id,
-      credits: preview.creditCost,
-      metadata: { eventId: event.id, kind: 'event_tomorrow', recipientCount: preview.recipientCount }
-    });
-    for (const recipient of preview._recipients) {
-      await client.query(
-        `INSERT INTO sms_notification_recipients
-           (batch_id,rsvp_id,recipient,recipient_name,segment_count)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [batch.id, recipient.id, recipient.phone,
-         `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() || null,
-         preview.segmentCount]
-      );
-    }
+    const { batch, balance } = await createReminderBatch(client, event, preview);
     await client.query('COMMIT');
     queueSmsBatch(batch.id);
     res.status(202).json({ queued: preview.recipientCount, balance, batch: batchPayload(batch) });

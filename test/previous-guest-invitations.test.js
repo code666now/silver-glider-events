@@ -70,13 +70,14 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
 test('future-event consent language is explicit in both public RSVP modes', () => {
   for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
     const view = read(template);
-    assert.match(view, /id="sms_optin"/);
+    assert.match(view, /\{\{SMS_REMINDER_OPTIN_HTML\}\}/);
     assert.match(view, /id="organizer_optin"/);
     assert.match(view, /\{\{EMAIL_CONSENT_HEADING\}\}/);
     assert.match(view, /<small>Unsubscribe anytime\.<\/small>/);
-    assert.equal((view.match(/class="channel-consent-copy"/g) || []).length, 2);
+    assert.equal((view.match(/class="channel-consent-copy"/g) || []).length, 1);
     assert.doesNotMatch(view, /Invite me to future events from this host/);
   }
+  assert.match(read('src/routes/public.js'), /id=\"sms_optin\"/);
 });
 
 test('server eligibility excludes opt-outs, +1s, existing attendees, duplicates, and Secret Shows', () => {
