@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.70
+
+Released September 9, 2026.
+
+### Changed
+
+* Made the RSVP host-update permissions explicitly channel-specific: guests now choose independently between text updates and email invitations.
+* Replaced the generic email invitation label with the actual host name and gave both unchecked consent choices the same clear heading-and-disclosure hierarchy in Standard and Flyer presentations.
+* Kept the current-event email reminder separate and left all existing consent storage, audience eligibility, and sending behavior unchanged.
+
 ## 1.0.69
 
 Released September 9, 2026.

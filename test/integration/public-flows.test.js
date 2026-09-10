@@ -228,8 +228,10 @@ test('RSVP SMS consent requires a valid phone and powers the host eligibility co
   const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
   const publicHtml = await publicPage.text();
   assert.match(publicHtml, /Text me event updates and future invitations from Test Host through Silver Glider\./);
+  assert.match(publicHtml, /Email me invitations to future events from Test Host\./);
   assert.match(publicHtml, /Consent isn’t required to RSVP\./);
   assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
+  assert.doesNotMatch(publicHtml, /id="organizer_optin"[^>]*checked/);
 
   const missingPhone = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
     method: 'POST',

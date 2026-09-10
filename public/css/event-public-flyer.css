@@ -365,9 +365,9 @@
 .rsvp-options-body .sg-field { margin-bottom: 16px; }
 .rsvp-options-body .check { margin-bottom: 12px; }
 .rsvp-options-body .check:last-child { margin-bottom: 0; }
-.sms-consent-copy { display: block; }
-.sms-consent-copy strong { display:block;color:var(--sg-text);font-size:13px;line-height:1.45; }
-.sms-consent-copy small { display:block;margin-top:4px;color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
+.channel-consent-copy { display: block; }
+.channel-consent-copy strong { display:block;color:var(--sg-text);font-size:13px;line-height:1.45; }
+.channel-consent-copy small { display:block;margin-top:4px;color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
 .party-size-field {
   margin: 2px 0 18px;
   padding: 16px;

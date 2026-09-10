@@ -70,8 +70,12 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
 test('future-event consent language is explicit in both public RSVP modes', () => {
   for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
     const view = read(template);
-    assert.match(view, /Invite me to future events from this host\. Unsubscribe anytime\./);
-    assert.doesNotMatch(view, /Email me about future events from this host/);
+    assert.match(view, /id="sms_optin"/);
+    assert.match(view, /id="organizer_optin"/);
+    assert.match(view, /\{\{EMAIL_CONSENT_HEADING\}\}/);
+    assert.match(view, /<small>Unsubscribe anytime\.<\/small>/);
+    assert.equal((view.match(/class="channel-consent-copy"/g) || []).length, 2);
+    assert.doesNotMatch(view, /Invite me to future events from this host/);
   }
 });
 

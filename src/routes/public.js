@@ -40,6 +40,12 @@ const {
 const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function emailConsentHeading(hostName) {
+  const host = String(hostName || '').trim().replace(/\s+/g, ' ').slice(0, 120) || 'this host';
+  return `Email me invitations to future events from ${host}.`;
+}
+
 const RSVP_RATE_WINDOW_MS = 15 * 60 * 1000;
 const rsvpRateLimiter = createRateLimiter({
   windowMs: RSVP_RATE_WINDOW_MS,
@@ -571,6 +577,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
       .replace(/{{SMS_CONSENT_HEADING}}/g, esc(smsConsentHeading(event.org_name)))
       .replace(/{{SMS_CONSENT_DISCLOSURE}}/g, esc(SMS_CONSENT_DISCLOSURE))
+      .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
       .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
