@@ -123,6 +123,12 @@
 .credits-payment-methods { display:grid;gap:10px; }
 .credits-payment-methods paypal-button,.credits-payment-methods venmo-button { display:block;width:100%;min-height:48px; }
 .credits-payment-methods paypal-button[hidden],.credits-payment-methods venmo-button[hidden] { display:none; }
+.payment-progress { display:grid;gap:8px;margin-bottom:4px; }
+.payment-progress[hidden] { display:none; }
+.payment-progress-copy { display:flex;align-items:center;justify-content:space-between;gap:16px;color:var(--sg-text-dim);font-size:11px; }
+.payment-progress-copy strong { color:var(--sg-text);font-variant-numeric:tabular-nums; }
+.payment-progress-track { height:5px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.09); }
+.payment-progress-track span { display:block;width:0;height:100%;border-radius:inherit;background:var(--sg-accent);transition:width .28s ease; }
 .credits-status { min-height:18px;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
 .credits-status.error { color:var(--sg-danger); }
 body.payment-sheet-open { overflow:hidden; }
@@ -189,5 +195,5 @@ body.payment-sheet-open { overflow:hidden; }
   .slug-field-prefix { max-width:55%;overflow:hidden;text-overflow:ellipsis; }
 }
 @media(prefers-reduced-motion:reduce) {
-  .settings-rail-link,.credit-pack { transition:none; }
+  .settings-rail-link,.credit-pack,.payment-progress-track span { transition:none; }
 }

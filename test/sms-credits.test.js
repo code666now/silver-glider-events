@@ -33,8 +33,8 @@ function response(status, payload, headers = {}) {
 test('SMS credit packs are fixed server-side and feature access protects sandbox users', () => {
   assert.deepEqual(publicPacks(), [
     { key: 'starter', credits: 300, amountCents: 2000, currency: 'USD' },
-    { key: 'standard', credits: 1000, amountCents: 5000, currency: 'USD' },
-    { key: 'pro', credits: 5000, amountCents: 20000, currency: 'USD' }
+    { key: 'standard', credits: 500, amountCents: 3500, currency: 'USD' },
+    { key: 'pro', credits: 1000, amountCents: 6000, currency: 'USD' }
   ]);
   assert.equal(packForKey('starter'), SMS_CREDIT_PACKS.starter);
   assert.throws(() => packForKey('made-up'), /valid SMS credit pack/);
@@ -194,9 +194,16 @@ test('Host Settings owns the feature while secrets remain server-only', () => {
   assert.match(settings, /SMS credits belong to this host and never expire/);
   assert.match(settings, /id="sms-credit-packs"/);
   assert.match(settings, /id="sms-payment-sheet"[\s\S]*id="sms-paypal-button"[\s\S]*id="sms-venmo-button"/);
+  assert.match(settings, /id="sms-payment-progress"[\s\S]*role="progressbar"[\s\S]*aria-valuemax="100"/);
   assert.match(settings, /id="sms-credit-continue" disabled>Continue to payment/);
   assert.match(settingsClient, /function unitPrice\(pack\)/);
+  assert.match(settingsClient, /credits selected/);
   assert.match(settingsClient, /function openPaymentSheet\(\)/);
+  assert.match(settingsClient, /function setPaymentProgress\(percent, label/);
+  assert.match(settingsClient, /setPaymentProgress\(20, 'Connecting securely'\)/);
+  assert.match(settingsClient, /setPaymentProgress\(100, available \? 'Payment options ready'/);
+  assert.match(settingsClient, /const available = Number\(Boolean\(paypalSession\)\) \+ Number\(Boolean\(venmoSession\)\)/);
+  assert.doesNotMatch(settingsClient, /Loading secure payment options/);
   assert.match(settingsClient, /components: \['paypal-payments', 'venmo-payments'\]/);
   assert.ok(settingsClient.indexOf('function openPaymentSheet()') < settingsClient.indexOf('initializePayPalPayments();'));
   assert.doesNotMatch(settingsClient.match(/function chooseCreditPack[\s\S]*?\n\}/)?.[0] || '', /initializePayPalPayments/);

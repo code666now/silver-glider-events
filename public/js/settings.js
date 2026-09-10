@@ -30,6 +30,7 @@ let paypalSdkPromise = null;
 let paypalSessionsPromise = null;
 let paymentBusy = false;
 let paymentSheetTrigger = null;
+let paymentMethodsReady = false;
 
 function settingsHostInitials(name) {
   return String(name || 'SG').trim().split(/\s+/).slice(0, 2)
@@ -221,6 +222,7 @@ function chooseCreditPack(pack) {
     button.setAttribute('aria-pressed', String(button.dataset.packKey === pack.key));
   });
   settingsElement('sms-credit-continue').disabled = false;
+  settingsElement('sms-credit-load-status').textContent = `${pack.credits.toLocaleString('en-US')} credits selected.`;
   settingsElement('sms-credit-result').hidden = true;
 }
 
@@ -298,6 +300,16 @@ function loadPayPalSdk() {
   return paypalSdkPromise;
 }
 
+function setPaymentProgress(percent, label, { hidden = false } = {}) {
+  const progress = settingsElement('sms-payment-progress');
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  progress.hidden = hidden;
+  progress.setAttribute('aria-valuenow', String(value));
+  settingsElement('sms-payment-progress-value').textContent = `${value}%`;
+  settingsElement('sms-payment-progress-label').textContent = label;
+  settingsElement('sms-payment-progress-bar').style.width = `${value}%`;
+}
+
 async function createCreditOrder(paymentMethod) {
   if (!selectedCreditPack) throw new Error('Choose a credit pack');
   const result = await api('/api/sms-credits/orders', {
@@ -358,16 +370,23 @@ async function startPayPalSession(session, paymentMethod) {
 }
 
 async function initializePayPalPayments() {
-  if (paypalSessionsPromise) return paypalSessionsPromise;
+  if (paypalSessionsPromise) {
+    if (paymentMethodsReady) setPaymentProgress(100, 'Payment options ready', { hidden: true });
+    return paypalSessionsPromise;
+  }
   paypalSessionsPromise = (async () => {
+    setPaymentProgress(20, 'Connecting securely');
     const sdk = await loadPayPalSdk();
     if (!sdk?.createInstance) throw new Error('Payment options could not load');
+    setPaymentProgress(50, 'Secure connection ready');
     const instance = await sdk.createInstance({
       clientId: smsCreditState.paypal.clientId,
       components: ['paypal-payments', 'venmo-payments'],
       pageType: 'checkout'
     });
+    setPaymentProgress(70, 'Checking payment methods');
     const methods = await instance.findEligibleMethods({ currencyCode: 'USD' });
+    setPaymentProgress(85, 'Preparing payment buttons');
     const options = {
       onApprove: finishCreditPurchase,
       onCancel: () => {
@@ -381,25 +400,33 @@ async function initializePayPalPayments() {
         settingsElement('sms-credit-status').classList.add('error');
       }
     };
-    let available = 0;
+    let paypalSession = null;
+    let venmoSession = null;
     if (methods.isEligible('paypal')) {
-      const session = await instance.createPayPalOneTimePaymentSession(options);
-      settingsElement('sms-paypal-button').hidden = false;
-      settingsElement('sms-paypal-button').addEventListener('click', () => startPayPalSession(session, 'paypal'));
-      available += 1;
+      paypalSession = await instance.createPayPalOneTimePaymentSession(options);
     }
     if (methods.isEligible('venmo')) {
-      const session = await instance.createVenmoOneTimePaymentSession(options);
-      settingsElement('sms-venmo-button').hidden = false;
-      settingsElement('sms-venmo-button').addEventListener('click', () => startPayPalSession(session, 'venmo'));
-      available += 1;
+      venmoSession = await instance.createVenmoOneTimePaymentSession(options);
     }
+    const available = Number(Boolean(paypalSession)) + Number(Boolean(venmoSession));
+    if (paypalSession) {
+      settingsElement('sms-paypal-button').hidden = false;
+      settingsElement('sms-paypal-button').addEventListener('click', () => startPayPalSession(paypalSession, 'paypal'));
+    }
+    if (venmoSession) {
+      settingsElement('sms-venmo-button').hidden = false;
+      settingsElement('sms-venmo-button').addEventListener('click', () => startPayPalSession(venmoSession, 'venmo'));
+    }
+    paymentMethodsReady = available > 0;
+    setPaymentProgress(100, available ? 'Payment options ready' : 'Payment check complete', { hidden: true });
     settingsElement('sms-credit-status').textContent = available
       ? 'Choose PayPal or Venmo to continue.'
       : 'PayPal and Venmo are not available in this browser.';
     settingsElement('sms-credit-status').classList.toggle('error', !available);
   })().catch(error => {
     paypalSessionsPromise = null;
+    paymentMethodsReady = false;
+    setPaymentProgress(0, 'Payment options could not load', { hidden: true });
     settingsElement('sms-credit-status').textContent = error.message || 'Payment options could not load. Close this sheet and try again.';
     settingsElement('sms-credit-status').classList.add('error');
   });
@@ -410,8 +437,9 @@ function openPaymentSheet() {
   if (!selectedCreditPack || !smsCreditState?.checkoutReady) return;
   paymentSheetTrigger = document.activeElement;
   settingsElement('sms-credit-selection').textContent = `${selectedCreditPack.credits.toLocaleString('en-US')} credits · ${creditMoney(selectedCreditPack.amountCents)}`;
-  settingsElement('sms-credit-status').textContent = 'Loading secure payment options…';
+  settingsElement('sms-credit-status').textContent = paymentMethodsReady ? 'Choose PayPal or Venmo to continue.' : '';
   settingsElement('sms-credit-status').classList.remove('error');
+  setPaymentProgress(paymentMethodsReady ? 100 : 10, paymentMethodsReady ? 'Payment options ready' : 'Starting secure payment', { hidden: paymentMethodsReady });
   settingsElement('sms-payment-sheet').hidden = false;
   settingsElement('sms-payment-sheet').setAttribute('aria-hidden', 'false');
   document.body.classList.add('payment-sheet-open');

@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 9, 2026
+**Last updated:** September 9, 2026 (v1.0.75)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -141,7 +141,7 @@ Magic-link login + persistent sessions · **Follow Host V1** with a lightweight 
 - **Artwork-adaptive RSVP accents (updated August 4):** cover and flyer uploads request Cloudinary color data, free photos use the same shared browser sampler, and migration `018_event_artwork_accent.sql` stores one normalized event accent. RSVP confirmations use the subject **RSVP confirmed for [Event Title]** and move directly from the **RSVP CONFIRMED** label to the event title, without a generic “You’re on the list” headline. The email always keeps its original black Silver Glider shell, dark-gray cards, and neutral typography. The primary **View Event** button uses the saved artwork accent; RSVP status, linked host, conditional **Music vibe**, and Calendar/Maps/Manage RSVP actions use a brighter WCAG-safe tint from the same hue. `src/routes/email-icons.js` returns ordinary cacheable recolored PNG icons so compatibility does not rely on CSS filters. Near-black, near-white, gray, or muddy colors are rejected; button text automatically chooses the stronger black/white WCAG contrast; missing or unusable palettes fall back to Silver Glider teal. Shared reminders and non-RSVP transactional emails remain unchanged.
 - **Two-artist Event Vibe (implemented August 4):** migration `019_event_vibe_choices.sql` adds optional labels and a second supported music/media URL while preserving the original `event_vibe_url`. Existing one-link events render exactly the original single embed. Hosts can opt into **Add another artist**, label both links, and show compact accessible artist tabs immediately above one active player on both Standard and Flyer pages. Inactive players remain inside inert templates and do not load until selected, preventing stacked video/audio and protecting mobile scroll performance. Duplication preserves all Event Vibe choices; confirmation email behavior remains based on the original primary link.
 - **Automated tests:** `npm test` currently runs **188 tests**, including real HTTP/PostgreSQL integration coverage for authentication, RSVP, privacy, separate SMS consent, paid tomorrow-SMS eligibility/pricing/atomic debits/deduplication/status callbacks/STOP handling, rendering, event management, previous-guest invitation privacy/delivery, admin-only Twilio proof boundaries, PayPal/Venmo SMS credit pricing and no-shipping wallet binding, capture behavior and ledger integrity, webhook verification/refunds, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and the duplicate-event dashboard interaction. Integration tests are hard-guarded to the dedicated local `sge_test` database. `npm run check:static` validates syntax, local imports/assets, public-template placeholders, and browser event-data usage; `npm run check` runs the complete verification sequence. Public host routing lives in `src/routes/public-hosts.js`, while event, RSVP, comment, calendar, and attendee flows remain in `src/routes/public.js`.
-- **Repository backup:** GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through v1.0.74; Railway remains the authoritative production deployment path.
+- **Repository backup:** GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through v1.0.75; Railway remains the authoritative production deployment path.
 
 ## 11. Future (planned, not in V1)
 Commerce API contract wiring and checkout handoff completion · multiple brands/cohosts and advanced host analytics (possible Pro tier) · additional controlled SMS lifecycle moments such as event announcements, tickets-on-sale, and important updates · broader public event discovery. Ticket payment processing, inventory, orders, issued tickets, verification, refunds, payouts, and Stripe Connect remain owned by the separate Commerce service.
@@ -154,15 +154,16 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/silver-glider-events`
 - Branch: `main`
-- Current release: annotated tag `v1.0.74` on the current release commit. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release: annotated tag `v1.0.75` on the current release commit. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
-- Production `/health` must report version `1.0.74` and the current release SHA after deployment.
-- GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through `v1.0.74`.
+- Production `/health` must report version `1.0.75` and the current release SHA after deployment.
+- GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through `v1.0.75`.
 - `.git-sha` is intentionally left modified after deployment so Railway receives the release SHA. Do not revert or include it blindly in a later commit.
 - Migrations currently run from `001_initial.sql` through `032_paid_sms_notifications.sql`.
 
 ### Most recently completed
 
+- `v1.0.75` adds accessible milestone-based progress while payment options initialize, removes the loading treatment once PayPal and Venmo are ready, and reprices the fixed SMS packs to 300/$20, 500/$35, and 1,000/$60 on both the server and the UI.
 - `v1.0.74` replaces the oversized Settings dashboard with focused Account, Messaging, and Host page destinations, responsive navigation, isolated save boundaries, and a simpler SMS-credit purchase flow.
 - `v1.0.73` marks PayPal and Venmo SMS-credit orders as no-shipping digital checkouts and binds each order to the selected wallet, removing the incorrect delivery-address prompt while preserving fixed pricing and verified fulfillment.
 - `v1.0.72` hides the event-level text action when no current RSVP has opted into SMS, then progressively reveals **Add text notification** with subscriber count, timing, and paid-credit context after the first eligible guest. Existing batches stay visible for delivery and refund status.

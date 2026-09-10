@@ -200,6 +200,10 @@
         <button class="payment-sheet-close" id="sms-payment-close" type="button" aria-label="Close payment options">×</button>
       </div>
       <div class="credits-payment-methods" id="sms-credit-methods">
+        <div class="payment-progress" id="sms-payment-progress" role="progressbar" aria-label="Preparing payment options" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+          <div class="payment-progress-copy"><span id="sms-payment-progress-label">Starting secure payment</span><strong id="sms-payment-progress-value">0%</strong></div>
+          <div class="payment-progress-track" aria-hidden="true"><span id="sms-payment-progress-bar"></span></div>
+        </div>
         <paypal-button id="sms-paypal-button" type="pay" hidden></paypal-button>
         <venmo-button id="sms-venmo-button" type="pay" hidden></venmo-button>
         <p class="credits-status" id="sms-credit-status" role="status" aria-live="polite"></p>

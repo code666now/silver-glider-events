@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.75
+
+Released September 9, 2026.
+
+### Changed
+
+* Added accessible, milestone-based percentage progress while PayPal and Venmo payment options initialize, then removes the loading treatment as soon as the buttons are ready.
+* Updated the fixed server-priced SMS credit packs to 300 credits for $20, 500 credits for $35, and 1,000 credits for $60.
+
 ## 1.0.74
 
 Released September 9, 2026.

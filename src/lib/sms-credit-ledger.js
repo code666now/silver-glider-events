@@ -2,8 +2,8 @@ const crypto = require('crypto');
 
 const SMS_CREDIT_PACKS = Object.freeze({
   starter: Object.freeze({ key: 'starter', credits: 300, amountCents: 2000, currency: 'USD' }),
-  standard: Object.freeze({ key: 'standard', credits: 1000, amountCents: 5000, currency: 'USD' }),
-  pro: Object.freeze({ key: 'pro', credits: 5000, amountCents: 20000, currency: 'USD' })
+  standard: Object.freeze({ key: 'standard', credits: 500, amountCents: 3500, currency: 'USD' }),
+  pro: Object.freeze({ key: 'pro', credits: 1000, amountCents: 6000, currency: 'USD' })
 });
 
 class SmsCreditError extends Error {

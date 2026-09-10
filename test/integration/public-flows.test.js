@@ -1806,7 +1806,7 @@ test('host SMS credit checkout fulfills once and verified refund webhooks adjust
     assert.equal(initial.checkoutReady, true);
     assert.equal(initial.balance, 0);
     assert.deepEqual(initial.packs.map(pack => [pack.credits, pack.amountCents]), [
-      [300, 2000], [1000, 5000], [5000, 20000]
+      [300, 2000], [500, 3500], [1000, 6000]
     ]);
     assert.equal(JSON.stringify(initial).includes('integration-client-secret'), false);
 
