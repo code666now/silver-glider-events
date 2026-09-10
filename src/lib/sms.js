@@ -92,7 +92,7 @@ function createSmsService({
 } = {}) {
   let client = null;
 
-  async function sendSms({ to, body }) {
+  async function sendSms({ to, body, statusCallback }) {
     const recipient = normalizeE164(to);
     const messageBody = String(body || '').trim();
     if (!messageBody || messageBody.length > 1600) {
@@ -105,11 +105,13 @@ function createSmsService({
     const config = readConfig(env);
     try {
       if (!client) client = clientFactory(config.accountSid, config.authToken);
-      const message = await client.messages.create({
+      const payload = {
         to: recipient,
         body: messageBody,
         messagingServiceSid: config.messagingServiceSid
-      });
+      };
+      if (statusCallback) payload.statusCallback = String(statusCallback);
+      const message = await client.messages.create(payload);
       const sid = String(message?.sid || '').trim();
       if (!/^(SM|MM)[0-9a-f]{32}$/i.test(sid)) {
         throw new SmsDeliveryError('SMS provider returned an invalid response', {

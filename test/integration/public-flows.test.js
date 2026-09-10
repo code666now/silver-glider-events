@@ -112,6 +112,17 @@ async function waitForConfirmation(email) {
   assert.fail(`confirmation dispatch did not finish for ${email}`);
 }
 
+async function waitForSmsBatch(batchId) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const { rows } = await pool.query(
+      'SELECT status FROM sms_notification_batches WHERE id=$1', [batchId]
+    );
+    if (['sent', 'failed'].includes(rows[0]?.status)) return rows[0].status;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.fail(`SMS batch ${batchId} did not finish`);
+}
+
 test.before(async () => {
   await migrate();
   await resetDatabase();
@@ -297,6 +308,152 @@ test('RSVP SMS consent requires a valid phone and powers the host eligibility co
     waitForConfirmation('text-guest@example.test'),
     waitForConfirmation('phone-only@example.test')
   ]);
+});
+
+test('tomorrow SMS requires purchased host credits, debits once, deduplicates phones, and records delivery', async () => {
+  const tomorrow = (await pool.query(
+    "SELECT ((CURRENT_TIMESTAMP AT TIME ZONE 'America/Los_Angeles')::date + 1)::text AS date"
+  )).rows[0].date;
+  const event = await createEvent({
+    slug: 'paid-tomorrow-sms',
+    title: 'Tomorrow Night',
+    event_date: tomorrow,
+    timezone: 'America/Los_Angeles'
+  });
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const consent = {
+    phone: '+14155551234',
+    sms_optin: true,
+    sms_consent_at: new Date(),
+    sms_consent_source: 'event_rsvp',
+    sms_consent_version: 'rsvp_sms_v1',
+    sms_consent_text: 'Text me event updates through Silver Glider.'
+  };
+  await createRsvp(event.id, { email: 'sms-one@example.test', ...consent });
+  const recipient = await createRsvp(event.id, {
+    email: 'sms-duplicate@example.test',
+    first_name: 'Duplicate',
+    ...consent
+  });
+  await createRsvp(event.id, {
+    email: 'sms-no-consent@example.test',
+    phone: '+14155559876',
+    sms_optin: false
+  });
+
+  const noCredits = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow-preview`, {
+    headers: { cookie }
+  });
+  assert.equal(noCredits.status, 200);
+  const blockedPreview = await noCredits.json();
+  assert.equal(blockedPreview.recipientCount, 1, 'the same phone is charged only once');
+  assert.equal(blockedPreview.canSend, false);
+  assert.match(blockedPreview.reason, /Buy .* more SMS credit/);
+
+  const blockedSend = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ confirm: 'SEND_TOMORROW_SMS', fingerprint: blockedPreview.fingerprint })
+  });
+  assert.equal(blockedSend.status, 402);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM sms_notification_batches')).rows[0].count, 0);
+
+  await pool.query('UPDATE organizers SET sms_credits=5 WHERE id=$1', [organizerId]);
+  const readyPreview = await (await fetch(
+    `${baseUrl}/api/events/${event.id}/sms/tomorrow-preview`, { headers: { cookie } }
+  )).json();
+  assert.equal(readyPreview.canSend, true);
+  assert.equal(readyPreview.creditCost, readyPreview.segmentCount);
+  assert.match(readyPreview.messageBody, /^Test Host: Tomorrow Night is tomorrow at Test Hall\./);
+  assert.match(readyPreview.messageBody, /Reply STOP to opt out\.$/);
+  assert.deepEqual(readyPreview.recipients.map(item => item.phone), ['•••• 1234']);
+
+  const stale = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ confirm: 'SEND_TOMORROW_SMS', fingerprint: '0'.repeat(64) })
+  });
+  assert.equal(stale.status, 409);
+  assert.equal((await pool.query('SELECT sms_credits FROM organizers WHERE id=$1', [organizerId])).rows[0].sms_credits, 5);
+
+  const originalSendSms = sms.sendSms;
+  const sends = [];
+  sms.sendSms = async payload => {
+    sends.push(payload);
+    const sid = `SM${'d'.repeat(32)}`;
+    const token = payload.statusCallback.split('/').pop();
+    const earlyCallback = await fetch(`${baseUrl}/api/webhooks/twilio/status/${token}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ MessageSid: sid, MessageStatus: 'delivered' })
+    });
+    assert.equal(earlyCallback.status, 204, 'a callback can arrive before Twilio returns the create response');
+    return { sid, status: 'accepted', recipient: payload.to };
+  };
+  try {
+    const queued = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ confirm: 'SEND_TOMORROW_SMS', fingerprint: readyPreview.fingerprint })
+    });
+    assert.equal(queued.status, 202);
+    const payload = await queued.json();
+    assert.equal(payload.queued, 1);
+    assert.equal(payload.balance, 5 - readyPreview.creditCost);
+    await waitForSmsBatch(payload.batch.id);
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].to, '+14155551234');
+    assert.equal(sends[0].body, readyPreview.messageBody);
+    assert.match(sends[0].statusCallback, /\/api\/webhooks\/twilio\/status\/[0-9a-f-]{36}$/);
+
+    const ledger = (await pool.query(
+      `SELECT kind,credits_delta,balance_after,external_key FROM sms_credit_transactions
+        WHERE organizer_id=$1 ORDER BY id`, [organizerId]
+    )).rows;
+    assert.deepEqual(ledger, [{
+      kind: 'send',
+      credits_delta: -readyPreview.creditCost,
+      balance_after: 5 - readyPreview.creditCost,
+      external_key: `sms:batch:${payload.batch.id}:send`
+    }]);
+    const delivery = (await pool.query(
+      'SELECT * FROM sms_notification_recipients WHERE batch_id=$1', [payload.batch.id]
+    )).rows[0];
+    assert.equal(delivery.rsvp_id, recipient.id);
+    assert.equal(delivery.provider_message_sid, `SM${'d'.repeat(32)}`);
+    assert.equal(delivery.status, 'delivered', 'the create response must not overwrite a newer callback');
+
+    const callback = await fetch(`${baseUrl}/api/webhooks/twilio/status/${delivery.status_token}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ MessageSid: delivery.provider_message_sid, MessageStatus: 'delivered' })
+    });
+    assert.equal(callback.status, 204);
+    const delivered = (await pool.query(
+      'SELECT status FROM sms_notification_recipients WHERE id=$1', [delivery.id]
+    )).rows[0];
+    assert.equal(delivered.status, 'delivered');
+
+    const duplicate = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ confirm: 'SEND_TOMORROW_SMS', fingerprint: readyPreview.fingerprint })
+    });
+    assert.equal(duplicate.status, 409);
+
+    const stop = await fetch(`${baseUrl}/api/webhooks/twilio/inbound`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ From: '+14155551234', Body: 'STOP', OptOutType: 'STOP' })
+    });
+    assert.equal(stop.status, 200);
+    const optouts = (await pool.query(
+      'SELECT sms_optin,sms_opted_out_at FROM rsvps WHERE phone=$1', ['+14155551234']
+    )).rows;
+    assert.equal(optouts.every(row => row.sms_optin === false && row.sms_opted_out_at instanceof Date), true);
+  } finally {
+    sms.sendSms = originalSendSms;
+  }
 });
 
 test('live event editing is visible only to the owner and saves through the protected event API', async () => {

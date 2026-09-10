@@ -68,7 +68,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /\$\('hero-link'\)\.href = manageImage/);
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);
   assert.match(client, /class="guest-inline-email"/);
-  assert.match(client, /\[loadLineStatus\(\), loadPreviousGuests\(\), loadFollowers\(\)\]/);
+  assert.match(client, /\[loadLineStatus\(\), loadPreviousGuests\(\), loadFollowers\(\), loadSmsPreview\(\)\]/);
   assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), \.\.\.secondaryTasks\]\)/);
   assert.match(client, /function showManageLoadError\(\)/);
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];

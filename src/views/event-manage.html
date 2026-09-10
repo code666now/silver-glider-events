@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
   <link rel="stylesheet" href="/css/previous-guest-invites.css">
+  <link rel="stylesheet" href="/css/sms-notifications.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
@@ -408,11 +409,11 @@
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite previous guests</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Bring back guests from one of your past events.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
-        <div class="promotion-action promotion-action-readonly" id="sms-audience" role="status" aria-live="polite">
+        <button class="promotion-action" id="sms-audience" type="button" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 6h6M10 18h4"/></svg></span>
-          <span class="promotion-action-copy"><strong class="promotion-action-title">Text alerts</strong><span class="promotion-action-description" id="sms-audience-copy">Checking SMS eligibility…</span></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="sms-audience-title">Text alerts</strong><span class="promotion-action-description" id="sms-audience-copy">Checking SMS eligibility…</span></span>
           <span class="promotion-action-count" id="sms-audience-count">—</span>
-        </div>
+        </button>
         <button class="promotion-action" id="announce" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 10a2.5 2.5 0 0 1 2 4M6 10a2.5 2.5 0 0 0-2 4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="announce-title">Email my followers</strong><span class="promotion-action-description" id="announce-copy">Send this event once to people following your host page.</span></span>
@@ -508,6 +509,27 @@
       <footer class="previous-guests-dialog-foot">
         <button class="sg-btn sg-btn-ghost" type="button" data-close-previous-guests>Cancel</button>
         <button class="sg-btn sg-btn-primary" id="previous-guests-send" type="button" disabled>Send invitations</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="sms-dialog" id="sms-dialog" aria-labelledby="sms-dialog-title">
+    <form class="sms-dialog-form" id="sms-dialog-form">
+      <header class="sms-dialog-head">
+        <div>
+          <p class="sms-dialog-kicker">Paid SMS</p>
+          <h2 id="sms-dialog-title">Text guests tomorrow</h2>
+          <p>Review the exact message, audience, and credit cost before anything sends.</p>
+        </div>
+        <button class="sms-dialog-close" type="button" data-close-sms aria-label="Close">×</button>
+      </header>
+      <div class="sms-dialog-body" id="sms-dialog-content" aria-live="polite">
+        <div class="sms-dialog-loading">Building a current preview…</div>
+      </div>
+      <footer class="sms-dialog-foot">
+        <a class="sms-buy-credits" id="sms-buy-credits" href="/settings" hidden>Buy SMS credits in Settings →</a>
+        <button class="sg-btn sg-btn-ghost" type="button" data-close-sms>Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="sms-send" type="button" disabled>Send texts</button>
       </footer>
     </form>
   </dialog>

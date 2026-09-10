@@ -1,0 +1,46 @@
+.sms-dialog {
+  width:min(620px,calc(100vw - 28px));max-height:min(860px,calc(100vh - 28px));margin:auto;padding:0;
+  overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:22px;
+  background:#111113;color:var(--sg-text);box-shadow:0 24px 90px rgba(0,0,0,.68);
+}
+.sms-dialog::backdrop { background:rgba(0,0,0,.72);backdrop-filter:blur(8px); }
+.sms-dialog-form { display:flex;max-height:min(860px,calc(100vh - 28px));flex-direction:column; }
+.sms-dialog-head { display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:24px 24px 18px;border-bottom:1px solid var(--sg-border-soft); }
+.sms-dialog-kicker { margin:0 0 6px;color:var(--sg-accent);font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase; }
+.sms-dialog-head h2 { margin:0 0 6px;font-size:24px; }
+.sms-dialog-head p:last-child { margin:0;color:var(--sg-text-dim);font-size:12px;line-height:1.5; }
+.sms-dialog-close { width:34px;height:34px;flex:0 0 auto;border:1px solid var(--sg-border);border-radius:50%;background:transparent;color:var(--sg-text-dim);font-size:20px;cursor:pointer; }
+.sms-dialog-body { overflow:auto;padding:20px 24px 24px; }
+.sms-preview-message { margin:0 0 16px;padding:16px;border:1px solid rgba(28,197,190,.2);border-radius:15px;background:rgba(28,197,190,.055); }
+.sms-preview-message span { display:block;margin-bottom:7px;color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase; }
+.sms-preview-message p { margin:0;color:var(--sg-text);font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere; }
+.sms-preview-cost { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px; }
+.sms-preview-cost div { min-width:0;padding:12px;border:1px solid var(--sg-border-soft);border-radius:13px;background:rgba(255,255,255,.018); }
+.sms-preview-cost strong { display:block;margin-bottom:3px;font-family:var(--sg-font-display);font-size:20px;font-weight:400; }
+.sms-preview-cost span { color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
+.sms-preview-note { margin:0 0 15px;padding:11px 12px;border:1px solid rgba(245,185,66,.25);border-radius:11px;background:rgba(245,185,66,.06);color:var(--sg-text-dim);font-size:11px;line-height:1.5; }
+.sms-preview-note.is-ready { border-color:rgba(28,197,190,.2);background:rgba(28,197,190,.05); }
+.sms-preview-recipients { margin-top:18px; }
+.sms-preview-recipients h3 { margin:0 0 9px;color:var(--sg-text-faint);font-size:10px;letter-spacing:.12em;text-transform:uppercase; }
+.sms-recipient-list { max-height:210px;overflow:auto;border:1px solid var(--sg-border-soft);border-radius:13px; }
+.sms-recipient { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--sg-border-soft);font-size:12px; }
+.sms-recipient:last-child { border-bottom:0; }
+.sms-recipient span { color:var(--sg-text-faint);font-variant-numeric:tabular-nums; }
+.sms-dialog-loading { padding:46px 16px;color:var(--sg-text-faint);font-size:13px;text-align:center; }
+.sms-dialog-foot { display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid var(--sg-border-soft);background:rgba(0,0,0,.16); }
+.sms-dialog-foot .sms-buy-credits { margin-right:auto;color:var(--sg-accent);font-size:11px;font-weight:700;text-decoration:none; }
+.sms-dialog-foot .sg-btn { min-height:42px; }
+.sms-dialog-status { padding:24px;text-align:center; }
+.sms-dialog-status strong { display:block;margin-bottom:6px;font-size:18px; }
+.sms-dialog-status p { margin:0;color:var(--sg-text-dim);font-size:12px;line-height:1.5; }
+
+@media (max-width:620px) {
+  .sms-dialog { width:100vw;max-width:none;max-height:94vh;margin:auto 0 0;border-right:0;border-bottom:0;border-left:0;border-radius:22px 22px 0 0; }
+  .sms-dialog-form { max-height:94vh; }
+  .sms-dialog-head,.sms-dialog-body,.sms-dialog-foot { padding-right:18px;padding-left:18px; }
+  .sms-preview-cost strong { font-size:17px; }
+  .sms-preview-cost span { font-size:8px; }
+  .sms-dialog-foot { flex-wrap:wrap; }
+  .sms-dialog-foot .sms-buy-credits { width:100%;margin:0 0 2px;text-align:center; }
+  .sms-dialog-foot .sg-btn { flex:1; }
+}

@@ -301,6 +301,55 @@ async function creditSummary(db, organizerId, { limit = 20 } = {}) {
   };
 }
 
+async function reserveSendCredits(client, { organizerId, batchId, credits, metadata = {} }) {
+  const amount = Number(credits);
+  if (!Number.isInteger(amount) || amount < 1) {
+    throw new SmsCreditError('SMS credit cost is invalid', { code: 'invalid_sms_credit_cost', status: 400 });
+  }
+  const { rows } = await client.query(
+    `UPDATE organizers
+        SET sms_credits=sms_credits-$2,updated_at=NOW()
+      WHERE id=$1 AND sms_credits >= $2
+      RETURNING sms_credits`,
+    [organizerId, amount]
+  );
+  if (!rows.length) {
+    throw new SmsCreditError('Buy more SMS credits before sending this text', {
+      code: 'insufficient_sms_credits', status: 402
+    });
+  }
+  const balance = Number(rows[0].sms_credits);
+  await client.query(
+    `INSERT INTO sms_credit_transactions
+       (organizer_id,kind,credits_delta,balance_after,external_key,metadata)
+     VALUES ($1,'send',$2,$3,$4,$5::jsonb)`,
+    [organizerId, -amount, balance, `sms:batch:${batchId}:send`, JSON.stringify(metadata)]
+  );
+  return balance;
+}
+
+async function refundSendCredits(client, { organizerId, batchId, credits, metadata = {} }) {
+  const amount = Number(credits);
+  if (!Number.isInteger(amount) || amount < 1) return null;
+  const externalKey = `sms:batch:${batchId}:refund`;
+  const existing = await client.query(
+    'SELECT balance_after FROM sms_credit_transactions WHERE external_key=$1', [externalKey]
+  );
+  if (existing.rows.length) return Number(existing.rows[0].balance_after);
+  const balance = Number((await client.query(
+    `UPDATE organizers SET sms_credits=sms_credits+$2,updated_at=NOW()
+      WHERE id=$1 RETURNING sms_credits`,
+    [organizerId, amount]
+  )).rows[0].sms_credits);
+  await client.query(
+    `INSERT INTO sms_credit_transactions
+       (organizer_id,kind,credits_delta,balance_after,external_key,metadata)
+     VALUES ($1,'adjustment',$2,$3,$4,$5::jsonb)`,
+    [organizerId, amount, balance, externalKey, JSON.stringify(metadata)]
+  );
+  return balance;
+}
+
 module.exports = {
   SMS_CREDIT_PACKS,
   SmsCreditError,
@@ -316,5 +365,7 @@ module.exports = {
   markPurchaseFailed,
   packForKey,
   publicPacks,
-  purchaseForOrganizerOrder
+  purchaseForOrganizerOrder,
+  reserveSendCredits,
+  refundSendCredits
 };

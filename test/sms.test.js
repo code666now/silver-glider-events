@@ -75,6 +75,17 @@ test('server SMS transport uses the Messaging Service and returns only safe deli
   assert.equal(Object.hasOwn(calls[0], 'from'), false);
 });
 
+test('server SMS transport attaches a provider status callback only when supplied', async () => {
+  const { service, calls } = fakeService();
+  await service.sendSms({
+    to: '+14155551234',
+    body: 'Status-aware message',
+    statusCallback: 'https://silvergliderevents.com/api/webhooks/twilio/status/test-token'
+  });
+  assert.equal(calls[0].statusCallback, 'https://silvergliderevents.com/api/webhooks/twilio/status/test-token');
+  assert.equal(Object.hasOwn(calls[0], 'from'), false);
+});
+
 test('test sender always uses the approved fixed message', async () => {
   const { service, calls } = fakeService();
   await service.sendTestSms('+14155551234');

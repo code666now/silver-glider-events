@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.71
+
+Released September 9, 2026.
+
+### Added
+
+* Added the first paid host lifecycle SMS action: on the day before a published, non-Secret event, hosts can review an exact server-generated reminder, its opted-in recipients, segment count, credit cost, and remaining balance before explicitly confirming the send.
+* Added queued Twilio Messaging Service delivery with per-recipient retries, status callbacks, delivery auditing, and platform-wide RSVP consent removal when a guest texts STOP.
+
+### Security & reliability
+
+* Required purchased host credits for every promoter send, reserved them atomically before delivery, prevented duplicate tomorrow batches, and provided no free allowance, admin bypass, audience override, or free-form message field.
+* Rechecked consent immediately before each send, deduplicated shared phone numbers, refunded only requests Twilio never accepted, masked recipient numbers in the browser, and kept Twilio credentials and full destinations server-side.
+* Added full PostgreSQL flow coverage and responsive desktop/mobile verification. The complete 185-test suite passes.
+
 ## 1.0.70
 
 Released September 9, 2026.

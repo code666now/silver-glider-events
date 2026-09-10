@@ -9,6 +9,7 @@ const { renderLegalPage } = require('./lib/legal-pages');
 const { version: APP_VERSION } = require('../package.json');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3100;
 
 const VIEWS = path.join(__dirname, 'views');
@@ -26,6 +27,7 @@ app.use(
   require('./routes/paypal-webhook')
 );
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Routes
@@ -39,6 +41,7 @@ app.use(require('./routes/invites'));
 app.use(require('./routes/follows'));
 app.use(require('./routes/commerce'));
 app.use(require('./routes/sms-credits'));
+app.use(require('./routes/sms-notifications'));
 app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
@@ -110,6 +113,7 @@ async function start() {
   require('./jobs/reminders').startReminderCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
+  require('./jobs/sms-notifications').startSmsNotificationCron();
   return server;
 }
 
