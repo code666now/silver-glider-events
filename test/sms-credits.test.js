@@ -190,12 +190,16 @@ test('Host Settings owns the feature while secrets remain server-only', () => {
   const webhook = read('src/routes/stripe-sms-webhook.js');
   const index = read('src/index.js');
   const publicFiles = [settings, settingsClient, ...['public/js/api.js', 'public/css/main.css', 'public/css/settings.css'].map(read)].join('\n');
-  assert.match(settings, /id="sms-credits-title">Messaging/);
-  assert.match(settings, /SMS credits belong to this host and never expire/);
+  assert.match(settings, /id="sms-credits-title">Add funds for texting/);
+  assert.match(settings, /<strong>Text your guests<\/strong>/);
+  assert.match(settings, /Reach people with event invites, announcements, and reminders/);
+  assert.match(settings, /Choose how many texts you need/);
+  assert.match(settings, /One-time purchase\. No subscription\./);
   assert.match(settings, /id="sms-credit-packs"/);
   assert.match(settings, /id="sms-credit-continue" disabled>Continue to payment/);
   assert.doesNotMatch(settings, /PayPal|Venmo|sms-payment-sheet|sms-payment-progress/);
   assert.match(settingsClient, /function unitPrice\(pack\)/);
+  assert.match(settingsClient, /badge\.textContent = 'RECOMMENDED'/);
   assert.match(settingsClient, /credits selected/);
   assert.match(settingsClient, /function startStripeCheckout\(\)/);
   assert.match(settingsClient, /api\('\/api\/sms-credits\/checkout-sessions'/);

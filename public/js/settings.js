@@ -225,7 +225,7 @@ function chooseCreditPack(pack) {
 function renderCreditPacks(packs, checkoutReady) {
   const container = settingsElement('sms-credit-packs');
   container.replaceChildren();
-  packs.forEach(pack => {
+  packs.forEach((pack, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'credit-pack';
@@ -238,6 +238,12 @@ function renderCreditPacks(packs, checkoutReady) {
     price.textContent = creditMoney(pack.amountCents);
     const unit = document.createElement('em');
     unit.textContent = unitPrice(pack);
+    if (index === 1) {
+      const badge = document.createElement('small');
+      badge.className = 'credit-pack-badge';
+      badge.textContent = 'RECOMMENDED';
+      button.appendChild(badge);
+    }
     button.append(amount, price, unit);
     button.addEventListener('click', () => chooseCreditPack(pack));
     container.appendChild(button);
