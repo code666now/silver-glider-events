@@ -86,13 +86,15 @@ router.post('/api/sms-credits/orders', requireOrganizer, async (req, res, next) 
       });
     }
     const pack = ledger.packForKey(req.body?.packKey);
+    const paymentSource = paypal.cleanPaymentSource(req.body?.paymentMethod || 'paypal');
     purchase = await ledger.createPendingPurchase(pool, req.organizer.id, pack);
     const order = await paypal.paypalClient.createOrder({
       reference: purchase.reference,
       description: `${pack.credits.toLocaleString('en-US')} Silver Glider SMS credits`,
       amountCents: pack.amountCents,
       currency: pack.currency,
-      idempotencyKey: `sms-credit-order-${purchase.reference}`
+      idempotencyKey: `sms-credit-order-${purchase.reference}`,
+      paymentSource
     });
     const orderId = paypal.cleanOrderId(order?.id);
     await ledger.attachProviderOrder(pool, purchase.id, req.organizer.id, orderId);

@@ -1779,12 +1779,13 @@ test('host SMS credit checkout fulfills once and verified refund webhooks adjust
     const orderResponse = await fetch(`${baseUrl}/api/sms-credits/orders`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify({ packKey: 'starter', amountCents: 1, credits: 999999 })
+      body: JSON.stringify({ packKey: 'starter', paymentMethod: 'venmo', amountCents: 1, credits: 999999 })
     });
     assert.equal(orderResponse.status, 201);
     assert.deepEqual(await orderResponse.json(), { orderId });
     assert.equal(createdOrderInput.amountCents, 2000);
     assert.equal(createdOrderInput.description, '300 Silver Glider SMS credits');
+    assert.equal(createdOrderInput.paymentSource, 'venmo');
     const purchase = (await pool.query(
       'SELECT * FROM sms_credit_purchases WHERE provider_order_id=$1', [orderId]
     )).rows[0];

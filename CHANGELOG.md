@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.73
+
+Released September 9, 2026.
+
+### Fixed
+
+* Marked PayPal and Venmo SMS-credit purchases as no-shipping digital checkouts so neither wallet asks hosts for a delivery address.
+* Bound the server-created order to the wallet selected in Host Settings while continuing to enforce fixed server-side pack pricing and automatic credit fulfillment.
+
 ## 1.0.72
 
 Released September 9, 2026.

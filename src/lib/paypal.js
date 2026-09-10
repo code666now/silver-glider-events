@@ -46,6 +46,16 @@ function cleanOrderId(value) {
   return orderId;
 }
 
+function cleanPaymentSource(value) {
+  const paymentSource = String(value || '').trim().toLowerCase();
+  if (!['paypal', 'venmo'].includes(paymentSource)) {
+    throw new PayPalError('Invalid PayPal payment method', {
+      code: 'invalid_paypal_payment_method', status: 400
+    });
+  }
+  return paymentSource;
+}
+
 function providerError(response, payload = {}) {
   const providerStatus = Number(response?.status) || null;
   const debugId = String(response?.headers?.get?.('paypal-debug-id') || payload?.debug_id || '').slice(0, 100) || null;
@@ -168,12 +178,20 @@ class PayPalClient {
     }
   }
 
-  createOrder({ reference, description, amountCents, currency = 'USD', idempotencyKey }) {
+  createOrder({ reference, description, amountCents, currency = 'USD', idempotencyKey, paymentSource = 'paypal' }) {
+    const source = cleanPaymentSource(paymentSource);
     return this.request('/v2/checkout/orders', {
       method: 'POST',
       idempotencyKey,
       body: {
         intent: 'CAPTURE',
+        payment_source: {
+          [source]: {
+            experience_context: {
+              shipping_preference: 'NO_SHIPPING'
+            }
+          }
+        },
         purchase_units: [{
           reference_id: reference,
           custom_id: reference,
@@ -229,6 +247,7 @@ module.exports = {
   PayPalError,
   cleanEnvironment,
   cleanOrderId,
+  cleanPaymentSource,
   readConfig,
   paypalClient
 };

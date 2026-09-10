@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { PayPalClient, PayPalError, cleanOrderId } = require('../src/lib/paypal');
+const { PayPalClient, PayPalError, cleanOrderId, cleanPaymentSource } = require('../src/lib/paypal');
 const {
   SMS_CREDIT_PACKS,
   canAccessSmsCredits,
@@ -73,10 +73,17 @@ test('PayPal client creates fixed orders with server credentials and no secret i
   assert.equal(orderRequest.options.headers['PayPal-Request-Id'], 'purchase-reference');
   const body = JSON.parse(orderRequest.options.body);
   assert.equal(body.intent, 'CAPTURE');
+  assert.equal(body.payment_source.paypal.experience_context.shipping_preference, 'NO_SHIPPING');
   assert.equal(body.purchase_units[0].custom_id, 'sgsms_reference');
   assert.equal(body.purchase_units[0].amount.value, '20.00');
   assert.equal(body.purchase_units[0].amount.currency_code, 'USD');
   assert.doesNotMatch(orderRequest.options.body, /sandbox-client-secret/);
+});
+
+test('PayPal client limits no-shipping checkout to supported wallet sources', async () => {
+  assert.equal(cleanPaymentSource('paypal'), 'paypal');
+  assert.equal(cleanPaymentSource(' VENMO '), 'venmo');
+  assert.throws(() => cleanPaymentSource('card'), /Invalid PayPal payment method/);
 });
 
 test('PayPal capture sends an explicit JSON body and keeps its idempotency key', async () => {

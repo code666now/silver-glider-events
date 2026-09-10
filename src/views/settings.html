@@ -610,10 +610,10 @@
       return paypalSdkPromise;
     }
 
-    async function createCreditOrder() {
+    async function createCreditOrder(paymentMethod) {
       if (!selectedCreditPack) throw new Error('Choose a credit pack');
       const result = await api('/api/sms-credits/orders', {
-        method: 'POST', body: { packKey: selectedCreditPack.key }
+        method: 'POST', body: { packKey: selectedCreditPack.key, paymentMethod }
       });
       return { orderId: result.orderId };
     }
@@ -639,13 +639,13 @@
       }
     }
 
-    async function startPayPalSession(session) {
+    async function startPayPalSession(session, paymentMethod) {
       if (!session || paymentBusy || !selectedCreditPack) return;
       paymentBusy = true;
       $('sms-credit-status').textContent = 'Opening PayPal…';
       $('sms-credit-status').classList.remove('error');
       try {
-        const createOrderPromise = createCreditOrder();
+        const createOrderPromise = createCreditOrder(paymentMethod);
         await session.start({ presentationMode: 'auto' }, createOrderPromise);
       } catch (error) {
         $('sms-credit-status').textContent = error.message || 'Payment could not be opened.';
@@ -683,14 +683,14 @@
           const session = await instance.createPayPalOneTimePaymentSession(options);
           const button = $('sms-paypal-button');
           button.hidden = false;
-          button.addEventListener('click', () => startPayPalSession(session));
+          button.addEventListener('click', () => startPayPalSession(session, 'paypal'));
           available += 1;
         }
         if (methods.isEligible('venmo')) {
           const session = await instance.createVenmoOneTimePaymentSession(options);
           const button = $('sms-venmo-button');
           button.hidden = false;
-          button.addEventListener('click', () => startPayPalSession(session));
+          button.addEventListener('click', () => startPayPalSession(session, 'venmo'));
           available += 1;
         }
         $('sms-credit-status').textContent = available
