@@ -6,6 +6,7 @@ const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const { renderLegalPage } = require('./lib/legal-pages');
+const { inspectCriticalPublicAssets } = require('./lib/critical-assets');
 const { version: APP_VERSION } = require('../package.json');
 
 const app = express();
@@ -108,11 +109,21 @@ app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
 app.get('/health', async (req, res) => {
   let sha = 'unknown';
   try { sha = fs.readFileSync(path.join(__dirname, '..', '.git-sha'), 'utf8').trim(); } catch (_) {}
+  const assets = inspectCriticalPublicAssets();
+  if (!assets.ok) {
+    return res.status(500).json({
+      status: 'asset_error',
+      version: APP_VERSION,
+      sha,
+      missingAssets: assets.missing,
+      invalidAssets: assets.invalid
+    });
+  }
   try {
     await pool.query('SELECT 1');
-    res.json({ status: 'ok', version: APP_VERSION, sha });
+    return res.json({ status: 'ok', version: APP_VERSION, sha });
   } catch (err) {
-    res.status(500).json({ status: 'db_error', version: APP_VERSION, sha });
+    return res.status(500).json({ status: 'db_error', version: APP_VERSION, sha });
   }
 });
 

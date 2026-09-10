@@ -896,6 +896,20 @@ test('personal RSVP photos require verified identity or attendee ownership and s
 });
 
 test('serves email-safe adaptive icon PNGs with immutable caching', async () => {
+  for (const pathname of [
+    '/logo.png',
+    '/images/email/calendar.png',
+    '/images/email/map.png',
+    '/images/email/manage.png',
+    '/images/email/music.png'
+  ]) {
+    const staticAsset = await fetch(`${baseUrl}${pathname}`);
+    const staticBytes = Buffer.from(await staticAsset.arrayBuffer());
+    assert.equal(staticAsset.status, 200, `${pathname} should be served`);
+    assert.equal(staticAsset.headers.get('content-type'), 'image/png');
+    assert.deepEqual([...staticBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  }
+
   const response = await fetch(`${baseUrl}/images/email/music/637CDA.png`);
   const bytes = Buffer.from(await response.arrayBuffer());
   assert.equal(response.status, 200);

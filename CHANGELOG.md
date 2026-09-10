@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.81
+
+Released September 10, 2026.
+
+### Fixed
+
+* Restored the Silver Glider logo on the landing page and the Calendar, Maps, Manage RSVP, and Music icons in transactional email by ensuring PNG assets are included in Railway uploads.
+* Made production health checks fail when any critical logo or email icon is missing or invalid, preventing an otherwise healthy-looking deployment from silently shipping broken images again.
+
+### Operations
+
+* Rooted direct Railway uploads at this application directory so the unrelated parent workspace ignore rules cannot strip deployable images.
+
 ## 1.0.80
 
 Released September 10, 2026.

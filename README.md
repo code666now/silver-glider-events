@@ -117,7 +117,7 @@ Integration tests refuse to run against a database whose name is not `sge_test`.
 
 ## Versioning
 
-Silver Glider Events uses semantic versions in the form `MAJOR.MINOR.PATCH`. The version in `package.json` is canonical, `package-lock.json` must match it, and every production release receives a matching `vMAJOR.MINOR.PATCH` Git tag. User-facing changes are recorded in [`CHANGELOG.md`](CHANGELOG.md). The `/health` response exposes both the application version and deployed commit SHA so a release can be verified without relying on the interface.
+Silver Glider Events uses semantic versions in the form `MAJOR.MINOR.PATCH`. The version in `package.json` is canonical, `package-lock.json` must match it, and every production release receives a matching `vMAJOR.MINOR.PATCH` Git tag. User-facing changes are recorded in [`CHANGELOG.md`](CHANGELOG.md). The `/health` response exposes both the application version and deployed commit SHA so a release can be verified without relying on the interface, and it fails if the critical public logo or transactional-email icons are absent or invalid.
 
 For a release, update the package version and changelog, run `npm run check`, commit the release, create the matching annotated tag, deploy, and verify that `/health` reports the expected version and SHA.
 
@@ -141,10 +141,10 @@ Production may contain promoted live events. Test locally, run `npm test`, and e
 
 ```bash
 git rev-parse --short HEAD > .git-sha
-railway up --service silver-glider-events
+railway up . --path-as-root --service silver-glider-events
 curl https://silver-glider-events-production.up.railway.app/health
 ```
 
-The health response SHA must match `git rev-parse --short HEAD`. `.git-sha` remaining modified after deployment is expected.
+Always keep the explicit application path and `--path-as-root`: the parent workspace has separate ignore rules that exclude image files. The health response SHA must match `git rev-parse --short HEAD`. `.git-sha` remaining modified after deployment is expected.
 
 GitHub auto-deploy is not the production path. GitHub HTTPS authentication is active on the current Mac, but repository backup and a direct Railway deployment remain separate operations.

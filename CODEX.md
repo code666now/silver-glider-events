@@ -133,17 +133,19 @@ Production is live at https://silvergliderevents.com and the direct Railway serv
 
 ```bash
 git rev-parse --short HEAD > .git-sha
-railway up --service silver-glider-events
+railway up . --path-as-root --service silver-glider-events
 ```
 
-7. Poll the production health endpoint until its `version` and `sha` match the local release.
+The explicit application path and `--path-as-root` are required because the parent workspace has unrelated ignore rules that exclude deployable image assets.
+
+7. Poll the production health endpoint until its `version` and `sha` match the local release. A production health check must also remain `ok`; `asset_error` means the logo or an email action icon was omitted or corrupted during deployment.
 8. Smoke-test the changed public asset/flow without mutating live user data.
 
 `.git-sha` is tracked and remaining modified after a deploy is expected.
 
 ### Current GitHub limitation
 
-GitHub HTTPS authentication is not configured on this Mac. `git push origin main` currently fails with `could not read Username for 'https://github.com'`. This does **not** mean the Railway deploy failed. Direct `railway up --service silver-glider-events` is the authoritative production deployment path; GitHub credentials should be repaired separately.
+GitHub HTTPS authentication is not configured on this Mac. `git push origin main` currently fails with `could not read Username for 'https://github.com'`. This does **not** mean the Railway deploy failed. Direct `railway up . --path-as-root --service silver-glider-events` is the authoritative production deployment path; GitHub credentials should be repaired separately.
 
 ## Do not
 

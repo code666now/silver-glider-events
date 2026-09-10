@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 10, 2026 (v1.0.80)
+**Last updated:** September 10, 2026 (v1.0.81)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -107,10 +107,12 @@ Production may contain promoted events, so the MVP workflow is **local first, pr
 6. Deploy to production from `~/silver-glider-events`:
 
 ```
-git rev-parse --short HEAD > .git-sha && railway up --service silver-glider-events
+git rev-parse --short HEAD > .git-sha && railway up . --path-as-root --service silver-glider-events
 ```
 
-7. Verify `curl https://silver-glider-events-production.up.railway.app/health`. The `version` should match `package.json`, and the `sha` should match `git rev-parse --short HEAD`. Then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
+The explicit application path and `--path-as-root` prevent the parent workspace's separate image ignore rules from stripping PNG/JPEG assets. Do not shorten this command.
+
+7. Verify `curl https://silver-glider-events-production.up.railway.app/health`. The `version` should match `package.json`, the `sha` should match `git rev-parse --short HEAD`, and the status must be `ok` rather than `asset_error`. Then perform a small, non-destructive production smoke test. (`.git-sha` stays a tracked-but-modified file each deploy — that's expected.)
 
 **Current machine note:** GitHub CLI authentication is active for `code666now` and Git operations use HTTPS. If a future push fails, check `gh auth status` before changing the remote. This remains separate from Railway: a successful GitHub push does not deploy production, and a successful Railway deployment does not prove the repository backup is current.
 
@@ -160,15 +162,16 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release: annotated tag `v1.0.80` on the current release commit. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release: annotated tag `v1.0.81` on the current release commit. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
-- Production `/health` must report version `1.0.80` and the current release SHA after deployment.
-- GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through `v1.0.80`.
+- Production `/health` must report version `1.0.81`, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
+- GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through `v1.0.81`.
 - `.git-sha` is intentionally left modified after deployment so Railway receives the release SHA. Do not revert or include it blindly in a later commit.
 - Migrations currently run from `001_initial.sql` through `035_familiar_faces.sql`.
 
 ### Most recently completed
 
+- `v1.0.81` restores the shared logo and transactional-email action icons by rooting Railway uploads at the application directory, and makes `/health` reject deployments missing those critical PNG assets.
 - `v1.0.79` adds Familiar Faces with reusable verified avatars, a source-first old-event selection flow into another upcoming event, one recipient-deduplicated RSVP invitation email, and a one-time Add Photo path from RSVP confirmations. SMS copy, segments, consent, and pricing remain unchanged.
 - `v1.0.80` restores the established attendee emoji palette as a consistent no-photo fallback in Familiar Faces while keeping verified photos first and all guest/invitation behavior unchanged.
 - `v1.0.78` completes texting fulfillment V1 with an off-by-default event reminder, explicit event-scoped RSVP phone opt-in, live audience/cost/balance status, all-or-nothing automatic 4 PM local delivery, and an expiring per-recipient attendee link. Existing events, email reminders, Stripe pack pricing, and ticket commerce remain unchanged.
@@ -213,5 +216,5 @@ After that, evaluate graduating Collect Photos Beta, lightweight host conversion
 - Read this file first, then run `git status` and `git diff`, and inspect the relevant implementation before editing.
 - Preserve unrelated work and prefer small additive improvements with mature copy, restrained hierarchy, progressive disclosure, accessibility, and desktop/mobile verification.
 - Use `apply_patch` for code and file edits. Run `git diff --check` and `npm run check`; integration tests must use the dedicated local `sge_test` database.
-- Production releases update `package.json`, `package-lock.json`, `CHANGELOG.md`, and a matching annotated Git tag. Update `.git-sha` to the release commit before `railway up --service silver-glider-events`, leave `.git-sha` uncommitted, and verify both production health URLs.
+- Production releases update `package.json`, `package-lock.json`, `CHANGELOG.md`, and a matching annotated Git tag. Update `.git-sha` to the release commit before `railway up . --path-as-root --service silver-glider-events`, leave `.git-sha` uncommitted, and verify both production health URLs and the critical public image URLs.
 - Railway deployment and GitHub backup are separate operations. Push only tested commits and tags; never treat a GitHub push result as proof of production deployment.
