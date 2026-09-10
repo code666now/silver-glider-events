@@ -75,6 +75,12 @@
     .promotion-action-description { display:block;color:var(--sg-text-faint);font-size:11px;line-height:1.4; }
     .promotion-action-arrow { color:var(--sg-text-faint);font-size:18px;transition:transform .16s ease,color .16s ease; }
     .promotion-action:hover .promotion-action-arrow { color:var(--sg-accent);transform:translateX(2px); }
+    .promotion-action-readonly { cursor:default; }
+    .promotion-action-readonly:hover { background:transparent; }
+    .promotion-action-count {
+      min-width:30px;padding:5px 8px;border:1px solid rgba(28,197,190,.22);border-radius:999px;
+      background:rgba(28,197,190,.08);color:var(--sg-accent);font-size:11px;font-weight:800;text-align:center;
+    }
     .line-feature {
       margin-top:18px;padding:16px;border:1px solid rgba(28,197,190,.18);border-radius:16px;
       background:linear-gradient(145deg,rgba(28,197,190,.065),rgba(255,255,255,.015));
@@ -402,6 +408,11 @@
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite previous guests</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Bring back guests from one of your past events.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
+        <div class="promotion-action promotion-action-readonly" id="sms-audience" role="status" aria-live="polite">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 6h6M10 18h4"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Text alerts</strong><span class="promotion-action-description" id="sms-audience-copy">Checking SMS eligibility…</span></span>
+          <span class="promotion-action-count" id="sms-audience-count">—</span>
+        </div>
         <button class="promotion-action" id="announce" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 10a2.5 2.5 0 0 1 2 4M6 10a2.5 2.5 0 0 0-2 4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="announce-title">Email my followers</strong><span class="promotion-action-description" id="announce-copy">Send this event once to people following your host page.</span></span>

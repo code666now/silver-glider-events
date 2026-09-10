@@ -218,6 +218,83 @@ test('creates an event only for an authenticated organizer and publishes its pag
   const updatedHtml = await updatedPage.text();
   assert.match(updatedHtml, /class="guest-avatar"/);
   assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
+  await waitForConfirmation('public-attendee@example.test');
+});
+
+test('RSVP SMS consent requires a valid phone and powers the host eligibility count', async () => {
+  const event = await createEvent({ slug: 'sms-consent-night', title: 'SMS Consent Night' });
+  const sessionCookie = `sge_session=${signSession(organizerId)}`;
+
+  const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  const publicHtml = await publicPage.text();
+  assert.match(publicHtml, /Text me event updates and future invitations from Test Host through Silver Glider\./);
+  assert.match(publicHtml, /Consent isn’t required to RSVP\./);
+  assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
+
+  const missingPhone = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Missing Phone',
+      email: 'missing-phone@example.test',
+      sms_optin: true
+    })
+  });
+  assert.equal(missingPhone.status, 400);
+  assert.deepEqual(await missingPhone.json(), { error: 'Enter a valid phone number to receive text messages' });
+
+  const optedIn = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Text Guest',
+      email: 'text-guest@example.test',
+      phone: '(415) 555-1234',
+      sms_optin: true
+    })
+  });
+  assert.equal(optedIn.status, 201);
+
+  const phoneOnly = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Phone Only',
+      email: 'phone-only@example.test',
+      phone: '415-555-5678',
+      sms_optin: false
+    })
+  });
+  assert.equal(phoneOnly.status, 201);
+
+  const { rows } = await pool.query(
+    `SELECT email, phone, sms_optin, sms_consent_at, sms_consent_source,
+            sms_consent_version, sms_consent_text, sms_opted_out_at
+       FROM rsvps WHERE event_id=$1 ORDER BY email`,
+    [event.id]
+  );
+  assert.equal(rows[0].email, 'phone-only@example.test');
+  assert.equal(rows[0].phone, '415-555-5678');
+  assert.equal(rows[0].sms_optin, false);
+  assert.equal(rows[0].sms_consent_at, null);
+  assert.equal(rows[1].email, 'text-guest@example.test');
+  assert.equal(rows[1].phone, '+14155551234');
+  assert.equal(rows[1].sms_optin, true);
+  assert.ok(rows[1].sms_consent_at instanceof Date);
+  assert.equal(rows[1].sms_consent_source, 'event_rsvp');
+  assert.equal(rows[1].sms_consent_version, 'rsvp_sms_v1');
+  assert.match(rows[1].sms_consent_text, /Test Host through Silver Glider/);
+  assert.equal(rows[1].sms_opted_out_at, null);
+
+  const manageEvent = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(manageEvent.status, 200);
+  assert.equal((await manageEvent.json()).event.sms_eligible_count, 1);
+  await Promise.all([
+    waitForConfirmation('text-guest@example.test'),
+    waitForConfirmation('phone-only@example.test')
+  ]);
 });
 
 test('live event editing is visible only to the owner and saves through the protected event API', async () => {

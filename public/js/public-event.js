@@ -312,6 +312,17 @@ if (guestFields) {
   });
 }
 
+const smsOptin = $('sms_optin');
+const phoneInput = $('phone');
+function syncSmsPhoneRequirement() {
+  if (!smsOptin || !phoneInput) return;
+  phoneInput.required = smsOptin.checked;
+  if (smsOptin.checked) phoneInput.setAttribute('aria-required', 'true');
+  else phoneInput.removeAttribute('aria-required');
+}
+smsOptin?.addEventListener('change', syncSmsPhoneRequirement);
+syncSmsPhoneRequirement();
+
 if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', async e => {
   e.preventDefault();
   const btn = $('rsvp-submit');
@@ -329,7 +340,8 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', asyn
         guest_name: $('guest_name')?.value.trim() || null,
         guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
-        organizer_optin: $('organizer_optin').checked
+        organizer_optin: $('organizer_optin').checked,
+        sms_optin: $('sms_optin').checked
       })
     });
     const data = await res.json().catch(() => ({}));

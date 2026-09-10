@@ -16,6 +16,11 @@ const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
 const { cleanInstagramHandle } = require('../lib/host-profile');
+const {
+  SMS_CONSENT_DISCLOSURE,
+  prepareRsvpSmsConsent,
+  smsConsentHeading
+} = require('../lib/sms-consent');
 const LocationUtils = require('../../public/js/location-utils');
 const {
   ensureAttemptSession,
@@ -564,6 +569,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
+      .replace(/{{SMS_CONSENT_HEADING}}/g, esc(smsConsentHeading(event.org_name)))
+      .replace(/{{SMS_CONSENT_DISCLOSURE}}/g, esc(SMS_CONSENT_DISCLOSURE))
       .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
@@ -715,6 +722,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     const phone = String(req.body.phone || '').trim().slice(0, 30) || null;
     const wantsReminders = req.body.wants_reminders !== false;
     const organizerOptin = req.body.organizer_optin === true;
+    const requestedSmsOptin = req.body.sms_optin === true;
 
     if (!firstName) return res.status(400).json({ error: 'Enter your name' });
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
@@ -747,6 +755,18 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         error: 'tickets_required',
         message: 'Get tickets through Silver Glider for this event.'
       });
+    }
+
+    let smsConsent;
+    try {
+      smsConsent = prepareRsvpSmsConsent({
+        optedIn: requestedSmsOptin,
+        phone,
+        hostName: event.org_name
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return res.status(error.status === 400 ? 400 : 500).json({ error: error.message });
     }
 
     const { rows: existing } = await client.query(
@@ -789,19 +809,27 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       // previously cancelled — re-confirm
       rsvp = (await client.query(
         `UPDATE rsvps SET status='confirmed', first_name=$2, last_name=$3, phone=$4,
-                wants_reminders=$5, organizer_optin=$6,
-                guest_first_name=$7, guest_last_name=$8, guest_email=$9,
-                account_id=COALESCE(account_id,$10)
+                wants_reminders=$5, organizer_optin=$6, sms_optin=$7,
+                sms_consent_at=CASE WHEN $7 THEN $8 ELSE sms_consent_at END,
+                sms_consent_source=CASE WHEN $7 THEN $9 ELSE sms_consent_source END,
+                sms_consent_version=CASE WHEN $7 THEN $10 ELSE sms_consent_version END,
+                sms_consent_text=CASE WHEN $7 THEN $11 ELSE sms_consent_text END,
+                sms_opted_out_at=CASE WHEN $7 THEN NULL WHEN sms_optin THEN NOW() ELSE sms_opted_out_at END,
+                guest_first_name=$12, guest_last_name=$13, guest_email=$14,
+                account_id=COALESCE(account_id,$15)
           WHERE id=$1 RETURNING *`,
-        [existing[0].id, firstName, lastName, phone, wantsReminders, organizerOptin,
+        [existing[0].id, firstName, lastName, smsConsent.phone, wantsReminders, organizerOptin,
+         smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail, accountId]
       )).rows[0];
     } else {
       rsvp = (await client.query(
         `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
+                            sms_optin, sms_consent_at, sms_consent_source, sms_consent_version, sms_consent_text,
                             guest_first_name, guest_last_name, guest_email, manage_token, account_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-        [event.id, firstName, lastName, email, phone, wantsReminders, organizerOptin,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+        [event.id, firstName, lastName, email, smsConsent.phone, wantsReminders, organizerOptin,
+         smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
          crypto.randomBytes(16).toString('hex'), accountId]
       )).rows[0];

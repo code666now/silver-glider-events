@@ -65,7 +65,7 @@ test('guest-list avatars link only through verified identity or attendee ownersh
   assert.match(routes, /verifiedSessionAccountId\(client, req, email\)/);
   assert.match(routes, /SELECT id FROM organizers WHERE id=\$1 AND LOWER\(email\)=LOWER\(\$2\)/);
   assert.match(routes, /LEFT JOIN organizers o ON o\.id=r\.account_id/);
-  assert.match(routes, /account_id=COALESCE\(account_id,\$10\)/);
+  assert.match(routes, /account_id=COALESCE\(account_id,\$15\)/);
   assert.match(routes, /guest-avatar/);
   assert.match(cloudinary, /CLOUDINARY_ACCOUNT_AVATAR_FOLDER/);
   assert.match(cloudinary, /width: 512, height: 512, crop: 'fill', gravity: 'auto'/);

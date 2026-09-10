@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.69
+
+Released September 9, 2026.
+
+### Added
+
+* Added a separate, unchecked SMS consent choice beside the existing optional RSVP phone field in both Standard and Flyer presentations.
+* Recorded normalized E.164 destinations with the consent timestamp, source, copy version, exact disclosure, and future opt-out state without broadening email or Follow Host permission.
+* Added a read-only Text alerts audience preview to event management showing how many confirmed primary RSVPs are eligible for a future SMS send.
+
+### Privacy & reliability
+
+* Kept phone collection alone ineligible for SMS, required a valid phone only when SMS consent is selected, excluded cancelled and opted-out RSVPs, and added end-to-end database coverage plus responsive mobile/desktop QA. No SMS is sent and no credits are deducted in this release.
+
 ## 1.0.68
 
 Released September 9, 2026.

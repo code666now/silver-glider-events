@@ -417,6 +417,10 @@ router.get('/api/events/:id', async (req, res, next) => {
               COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
               COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
               COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
+              COALESCE((SELECT COUNT(*) FROM rsvps
+                         WHERE event_id=e.id AND status='confirmed' AND sms_optin=TRUE
+                           AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
+                           AND phone ~ '^\\+[1-9][0-9]{7,14}$'), 0)::int AS sms_eligible_count,
               COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
               ,(SELECT json_build_object(
                   'id', b.id, 'kind', b.kind, 'status', b.status,

@@ -124,6 +124,11 @@ async function loadEvent() {
   $('stat-attendance').textContent = event.total_attendance;
   $('stat-guests').textContent = event.guest_count;
   $('stat-comments').textContent = event.comment_count;
+  const smsEligibleCount = Number(event.sms_eligible_count) || 0;
+  $('sms-audience-count').textContent = smsEligibleCount.toLocaleString('en-US');
+  $('sms-audience-copy').textContent = smsEligibleCount
+    ? `${smsEligibleCount} ${smsEligibleCount === 1 ? 'guest has' : 'guests have'} explicitly opted in. Sending comes next.`
+    : 'No guests have opted in yet. New RSVPs can choose text alerts.';
   renderNotificationStatus(event.latest_notification);
   if (event.capacity) {
     $('cap-bar').style.display = 'block';
