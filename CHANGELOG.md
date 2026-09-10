@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.82
+
+Released September 10, 2026.
+
+### Fixed
+
+* Prevented Chrome's desktop native share popover from remaining stranded over a public event page when moving from **Share** to **Add to calendar**.
+* Desktop **Share** now copies the event link directly, while touch devices keep native sharing and temporarily guard calendar navigation until the share sheet closes.
+
 ## 1.0.81
 
 Released September 10, 2026.

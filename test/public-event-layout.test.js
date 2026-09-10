@@ -93,13 +93,31 @@ test('QR stays available to hosts but is removed from the public event page', ()
 
 test('share and calendar remain available after RSVP confirmation', () => {
   const view = source('src/views/event-public.html');
+  const flyerView = source('src/views/event-public-flyer.html');
   const client = source('public/js/public-event.js');
 
   assert.equal((view.match(/id="share-btn"/g) || []).length, 1);
   assert.equal((view.match(/id="cal-btn"/g) || []).length, 1);
+  assert.match(view, /id="share-btn" type="button"/);
+  assert.match(flyerView, /id="share-btn" type="button"/);
   assert.doesNotMatch(view, /success-share|success-cal/);
   assert.match(client, /\$\('cal-btn'\)\.href = icsUrl/);
-  assert.match(client, /\$\('share-btn'\)\.addEventListener\('click', share\)/);
+  assert.match(client, /shareBtn\.addEventListener\('click', share\)/);
+});
+
+test('desktop sharing copies the link and native mobile sharing cannot overlap calendar navigation', () => {
+  const client = source('public/js/public-event.js');
+
+  assert.match(client, /matchMedia\('\(pointer: coarse\)'\)/);
+  assert.match(client, /nativeShareMedia\.matches[\s\S]*typeof navigator\.share === 'function'/);
+  assert.match(client, /async function copyEventLink\(url\)/);
+  assert.match(client, /navigator\.clipboard\?\.writeText/);
+  assert.match(client, /document\.execCommand\('copy'\)/);
+  assert.match(client, /let shareInFlight = false/);
+  assert.match(client, /if \(shareInFlight\) return/);
+  assert.match(client, /if \(error\?\.name === 'AbortError'\) return/);
+  assert.match(client, /calendarBtn\.addEventListener\('click', event => \{[\s\S]*if \(shareInFlight\) event\.preventDefault\(\)/);
+  assert.doesNotMatch(client, /if \(navigator\.share\) \{/);
 });
 
 test('host and Silver Glider attribution center only on mobile', () => {

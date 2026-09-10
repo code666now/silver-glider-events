@@ -368,19 +368,84 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', asyn
   }
 });
 
-async function share() {
-  const url = location.origin + `/e/${EVENT.slug}`;
-  if (navigator.share) {
-    try { await navigator.share({ title: EVENT.title, url }); return; } catch (_) { /* cancelled */ }
-  } else {
-    await navigator.clipboard.writeText(url);
-    const btn = $('share-btn');
-    const orig = btn.textContent;
-    btn.textContent = 'Link copied';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
+const shareBtn = $('share-btn');
+const calendarBtn = $('cal-btn');
+const nativeShareMedia = window.matchMedia('(pointer: coarse)');
+const shareDefaultLabel = shareBtn.textContent;
+let shareInFlight = false;
+let shareFeedbackTimer = null;
+
+function setShareBusy(busy) {
+  shareInFlight = busy;
+  shareBtn.disabled = busy;
+  shareBtn.setAttribute('aria-busy', String(busy));
+  if (busy) calendarBtn.setAttribute('aria-disabled', 'true');
+  else calendarBtn.removeAttribute('aria-disabled');
+}
+
+function showShareFeedback(label) {
+  window.clearTimeout(shareFeedbackTimer);
+  shareBtn.textContent = label;
+  shareFeedbackTimer = window.setTimeout(() => {
+    shareBtn.textContent = shareDefaultLabel;
+  }, 2000);
+}
+
+async function copyEventLink(url) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      return true;
+    }
+  } catch (_) {
+    // Fall through to the hidden-textarea copy path.
+  }
+
+  const input = document.createElement('textarea');
+  input.value = url;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.select();
+  try {
+    return document.execCommand('copy');
+  } catch (_) {
+    return false;
+  } finally {
+    input.remove();
   }
 }
-$('share-btn').addEventListener('click', share);
+
+async function share() {
+  if (shareInFlight) return;
+  const url = location.origin + `/e/${EVENT.slug}`;
+  const shareData = { title: EVENT.title, url };
+  const canUseNativeShare = nativeShareMedia.matches
+    && typeof navigator.share === 'function'
+    && (typeof navigator.canShare !== 'function' || navigator.canShare(shareData));
+
+  if (canUseNativeShare) {
+    setShareBusy(true);
+    try {
+      await navigator.share(shareData);
+      return;
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      // If native sharing fails for another reason, copy the link instead.
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  const copied = await copyEventLink(url);
+  showShareFeedback(copied ? 'Link copied' : 'Couldn\'t copy');
+}
+
+shareBtn.addEventListener('click', share);
+calendarBtn.addEventListener('click', event => {
+  if (shareInFlight) event.preventDefault();
+});
 
 const guestListToggle = $('guest-list-toggle');
 const guestListModal = $('guest-list-modal');
