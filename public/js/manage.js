@@ -125,10 +125,12 @@ async function loadEvent() {
   $('stat-guests').textContent = event.guest_count;
   $('stat-comments').textContent = event.comment_count;
   const smsEligibleCount = Number(event.sms_eligible_count) || 0;
+  $('sms-audience').hidden = smsEligibleCount === 0;
   $('sms-audience-count').textContent = smsEligibleCount.toLocaleString('en-US');
-  $('sms-audience-copy').textContent = smsEligibleCount
-    ? `${smsEligibleCount} ${smsEligibleCount === 1 ? 'guest has' : 'guests have'} explicitly opted in. Sending comes next.`
-    : 'No guests have opted in yet. New RSVPs can choose text alerts.';
+  if (smsEligibleCount) {
+    $('sms-audience-title').textContent = 'Add text notification';
+    $('sms-audience-copy').textContent = `You have ${smsEligibleCount} text ${smsEligibleCount === 1 ? 'subscriber' : 'subscribers'}. Checking available notifications…`;
+  }
   renderNotificationStatus(event.latest_notification);
   if (event.capacity) {
     $('cap-bar').style.display = 'block';
@@ -440,6 +442,11 @@ function renderSmsAction(preview) {
   const button = $('sms-audience');
   const count = Number(preview.recipientCount) || 0;
   $('sms-audience-count').textContent = count.toLocaleString('en-US');
+  button.hidden = !preview.batch && count === 0;
+  if (button.hidden) {
+    button.disabled = true;
+    return;
+  }
   if (preview.batch) {
     const batch = preview.batch;
     button.disabled = true;
@@ -458,9 +465,7 @@ function renderSmsAction(preview) {
     }
     return;
   }
-  $('sms-audience-title').textContent = preview.eventIsTomorrow && count
-    ? `Text ${count} ${count === 1 ? 'guest' : 'guests'} tomorrow`
-    : 'Text alerts';
+  $('sms-audience-title').textContent = 'Add text notification';
   if (preview.eventStatus !== 'published') {
     button.disabled = true;
     $('sms-audience-copy').textContent = 'Publish the event before texting guests.';
@@ -469,17 +474,15 @@ function renderSmsAction(preview) {
     $('sms-audience-copy').textContent = 'SMS reminders are not available for Secret Shows yet.';
   } else if (!preview.eventIsTomorrow) {
     button.disabled = true;
-    $('sms-audience-copy').textContent = count
-      ? `${count} opted in · Tomorrow reminder unlocks one day before the event.`
-      : 'Tomorrow reminder unlocks one day before the event.';
+    $('sms-audience-copy').textContent = `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'}. Tomorrow reminder unlocks one day before the event.`;
   } else if (!count) {
     button.disabled = true;
     $('sms-audience-copy').textContent = 'No confirmed guests have opted in to text messages.';
   } else {
     button.disabled = false;
     $('sms-audience-copy').textContent = preview.canSend
-      ? `${preview.creditCost} paid ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${preview.balance} available. Review before sending.`
-      : `${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed · ${preview.balance} available.`;
+      ? `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'} · ${preview.creditCost} paid ${preview.creditCost === 1 ? 'credit' : 'credits'}. Review before sending.`
+      : `You have ${count} text ${count === 1 ? 'subscriber' : 'subscribers'} · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed, ${preview.balance} available.`;
   }
 }
 

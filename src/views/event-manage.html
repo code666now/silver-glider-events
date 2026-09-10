@@ -63,6 +63,7 @@
       border-radius:0;background:transparent;color:var(--sg-text);font-family:var(--sg-font-body);
       text-align:left;cursor:pointer;transition:background .16s ease,color .16s ease;
     }
+    .promotion-action[hidden] { display:none; }
     .promotion-action:hover { background:rgba(255,255,255,.035); }
     .promotion-action:focus-visible { outline:2px solid var(--sg-accent);outline-offset:-2px; }
     .promotion-action:disabled { cursor:not-allowed;opacity:.55; }
@@ -409,7 +410,7 @@
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite previous guests</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Bring back guests from one of your past events.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
-        <button class="promotion-action" id="sms-audience" type="button" disabled>
+        <button class="promotion-action" id="sms-audience" type="button" hidden disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 6h6M10 18h4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="sms-audience-title">Text alerts</strong><span class="promotion-action-description" id="sms-audience-copy">Checking SMS eligibility…</span></span>
           <span class="promotion-action-count" id="sms-audience-count">—</span>

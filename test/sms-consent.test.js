@@ -76,7 +76,7 @@ test('SMS consent stays separate from Follow Host and exposes only an eligibilit
   assert.match(client, /sms_optin: \$\('sms_optin'\)\.checked/);
   assert.match(manage, /id="sms-audience-count"/);
   assert.match(manageClient, /event\.sms_eligible_count/);
-  assert.match(manageClient, /Sending comes next/);
+  assert.match(manageClient, /smsEligibleCount === 0/);
   assert.doesNotMatch(host, /sms_optin|SMS_CONSENT/);
   assert.match(smsConsentCopy('Test Host'), /through Silver Glider/);
 });

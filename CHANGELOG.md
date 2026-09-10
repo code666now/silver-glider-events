@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.72
+
+Released September 9, 2026.
+
+### Changed
+
+* Hid the event-management SMS action when the current event has no confirmed SMS-opted-in RSVPs, removing an unusable zero-audience row without leaving a layout gap.
+* Progressively reveals **Add text notification** after the first eligible subscriber and shows the current subscriber count, availability window, paid credit requirement, and review prompt.
+* Keeps the action visible after a batch is created so hosts retain its queued, delivery, failure, and refund status.
+
 ## 1.0.71
 
 Released September 9, 2026.
