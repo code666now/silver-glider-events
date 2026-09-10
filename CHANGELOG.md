@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.74
+
+Released September 9, 2026.
+
+### Changed
+
+* Rebuilt Settings as three focused destinations for Account, Messaging, and Host page, with a persistent desktop rail and a compact mobile section index.
+* Replaced nested dashboard cards with calm settings rows, hairline dividers, dirty-state actions, and a dedicated desktop account menu for Settings and sign out.
+* Simplified SMS credit purchase into balance, pack selection with per-credit pricing, one Continue action, a focused PayPal or Venmo payment sheet, and a unified activity history.
+* Reorganized Host page editing into Basics, Links, and Images while preserving separate RSVP-photo and Host-page artwork responsibilities.
+
+### Reliability
+
+* Added protected direct routes for every Settings destination, kept account-name edits isolated from Host page data, deferred the payment SDK until the payment sheet opens, and verified the redesign at phone, tablet, and desktop breakpoints.
+
 ## 1.0.73
 
 Released September 9, 2026.

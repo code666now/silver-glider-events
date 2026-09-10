@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/settings.css">
+</head>
+<body data-settings-route="index">
+  <div class="sg-shell settings-shell" data-settings-shell>
+    <nav id="nav"></nav>
+    <header class="settings-page-intro">
+      <h1 class="sg-page-title">Settings</h1>
+      <p class="sg-page-sub">Manage your account, messaging, and public host page.</p>
+    </header>
+
+    <div class="settings-loading" id="settings-loading" aria-label="Loading settings">
+      <div class="settings-loading-rail" aria-hidden="true">
+        <span class="sg-skeleton settings-loading-line short"></span>
+        <span class="sg-skeleton settings-loading-line medium"></span>
+        <span class="sg-skeleton settings-loading-line medium"></span>
+        <span class="sg-skeleton settings-loading-line medium"></span>
+      </div>
+      <div class="settings-loading-panel" aria-hidden="true">
+        <span class="sg-skeleton settings-loading-line short"></span>
+        <span class="sg-skeleton settings-loading-line medium"></span>
+        <span class="sg-skeleton settings-loading-row"></span>
+        <span class="sg-skeleton settings-loading-row"></span>
+        <span class="sg-skeleton settings-loading-row"></span>
+      </div>
+    </div>
+
+    <div class="settings-ui" id="settings-ui" hidden>
+      <section class="settings-mobile-index" aria-labelledby="settings-index-title">
+        <h2 id="settings-index-title">Choose a section</h2>
+        <p class="settings-index-intro">Your account settings are grouped by what you want to manage.</p>
+        <nav class="settings-index-list" aria-label="Settings sections">
+          <a class="settings-index-link" href="/settings/account">
+            <span><strong>Account</strong><span class="settings-index-description">Personal details, RSVP photo, and plan.</span></span>
+            <span class="settings-index-value"></span><span class="settings-index-chevron" aria-hidden="true">›</span>
+          </a>
+          <a class="settings-index-link" href="/settings/messaging">
+            <span><strong>Messaging</strong><span class="settings-index-description">SMS credits, payments, and activity.</span></span>
+            <span class="settings-index-value" id="settings-index-credit-balance">—</span><span class="settings-index-chevron" aria-hidden="true">›</span>
+          </a>
+          <a class="settings-index-link" href="/settings/host-page">
+            <span><strong>Host page</strong><span class="settings-index-description">Public identity, links, and images.</span></span>
+            <span class="settings-index-value"></span><span class="settings-index-chevron" aria-hidden="true">›</span>
+          </a>
+        </nav>
+        <button class="settings-mobile-signout settings-logout" type="button">Sign out</button>
+      </section>
+
+      <div class="settings-layout">
+        <aside class="settings-rail">
+          <p class="settings-rail-label">Settings</p>
+          <nav class="settings-rail-nav" aria-label="Settings sections">
+            <a class="settings-rail-link" data-settings-link="account" href="/settings/account"><span>Account</span></a>
+            <a class="settings-rail-link" data-settings-link="messaging" href="/settings/messaging"><span>Messaging</span><span class="settings-rail-balance" id="settings-rail-credit-balance"></span></a>
+            <a class="settings-rail-link" data-settings-link="host-page" href="/settings/host-page"><span>Host page</span></a>
+          </nav>
+        </aside>
+
+        <main class="settings-content" id="settings-content" aria-busy="true">
+          <section class="settings-panel" id="settings-account" data-settings-section="account" aria-labelledby="account-settings-title" hidden>
+            <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
+            <div class="settings-section-head">
+              <div><h2 id="account-settings-title">Account</h2><p>Your personal details appear when you manage events and join guest lists.</p></div>
+            </div>
+            <form id="account-form">
+              <div class="settings-list">
+                <div class="settings-row">
+                  <div class="settings-row-copy"><span class="settings-row-label" id="account-avatar-title">Your RSVP photo</span><span class="settings-row-description">Shown with your name on guest lists. Your Host Page logo stays separate.</span></div>
+                  <div class="settings-row-control">
+                    <div class="account-avatar-control">
+                      <div class="account-avatar-preview" aria-hidden="true"><span id="account-avatar-fallback">😎</span><img id="account-avatar-image" alt="" hidden></div>
+                      <div class="account-avatar-actions">
+                        <button class="sg-btn sg-btn-ghost" type="button" id="account-avatar-btn" disabled>Add photo</button>
+                        <button class="account-avatar-remove" type="button" id="account-avatar-remove" hidden>Remove photo</button>
+                      </div>
+                    </div>
+                    <p class="account-avatar-status" id="account-avatar-status" role="status" aria-live="polite"></p>
+                    <input type="file" id="account-avatar-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="settings-row-copy" for="name"><span class="settings-row-label">Name</span><span class="settings-row-description">The name guests see when you RSVP.</span></label>
+                  <div class="settings-row-control"><input class="sg-input" id="name" maxlength="100" autocomplete="name" placeholder="Adrian Martinez" disabled></div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-copy"><span class="settings-row-label">Email</span><span class="settings-row-description">Used for password-free sign in and account messages.</span></div>
+                  <div class="settings-row-control"><span class="settings-display-value" id="email-value"></span></div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-row-copy"><span class="settings-row-label">Plan</span><span class="settings-row-description">Create events and send included email notifications.</span></div>
+                  <div class="settings-row-control"><span class="plan-value" id="plan-badge">Free</span></div>
+                </div>
+              </div>
+              <div class="settings-form-actions"><button class="sg-btn sg-btn-primary" type="submit" id="account-save-btn" disabled>Save changes</button></div>
+              <p class="settings-form-status" id="account-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+
+          <section class="settings-panel" id="settings-messaging" data-settings-section="messaging" aria-labelledby="sms-credits-title" hidden>
+            <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
+            <div class="settings-section-head">
+              <div><h2 id="sms-credits-title">Messaging</h2><p>SMS credits belong to this host and never expire. Email stays included.</p></div>
+            </div>
+            <div class="credits-balance-block">
+              <div><span class="credits-balance-label">Credits available</span><strong class="credits-balance-number" id="sms-credit-balance">—</strong></div>
+              <span class="credits-env" id="sms-credit-env" hidden>Sandbox test</span>
+            </div>
+            <p class="credits-setup" id="sms-credit-setup" hidden>PayPal is connected, but its verified webhook must be added before checkout can open.</p>
+            <p class="credits-result" id="sms-credit-result" role="status" aria-live="polite" tabindex="-1" hidden></p>
+            <div class="settings-group">
+              <div class="settings-group-head"><h3>Choose a credit pack</h3><p>One-time purchases with no subscription.</p></div>
+              <div class="credit-packs" id="sms-credit-packs" aria-label="Choose an SMS credit pack"></div>
+              <button class="sg-btn sg-btn-primary credit-continue" type="button" id="sms-credit-continue" disabled>Continue to payment</button>
+              <p class="credits-load-status" id="sms-credit-load-status" role="status" aria-live="polite">Loading credit options…</p>
+            </div>
+            <section class="credits-activity" aria-labelledby="sms-credit-history-title">
+              <h3 id="sms-credit-history-title">Recent activity</h3>
+              <p class="credits-activity-copy">Purchases, SMS usage, refunds, and reversals.</p>
+              <div class="credits-history-list" id="sms-credit-transactions"><p class="credits-empty">No credit activity yet.</p></div>
+            </section>
+          </section>
+
+          <section class="settings-panel" id="settings-host-page" data-settings-section="host-page" aria-labelledby="host-page-title" hidden>
+            <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
+            <div class="settings-section-head">
+              <div><h2 id="host-page-title">Host page</h2><p>Give guests one public home for your events and host identity.</p></div>
+              <a class="sg-btn sg-btn-ghost" id="host-summary-view" target="_blank" rel="noopener" hidden>View page</a>
+            </div>
+            <form id="host-profile-form">
+              <section class="host-form-group" aria-labelledby="host-basics-title">
+                <div class="host-form-group-head"><h3 id="host-basics-title">Basics</h3><p>Your public name, page address, and short introduction.</p></div>
+                <div class="host-fields">
+                  <div class="host-field"><label for="org_name">Public host name</label><input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking"></div>
+                  <div class="host-field">
+                    <label for="public_slug">Page address</label>
+                    <div class="slug-field"><span class="slug-field-prefix" id="host-url-prefix">silvergliderevents.com/h/</span><input class="sg-input" id="public_slug" maxlength="70" placeholder="created-after-save" disabled></div>
+                    <p class="host-field-help" id="slug-help">Save a public host name to create your page address.</p>
+                  </div>
+                  <div class="host-field"><label for="bio">Bio or tagline</label><textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea></div>
+                </div>
+              </section>
+              <section class="host-form-group" aria-labelledby="host-links-title">
+                <div class="host-form-group-head"><h3 id="host-links-title">Links</h3><p>Help guests find your work elsewhere.</p></div>
+                <div class="host-fields two-up">
+                  <div class="host-field"><label for="instagram_handle">Instagram</label><input class="sg-input" id="instagram_handle" maxlength="500" placeholder="@silverglidertix" autocomplete="off"></div>
+                  <div class="host-field"><label for="website_url">Website</label><input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com"></div>
+                </div>
+              </section>
+              <section class="host-form-group" aria-labelledby="host-images-title">
+                <div class="host-form-group-head"><h3 id="host-images-title">Images</h3><p>Use a wide header and a compact logo for a polished public page.</p></div>
+                <div class="host-images">
+                  <div class="host-image-row" id="host-header-field">
+                    <div>
+                      <div class="host-image-copy">
+                        <div class="host-image-preview header" id="header-preview-wrap"><span id="header-preview-empty">No image</span><img id="header-preview" alt="Host header image" hidden></div>
+                        <div class="host-image-label"><strong>Header image</strong><span>Displayed at its real 4:1 shape.</span></div>
+                      </div>
+                      <p class="upload-status" id="header-status"></p>
+                    </div>
+                    <button class="sg-btn sg-btn-ghost host-image-action" type="button" id="header-btn" disabled>Add image</button>
+                    <input type="file" id="header-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                  </div>
+                  <div class="host-image-row" id="host-logo-field">
+                    <div>
+                      <div class="host-image-copy">
+                        <div class="host-image-preview logo" id="logo-preview-wrap"><span id="logo-preview-empty">SG</span><img id="logo-preview" alt="Host logo" hidden></div>
+                        <div class="host-image-label"><strong>Host logo</strong><span>Kept separate from your RSVP photo.</span></div>
+                      </div>
+                      <p class="upload-status" id="logo-status"></p>
+                    </div>
+                    <button class="sg-btn sg-btn-ghost host-image-action" type="button" id="logo-btn" disabled>Add logo</button>
+                    <input type="file" id="logo-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                  </div>
+                </div>
+              </section>
+              <div class="settings-form-actions" id="host-form-actions" hidden>
+                <button class="sg-btn sg-btn-ghost" type="button" id="host-discard-btn">Discard</button>
+                <button class="sg-btn sg-btn-primary" type="submit" id="host-save-btn">Save changes</button>
+              </div>
+              <p class="settings-form-status" id="host-status" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <div class="payment-sheet" id="sms-payment-sheet" aria-hidden="true" hidden>
+    <div class="payment-sheet-dialog" role="dialog" aria-modal="true" aria-labelledby="sms-payment-title" tabindex="-1">
+      <div class="payment-sheet-head">
+        <div><h2 id="sms-payment-title">Complete payment</h2><p id="sms-credit-selection">Choose a credit pack to continue.</p></div>
+        <button class="payment-sheet-close" id="sms-payment-close" type="button" aria-label="Close payment options">×</button>
+      </div>
+      <div class="credits-payment-methods" id="sms-credit-methods">
+        <paypal-button id="sms-paypal-button" type="pay" hidden></paypal-button>
+        <venmo-button id="sms-venmo-button" type="pay" hidden></venmo-button>
+        <p class="credits-status" id="sms-credit-status" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/settings.js"></script>
+</body>
+</html>

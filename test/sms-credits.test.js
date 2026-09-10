@@ -184,15 +184,22 @@ test('SMS credit persistence is additive, auditable, and separate from ticket co
 });
 
 test('Host Settings owns the feature while secrets remain server-only', () => {
-  const settings = read('src/views/settings.html');
+  const settings = read('src/views/settings-v2.html');
+  const settingsClient = read('public/js/settings.js');
   const route = read('src/routes/sms-credits.js');
   const webhook = read('src/routes/paypal-webhook.js');
   const index = read('src/index.js');
-  const publicFiles = [settings, ...['public/js/api.js', 'public/css/main.css'].map(read)].join('\n');
-  assert.match(settings, /id="sms-credits-title">SMS credits/);
-  assert.match(settings, /Credits belong to this host and never expire/);
+  const publicFiles = [settings, settingsClient, ...['public/js/api.js', 'public/css/main.css', 'public/css/settings.css'].map(read)].join('\n');
+  assert.match(settings, /id="sms-credits-title">Messaging/);
+  assert.match(settings, /SMS credits belong to this host and never expire/);
   assert.match(settings, /id="sms-credit-packs"/);
-  assert.match(settings, /Venmo appears automatically/);
+  assert.match(settings, /id="sms-payment-sheet"[\s\S]*id="sms-paypal-button"[\s\S]*id="sms-venmo-button"/);
+  assert.match(settings, /id="sms-credit-continue" disabled>Continue to payment/);
+  assert.match(settingsClient, /function unitPrice\(pack\)/);
+  assert.match(settingsClient, /function openPaymentSheet\(\)/);
+  assert.match(settingsClient, /components: \['paypal-payments', 'venmo-payments'\]/);
+  assert.ok(settingsClient.indexOf('function openPaymentSheet()') < settingsClient.indexOf('initializePayPalPayments();'));
+  assert.doesNotMatch(settingsClient.match(/function chooseCreditPack[\s\S]*?\n\}/)?.[0] || '', /initializePayPalPayments/);
   assert.match(route, /requireOrganizer/);
   assert.match(route, /publicPacks\(\)/);
   assert.match(route, /packForKey\(req\.body\?\.packKey\)/);

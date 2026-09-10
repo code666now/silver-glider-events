@@ -193,20 +193,34 @@ router.post('/api/me/link-rsvps', requireOrganizer, async (req, res, next) => {
 });
 
 router.patch('/api/me/profile', requireOrganizer, async (req, res, next) => {
-  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'avatarUrl') || req.body.avatarUrl !== null) {
+  const body = req.body || {};
+  const hasName = Object.prototype.hasOwnProperty.call(body, 'name');
+  const hasAvatar = Object.prototype.hasOwnProperty.call(body, 'avatarUrl');
+  if (!hasName && !hasAvatar) return res.status(400).json({ error: 'Choose a profile field to update' });
+  if (hasAvatar && body.avatarUrl !== null) {
     return res.status(400).json({ error: 'Upload a photo or set avatarUrl to null' });
   }
+  const name = hasName ? (String(body.name ?? '').trim().slice(0, 100) || null) : req.organizer.name;
   try {
     const { rows } = await pool.query(
-      `UPDATE organizers SET avatar_url=NULL, updated_at=NOW() WHERE id=$1
+      `UPDATE organizers
+          SET name=$2,
+              avatar_url=CASE WHEN $3 THEN NULL ELSE avatar_url END,
+              updated_at=NOW()
+        WHERE id=$1
        RETURNING id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
                  bio, website_url, instagram_handle, instagram_url, contact_email,
                  plan, is_admin, created_at, updated_at`,
-      [req.organizer.id]
+      [req.organizer.id, name, hasAvatar]
     );
     const organizer = rows[0];
     res.json({
-      user: { id: organizer.id, email: organizer.email, name: organizer.name, avatarUrl: null },
+      user: {
+        id: organizer.id,
+        email: organizer.email,
+        name: organizer.name,
+        avatarUrl: organizer.avatar_url || null
+      },
       organizer
     });
   } catch (err) { next(err); }

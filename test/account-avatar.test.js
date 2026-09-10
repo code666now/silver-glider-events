@@ -12,7 +12,7 @@ test('personal avatars extend accounts and RSVPs without changing Host Page artw
   assert.match(migration, /ALTER TABLE rsvps[\s\S]*ADD COLUMN IF NOT EXISTS account_id INT REFERENCES organizers\(id\) ON DELETE SET NULL/);
   assert.doesNotMatch(migration, /UPDATE rsvps|DROP COLUMN|DELETE FROM/);
 
-  const settings = read('src/views/settings.html');
+  const settings = read('src/views/settings-v2.html');
   assert.match(settings, /id="account-avatar-title">Your RSVP photo/);
   assert.match(settings, /Your Host Page logo stays separate/);
   assert.match(settings, /id="account-avatar-fallback">😎/);
@@ -24,7 +24,8 @@ test('profile-photo changes are bound to the authenticated session', () => {
   const uploads = read('src/routes/uploads.js');
   const auth = read('src/routes/auth.js');
   const accountRsvps = read('src/lib/account-rsvps.js');
-  const settings = read('src/views/settings.html');
+  const settings = read('src/views/settings-v2.html');
+  const settingsClient = read('public/js/settings.js');
   const publicClient = read('public/js/public-event.js');
 
   assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requireOrganizer, handleUpload/);
@@ -34,12 +35,13 @@ test('profile-photo changes are bound to the authenticated session', () => {
 
   assert.match(auth, /router\.get\('\/api\/me', requireOrganizer/);
   assert.match(auth, /router\.patch\('\/api\/me\/profile', requireOrganizer/);
-  assert.match(auth, /UPDATE organizers SET avatar_url=NULL[\s\S]*WHERE id=\$1/);
-  assert.match(auth, /\[req\.organizer\.id\]/);
+  assert.match(auth, /avatar_url=CASE WHEN \$3 THEN NULL ELSE avatar_url END/);
+  assert.match(auth, /const hasName = Object\.prototype\.hasOwnProperty\.call\(body, 'name'\)/);
+  assert.match(auth, /\[req\.organizer\.id, name, hasAvatar\]/);
   assert.match(auth, /router\.post\('\/api\/me\/link-rsvps', requireOrganizer/);
   assert.match(auth, /linkVerifiedRsvps\(client, organizer\.id, email\)/);
   assert.match(uploads, /linkVerifiedRsvps\(pool, req\.organizer\.id, req\.organizer\.email\)/);
-  assert.match(settings, /api\('\/api\/me\/link-rsvps', \{ method: 'POST' \}\)/);
+  assert.match(settingsClient, /api\('\/api\/me\/link-rsvps', \{ method: 'POST' \}\)/);
   assert.match(accountRsvps, /WHERE account_id IS NULL AND LOWER\(email\)=LOWER\(\$2\)/);
   assert.match(accountRsvps, /\[id, verifiedEmail\]/);
   assert.doesNotMatch(accountRsvps, /req\.body|userId|organizerId/);
@@ -74,4 +76,21 @@ test('guest-list avatars link only through verified identity or attendee ownersh
     assert.match(styles, /width:\s*58px;\s*height:\s*58px/);
     assert.doesNotMatch(styles, /\.guest-name-list li \{[^}]*border-radius:\s*999px/s);
   }
+});
+
+test('desktop navigation moves Settings and sign out into the account menu', () => {
+  const shell = read('public/js/api.js');
+  const styles = read('public/css/main.css');
+  const settings = read('src/views/settings-v2.html');
+
+  assert.match(shell, /class="sg-account-avatar"/);
+  assert.match(shell, /class="sg-account-popover" role="menu" hidden/);
+  assert.match(shell, /href="\/settings\/account" role="menuitem">Settings/);
+  assert.match(shell, /class="sg-account-menu-signout"[^>]*role="menuitem">Sign out/);
+  assert.match(shell, /function updateNavAccount\(organizer\)/);
+  assert.match(styles, /\.sg-nav-links \.sg-nav-settings-link \{ display: none; \}/);
+  assert.match(styles, /@media \(max-width: 1023px\)[\s\S]*\.sg-nav-links \.sg-nav-settings-link \{ display: block; \}/);
+  assert.match(settings, /class="settings-mobile-signout settings-logout"[^>]*>Sign out/);
+  const accountSection = settings.slice(settings.indexOf('id="settings-account"'), settings.indexOf('id="settings-messaging"'));
+  assert.doesNotMatch(accountSection, /settings-logout|>Sign out</);
 });

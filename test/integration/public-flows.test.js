@@ -139,6 +139,23 @@ test.after(async () => {
   await pool.end();
 });
 
+test('serves each protected settings destination from the responsive settings shell', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  for (const pathname of ['/settings', '/settings/account', '/settings/messaging', '/settings/host-page']) {
+    const signedOut = await fetch(`${baseUrl}${pathname}`, { redirect: 'manual' });
+    assert.equal(signedOut.status, 302);
+    assert.equal(signedOut.headers.get('location'), '/login');
+
+    const signedIn = await fetch(`${baseUrl}${pathname}`, { headers: { cookie } });
+    assert.equal(signedIn.status, 200);
+    const html = await signedIn.text();
+    assert.match(html, /data-settings-shell/);
+    assert.match(html, /href="\/settings\/account"/);
+    assert.match(html, /href="\/settings\/messaging"/);
+    assert.match(html, /href="\/settings\/host-page"/);
+  }
+});
+
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
@@ -773,6 +790,27 @@ test('personal RSVP photos require verified identity or attendee ownership and s
     body: JSON.stringify({ avatarUrl: null })
   });
   assert.equal(signedOutRemove.status, 401);
+
+  await pool.query(
+    "UPDATE organizers SET org_name='Unpublished Host', public_slug=NULL WHERE id=$1",
+    [accountId]
+  );
+  const rename = await fetch(`${baseUrl}/api/me/profile`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: accountCookie },
+    body: JSON.stringify({ name: 'Updated Account Name' })
+  });
+  assert.equal(rename.status, 200);
+  assert.equal((await rename.json()).organizer.name, 'Updated Account Name');
+  const { rows: renamedAccounts } = await pool.query(
+    'SELECT name, org_name, public_slug FROM organizers WHERE id=$1',
+    [accountId]
+  );
+  assert.deepEqual(renamedAccounts[0], {
+    name: 'Updated Account Name',
+    org_name: 'Unpublished Host',
+    public_slug: null
+  });
 
   const remove = await fetch(`${baseUrl}/api/me/profile`, {
     method: 'PATCH',

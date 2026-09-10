@@ -15,15 +15,11 @@ function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('Settings inline browser code compiles before the loading skeleton is shipped', () => {
-  const view = source('src/views/settings.html');
-  const scripts = [...view.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-    .map(match => match[1])
-    .filter(script => script.trim());
-  assert.ok(scripts.length > 0);
-  scripts.forEach((script, index) => {
-    assert.doesNotThrow(() => new vm.Script(script, { filename: `settings-inline-${index + 1}.js` }));
-  });
+test('Settings browser code compiles before the loading skeleton is shipped', () => {
+  const view = source('src/views/settings-v2.html');
+  const script = source('public/js/settings.js');
+  assert.match(view, /<script src="\/js\/settings\.js"><\/script>/);
+  assert.doesNotThrow(() => new vm.Script(script, { filename: 'settings.js' }));
 });
 
 test('host profile migration extends organizers without replacing stable identity fields', () => {
@@ -129,7 +125,7 @@ test('event pages keep the linked Presented by host attribution', () => {
 });
 
 test('host and super-admin settings expose only the requested profile controls', () => {
-  const settings = source('src/views/settings.html');
+  const settings = source('src/views/settings-v2.html');
   for (const id of ['org_name', 'public_slug', 'bio', 'instagram_handle', 'website_url', 'header-input', 'logo-input']) {
     assert.match(settings, new RegExp(`id="${id}"`));
   }
@@ -145,29 +141,38 @@ test('host and super-admin settings expose only the requested profile controls',
   }
 });
 
-test('settings use progressive disclosure and separate account from host-page saves', () => {
-  const settings = source('src/views/settings.html');
+test('settings use linkable responsive sections and separate account from host-page saves', () => {
+  const settings = source('src/views/settings-v2.html');
+  const styles = source('public/css/settings.css');
+  const client = source('public/js/settings.js');
+  const index = source('src/index.js');
   assert.match(settings, /class="sg-shell settings-shell"/);
-  assert.match(settings, /settings-account-card/);
-  assert.match(settings, /settings-host-card/);
-  assert.match(settings, /@media\(min-width:1024px\)[\s\S]*\.settings-shell\s*\{[\s\S]*max-width:1260px/);
-  assert.match(settings, /grid-template-columns:minmax\(340px,\.78fr\) minmax\(0,1\.22fr\)/);
-  assert.doesNotMatch(settings, /\.settings-account-card\s*\{[^}]*position:sticky/);
-  assert.match(settings, /@media\(max-width:560px\)/);
+  assert.match(index, /'\/settings\/account'[\s\S]*'\/settings\/messaging'[\s\S]*'\/settings\/host-page'/);
+  assert.match(settings, /href="\/settings\/account"/);
+  assert.match(settings, /href="\/settings\/messaging"/);
+  assert.match(settings, /href="\/settings\/host-page"/);
+  assert.match(settings, /class="settings-rail"/);
+  assert.match(settings, /class="settings-mobile-index"/);
+  assert.match(styles, /grid-template-columns:210px minmax\(0,780px\)/);
+  assert.match(styles, /@media\(max-width:1023px\)/);
+  assert.match(styles, /body\[data-settings-route="index"\] \.settings-mobile-index/);
+  assert.match(styles, /\.settings-content \{ min-width:0;max-width:780px/);
   assert.match(settings, /id="account-form"/);
-  assert.match(settings, /id="account-save-btn" disabled>Save account</);
+  assert.match(settings, /id="account-save-btn" disabled>Save changes</);
   assert.match(settings, /id="host-summary-view"[^>]*hidden>View page</);
-  assert.match(settings, /\.host-summary-actions \[hidden\] \{ display:none; \}/);
-  assert.match(settings, /id="host-editor-toggle"[^>]*aria-expanded="false"/);
-  assert.match(settings, /class="host-editor" id="host-editor" hidden/);
   assert.match(settings, /id="host-profile-form"/);
-  assert.match(settings, /id="host-save-btn">Save host page</);
+  assert.match(settings, /id="host-form-actions" hidden/);
+  assert.match(settings, /id="host-save-btn">Save changes</);
+  assert.match(settings, /id="host-basics-title">Basics/);
+  assert.match(settings, /id="host-links-title">Links/);
+  assert.match(settings, /id="host-images-title">Images/);
+  assert.match(styles, /\.host-image-preview\.header \{[^}]*aspect-ratio:4\/1/);
   assert.ok(settings.indexOf('id="account-form"') < settings.indexOf('id="host-profile-form"'));
-  assert.ok(settings.indexOf('id="host-summary-name"') < settings.indexOf('for="org_name"'));
-  assert.doesNotMatch(settings, /id="settings-form"|id="save-btn"/);
+  assert.doesNotMatch(settings, /id="host-editor-toggle"|Close editor|\(optional\)/);
   assert.match(settings, /id="settings-loading" aria-label="Loading settings"/);
-  assert.match(settings, /id="settings-content" aria-busy="true" hidden/);
-  assert.match(settings, /function showSettings\(\)/);
-  assert.match(settings, /function showSettingsError\(\)/);
-  assert.match(settings, /\$\('account-save-btn'\)\.disabled = false/);
+  assert.match(settings, /id="settings-content" aria-busy="true"/);
+  assert.match(client, /function showSettings\(\)/);
+  assert.match(client, /function showSettingsError\(\)/);
+  assert.match(client, /function updateAccountDirty\(\)/);
+  assert.match(client, /function updateHostDirty\(\)/);
 });

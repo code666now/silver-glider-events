@@ -87,7 +87,12 @@ app.get('/events/new', requireOrganizer, async (req, res, next) => {
 });
 app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
-app.get('/settings', requireOrganizer, view('settings.html'));
+app.get([
+  '/settings',
+  '/settings/account',
+  '/settings/messaging',
+  '/settings/host-page'
+], requireOrganizer, view('settings-v2.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));

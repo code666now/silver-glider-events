@@ -37,6 +37,29 @@ function sgSafeHttpUrl(value) {
   }
 }
 
+function updateNavAccount(organizer) {
+  const menu = document.querySelector('.sg-account-menu');
+  if (!menu || !organizer) return;
+  const displayName = String(organizer.name || organizer.org_name || organizer.email || 'Account').trim();
+  const initials = displayName.split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
+  const name = menu.querySelector('.sg-account-menu-name');
+  const plan = menu.querySelector('.sg-account-menu-plan');
+  const fallback = menu.querySelector('.sg-account-avatar-fallback');
+  const image = menu.querySelector('.sg-account-avatar-image');
+  name.textContent = displayName;
+  plan.textContent = `${organizer.plan === 'pro' ? 'Pro' : 'Free'} plan`;
+  fallback.textContent = initials;
+  if (organizer.avatar_url) {
+    image.src = organizer.avatar_url;
+    image.hidden = false;
+    fallback.hidden = true;
+  } else {
+    image.removeAttribute('src');
+    image.hidden = true;
+    fallback.hidden = false;
+  }
+}
+
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
@@ -49,15 +72,38 @@ function renderNav(active) {
   el.className = 'sg-nav';
   el.innerHTML = `
     <a class="sg-nav-brand" href="/dashboard">Silver Glider <span>Events</span></a>
-    <button class="sg-nav-toggle" type="button" aria-label="Open menu" aria-expanded="false">
-      <span></span><span></span><span></span>
-    </button>
     <div class="sg-nav-links">
       ${links.map(([key, href, label]) =>
-        `<a href="${href}" class="${key === active ? 'active' : ''}">${label}</a>`).join('')}
+        `<a href="${href}" class="${key === active ? 'active' : ''}${key === 'settings' ? ' sg-nav-settings-link' : ''}">${label}</a>`).join('')}
+    </div>
+    <div class="sg-nav-actions">
+      <div class="sg-account-menu">
+        <button class="sg-account-avatar" type="button" aria-label="Open account menu" aria-expanded="false" aria-haspopup="menu">
+          <span class="sg-account-avatar-fallback" aria-hidden="true">SG</span>
+          <img class="sg-account-avatar-image" alt="" hidden>
+        </button>
+        <div class="sg-account-popover" role="menu" hidden>
+          <div class="sg-account-menu-identity">
+            <strong class="sg-account-menu-name">Account</strong>
+            <span class="sg-account-menu-plan">Free plan</span>
+          </div>
+          <a href="/settings/account" role="menuitem">Settings</a>
+          <button class="sg-account-menu-signout" type="button" role="menuitem">Sign out</button>
+        </div>
+      </div>
+      <button class="sg-nav-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
     </div>`;
 
   const toggle = el.querySelector('.sg-nav-toggle');
+  const accountButton = el.querySelector('.sg-account-avatar');
+  const accountPopover = el.querySelector('.sg-account-popover');
+  const closeAccountMenu = () => {
+    accountPopover.hidden = true;
+    accountButton.setAttribute('aria-expanded', 'false');
+    accountButton.setAttribute('aria-label', 'Open account menu');
+  };
   const closeMenu = () => {
     el.classList.remove('open');
     toggle.setAttribute('aria-expanded', 'false');
@@ -65,19 +111,41 @@ function renderNav(active) {
   };
 
   toggle.addEventListener('click', () => {
+    closeAccountMenu();
     const isOpen = el.classList.toggle('open');
     toggle.setAttribute('aria-expanded', String(isOpen));
     toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+  });
+  accountButton.addEventListener('click', () => {
+    closeMenu();
+    const willOpen = accountPopover.hidden;
+    accountPopover.hidden = !willOpen;
+    accountButton.setAttribute('aria-expanded', String(willOpen));
+    accountButton.setAttribute('aria-label', willOpen ? 'Close account menu' : 'Open account menu');
   });
   el.querySelector('.sg-nav-links').addEventListener('click', e => {
     if (e.target.closest('a')) closeMenu();
   });
   document.addEventListener('click', e => {
-    if (!el.contains(e.target)) closeMenu();
+    if (!el.contains(e.target)) {
+      closeMenu();
+      closeAccountMenu();
+    } else if (!e.target.closest('.sg-account-menu')) {
+      closeAccountMenu();
+    }
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeMenu();
+    if (e.key === 'Escape') {
+      closeMenu();
+      closeAccountMenu();
+    }
   });
+  el.querySelector('.sg-account-menu-signout').addEventListener('click', async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+    window.location.href = '/login';
+  });
+
+  api('/api/auth/me').then(({ organizer }) => updateNavAccount(organizer)).catch(() => {});
 }
 
 // Inject the moving aurora background behind the page (once).
