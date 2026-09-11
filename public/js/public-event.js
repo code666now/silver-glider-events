@@ -422,7 +422,11 @@ $('returning-rsvp-switch')?.addEventListener('click', async () => {
   const button = $('returning-rsvp-switch');
   button.disabled = true;
   try {
-    await fetch('/api/public/guest-session/forget', { method: 'POST' });
+    await fetch('/api/public/guest-session/forget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventSlug: EVENT.slug })
+    });
     EVENT.returningGuest = null;
     $('returning-rsvp-verify').innerHTML = '';
     ['full_name', 'email'].forEach(id => {
@@ -592,9 +596,16 @@ async function submitRsvp({ afterVerification = false } = {}) {
     }
     if (!res.ok) throw new Error(data.message || data.error || 'Something went wrong');
     if (data.alreadyRsvpd) {
+      // This browser didn't prove it owns the RSVP, so it isn't remembered.
+      // Offer the emailed code to manage it here instead of a dead end.
+      $('success-title').textContent = 'You’re already on the list.';
       $('success-sub').textContent = data.confirmationResent
-        ? 'You’re already on the list. We’ve re-sent your confirmation email.'
-        : 'You’re already on the list. Your confirmation email went out in the last few minutes — check your inbox and spam folder.';
+        ? 'We’ve re-sent your confirmation email.'
+        : 'Your confirmation email went out in the last few minutes — check your inbox and spam folder.';
+      alreadyListedEmail = $('email').value.trim();
+      $('success-manage').hidden = false;
+      $('success-manage-button').hidden = false;
+      $('success-verify').innerHTML = '';
     } else if (EVENT.commentsEnabled) {
       $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the comments below.';
       await loadComments();
@@ -608,6 +619,19 @@ async function submitRsvp({ afterVerification = false } = {}) {
     btn.textContent = 'Confirm RSVP';
   }
 }
+
+let alreadyListedEmail = '';
+$('success-manage-button')?.addEventListener('click', () => {
+  $('success-manage-button').hidden = true;
+  confirmItsYou({
+    container: $('success-verify'),
+    codeRequest: { email: alreadyListedEmail },
+    title: 'Confirm it’s you',
+    // The browser now holds a verified guest session; the reloaded page shows
+    // the RSVP with "Change my answer".
+    onVerified: () => window.location.reload()
+  });
+});
 
 if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', e => {
   e.preventDefault();

@@ -483,6 +483,11 @@ a { color: var(--sg-accent); text-decoration: none; }
 .returning-rsvp-change:hover, .returning-rsvp-change:focus-visible { border-color: var(--sg-accent); }
 .returning-rsvp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 
+/* "Already on the list" from a browser that can't prove it: offer the code. */
+.success-manage { margin: -8px 0 22px; }
+.success-manage[hidden], .success-manage .sg-btn[hidden] { display: none; }
+.success-manage .sg-code-panel { text-align: left; }
+
 /* Post-RSVP invitation to host. Deliberately quiet: it follows the guest's
    answer and never competes with the event itself. */
 .host-your-own {

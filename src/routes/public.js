@@ -377,6 +377,31 @@ function firstNameFrom(value) {
 }
 
 async function returningGuestContext(db, req, eventId) {
+  // A personal link from this guest's own email (confirmation "View event",
+  // the manage link, a text reminder) leaves this event's attendee cookie. It
+  // proves this exact RSVP, so the page shows their answer — for this event
+  // only, since the cookie is per event.
+  const attendeeToken = readCookie(req, attendeeCookieName(eventId));
+  if (attendeeToken && attendeeToken.length <= 100) {
+    const rsvp = (await db.query(
+      `SELECT * FROM rsvps
+        WHERE event_id=$1 AND manage_token=$2 AND status IN ('confirmed','cancelled')`,
+      [eventId, attendeeToken]
+    )).rows[0];
+    if (rsvp) {
+      return {
+        identityId: rsvp.account_id || null,
+        email: rsvp.email,
+        displayFirstName: firstNameFrom(rsvp.first_name),
+        displayName: `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || rsvp.first_name,
+        verified: true,
+        source: 'attendee',
+        sessionId: null,
+        rsvp
+      };
+    }
+  }
+
   const identity = req.sessionAccount;
   if (identity) {
     const rsvp = (await db.query(
@@ -538,6 +563,13 @@ router.post('/api/public/guest-session/forget', async (req, res, next) => {
     clearSessionCookie(res);
     clearGuestSessionCookie(res);
     clearPhotoAccessCookie(res);
+    // "Not Lucas?" on an event page also forgets that event's attendee access,
+    // which otherwise keeps recognizing the person who opened a personal link.
+    const slug = String(req.body?.eventSlug || '').trim().slice(0, 220);
+    if (slug) {
+      const { rows } = await pool.query('SELECT id FROM events WHERE slug=$1', [slug]);
+      if (rows[0]) res.append('Set-Cookie', `${attendeeCookieName(rows[0].id)}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true });
   } catch (error) { next(error); }
