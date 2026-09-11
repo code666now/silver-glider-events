@@ -2,9 +2,30 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.87
+
+Not yet released. Built by Claude Code on branch `claude/invite-your-people`.
+
+### Added
+
+* **Invite your people.** On an upcoming event, Familiar Faces now shows everyone who RSVP’d to your past events as faces, right under the people already connected to the event. Each person appears once, labeled with where you know them from (“Birthday Bash” or “3 of your events”), regulars first. Tap faces to select, review “Invite N people to [event]?”, and send, without leaving the event.
+* The Familiar Faces search box searches both grids at once (names and emails; emails are never shown on cards). A dropdown narrows the list to one past event. Large lists load 48 at a time with **Show more**.
+* Named +1s appear as “[friend]’s +1” with a **Share link** button that copies the event link. They are never emailed, because they never gave you their email.
+
+### Changed
+
+* Replaces the one-time “Invite Familiar Faces” popup, which showed one past event at a time, pre-selected everyone, and could only be used once per event. The Promote panel’s **Invite Familiar Faces** row now jumps to the new section. You can invite more people any time.
+* Nothing is pre-selected. Unsubscribed people are hidden with a count; people already RSVP’d, declined, or invited to this event are not offered again.
+* On past events, cards that can’t be selected now say why (“Unsubscribed” or “No email”), and +1 cards say whose +1 they were.
+* Sticky selection bars sit above the Feedback bubble, which used to cover their send button.
+
+### Security & reliability
+
+* Eligibility is rechecked on send: confirmed primary RSVPs from the host’s own past published events, never other hosts’ guests, never unsubscribed people or +1s. Each invitation still names the past event the person came to (one batch per source event). Reuses existing tables; no migration.
+
 ## 1.0.86
 
-Not yet released. Built by Claude Code on branch `claude/host-your-own-event`.
+Released September 10, 2026. Built by Claude Code (PR #3), deployed by Codex.
 
 ### Added
 

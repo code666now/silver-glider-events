@@ -72,7 +72,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /button\.hidden = !preview\.reminderEnabled && !preview\.batch/);
   assert.match(client, /smsPreviewState\?\.needsFunds/);
   assert.match(client, /settings\/messaging/);
-  assert.match(client, /\[loadLineStatus\(\), loadPreviousGuests\(\), loadFollowers\(\), loadSmsPreview\(\)\]/);
+  assert.match(client, /\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\)\]/);
   assert.match(client, /Promise\.allSettled\(\[loadGuests\(\), \.\.\.secondaryTasks\]\)/);
   assert.match(client, /function showManageLoadError\(\)/);
   const privateBranch = client.match(/else if \(event\.visibility === 'private'\) \{([\s\S]*?)\n  \}/)[1];

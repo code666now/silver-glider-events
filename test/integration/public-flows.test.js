@@ -2066,7 +2066,8 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
   const list = await listResponse.json();
   assert.equal(list.canStartInvitation, true);
   assert.equal(list.totalCount, 5);
-  assert.deepEqual(new Set(list.faces.map(face => face.status)), new Set(['RSVP’d', 'Invited']));
+  assert.deepEqual(new Set(list.faces.map(face => face.status)), new Set(['RSVP’d', 'Invited', 'Maya’s +1']));
+  assert.equal(list.faces.find(face => face.name === 'Sam Friend').status, 'Maya’s +1');
   assert.equal(list.faces.find(face => face.id === `rsvp:${maya.id}`).avatarUrl,
     'https://res.cloudinary.com/demo/image/upload/v1/maya.jpg');
   const ariFace = list.faces.find(face => face.id === `rsvp:${ari.id}`);
@@ -2958,4 +2959,118 @@ test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only
   assert.ok(emails.includes('hosts-admin@example.test'));
   assert.ok(!emails.includes('rsvp-only-identity@example.test'));
   assert.ok(hosts.guestIdentityCount >= 1);
+});
+
+test('upcoming events offer every past guest once as a face and invite them without leaving the event', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const target = await createEvent({ slug: 'people-halloween', title: 'Halloween at Corbett', event_date: '2030-10-30' });
+  const birthday = await createEvent({ slug: 'people-birthday', title: 'Birthday Bash', event_date: '2020-05-01' });
+  const summer = await createEvent({ slug: 'people-summer', title: 'Summer Social', event_date: '2020-07-01' });
+
+  // Lucas came twice; Casey once, with a +1; the rest must never be offered.
+  await createRsvp(birthday.id, { first_name: 'Lucas', last_name: 'Moon', email: 'lucas-people@example.test' });
+  const lucasSummer = await createRsvp(summer.id, { first_name: 'Lucas', last_name: 'Moon', email: 'LUCAS-people@example.test' });
+  const casey = await createRsvp(birthday.id, {
+    first_name: 'Casey', last_name: 'Gee', email: 'casey-people@example.test',
+    guest_first_name: 'Maya', guest_last_name: 'Guest'
+  });
+  await createRsvp(birthday.id, { first_name: 'Uma', email: 'uma-people@example.test' });
+  await pool.query(`INSERT INTO follower_optouts (organizer_id, email) VALUES ($1,'uma-people@example.test')`, [organizerId]);
+  const ana = await createRsvp(birthday.id, { first_name: 'Ana', email: 'ana-people@example.test' });
+  await createRsvp(target.id, { first_name: 'Ana', email: 'ana-people@example.test' });
+  await createRsvp(birthday.id, { first_name: 'Dee', email: 'dee-people@example.test' });
+  await createRsvp(target.id, { first_name: 'Dee', email: 'dee-people@example.test', status: 'cancelled' });
+  await createRsvp(birthday.id, { first_name: 'Ivy', email: 'ivy-people@example.test' });
+  const priorBatch = (await pool.query(
+    `INSERT INTO previous_guest_invitation_batches (target_event_id, source_event_id, source_event_title, status, recipient_count)
+     VALUES ($1,$2,'Birthday Bash','sent',1) RETURNING id`, [target.id, birthday.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO message_log (event_id, previous_guest_invitation_batch_id, recipient, recipient_name, message_type, channel, status)
+     VALUES ($1,$2,'ivy-people@example.test','Ivy','previous_guest_invite','email','sent')`, [target.id, priorBatch.id]
+  );
+  await createRsvp(birthday.id, { first_name: 'Carl', email: 'carl-people@example.test', status: 'cancelled' });
+  const otherHost = (await pool.query(
+    `INSERT INTO organizers (email, org_name, public_slug) VALUES ('other-people-host@example.test','Other','other-people') RETURNING id`
+  )).rows[0];
+  const otherEvent = (await pool.query(
+    `INSERT INTO events (organizer_id, slug, title, event_date, start_time, venue_name, visibility, status)
+     VALUES ($1,'other-people-past','Other Past','2020-06-01','20:00','Hall','public','published') RETURNING id`,
+    [otherHost.id]
+  )).rows[0];
+  const otto = await createRsvp(otherEvent.id, { first_name: 'Otto', email: 'otto-people@example.test' });
+
+  const load = async query => (await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people${query || ''}`, { headers: { cookie } })).json();
+  const all = await load();
+  assert.equal(all.canInvite, true);
+  assert.deepEqual(all.people.map(face => face.name), ['Lucas Moon', 'Casey Gee'], 'regulars first, each person once');
+  const lucas = all.people[0];
+  assert.equal(lucas.detail, '2 of your events');
+  assert.equal(lucas.id, `rsvp:${lucasSummer.id}`, 'the most recent RSVP names the invitation’s source');
+  assert.equal(lucas.avatarEmoji, attendeeAvatar('email:lucas-people@example.test'));
+  assert.equal(all.people[1].detail, 'Birthday Bash');
+  assert.deepEqual(all.plusOnes.map(face => [face.name, face.detail]), [['Maya Guest', 'Casey’s +1']]);
+  assert.equal(all.unsubscribedCount, 1);
+  assert.deepEqual(all.sources.map(source => source.title), ['Summer Social', 'Birthday Bash']);
+  assert.equal(all.total, 2);
+  assert.equal(all.hasMore, false);
+  assert.ok(!JSON.stringify(all).includes('@example.test'), 'emails are searchable but never sent to the page');
+
+  assert.deepEqual((await load('?search=casey-people%40')).people.map(face => face.name), ['Casey Gee']);
+  assert.deepEqual((await load('?search=maya')).plusOnes.map(face => face.name), ['Maya Guest']);
+  const summerOnly = await load(`?sourceEventId=${summer.id}`);
+  assert.deepEqual(summerOnly.people.map(face => [face.name, face.detail]), [['Lucas Moon', 'Summer Social']]);
+  assert.deepEqual(summerOnly.plusOnes, []);
+
+  const invite = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people/invite`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ faceIds: [lucas.id, all.people[1].id, `rsvp:${ana.id}`, `rsvp:${otto.id}`, `guest:${casey.id}`] })
+  });
+  assert.equal(invite.status, 202);
+  assert.equal((await invite.json()).queued, 2, 'only Lucas and Casey are eligible');
+
+  let deliveries = [];
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    deliveries = (await pool.query(
+      `SELECT ml.recipient, ml.status, b.source_event_title
+         FROM message_log ml JOIN previous_guest_invitation_batches b ON b.id=ml.previous_guest_invitation_batch_id
+        WHERE ml.event_id=$1 AND ml.recipient <> 'ivy-people@example.test' ORDER BY ml.recipient`,
+      [target.id]
+    )).rows;
+    if (deliveries.length === 2 && deliveries.every(row => row.status === 'sent')) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(deliveries, [
+    { recipient: 'casey-people@example.test', status: 'sent', source_event_title: 'Birthday Bash' },
+    { recipient: 'lucas-people@example.test', status: 'sent', source_event_title: 'Summer Social' }
+  ]);
+
+  const after = await load();
+  assert.deepEqual(after.people, [], 'invited people move up into the connected faces');
+  const connected = await (await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces`, { headers: { cookie } })).json();
+  assert.equal(connected.faces.filter(face => face.status === 'Invited').length, 3);
+
+  const again = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people/invite`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ faceIds: [lucas.id] })
+  });
+  assert.equal(again.status, 409);
+
+  const pastTarget = await (await fetch(`${baseUrl}/api/events/${summer.id}/familiar-faces/people`, { headers: { cookie } })).json();
+  assert.equal(pastTarget.canInvite, false);
+  const strangers = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people`, {
+    headers: { cookie: `sge_session=${signSession(otherHost.id)}` }
+  });
+  assert.equal(strangers.status, 404);
+});
+
+test('past-event pickers explain why a face can’t be selected', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const past = await createEvent({ slug: 'picker-notes', title: 'Picker Notes', event_date: '2020-03-03' });
+  await createRsvp(past.id, { first_name: 'Una', email: 'una-picker@example.test' });
+  await pool.query(`INSERT INTO follower_optouts (organizer_id, email) VALUES ($1,'una-picker@example.test')`, [organizerId]);
+  await createRsvp(past.id, { first_name: 'Ok', email: 'ok-picker@example.test' });
+  const faces = await (await fetch(`${baseUrl}/api/events/${past.id}/familiar-faces`, { headers: { cookie } })).json();
+  assert.equal(faces.faces.find(face => face.name === 'Una Person').note, 'Unsubscribed');
+  assert.equal(faces.faces.find(face => face.name === 'Ok Person').note, null);
 });

@@ -8,7 +8,6 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
-  <link rel="stylesheet" href="/css/previous-guest-invites.css">
   <link rel="stylesheet" href="/css/familiar-faces.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
   <style>
@@ -408,7 +407,7 @@
         </button>
         <button class="promotion-action" id="invite-previous-guests" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19 8v6m-3-3h6"/></svg></span>
-          <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite Familiar Faces</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Invite people who RSVP’d to one of your past events.</span></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite Familiar Faces</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Choose people from your past events.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
         <button class="promotion-action" id="sms-audience" type="button" hidden disabled>
@@ -492,6 +491,27 @@
           <button class="sg-btn sg-btn-primary" id="familiar-choose-event" type="button" disabled>Choose event</button>
         </div>
       </div>
+
+      <div class="familiar-people" id="familiar-people" hidden>
+        <div class="familiar-people-head">
+          <div>
+            <p class="sg-label" style="margin:0 0 7px">Invite your people</p>
+            <p class="familiar-people-intro" id="familiar-people-intro">From your past events. Tap faces to select them.</p>
+          </div>
+          <label class="familiar-people-source"><span class="sr-only">Show people from</span><select class="sg-input" id="familiar-people-source"><option value="">All past events</option></select></label>
+        </div>
+        <div class="familiar-faces-grid" id="familiar-people-grid" aria-live="polite"></div>
+        <p class="familiar-faces-empty" id="familiar-people-empty" hidden></p>
+        <div class="familiar-people-more"><button class="sg-btn sg-btn-ghost" id="familiar-people-more" type="button" hidden>Show more</button></div>
+        <p class="familiar-people-note" id="familiar-people-note" hidden></p>
+        <div class="familiar-faces-selection" id="familiar-people-bar" hidden>
+          <div class="familiar-faces-selection-copy"><strong id="familiar-people-count">0 selected</strong><span id="familiar-people-hint">Tap faces to add or remove them.</span></div>
+          <div class="familiar-faces-selection-actions">
+            <button class="sg-btn sg-btn-ghost" id="familiar-people-secondary" type="button">Clear</button>
+            <button class="sg-btn sg-btn-primary" id="familiar-people-send" type="button">Invite</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div class="manage-danger-zone" style="margin-top:56px;padding-top:24px;border-top:1px solid var(--sg-border-soft);text-align:center">
@@ -514,32 +534,6 @@
       <footer class="familiar-invite-dialog-foot">
         <button class="sg-btn sg-btn-ghost" id="familiar-invite-back" type="button">Cancel</button>
         <button class="sg-btn sg-btn-primary" id="familiar-invite-next" type="button" disabled>Review invitation</button>
-      </footer>
-    </form>
-  </dialog>
-
-  <dialog class="previous-guests-dialog" id="previous-guests-dialog" aria-labelledby="previous-guests-title">
-    <form class="previous-guests-dialog-form" id="previous-guests-form">
-      <header class="previous-guests-dialog-head">
-        <div>
-          <p class="previous-guests-kicker">Invitations</p>
-          <h2 id="previous-guests-title">Invite Familiar Faces</h2>
-          <p class="previous-guests-intro">Bring people who RSVP’d to a past event to this one.</p>
-        </div>
-        <button class="previous-guests-close" type="button" data-close-previous-guests aria-label="Close">×</button>
-      </header>
-      <div class="previous-guests-dialog-body">
-        <label class="previous-guests-field">
-          <span>Choose a past event</span>
-          <select class="sg-input" id="previous-guests-source"></select>
-        </label>
-        <div id="previous-guests-content" aria-live="polite">
-          <div class="previous-guests-dialog-loading">Loading your previous guest list…</div>
-        </div>
-      </div>
-      <footer class="previous-guests-dialog-foot">
-        <button class="sg-btn sg-btn-ghost" type="button" data-close-previous-guests>Cancel</button>
-        <button class="sg-btn sg-btn-primary" id="previous-guests-send" type="button" disabled>Send invitations</button>
       </footer>
     </form>
   </dialog>

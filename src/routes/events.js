@@ -687,6 +687,12 @@ function familiarFaceKey(type, id) {
   return `${type}:${Number(id)}`;
 }
 
+// A named +1 came with a friend; say whose, so the card makes sense.
+function plusOneLabel(primaryFirstName) {
+  const first = String(primaryFirstName || '').trim().split(/\s+/)[0];
+  return first ? `${first}’s +1` : 'Guest +1';
+}
+
 function parseFamiliarFaceIds(values) {
   const parsed = { rsvpIds: [], invitationIds: [] };
   const seen = new Set();
@@ -836,13 +842,17 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     const faces = [];
     for (const rsvp of rsvps) {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
+      const hasEmail = Boolean(String(rsvp.email || '').trim());
       faces.push({
         id: familiarFaceKey('rsvp', rsvp.id),
         name,
         status: 'RSVP’d',
+        // Why a face can't be selected for an invitation, so the picker never
+        // looks broken.
+        note: !hasEmail ? 'No email' : (!rsvp.host_email_allowed ? 'Unsubscribed' : null),
         avatarUrl: safeAvatarUrl(rsvp.avatar_url),
         avatarEmoji: attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
-        canInvite: Boolean(rsvp.host_email_allowed && String(rsvp.email || '').trim()),
+        canInvite: Boolean(rsvp.host_email_allowed && hasEmail),
         searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
         sortTime: rsvp.created_at
       });
@@ -850,7 +860,7 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
       if (guestName) faces.push({
         id: familiarFaceKey('guest', rsvp.id),
         name: guestName,
-        status: 'RSVP’d',
+        status: plusOneLabel(rsvp.first_name),
         avatarUrl: null,
         avatarEmoji: attendeeAvatar(`guest:${rsvp.id}:${guestName.toLowerCase()}`),
         canInvite: false,
@@ -1044,6 +1054,252 @@ router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
       skipped: selected.length - queued,
       batch: previousGuestBatchPayload(updatedBatches[0])
     });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// ---- "Invite your people" ---------------------------------------------
+// On an upcoming event, Familiar Faces offers everyone who RSVP'd to one of
+// the host's past published events: one face per email, newest context first,
+// searchable, and invitable without leaving the event. Consent rules match the
+// other invitation paths: confirmed primary RSVPs with an email, never
+// unsubscribed people, never named +1s, never anyone already RSVP'd, declined,
+// or invited here.
+
+const PEOPLE_PAGE_SIZE = 48;
+
+async function loadInviteTarget(queryable, { eventId, organizerId, lock = false }) {
+  const { rows } = await queryable.query(
+    `SELECT e.*, e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past
+       FROM events e WHERE e.id=$1 AND e.organizer_id=$2${lock ? ' FOR UPDATE' : ''}`,
+    [eventId, organizerId]
+  );
+  const target = rows[0] || null;
+  const canInvite = Boolean(target && target.status === 'published' && !target.is_past &&
+    !target.archived_at && !target.secret_show_enabled);
+  return { target, canInvite };
+}
+
+// SQL condition: the (lower-cased) email is already connected to the target
+// event ($2) — RSVP'd, declined, or invited.
+function connectedToTarget(emailExpression) {
+  return `(EXISTS (
+    SELECT 1 FROM rsvps target_rsvp
+     WHERE target_rsvp.event_id=$2 AND target_rsvp.status IN ('confirmed','cancelled')
+       AND LOWER(TRIM(target_rsvp.email))=${emailExpression}
+  ) OR EXISTS (
+    SELECT 1 FROM message_log ml
+     WHERE ml.event_id=$2 AND LOWER(TRIM(ml.recipient))=${emailExpression}
+       AND ml.message_type IN ('announcement','previous_guest_invite')
+       AND ml.status IN ('pending','sent')
+  ))`;
+}
+
+const PAST_RSVPS = `
+  SELECT r.id, LOWER(TRIM(r.email)) AS email, r.first_name, r.last_name, r.account_id,
+         e.id AS event_id, e.title AS event_title, e.event_date
+    FROM rsvps r JOIN events e ON e.id=r.event_id
+   WHERE e.organizer_id=$1 AND e.id<>$2 AND e.status='published'
+     AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+     AND r.status='confirmed' AND NULLIF(TRIM(r.email),'') IS NOT NULL`;
+
+function candidateDetail(row, sourceEventId) {
+  if (sourceEventId || Number(row.event_count) <= 1) return row.context_title;
+  return `${row.event_count} of your events`;
+}
+
+// GET /api/events/:id/familiar-faces/people?search=&sourceEventId=&offset=
+router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
+  try {
+    const { target, canInvite } = await loadInviteTarget(pool, { eventId: req.params.id, organizerId: req.organizer.id });
+    if (!target) return res.status(404).json({ error: 'Event not found' });
+    const empty = { canInvite: false, sources: [], people: [], plusOnes: [], total: 0, hasMore: false, unsubscribedCount: 0 };
+    if (!canInvite) return res.json(empty);
+
+    const search = String(req.query.search || '').trim().slice(0, 120);
+    const pattern = search ? `%${search.replace(/[\\%_]/g, ch => `\\${ch}`)}%` : '';
+    const sourceEventId = Number.parseInt(req.query.sourceEventId, 10) || null;
+    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+    const params = [req.organizer.id, target.id, sourceEventId, pattern, PEOPLE_PAGE_SIZE, offset];
+
+    const { rows: people } = await pool.query(
+      `WITH past AS (${PAST_RSVPS}),
+       grouped AS (
+         SELECT email,
+                COALESCE(
+                  (ARRAY_AGG(id ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
+                  (ARRAY_AGG(id ORDER BY event_date DESC, id DESC))[1]) AS rsvp_id,
+                (ARRAY_AGG(first_name ORDER BY event_date DESC, id DESC))[1] AS first_name,
+                (ARRAY_AGG(last_name ORDER BY event_date DESC, id DESC))[1] AS last_name,
+                COALESCE(
+                  (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
+                  (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC))[1]) AS context_title,
+                (ARRAY_AGG(account_id ORDER BY event_date DESC, id DESC) FILTER (WHERE account_id IS NOT NULL))[1] AS account_id,
+                MAX(event_date) AS last_event_date,
+                COUNT(DISTINCT event_id)::int AS event_count,
+                BOOL_OR(event_id=$3) AS in_source
+           FROM past GROUP BY email
+       )
+       SELECT g.*, o.avatar_url, COUNT(*) OVER ()::int AS total
+         FROM grouped g
+         LEFT JOIN organizers o ON o.id=g.account_id
+        WHERE NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=g.email)
+          AND NOT ${connectedToTarget('g.email')}
+          AND ($3::int IS NULL OR g.in_source)
+          AND ($4 = '' OR CONCAT_WS(' ', g.first_name, g.last_name) ILIKE $4 OR g.email ILIKE $4)
+        ORDER BY g.event_count DESC, g.last_event_date DESC, LOWER(COALESCE(g.first_name, g.email))
+        LIMIT $5 OFFSET $6`,
+      params
+    );
+    const total = people[0]?.total || 0;
+
+    const plusOnes = offset > 0 ? { rows: [] } : await pool.query(
+      `SELECT DISTINCT ON (LOWER(CONCAT_WS(' ', r.guest_first_name, r.guest_last_name)), LOWER(r.email))
+              r.id, r.guest_first_name, r.guest_last_name, r.first_name AS host_first_name
+         FROM rsvps r JOIN events e ON e.id=r.event_id
+        WHERE e.organizer_id=$1 AND e.id<>$2 AND e.status='published'
+          AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+          AND r.status='confirmed' AND NULLIF(TRIM(r.guest_first_name),'') IS NOT NULL
+          AND ($3::int IS NULL OR e.id=$3)
+          AND ($4 = '' OR CONCAT_WS(' ', r.guest_first_name, r.guest_last_name) ILIKE $4)
+          AND NOT EXISTS (
+            SELECT 1 FROM rsvps own WHERE NULLIF(TRIM(r.guest_email),'') IS NOT NULL
+               AND LOWER(own.email)=LOWER(TRIM(r.guest_email))
+               AND own.event_id IN (SELECT id FROM events WHERE organizer_id=$1)
+          )
+        ORDER BY LOWER(CONCAT_WS(' ', r.guest_first_name, r.guest_last_name)), LOWER(r.email), e.event_date DESC
+        LIMIT 24`,
+      [req.organizer.id, target.id, sourceEventId, pattern]
+    );
+
+    const { rows: sources } = await pool.query(
+      `SELECT e.id, e.title, e.event_date
+         FROM events e
+        WHERE e.organizer_id=$1 AND e.id<>$2 AND e.status='published'
+          AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+          AND EXISTS (SELECT 1 FROM rsvps r WHERE r.event_id=e.id AND r.status='confirmed')
+        ORDER BY e.event_date DESC, e.id DESC`,
+      [req.organizer.id, target.id]
+    );
+    const { rows: optoutRows } = await pool.query(
+      `SELECT COUNT(DISTINCT past.email)::int AS n
+         FROM (${PAST_RSVPS}) past
+        WHERE EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=past.email)
+          AND NOT ${connectedToTarget('past.email')}`,
+      [req.organizer.id, target.id]
+    );
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      canInvite: true,
+      sources: sources.map(source => ({ id: source.id, title: source.title, eventDate: source.event_date })),
+      people: people.map(row => {
+        const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Guest';
+        return {
+          id: familiarFaceKey('rsvp', row.rsvp_id),
+          name,
+          detail: candidateDetail(row, sourceEventId),
+          eventCount: row.event_count,
+          avatarUrl: safeAvatarUrl(row.avatar_url),
+          avatarEmoji: attendeeAvatar(`email:${row.email}`)
+        };
+      }),
+      plusOnes: plusOnes.rows.map(row => {
+        const name = `${row.guest_first_name || ''} ${row.guest_last_name || ''}`.trim();
+        return {
+          id: familiarFaceKey('guest', row.id),
+          name,
+          detail: plusOneLabel(row.host_first_name),
+          avatarEmoji: attendeeAvatar(`guest:${row.id}:${name.toLowerCase()}`)
+        };
+      }),
+      total,
+      hasMore: offset + people.length < total,
+      unsubscribedCount: optoutRows[0]?.n || 0
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/events/:id/familiar-faces/people/invite — send to the selected
+// past guests. Eligibility is rechecked here; each person's invitation names
+// the past event their selected RSVP came from (one batch per source event).
+router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, next) => {
+  const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
+  const rsvpIds = parseFamiliarFaceIds(faceIds).rsvpIds;
+  if (!rsvpIds.length) return res.status(400).json({ error: 'Choose at least one person' });
+  if (rsvpIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { target, canInvite } = await loadInviteTarget(client, {
+      eventId: req.params.id, organizerId: req.organizer.id, lock: true
+    });
+    if (!target) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    if (!canInvite) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Invitations can only be sent to an upcoming published event' });
+    }
+    const { rows: selected } = await client.query(
+      `SELECT past.* FROM (${PAST_RSVPS}) past
+        WHERE past.id=ANY($3::int[])
+          AND NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=past.email)
+          AND NOT ${connectedToTarget('past.email')}
+        ORDER BY past.event_date DESC, past.id DESC`,
+      [req.organizer.id, target.id, rsvpIds]
+    );
+    const byEmail = new Map();
+    for (const row of selected) if (!byEmail.has(row.email)) byEmail.set(row.email, row);
+    const bySource = new Map();
+    for (const row of byEmail.values()) {
+      if (!bySource.has(row.event_id)) bySource.set(row.event_id, { title: row.event_title, people: [] });
+      bySource.get(row.event_id).people.push(row);
+    }
+
+    const batchIds = [];
+    let queued = 0;
+    for (const [sourceEventId, group] of bySource) {
+      const { rows: batches } = await client.query(
+        `INSERT INTO previous_guest_invitation_batches
+           (target_event_id, source_event_id, source_event_title, recipient_count)
+         VALUES ($1,$2,$3,0) RETURNING id`,
+        [target.id, sourceEventId, group.title]
+      );
+      let batchQueued = 0;
+      for (const person of group.people) {
+        const name = `${person.first_name || ''} ${person.last_name || ''}`.trim() || null;
+        const result = await client.query(
+          `INSERT INTO message_log
+             (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+              message_type, channel, status)
+           VALUES ($1,$2,$3,$4,'previous_guest_invite','email','pending')
+           ON CONFLICT (event_id, LOWER(recipient)) WHERE message_type='previous_guest_invite'
+           DO NOTHING RETURNING id`,
+          [target.id, batches[0].id, person.email, name]
+        );
+        batchQueued += result.rowCount;
+      }
+      if (batchQueued) {
+        await client.query('UPDATE previous_guest_invitation_batches SET recipient_count=$2 WHERE id=$1', [batches[0].id, batchQueued]);
+        batchIds.push(batches[0].id);
+        queued += batchQueued;
+      } else {
+        await client.query('DELETE FROM previous_guest_invitation_batches WHERE id=$1', [batches[0].id]);
+      }
+    }
+    if (!queued) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'These people were already invited, RSVP’d, or can’t receive invitations' });
+    }
+    await client.query('COMMIT');
+    batchIds.forEach(queuePreviousGuestInvitationBatch);
+    res.status(202).json({ queued, skipped: rsvpIds.length - queued });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);

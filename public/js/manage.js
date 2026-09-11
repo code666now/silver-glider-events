@@ -270,7 +270,8 @@ function renderFamiliarFaces() {
     const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.status)}</span>
-      ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}`;
+      ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}
+      ${familiarSelectionMode && !face.canInvite && face.note ? `<span class="familiar-face-note">${escapeHtml(face.note)}</span>` : ''}`;
     if (face.canInvite && familiarFaceState.canStartInvitation) {
       return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)} ${selected ? 'from' : 'for'} an invitation">${content}</button>`;
     }
@@ -593,7 +594,6 @@ $('duplicate').addEventListener('click', async () => {
   }
 });
 
-let previousGuestState = null;
 let smsPreviewState = null;
 
 function shortEventDate(value) {
@@ -603,43 +603,172 @@ function shortEventDate(value) {
   });
 }
 
-function renderPreviousGuestAction(data) {
-  const button = $('invite-previous-guests');
-  if (data.batch) {
-    const count = Number(data.batch.recipientCount) || 0;
-    button.style.display = '';
-    button.disabled = true;
-    if (data.batch.status === 'sent') {
-      $('invite-previous-guests-title').textContent = `${count} ${count === 1 ? 'guest' : 'guests'} invited`;
-      $('invite-previous-guests-copy').textContent = 'Invitation sent. This action can only be used once.';
-    } else if (data.batch.status === 'partial_failed') {
-      const sent = Number(data.batch.sentCount) || 0;
-      $('invite-previous-guests-title').textContent = `${sent} of ${count} invitations delivered`;
-      $('invite-previous-guests-copy').textContent = 'Some invitations could not be delivered.';
-    } else if (data.batch.status === 'failed') {
-      $('invite-previous-guests-title').textContent = 'Invitation delivery failed';
-      $('invite-previous-guests-copy').textContent = 'The delivery record is saved for review.';
-    } else {
-      $('invite-previous-guests-title').textContent = `${count} ${count === 1 ? 'invitation' : 'invitations'} queued`;
-      $('invite-previous-guests-copy').textContent = 'Delivery is in progress.';
-    }
-    return;
-  }
-  const hasEligibleSource = data.canInvite && data.sources.some(source => Number(source.eligibleCount) > 0);
-  button.style.display = hasEligibleSource ? '' : 'none';
-  button.disabled = !hasEligibleSource;
-  if (hasEligibleSource) {
-    $('invite-previous-guests-title').textContent = 'Invite Familiar Faces';
-    $('invite-previous-guests-copy').textContent = 'Invite people who RSVP’d to one of your past events.';
+// ---- Invite your people ---------------------------------------------------
+// Upcoming events list everyone from the host's past events as faces. The
+// shared search box filters both grids; tapping selects; the bar reviews and
+// sends. Nothing is pre-selected.
+const peopleSelection = new Map();
+let peopleState = { canInvite: false, people: [], plusOnes: [], total: 0, hasMore: false, sources: [] };
+let peopleSearch = '';
+let peopleConfirming = false;
+let peopleRequest = 0;
+
+function renderPeople() {
+  const cards = peopleState.people.map(face => {
+    const selected = peopleSelection.has(face.id);
+    return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-person="${escapeHtml(face.id)}" data-name="${escapeHtml(face.name)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)}">
+      <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
+      <span class="familiar-face-name">${escapeHtml(face.name)}</span>
+      <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
+      <span class="familiar-face-check" aria-hidden="true">✓</span>
+    </button>`;
+  });
+  const plusOnes = peopleState.plusOnes.map(face => `<article class="familiar-face-card is-plus-one">
+      <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
+      <span class="familiar-face-name">${escapeHtml(face.name)}</span>
+      <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
+      <button class="familiar-face-share" type="button" data-share-person="${escapeHtml(face.name)}">Share link</button>
+    </article>`);
+  $('familiar-people-grid').innerHTML = [...cards, ...plusOnes].join('');
+  const empty = !cards.length && !plusOnes.length;
+  $('familiar-people-empty').hidden = !empty;
+  $('familiar-people-empty').textContent = peopleSearch
+    ? 'No one from your past events matches that search.'
+    : 'Everyone from your past events is already here.';
+  $('familiar-people-more').hidden = !peopleState.hasMore;
+  const unsubscribed = Number(peopleState.unsubscribedCount) || 0;
+  $('familiar-people-note').hidden = !unsubscribed;
+  $('familiar-people-note').textContent = unsubscribed
+    ? `${unsubscribed} ${unsubscribed === 1 ? 'person' : 'people'} unsubscribed from your invitations and ${unsubscribed === 1 ? 'isn’t' : 'aren’t'} shown.`
+    : '';
+  renderPeopleBar();
+}
+
+function renderPeopleBar() {
+  const count = peopleSelection.size;
+  $('familiar-people-bar').hidden = count === 0;
+  if (!count) peopleConfirming = false;
+  const people = `${count} ${count === 1 ? 'person' : 'people'}`;
+  if (peopleConfirming) {
+    $('familiar-people-count').textContent = `Invite ${people} to ${eventData.title}?`;
+    $('familiar-people-hint').textContent = 'Each gets one email with an RSVP button. They can unsubscribe anytime.';
+    $('familiar-people-secondary').textContent = 'Back';
+    $('familiar-people-send').textContent = `Send ${count} ${count === 1 ? 'invitation' : 'invitations'}`;
+  } else {
+    $('familiar-people-count').textContent = `${count} selected`;
+    $('familiar-people-hint').textContent = 'Tap faces to add or remove them.';
+    $('familiar-people-secondary').textContent = 'Clear';
+    $('familiar-people-send').textContent = `Invite ${people}`;
   }
 }
 
-async function loadPreviousGuests() {
-  const data = await api(`/api/events/${eventId}/previous-guests`);
-  previousGuestState = data;
-  renderPreviousGuestAction(data);
-  return data;
+function renderPeopleAction() {
+  const button = $('invite-previous-guests');
+  const available = peopleState.canInvite && (peopleState.total > 0 || peopleState.plusOnes.length > 0 || Boolean(peopleSearch));
+  button.style.display = available ? '' : 'none';
+  button.disabled = !available;
 }
+
+async function loadPeople({ append = false } = {}) {
+  const request = ++peopleRequest;
+  const params = new URLSearchParams();
+  if (peopleSearch) params.set('search', peopleSearch);
+  if ($('familiar-people-source').value) params.set('sourceEventId', $('familiar-people-source').value);
+  if (append) params.set('offset', String(peopleState.people.length));
+  const data = await api(`/api/events/${eventId}/familiar-faces/people?${params}`);
+  if (request !== peopleRequest) return;
+  if (append) {
+    peopleState = { ...data, people: [...peopleState.people, ...data.people], plusOnes: peopleState.plusOnes };
+  } else {
+    peopleState = data;
+  }
+  $('familiar-people').hidden = !data.canInvite || (!data.sources.length && !peopleSearch);
+  const select = $('familiar-people-source');
+  if (select.options.length === 1 && data.sources.length) {
+    select.insertAdjacentHTML('beforeend', data.sources.map(source =>
+      `<option value="${source.id}">${escapeHtml(source.title)} — ${escapeHtml(shortEventDate(source.eventDate))}</option>`
+    ).join(''));
+  }
+  renderPeople();
+  renderPeopleAction();
+}
+
+$('familiar-people-grid').addEventListener('click', async event => {
+  const share = event.target.closest('[data-share-person]');
+  if (share) {
+    try {
+      await navigator.clipboard.writeText(eventUrl());
+      toast(`Event link copied. Send it to ${share.dataset.sharePerson}.`);
+    } catch (_) {
+      toast(eventUrl());
+    }
+    return;
+  }
+  const card = event.target.closest('[data-person]');
+  if (!card) return;
+  // Update the tapped card in place (no grid re-render), so keyboard focus
+  // stays on it and quick taps never land on replaced elements.
+  const selected = !peopleSelection.has(card.dataset.person);
+  if (selected) peopleSelection.set(card.dataset.person, card.dataset.name);
+  else peopleSelection.delete(card.dataset.person);
+  card.classList.toggle('is-selected', selected);
+  card.setAttribute('aria-pressed', String(selected));
+  card.setAttribute('aria-label', `${selected ? 'Remove' : 'Select'} ${card.dataset.name}`);
+  peopleConfirming = false;
+  renderPeopleBar();
+});
+
+$('familiar-people-source').addEventListener('change', () => loadPeople().catch(error => toast(error.message)));
+$('familiar-people-more').addEventListener('click', () => loadPeople({ append: true }).catch(error => toast(error.message)));
+
+$('familiar-people-secondary').addEventListener('click', () => {
+  if (peopleConfirming) {
+    peopleConfirming = false;
+    renderPeopleBar();
+  } else {
+    peopleSelection.clear();
+    renderPeople();
+  }
+});
+
+$('familiar-people-send').addEventListener('click', async () => {
+  const button = $('familiar-people-send');
+  if (!peopleConfirming) {
+    peopleConfirming = true;
+    renderPeopleBar();
+    button.focus();
+    return;
+  }
+  if (button.dataset.busy === 'true') return;
+  button.dataset.busy = 'true';
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  try {
+    const data = await api(`/api/events/${eventId}/familiar-faces/people/invite`, {
+      method: 'POST',
+      body: { faceIds: [...peopleSelection.keys()] }
+    });
+    peopleSelection.clear();
+    peopleConfirming = false;
+    toast(`${data.queued} ${data.queued === 1 ? 'invitation is' : 'invitations are'} on the way`);
+    await Promise.allSettled([loadGuests(peopleSearch), loadPeople()]);
+  } catch (error) {
+    toast(error.message || 'Could not send invitations');
+    await loadPeople().catch(() => {});
+  } finally {
+    delete button.dataset.busy;
+    button.disabled = false;
+    renderPeopleBar();
+  }
+});
+
+$('invite-previous-guests').addEventListener('click', () => {
+  $('familiar-people').scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'start'
+  });
+  $('search').focus({ preventScroll: true });
+});
 
 function renderSmsAction(preview) {
   const button = $('sms-audience');
@@ -708,125 +837,6 @@ async function loadSmsPreview() {
 $('sms-audience').addEventListener('click', () => {
   if (smsPreviewState?.needsFunds) {
     window.location.assign(`/settings/messaging?return=${encodeURIComponent(location.pathname)}`);
-  }
-});
-
-function updatePreviousGuestSelection() {
-  const boxes = [...$('previous-guests-content').querySelectorAll('[data-previous-guest]')];
-  const selected = boxes.filter(box => box.checked);
-  const selectAll = $('previous-guests-select-all');
-  if (selectAll) {
-    selectAll.checked = boxes.length > 0 && selected.length === boxes.length;
-    selectAll.indeterminate = selected.length > 0 && selected.length < boxes.length;
-  }
-  const button = $('previous-guests-send');
-  button.disabled = selected.length === 0;
-  button.textContent = `Send ${selected.length} ${selected.length === 1 ? 'invitation' : 'invitations'}`;
-}
-
-function renderPreviousGuestRecipients(data, sourceId) {
-  previousGuestState = data;
-  const source = data.sources.find(item => Number(item.id) === Number(sourceId));
-  const recipients = data.recipients || [];
-  const peopleCount = Number(source?.peopleCount) || 0;
-  const unavailableCount = Math.max(0, peopleCount - recipients.length);
-  const rows = recipients.map(recipient => {
-    const name = `${recipient.firstName || ''} ${recipient.lastName || ''}`.trim() || recipient.email;
-    const search = `${name} ${recipient.email}`.toLowerCase();
-    return `<label class="previous-guests-recipient" data-recipient-search="${escapeHtml(search)}">
-      <input type="checkbox" data-previous-guest value="${recipient.id}" checked>
-      <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(recipient.email)}</small></span>
-    </label>`;
-  }).join('');
-  $('previous-guests-content').innerHTML = `
-    <p class="previous-guests-summary"><strong>${peopleCount}</strong> ${peopleCount === 1 ? 'person was' : 'people were'} on this guest list · <strong>${recipients.length}</strong> can be emailed</p>
-    <p class="previous-guests-consent-note">Confirmed primary guests with an email appear here. Named +1s are never added automatically.</p>
-    ${recipients.length ? `<label class="previous-guests-field"><span>Review guests</span><input class="sg-input" id="previous-guests-search" type="search" placeholder="Search names or emails…"></label>
-      <div class="previous-guests-list-head"><span>Recipients</span><label class="previous-guests-select-all"><input id="previous-guests-select-all" type="checkbox" checked> Select all</label></div>
-      <div class="previous-guests-list">${rows}</div>` : '<p class="previous-guests-empty">No guests from this event are currently eligible for an email invitation.</p>'}
-    ${unavailableCount ? `<p class="previous-guests-unavailable">${unavailableCount} ${unavailableCount === 1 ? 'other person was' : 'others were'} a +1, opted out, or already joined this event. Share your event link with them personally.</p>` : ''}
-    <details class="previous-guests-preview">
-      <summary>Preview invitation</summary>
-      <div class="previous-guests-preview-card"><strong>${escapeHtml(eventData.title)}</strong><span>An invitation from ${escapeHtml(previousGuestState.organizerLabel || 'your host page')}</span><span>${escapeHtml($('meta').textContent)}</span></div>
-    </details>`;
-
-  const search = $('previous-guests-search');
-  if (search) {
-    search.addEventListener('input', () => {
-      const query = search.value.trim().toLowerCase();
-      $('previous-guests-content').querySelectorAll('.previous-guests-recipient').forEach(row => {
-        row.hidden = Boolean(query) && !row.dataset.recipientSearch.includes(query);
-      });
-    });
-  }
-  $('previous-guests-content').querySelectorAll('[data-previous-guest]').forEach(box => {
-    box.addEventListener('change', updatePreviousGuestSelection);
-  });
-  $('previous-guests-select-all')?.addEventListener('change', event => {
-    $('previous-guests-content').querySelectorAll('[data-previous-guest]').forEach(box => {
-      box.checked = event.target.checked;
-    });
-    updatePreviousGuestSelection();
-  });
-  updatePreviousGuestSelection();
-}
-
-async function loadPreviousGuestRecipients(sourceId) {
-  $('previous-guests-content').innerHTML = '<div class="previous-guests-dialog-loading">Loading your previous guest list…</div>';
-  $('previous-guests-send').disabled = true;
-  try {
-    const data = await api(`/api/events/${eventId}/previous-guests?sourceEventId=${encodeURIComponent(sourceId)}`);
-    renderPreviousGuestRecipients(data, sourceId);
-  } catch (error) {
-    $('previous-guests-content').innerHTML = `<p class="previous-guests-empty">${escapeHtml(error.message || 'Could not load this guest list.')}</p>`;
-  }
-}
-
-$('invite-previous-guests').addEventListener('click', () => {
-  if (!previousGuestState?.sources?.length) return;
-  const sourceSelect = $('previous-guests-source');
-  sourceSelect.innerHTML = previousGuestState.sources.map(source =>
-    `<option value="${source.id}" ${Number(source.eligibleCount) ? '' : 'disabled'}>${escapeHtml(source.title)} — ${escapeHtml(shortEventDate(source.eventDate))} (${source.eligibleCount} eligible)</option>`
-  ).join('');
-  const initialSource = previousGuestState.sources.find(source => Number(source.eligibleCount) > 0);
-  if (!initialSource) return;
-  sourceSelect.value = String(initialSource.id);
-  $('previous-guests-dialog').showModal();
-  loadPreviousGuestRecipients(initialSource.id);
-});
-
-$('previous-guests-source').addEventListener('change', event => {
-  loadPreviousGuestRecipients(event.target.value);
-});
-
-$('previous-guests-form').addEventListener('submit', event => event.preventDefault());
-document.querySelectorAll('[data-close-previous-guests]').forEach(button => {
-  button.addEventListener('click', () => $('previous-guests-dialog').close());
-});
-
-$('previous-guests-send').addEventListener('click', async () => {
-  const button = $('previous-guests-send');
-  const rsvpIds = [...$('previous-guests-content').querySelectorAll('[data-previous-guest]:checked')]
-    .map(box => Number(box.value));
-  if (!rsvpIds.length || button.dataset.busy === 'true') return;
-  button.dataset.busy = 'true';
-  button.disabled = true;
-  button.textContent = 'Queuing invitations…';
-  try {
-    const data = await api(`/api/events/${eventId}/previous-guests/invite`, {
-      method: 'POST',
-      body: { sourceEventId: Number($('previous-guests-source').value), rsvpIds }
-    });
-    previousGuestState.batch = { ...data.batch, recipientCount: data.queued };
-    renderPreviousGuestAction(previousGuestState);
-    $('previous-guests-dialog').close();
-    toast(`${data.queued} ${data.queued === 1 ? 'invitation' : 'invitations'} queued`);
-    loadFollowers();
-  } catch (error) {
-    toast(error.message || 'Could not send invitations');
-    updatePreviousGuestSelection();
-  } finally {
-    delete button.dataset.busy;
   }
 });
 
@@ -914,7 +924,15 @@ document.addEventListener('click', event => {
 let searchTimer;
 $('search').addEventListener('input', e => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => loadGuests(e.target.value.trim()), 250);
+  searchTimer = setTimeout(() => {
+    const query = e.target.value.trim();
+    loadGuests(query);
+    // One search box filters both grids: people connected here and your people.
+    if (peopleState.canInvite) {
+      peopleSearch = query;
+      loadPeople().catch(() => {});
+    }
+  }, 250);
 });
 
 async function initializeManagePage() {
@@ -926,7 +944,7 @@ async function initializeManagePage() {
     if (savedMessage) toast(savedMessage);
     const secondaryTasks = eventData.is_past
       ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
-      : [loadLineStatus(), loadPreviousGuests(), loadFollowers(), loadSmsPreview()];
+      : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');
