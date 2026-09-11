@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.84
+
+Released September 10, 2026.
+
+### Added
+
+* First-time RSVPs now quietly establish a reusable guest identity and secure returning-browser session without adding a signup step, password, or privileged account access.
+* Recognized guests see a personalized **Hi [name] 👋** card on future event pages with polished one-tap **I’m going** and **I’m not going** choices instead of re-entering their name and email.
+* Familiar Faces invitations now open through individual opaque links that recognize the intended guest while waiting for an explicit RSVP choice.
+* Recognized guests who choose **Create an event** can continue as the same identity through the existing email magic-link verification flow.
+
+### Security & reliability
+
+* Stores only hashed guest-session and invitation tokens, scopes unverified browser sessions to RSVPs they created, masks remembered email addresses, and provides an explicit shared-device escape through **Not [name]?**.
+* Keeps first-time RSVP fields, magic-link authentication, RSVP email behavior, SMS consent and pricing, Familiar Faces eligibility, ticketing, Stripe, and event privacy rules unchanged.
+
 ## 1.0.83
 
 Released September 10, 2026.

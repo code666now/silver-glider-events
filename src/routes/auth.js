@@ -7,6 +7,7 @@ const requireOrganizer = require('../middleware/requireOrganizer');
 const { findPublicHost, followHost } = require('../lib/host-follows');
 const { linkOwnedRsvpForEvent, linkVerifiedRsvps } = require('../lib/account-rsvps');
 const { attendeeCookieName, readCookie } = require('../lib/private-events');
+const { readGuestSession } = require('../lib/guest-session');
 
 const router = express.Router();
 
@@ -81,6 +82,35 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// A remembered RSVP can become a creator without re-entering an email. The
+// existing magic-link verification remains the authentication boundary.
+router.post('/api/auth/guest-magic-link', async (req, res, next) => {
+  try {
+    const guest = await readGuestSession(pool, req, { touch: true });
+    if (!guest) return res.status(401).json({ error: 'This browser is no longer recognized' });
+    const email = String(guest.email || '').trim().toLowerCase();
+    if (overLimit('email:' + email, RL_MAX_EMAIL) || overLimit('ip:' + clientIp(req), RL_MAX_IP)) {
+      return res.status(429).json({ error: 'Too many requests. Please wait a few minutes and try again.' });
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    const returnPath = safeNext(req.body?.next);
+    await pool.query(
+      `INSERT INTO magic_link_tokens
+         (token,email,expires_at,intent,target_organizer_id,return_path)
+       VALUES ($1,$2,NOW() + INTERVAL '15 minutes','sign_in',NULL,$3)`,
+      [token, email, returnPath || null]
+    );
+    const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+    await sendMagicLink({ to: email, link });
+    await pool.query(
+      `INSERT INTO message_log (recipient,message_type,channel,status,sent_at)
+       VALUES ($1,'magic_link','email','sent',NOW())`,
+      [email]
+    );
+    res.json({ ok: true });
+  } catch (error) { next(error); }
 });
 
 // GET /auth/verify?token= — burn token, upsert organizer, set cookie

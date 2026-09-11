@@ -208,7 +208,7 @@ function queueMobileRsvpDockSync() {
 
 function show(stateId) {
   activeRsvpState = stateId;
-  ['cta-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
+  ['cta-state', 'returning-rsvp-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
     .forEach(id => {
       const element = $(id);
       if (element) element.style.display = id === stateId ? 'block' : 'none';
@@ -216,8 +216,70 @@ function show(stateId) {
   syncMobileRsvpDock();
 }
 
+function setReturningSelection(response) {
+  const state = $('returning-rsvp-state');
+  if (state) state.classList.toggle('has-answer', Boolean(response));
+  document.querySelectorAll('.returning-choice').forEach(button => {
+    const selected = button.dataset.response === response;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+if (EVENT.returningGuest) {
+  $('returning-rsvp-name').textContent = EVENT.returningGuest.firstName;
+  $('returning-rsvp-switch-name').textContent = EVENT.returningGuest.firstName;
+  setReturningSelection(EVENT.returningGuest.response);
+}
+
 if (EVENT.status === 'cancelled') show('cancelled-state');
+else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.returningGuest) show('returning-rsvp-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.isFull) show('full-state');
+
+async function answerReturningRsvp(response) {
+  const buttons = Array.from(document.querySelectorAll('.returning-choice'));
+  const error = $('returning-rsvp-error');
+  const question = document.querySelector('.returning-rsvp-question');
+  buttons.forEach(button => { button.disabled = true; });
+  error.style.display = 'none';
+  try {
+    const result = await fetch(`/api/public/events/${EVENT.slug}/returning-rsvp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ response })
+    });
+    const data = await result.json().catch(() => ({}));
+    if (!result.ok) throw new Error(data.message || data.error || 'Could not update your RSVP');
+    EVENT.returningGuest.response = response;
+    setReturningSelection(response);
+    question.textContent = response === 'going'
+      ? 'You’re on the list. Change your answer anytime.'
+      : 'Got it. You can change your answer anytime.';
+    if (response === 'going') await loadComments();
+  } catch (errorValue) {
+    error.textContent = errorValue.message;
+    error.style.display = 'block';
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+document.querySelectorAll('.returning-choice').forEach(button => {
+  button.addEventListener('click', () => answerReturningRsvp(button.dataset.response));
+});
+
+$('returning-rsvp-switch')?.addEventListener('click', async () => {
+  const button = $('returning-rsvp-switch');
+  button.disabled = true;
+  try {
+    await fetch('/api/public/guest-session/forget', { method: 'POST' });
+    EVENT.returningGuest = null;
+    if (EVENT.isFull) show('full-state');
+    else show('cta-state');
+  } finally {
+    button.disabled = false;
+  }
+});
 
 function openRsvpForm({ scrollToForm = false, trigger = null } = {}) {
   if (EVENT.rsvpEnabled === false) return;

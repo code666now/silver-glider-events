@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendPreviousGuestInvitation } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
+const { createGuestInvitation } = require('../lib/guest-invitations');
 
 const MAX_ATTEMPTS = 3;
 let running = false;
@@ -73,13 +74,22 @@ async function processPreviousGuestInvitationBatch(batchId) {
     try {
       const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${signOptout(event.host_id, delivery.recipient)}`;
+      const invitation = await createGuestInvitation(pool, {
+        messageLogId: delivery.log_id,
+        eventId: event.id,
+        eventDate: event.event_date,
+        email: delivery.recipient,
+        recipientName: delivery.recipient_name
+      });
+      const invitationUrl = `${baseUrl}/g/${invitation.token}`;
       const result = await sendPreviousGuestInvitation({
         to: delivery.recipient,
         recipientName: delivery.recipient_name,
         event,
         organizerLabel: event.organizer_label,
         sourceEventTitle: event.source_event_title,
-        unsubscribeUrl
+        unsubscribeUrl,
+        invitationUrl
       });
       await pool.query(
         `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,

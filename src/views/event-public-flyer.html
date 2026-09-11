@@ -37,6 +37,18 @@
           {{SECONDARY_ACTION_HTML}}
         </div>
 
+        <div id="returning-rsvp-state" aria-live="polite">
+          <p class="returning-rsvp-kicker">Welcome back</p>
+          <h2>Hi <span id="returning-rsvp-name"></span> <span aria-hidden="true">👋</span></h2>
+          <p class="returning-rsvp-question">Are you going?</p>
+          <div class="returning-rsvp-choices" role="group" aria-label="Your RSVP">
+            <button class="returning-choice" id="returning-going" data-response="going" type="button" aria-pressed="false">I’m going</button>
+            <button class="returning-choice" id="returning-not-going" data-response="not_going" type="button" aria-pressed="false">I’m not going</button>
+          </div>
+          <p class="returning-rsvp-error" id="returning-rsvp-error" role="alert"></p>
+          <button class="returning-rsvp-switch" id="returning-rsvp-switch" type="button">Not <span id="returning-rsvp-switch-name"></span>?</button>
+        </div>
+
         <div id="rsvp-form-box">
           <p id="rsvp-error"></p>
           <form id="rsvp-form">

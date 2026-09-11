@@ -560,7 +560,7 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
   });
 }
 
-function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl }) {
+function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl, invitationUrl }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const firstName = String(recipientName || '').trim().split(/\s+/)[0];
   const greeting = firstName ? `Hi ${firstName}. ` : '';
@@ -571,16 +571,16 @@ function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLab
     sub: `${greeting}${organizerLabel} thought you’d like this next event.`,
     bodyHtml: `${photoRequestArtwork(event)}${eventCard(event)}`,
     cta: 'RSVP',
-    ctaUrl: `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
+    ctaUrl: invitationUrl || `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
     footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re receiving this invitation because you RSVP’d to ${esc(previousEvent)}, hosted by ${esc(organizerLabel)}.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from invitations from this host</a></p>`
   });
 }
 
-async function sendPreviousGuestInvitation({ to, event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl }) {
+async function sendPreviousGuestInvitation({ to, event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl, invitationUrl }) {
   return send({
     to,
     subject: `${organizerLabel} invited you: ${event.title}`,
-    html: renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl })
+    html: renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl, invitationUrl })
   });
 }
 

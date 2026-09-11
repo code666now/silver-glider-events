@@ -8,7 +8,17 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
-const { parseSession, readSessionCookie } = require('../lib/session');
+const { clearSessionCookie, parseSession, readSessionCookie } = require('../lib/session');
+const { linkVerifiedRsvps } = require('../lib/account-rsvps');
+const { ensureGuestIdentity } = require('../lib/guest-identity');
+const {
+  clearGuestSessionCookie,
+  createGuestSession,
+  readGuestSession,
+  revokeGuestSession,
+  setGuestSessionCookie,
+  tokenHash
+} = require('../lib/guest-session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
@@ -348,6 +358,62 @@ async function verifiedSessionAccountId(client, req, email) {
   return rows[0]?.id || null;
 }
 
+function firstNameFrom(value) {
+  return String(value || '').trim().split(/\s+/)[0].slice(0, 80) || 'there';
+}
+
+async function returningGuestContext(db, req, eventId) {
+  const accountSession = parseSession(readSessionCookie(req));
+  if (accountSession) {
+    const { rows } = await db.query(
+      'SELECT id,email,name FROM organizers WHERE id=$1',
+      [accountSession.id]
+    );
+    if (rows[0]) {
+      const identity = rows[0];
+      const rsvp = (await db.query(
+        `SELECT *
+           FROM rsvps WHERE event_id=$1 AND account_id=$2 LIMIT 1`,
+        [eventId, identity.id]
+      )).rows[0] || null;
+      return {
+        identityId: identity.id,
+        email: identity.email,
+        displayFirstName: rsvp?.first_name || firstNameFrom(identity.name),
+        displayName: rsvp ? rsvp.first_name : (identity.name || firstNameFrom(identity.email)),
+        verified: true,
+        source: 'account',
+        sessionId: null,
+        rsvp
+      };
+    }
+  }
+
+  const guest = await readGuestSession(db, req, { touch: true });
+  if (!guest) return null;
+  const ownershipClause = guest.verified_at
+    ? '(guest_session_id=$2 OR account_id=$3)'
+    : 'guest_session_id=$2';
+  const values = guest.verified_at
+    ? [eventId, guest.id, guest.identity_id]
+    : [eventId, guest.id];
+  const rsvp = (await db.query(
+    `SELECT *
+       FROM rsvps WHERE event_id=$1 AND ${ownershipClause} LIMIT 1`,
+    values
+  )).rows[0] || null;
+  return {
+    identityId: guest.identity_id,
+    email: guest.email,
+    displayFirstName: rsvp?.first_name || guest.display_first_name,
+    displayName: guest.display_name,
+    verified: Boolean(guest.verified_at),
+    source: 'guest',
+    sessionId: guest.id,
+    rsvp
+  };
+}
+
 // POST /api/public/events/:slug/unlock — access-code gate only; no event data.
 router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
   try {
@@ -380,6 +446,84 @@ router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// A Familiar Faces invitation is a mailbox-verification link, not an account
+// sign-in. GET only recognizes the guest; it never records an RSVP because
+// email security scanners frequently open links automatically.
+router.get('/g/:token', async (req, res, next) => {
+  const invitationToken = String(req.params.token || '').trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(invitationToken)) return res.status(404).send(render404());
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT invitation.id,invitation.identity_id,invitation.target_event_id,
+              ml.recipient,ml.recipient_name,e.slug
+         FROM guest_invitation_tokens invitation
+         JOIN message_log ml ON ml.id=invitation.message_log_id
+         JOIN events e ON e.id=invitation.target_event_id
+        WHERE invitation.token_hash=$1 AND invitation.revoked_at IS NULL
+          AND invitation.expires_at>NOW() AND e.status='published'
+        FOR UPDATE OF invitation`,
+      [tokenHash(invitationToken)]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).send(render404());
+    }
+    const invitation = rows[0];
+    const displayName = String(invitation.recipient_name || '').trim() || firstNameFrom(invitation.recipient);
+    const guestSession = await createGuestSession(client, {
+      identityId: invitation.identity_id,
+      displayFirstName: firstNameFrom(displayName),
+      displayName,
+      verified: true
+    });
+    await linkVerifiedRsvps(client, invitation.identity_id, invitation.recipient);
+    await client.query(
+      'UPDATE guest_invitation_tokens SET opened_at=COALESCE(opened_at,NOW()) WHERE id=$1',
+      [invitation.id]
+    );
+    await client.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    setGuestSessionCookie(res, guestSession.token);
+    return res.redirect(303, `/e/${encodeURIComponent(invitation.slug)}?invited=1`);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/api/public/guest-session', async (req, res, next) => {
+  try {
+    const guest = await readGuestSession(pool, req, { touch: true });
+    if (!guest) return res.status(404).json({ recognized: false });
+    const [local = '', domain = ''] = String(guest.email).split('@');
+    const maskedEmail = domain
+      ? `${local.slice(0, 1)}${local.length > 1 ? '•••' : ''}@${domain}`
+      : '';
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({
+      recognized: true,
+      firstName: guest.display_first_name,
+      maskedEmail,
+      verified: Boolean(guest.verified_at)
+    });
+  } catch (error) { next(error); }
+});
+
+router.post('/api/public/guest-session/forget', async (req, res, next) => {
+  try {
+    await revokeGuestSession(pool, req);
+    clearSessionCookie(res);
+    clearGuestSessionCookie(res);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
 // GET /e/:slug — server-rendered so OG tags work for link previews
 router.get('/e/:slug', async (req, res, next) => {
   try {
@@ -399,6 +543,9 @@ router.get('/e/:slug', async (req, res, next) => {
     if (!event) return res.status(404).send(render404());
     const rsvpEnabled = !isSilverGliderTickets(event);
     const ownerPreview = organizerViewer(req, event);
+    const returningGuest = rsvpEnabled && !event.is_past && event.status === 'published' && !ownerPreview
+      ? await returningGuestContext(pool, req, event.id)
+      : null;
 
     if (event.visibility === 'private') {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -546,6 +693,12 @@ router.get('/e/:slug', async (req, res, next) => {
         ? `<p class="flyer-design-credit">Design by ${esc(flyerDesignerName)}</p>`
         : '';
 
+    const returningGuestJson = returningGuest ? {
+      firstName: returningGuest.displayFirstName,
+      response: returningGuest.rsvp?.status === 'confirmed'
+        ? 'going'
+        : returningGuest.rsvp?.status === 'cancelled' ? 'not_going' : null
+    } : null;
     const eventJson = {
       slug: event.slug,
       title: event.title,
@@ -558,6 +711,7 @@ router.get('/e/:slug', async (req, res, next) => {
       coverFitMode,
       adaptiveBackground: theme === 'adaptive',
       ownerPreview,
+      returningGuest: returningGuestJson,
       bgEffect: isEffect ? theme : null
     };
     const ownerEditorHtml = ownerPreview ? renderOwnerEditor(event) : '';
@@ -789,6 +943,11 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       `SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2)`, [event.id, email]
     );
     const accountId = await verifiedSessionAccountId(client, req, email);
+    const rememberedGuest = accountId ? null : await readGuestSession(client, req, { touch: true });
+    const rememberedOwnsExisting = Boolean(existing[0] && rememberedGuest && (
+      Number(existing[0].guest_session_id) === Number(rememberedGuest.id) ||
+      (rememberedGuest.verified_at && Number(existing[0].account_id) === Number(rememberedGuest.identity_id))
+    ));
     if (existing.length && existing[0].status === 'confirmed') {
       if (accountId && !existing[0].account_id) {
         existing[0] = (await client.query(
@@ -821,6 +980,23 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 
     let rsvp;
     const isNewRsvp = existing.length === 0;
+    let guestSessionId = rememberedOwnsExisting ? rememberedGuest.id : null;
+    let guestSessionToRemember = null;
+    if (isNewRsvp && !accountId) {
+      if (rememberedGuest && String(rememberedGuest.email).toLowerCase() === email) {
+        guestSessionId = rememberedGuest.id;
+      } else {
+        const displayName = `${firstName} ${lastName}`.trim();
+        const identity = await ensureGuestIdentity(client, { email, displayName });
+        guestSessionToRemember = await createGuestSession(client, {
+          identityId: identity.id,
+          displayFirstName: firstName,
+          displayName,
+          verified: false
+        });
+        guestSessionId = guestSessionToRemember.id;
+      }
+    }
     if (existing.length) {
       // previously cancelled — re-confirm
       rsvp = (await client.query(
@@ -832,22 +1008,24 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
                 sms_consent_text=CASE WHEN $7 THEN $11 ELSE sms_consent_text END,
                 sms_opted_out_at=CASE WHEN $7 THEN NULL WHEN sms_optin THEN NOW() ELSE sms_opted_out_at END,
                 guest_first_name=$12, guest_last_name=$13, guest_email=$14,
-                account_id=COALESCE(account_id,$15)
+                account_id=COALESCE(account_id,$15),
+                guest_session_id=COALESCE(guest_session_id,$16)
           WHERE id=$1 RETURNING *`,
         [existing[0].id, firstName, lastName, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
-         guest.guestFirstName, guest.guestLastName, guest.guestEmail, accountId]
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail, accountId, guestSessionId]
       )).rows[0];
     } else {
       rsvp = (await client.query(
         `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
                             sms_optin, sms_consent_at, sms_consent_source, sms_consent_version, sms_consent_text,
-                            guest_first_name, guest_last_name, guest_email, manage_token, account_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+                            guest_first_name, guest_last_name, guest_email, manage_token, account_id,
+                            guest_session_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
         [event.id, firstName, lastName, email, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
-         crypto.randomBytes(16).toString('hex'), accountId]
+         crypto.randomBytes(16).toString('hex'), accountId, guestSessionId]
       )).rows[0];
     }
     await client.query('COMMIT');
@@ -858,11 +1036,138 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     if (isNewRsvp && event.comments_enabled) {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
+    if (guestSessionToRemember) setGuestSessionCookie(res, guestSessionToRemember.token);
     void resendConfirmation(event, rsvp);
     res.status(201).json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);
+  } finally {
+    client.release();
+  }
+});
+
+// A recognized guest can answer with one tap. Unverified browser sessions are
+// deliberately scoped to RSVPs created by that exact session; verified email
+// invitation/account sessions may use the reusable identity across events.
+router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, res, next) => {
+  const answer = String(req.body?.response || '').trim();
+  if (!['going', 'not_going'].includes(answer)) {
+    return res.status(400).json({ error: 'Choose whether you are going' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: eventRows } = await client.query(
+      `SELECT e.*,
+              e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+              o.org_name,o.public_slug AS organizer_public_slug
+         FROM events e JOIN organizers o ON o.id=e.organizer_id
+        WHERE e.slug=$1 AND e.status='published'
+        FOR UPDATE OF e`,
+      [req.params.slug]
+    );
+    if (!eventRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const event = eventRows[0];
+    if (event.is_past) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'event_ended', message: 'This event has ended.' });
+    }
+    if (secretShowLocked(req, event)) {
+      await client.query('ROLLBACK');
+      return rejectLockedSecret(res);
+    }
+    if (isSilverGliderTickets(event)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'tickets_required', message: 'Get tickets through Silver Glider for this event.' });
+    }
+
+    const guest = await returningGuestContext(client, req, event.id);
+    if (!guest) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'This browser is no longer recognized. Enter your name and email again.' });
+    }
+
+    let rsvp = guest.rsvp;
+    if (!rsvp) {
+      const { rows: sameEmail } = await client.query(
+        'SELECT id,status FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2) LIMIT 1',
+        [event.id, guest.email]
+      );
+      if (sameEmail.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'verification_required',
+          message: 'Open your personal invitation or confirmation email to update this RSVP.'
+        });
+      }
+    }
+
+    if (answer === 'going' && rsvp?.status !== 'confirmed') {
+      const partySize = rsvp?.guest_first_name ? 2 : 1;
+      const { rows: countRows } = await client.query(
+        `SELECT (COUNT(*) + COUNT(guest_first_name))::int AS n
+           FROM rsvps WHERE event_id=$1 AND status='confirmed'`,
+        [event.id]
+      );
+      if (event.capacity != null && countRows[0].n + partySize > event.capacity) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'full', message: 'This event has reached capacity.' });
+      }
+    }
+
+    if (rsvp) {
+      const { rows } = await client.query(
+        `UPDATE rsvps
+            SET status=$2,
+                account_id=CASE WHEN $3 THEN COALESCE(account_id,$4) ELSE account_id END,
+                guest_session_id=COALESCE(guest_session_id,$5)
+          WHERE id=$1 RETURNING *`,
+        [rsvp.id, answer === 'going' ? 'confirmed' : 'cancelled', guest.verified,
+         guest.identityId, guest.sessionId]
+      );
+      rsvp = rows[0];
+    } else {
+      const nameParts = String(guest.displayName || guest.displayFirstName).trim().split(/\s+/);
+      const firstName = (nameParts.shift() || guest.displayFirstName).slice(0, 80);
+      const lastName = nameParts.join(' ').slice(0, 80);
+      const { rows } = await client.query(
+        `INSERT INTO rsvps
+           (event_id,first_name,last_name,email,wants_reminders,organizer_optin,status,
+            manage_token,account_id,guest_session_id)
+         VALUES ($1,$2,$3,$4,TRUE,FALSE,$5,$6,$7,$8)
+         RETURNING *`,
+        [event.id, firstName, lastName, guest.email,
+         answer === 'going' ? 'confirmed' : 'cancelled',
+         crypto.randomBytes(16).toString('hex'), guest.verified ? guest.identityId : null,
+         guest.sessionId]
+      );
+      rsvp = rows[0];
+    }
+
+    if (guest.verified) {
+      await client.query(
+        `UPDATE guest_invitation_tokens
+            SET response=$3,responded_at=NOW(),rsvp_id=$4
+          WHERE target_event_id=$1 AND identity_id=$2
+            AND revoked_at IS NULL AND expires_at>NOW()`,
+        [event.id, guest.identityId, answer, rsvp.id]
+      );
+    }
+    await client.query('COMMIT');
+
+    if (answer === 'going') {
+      setAttendeeCookie(res, event.id, rsvp.manage_token);
+      if (guest.rsvp?.status !== 'confirmed') void resendConfirmation(event, rsvp);
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({ ok: true, response: answer });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
   } finally {
     client.release();
   }

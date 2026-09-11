@@ -397,6 +397,43 @@
     .mobile-rsvp-dock { display: none; }
     .mobile-rsvp-dock[hidden] { display: none; }
     #rsvp-form-box { display: none; margin-top: 20px; }
+    #returning-rsvp-state {
+      display: none;
+      position: relative;
+      overflow: hidden;
+      padding: 26px;
+      border: 1px solid rgba(28,197,190,.26);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(28,197,190,.15), transparent 44%),
+        rgba(255,255,255,.035);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 60px rgba(0,0,0,.2);
+    }
+    .returning-rsvp-kicker { margin: 0 0 9px; color: var(--sg-accent); font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+    #returning-rsvp-state h2 { margin: 0 0 6px; font-size: clamp(25px, 5vw, 34px); }
+    .returning-rsvp-question { margin: 0 0 20px; color: var(--sg-text-dim); font-size: 15px; }
+    .returning-rsvp-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .returning-choice {
+      min-height: 54px;
+      padding: 13px 18px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 999px;
+      background: rgba(255,255,255,.055);
+      color: var(--sg-text);
+      font: 800 14px/1.1 var(--sg-font-body);
+      cursor: pointer;
+      transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+    }
+    #returning-rsvp-state:not(.has-answer) .returning-choice[data-response="going"],
+    .returning-choice[data-response="going"].is-selected { border-color: rgba(28,197,190,.58); background: var(--sg-accent); color: #071211; }
+    .returning-choice:hover { transform: translateY(-1px); border-color: var(--sg-accent); }
+    .returning-choice:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
+    .returning-choice.is-selected { box-shadow: 0 0 0 3px rgba(28,197,190,.16); }
+    .returning-choice[data-response="not_going"].is-selected { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.14); color: #fff; }
+    .returning-choice[disabled] { cursor: wait; opacity: .62; transform: none; }
+    .returning-rsvp-error { display: none; margin: 13px 0 0; color: var(--sg-danger); font-size: 13px; }
+    .returning-rsvp-switch { margin-top: 17px; padding: 4px 0; border: 0; background: transparent; color: var(--sg-text-faint); font: 700 12px var(--sg-font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+    .returning-rsvp-switch:hover, .returning-rsvp-switch:focus-visible { color: var(--sg-text); }
     #rsvp-form-box .sg-input {
       background-color: rgba(255,255,255,.07);
       border-color: rgba(255,255,255,.16);
@@ -840,6 +877,18 @@
     <div class="rsvp-zone">
       <div id="cta-state">
         {{STANDARD_PRIMARY_ACTION_HTML}}
+      </div>
+
+      <div id="returning-rsvp-state" aria-live="polite">
+        <p class="returning-rsvp-kicker">Welcome back</p>
+        <h2>Hi <span id="returning-rsvp-name"></span> <span aria-hidden="true">👋</span></h2>
+        <p class="returning-rsvp-question">Are you going?</p>
+        <div class="returning-rsvp-choices" role="group" aria-label="Your RSVP">
+          <button class="returning-choice" id="returning-going" data-response="going" type="button" aria-pressed="false">I’m going</button>
+          <button class="returning-choice" id="returning-not-going" data-response="not_going" type="button" aria-pressed="false">I’m not going</button>
+        </div>
+        <p class="returning-rsvp-error" id="returning-rsvp-error" role="alert"></p>
+        <button class="returning-rsvp-switch" id="returning-rsvp-switch" type="button">Not <span id="returning-rsvp-switch-name"></span>?</button>
       </div>
 
       <div id="rsvp-form-box">

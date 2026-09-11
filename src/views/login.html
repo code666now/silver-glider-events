@@ -17,6 +17,13 @@
       <h1 style="font-size:34px;margin-bottom:10px">Sign in</h1>
       <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:32px">Enter your email and we'll send you a sign-in link. No password needed.</p>
       <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
+      <div id="returning-guest" hidden style="padding:22px;border:1px solid var(--sg-border);border-radius:18px;background:rgba(255,255,255,.035);margin-bottom:18px">
+        <p class="sg-label" style="margin-bottom:8px">Welcome back</p>
+        <h2 id="returning-title" style="font-size:24px;margin-bottom:8px"></h2>
+        <p id="returning-email" style="color:var(--sg-text-dim);font-size:14px;margin-bottom:18px"></p>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="button" id="continue-guest">Email my sign-in link</button>
+        <button class="sg-btn sg-btn-ghost sg-btn-block" type="button" id="different-email" style="margin-top:10px">Use a different email</button>
+      </div>
       <form id="login-form">
         <div class="sg-field">
           <label for="email">Email</label>
@@ -37,12 +44,57 @@
     const params = new URLSearchParams(location.search);
     const requestedNext = params.get('next') || '';
     const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
+    let returningGuest = null;
+    const form = document.getElementById('login-form');
+    const returningPanel = document.getElementById('returning-guest');
     if (params.get('error') === 'expired') {
       const err = document.getElementById('error');
       err.textContent = 'That link expired or was already used. Request a new one.';
       err.style.display = 'block';
     }
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
+    async function showSent(emailLabel) {
+      document.getElementById('form-state').style.display = 'none';
+      document.getElementById('sent-email').textContent = emailLabel;
+      document.getElementById('sent-state').style.display = 'block';
+    }
+    fetch('/api/public/guest-session', { headers: { Accept: 'application/json' } })
+      .then(response => response.ok ? response.json() : null)
+      .then(guest => {
+        if (!guest?.recognized) return;
+        returningGuest = guest;
+        document.getElementById('returning-title').textContent = `Continue as ${guest.firstName}`;
+        document.getElementById('returning-email').textContent = guest.maskedEmail;
+        returningPanel.hidden = false;
+        form.hidden = true;
+      }).catch(() => {});
+    document.getElementById('different-email').addEventListener('click', async () => {
+      await fetch('/api/public/guest-session/forget', { method: 'POST' }).catch(() => {});
+      returningGuest = null;
+      returningPanel.hidden = true;
+      form.hidden = false;
+      document.getElementById('email').focus();
+    });
+    document.getElementById('continue-guest').addEventListener('click', async () => {
+      const button = document.getElementById('continue-guest');
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      try {
+        const response = await fetch('/api/auth/guest-magic-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ next })
+        });
+        if (!response.ok) throw new Error((await response.json()).error || 'Failed');
+        showSent(returningGuest.maskedEmail);
+      } catch (error) {
+        const el = document.getElementById('error');
+        el.textContent = error.message;
+        el.style.display = 'block';
+        button.disabled = false;
+        button.textContent = 'Email my sign-in link';
+      }
+    });
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submit-btn');
       const email = document.getElementById('email').value.trim();
@@ -55,9 +107,7 @@
           body: JSON.stringify({ email, next })
         });
         if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-        document.getElementById('form-state').style.display = 'none';
-        document.getElementById('sent-email').textContent = email;
-        document.getElementById('sent-state').style.display = 'block';
+        showSent(email);
       } catch (err) {
         const el = document.getElementById('error');
         el.textContent = err.message;

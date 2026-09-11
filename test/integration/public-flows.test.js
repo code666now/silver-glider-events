@@ -24,6 +24,7 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
+const { createGuestInvitation } = require('../../src/lib/guest-invitations');
 const sms = require('../../src/lib/sms');
 const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
@@ -124,6 +125,12 @@ async function waitForSmsBatch(batchId) {
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   assert.fail(`SMS batch ${batchId} did not finish`);
+}
+
+function responseCookie(response, name) {
+  const header = response.headers.get('set-cookie') || '';
+  const match = header.match(new RegExp(`(?:^|[,;]\\s*)${name}=([^;,]+)`));
+  return match ? `${name}=${match[1]}` : '';
 }
 
 test.before(async () => {
@@ -250,6 +257,151 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(updatedHtml, /class="guest-avatar"/);
   assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
   await waitForConfirmation('public-attendee@example.test');
+});
+
+test('remembers a first RSVP and makes future public-event answers one tap without granting account access', async () => {
+  const firstEvent = await createEvent({ slug: 'lucas-first-night', title: 'Lucas First Night' });
+  const nextEvent = await createEvent({ slug: 'lucas-next-night', title: 'Lucas Next Night' });
+  const protectedEvent = await createEvent({ slug: 'lucas-protected-night', title: 'Lucas Protected Night' });
+
+  const firstRsvp = await fetch(`${baseUrl}/api/public/events/${firstEvent.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Lucas Moon', email: 'lucas@example.test' })
+  });
+  assert.equal(firstRsvp.status, 201);
+  const guestCookie = responseCookie(firstRsvp, 'sge_guest');
+  assert.match(guestCookie, /^sge_guest=/);
+  assert.doesNotMatch(firstRsvp.headers.get('set-cookie') || '', /sge_session=/);
+  await waitForConfirmation('lucas@example.test');
+
+  const stored = (await pool.query(
+    `SELECT r.account_id,r.guest_session_id,gs.identity_id,gs.verified_at
+       FROM rsvps r JOIN guest_sessions gs ON gs.id=r.guest_session_id
+      WHERE r.event_id=$1`,
+    [firstEvent.id]
+  )).rows[0];
+  assert.equal(stored.account_id, null);
+  assert.ok(stored.guest_session_id);
+  assert.equal(stored.verified_at, null);
+
+  const returningPage = await fetch(`${baseUrl}/e/${nextEvent.slug}`, { headers: { cookie: guestCookie } });
+  const returningHtml = await returningPage.text();
+  assert.match(returningHtml, /"returningGuest":\{"firstName":"Lucas","response":null\}/);
+  assert.match(returningHtml, />I’m going<\/button>/);
+  assert.match(returningHtml, />I’m not going<\/button>/);
+
+  const going = await fetch(`${baseUrl}/api/public/events/${nextEvent.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ response: 'going' })
+  });
+  assert.equal(going.status, 200);
+  assert.equal((await going.json()).response, 'going');
+  await waitForConfirmation('lucas@example.test');
+  let nextRsvp = (await pool.query(
+    'SELECT status,account_id,guest_session_id FROM rsvps WHERE event_id=$1',
+    [nextEvent.id]
+  )).rows[0];
+  assert.equal(nextRsvp.status, 'confirmed');
+  assert.equal(nextRsvp.account_id, null);
+  assert.equal(Number(nextRsvp.guest_session_id), Number(stored.guest_session_id));
+
+  const notGoing = await fetch(`${baseUrl}/api/public/events/${nextEvent.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ response: 'not_going' })
+  });
+  assert.equal(notGoing.status, 200);
+  nextRsvp = (await pool.query('SELECT status FROM rsvps WHERE event_id=$1', [nextEvent.id])).rows[0];
+  assert.equal(nextRsvp.status, 'cancelled');
+
+  await createRsvp(protectedEvent.id, {
+    first_name: 'Real', last_name: 'Lucas', email: 'lucas@example.test', status: 'confirmed'
+  });
+  const blocked = await fetch(`${baseUrl}/api/public/events/${protectedEvent.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ response: 'not_going' })
+  });
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).error, 'verification_required');
+  assert.equal((await pool.query(
+    'SELECT status FROM rsvps WHERE event_id=$1 AND email=$2',
+    [protectedEvent.id, 'lucas@example.test']
+  )).rows[0].status, 'confirmed');
+
+  const guestStatus = await fetch(`${baseUrl}/api/public/guest-session`, { headers: { cookie: guestCookie } });
+  assert.deepEqual(await guestStatus.json(), {
+    recognized: true,
+    firstName: 'Lucas',
+    maskedEmail: 'l•••@example.test',
+    verified: false
+  });
+  const creatorLink = await fetch(`${baseUrl}/api/auth/guest-magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ next: '/events/new' })
+  });
+  assert.equal(creatorLink.status, 200);
+  assert.equal((await pool.query(
+    `SELECT return_path FROM magic_link_tokens
+      WHERE email='lucas@example.test' AND expires_at<NOW() + INTERVAL '1 day'
+      ORDER BY id DESC LIMIT 1`
+  )).rows[0].return_path, '/events/new');
+});
+
+test('personal Familiar Faces links recognize one guest but do not RSVP until a button is pressed', async () => {
+  const source = await createEvent({ slug: 'invite-source', title: 'Invite Source' });
+  const target = await createEvent({ slug: 'invite-target', title: 'Invite Target' });
+  const person = await createRsvp(source.id, {
+    first_name: 'Maya', last_name: 'Lopez', email: 'maya-personal@example.test'
+  });
+  const identity = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ('maya-personal@example.test','Maya Lopez') RETURNING id`
+  )).rows[0];
+  const message = (await pool.query(
+    `INSERT INTO message_log
+       (event_id,rsvp_id,recipient,recipient_name,message_type,channel,status)
+     VALUES ($1,$2,'maya-personal@example.test','Maya Lopez','previous_guest_invite','email','sent')
+     RETURNING id`,
+    [target.id, person.id]
+  )).rows[0];
+  const invitation = await createGuestInvitation(pool, {
+    messageLogId: message.id,
+    eventId: target.id,
+    eventDate: target.event_date,
+    email: 'maya-personal@example.test',
+    recipientName: 'Maya Lopez'
+  });
+  assert.equal(invitation.identity.id, identity.id);
+
+  const opened = await fetch(`${baseUrl}/g/${invitation.token}`, { redirect: 'manual' });
+  assert.equal(opened.status, 303);
+  assert.equal(opened.headers.get('location'), '/e/invite-target?invited=1');
+  const guestCookie = responseCookie(opened, 'sge_guest');
+  assert.ok(guestCookie);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [target.id])).rows[0].count, 0);
+  assert.ok((await pool.query('SELECT opened_at FROM guest_invitation_tokens WHERE message_log_id=$1', [message.id])).rows[0].opened_at);
+
+  const page = await fetch(`${baseUrl}/e/${target.slug}`, { headers: { cookie: guestCookie } });
+  assert.match(await page.text(), /"returningGuest":\{"firstName":"Maya","response":null\}/);
+  const answer = await fetch(`${baseUrl}/api/public/events/${target.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ response: 'going' })
+  });
+  assert.equal(answer.status, 200);
+  const linked = (await pool.query(
+    `SELECT r.status,r.account_id,t.response,t.responded_at
+       FROM rsvps r JOIN guest_invitation_tokens t ON t.rsvp_id=r.id
+      WHERE r.event_id=$1`,
+    [target.id]
+  )).rows[0];
+  assert.equal(linked.status, 'confirmed');
+  assert.equal(linked.account_id, identity.id);
+  assert.equal(linked.response, 'going');
+  assert.ok(linked.responded_at);
 });
 
 test('RSVP SMS consent requires an enabled reminder and valid phone, then powers the host eligibility count', async () => {
