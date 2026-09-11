@@ -28,12 +28,17 @@ test('profile-photo changes are bound to the authenticated session', () => {
   const settingsClient = read('public/js/settings.js');
   const publicClient = read('public/js/public-event.js');
 
-  assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requireOrganizer, handleUpload/);
+  // The avatar upload alone also accepts the photo-only grant from an RSVP
+  // confirmation; every other upload still requires a full account session.
+  assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requirePhotoAccess, handleUpload/);
+  assert.equal((uploads.match(/requirePhotoAccess, handleUpload/g) || []).length, 1);
+  assert.match(uploads, /router\.post\('\/api\/uploads\/host-logo', requireOrganizer, handleUpload/);
   assert.match(uploads, /UPDATE organizers SET avatar_url=\$2[\s\S]*WHERE id=\$1/);
   assert.match(uploads, /\[req\.organizer\.id, result\.secure_url\]/);
   assert.doesNotMatch(uploads, /api\/uploads\/users\/:|api\/users\/:.*avatar/);
 
-  assert.match(auth, /router\.get\('\/api\/me', requireOrganizer/);
+  assert.match(auth, /router\.get\('\/api\/me', requirePhotoAccess/);
+  assert.match(auth, /scope: req\.photoAccessOnly \? 'photo' : 'account'/);
   assert.match(auth, /router\.patch\('\/api\/me\/profile', requireOrganizer/);
   assert.match(auth, /avatar_url=CASE WHEN \$3 THEN NULL ELSE avatar_url END/);
   assert.match(auth, /const hasName = Object\.prototype\.hasOwnProperty\.call\(body, 'name'\)/);
@@ -64,8 +69,10 @@ test('guest-list avatars link only through verified identity or attendee ownersh
   const standard = read('src/views/event-public.html');
   const flyer = read('public/css/event-public-flyer.css');
 
-  assert.match(routes, /verifiedSessionAccountId\(client, req, email\)/);
-  assert.match(routes, /SELECT id FROM organizers WHERE id=\$1 AND LOWER\(email\)=LOWER\(\$2\)/);
+  // The signed-in account (resolved once per request, revocation included)
+  // links an RSVP only when its own email matches the RSVP email.
+  assert.match(routes, /verifiedSessionAccountId\(req, email\)/);
+  assert.match(routes, /String\(account\.email \|\| ''\)\.toLowerCase\(\) === String\(email \|\| ''\)\.toLowerCase\(\)/);
   assert.match(routes, /LEFT JOIN organizers o ON o\.id=r\.account_id/);
   assert.match(routes, /account_id=COALESCE\(account_id,\$15\)/);
   assert.match(routes, /guest-avatar/);

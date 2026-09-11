@@ -216,6 +216,121 @@ function show(stateId) {
   syncMobileRsvpDock();
 }
 
+// ---- "Confirm it's you": a 6-digit email code, entered inline ----------
+// Used when this browser can't prove it owns an RSVP (a new device, a rejoin
+// after cancelling). The guest never leaves the page; after the code, the
+// original action is retried.
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body || {})
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+function confirmItsYou({ container, codeRequest, title, onVerified }) {
+  container.innerHTML = `<div class="sg-code-panel" role="group" aria-labelledby="sg-code-title">
+    <p class="sg-code-title" id="sg-code-title"></p>
+    <p class="sg-code-copy" data-code-copy>Sending a 6-digit code…</p>
+    <form class="sg-code-row" data-code-form novalidate>
+      <input class="sg-input sg-code-input" data-code-input inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
+      <button class="sg-btn sg-btn-primary" type="submit" data-code-submit>Verify</button>
+    </form>
+    <p class="sg-code-error" data-code-error role="alert"></p>
+    <div class="sg-code-actions">
+      <button class="sg-code-link" type="button" data-code-resend>Send a new code</button>
+      <button class="sg-code-link" type="button" data-code-cancel>Cancel</button>
+    </div>
+  </div>`;
+  const panel = container.firstElementChild;
+  const input = panel.querySelector('[data-code-input]');
+  const submit = panel.querySelector('[data-code-submit]');
+  const errorEl = panel.querySelector('[data-code-error]');
+  const copy = panel.querySelector('[data-code-copy]');
+  const resend = panel.querySelector('[data-code-resend]');
+  panel.querySelector('#sg-code-title').textContent = title || 'Confirm it’s you';
+
+  const showError = message => {
+    errorEl.textContent = message || '';
+    errorEl.style.display = message ? 'block' : 'none';
+  };
+
+  async function sendCode() {
+    resend.disabled = true;
+    showError('');
+    try {
+      const { response, data } = await postJson('/api/auth/guest-code', codeRequest);
+      if (!response.ok) throw new Error(data.error || 'We couldn’t send a code. Try again.');
+      copy.textContent = 'We sent a 6-digit code to ';
+      const strong = document.createElement('strong');
+      strong.textContent = data.maskedEmail || 'your email';
+      copy.append(strong, '. Enter it here.');
+      input.focus();
+    } catch (error) {
+      copy.textContent = 'We couldn’t send a code.';
+      showError(error.message);
+    } finally {
+      setTimeout(() => { resend.disabled = false; }, 20000);
+    }
+  }
+
+  let verifying = false;
+  async function verify() {
+    const code = input.value.replace(/\D/g, '');
+    if (verifying || code.length !== 6) return;
+    verifying = true;
+    submit.disabled = true;
+    submit.textContent = 'Checking…';
+    showError('');
+    try {
+      const { response, data } = await postJson('/api/auth/verify-code', { code });
+      if (!response.ok) throw new Error(data.message || 'That code didn’t work.');
+      container.innerHTML = '';
+      await onVerified(data);
+    } catch (error) {
+      showError(error.message);
+      input.select();
+    } finally {
+      verifying = false;
+      if (submit.isConnected) {
+        submit.disabled = false;
+        submit.textContent = 'Verify';
+      }
+    }
+  }
+
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 6);
+    if (input.value.length === 6) verify();
+  });
+  panel.querySelector('[data-code-form]').addEventListener('submit', event => {
+    event.preventDefault();
+    verify();
+  });
+  resend.addEventListener('click', sendCode);
+  panel.querySelector('[data-code-cancel]').addEventListener('click', () => { container.innerHTML = ''; });
+  sendCode();
+}
+
+// ---- Returning guest card ------------------------------------------------
+const RETURNING_COPY = {
+  going: {
+    mark: '✓',
+    title: 'You’re going',
+    detail: 'You’re on the list.',
+    fresh: 'You’re on the list. Your confirmation and calendar invite are on the way.'
+  },
+  not_going: {
+    mark: '–',
+    title: 'You can’t make it',
+    detail: 'The host knows you can’t make it.',
+    fresh: 'Thanks for letting the host know.'
+  }
+};
+let returningEditing = false;
+
 function setReturningSelection(response) {
   const state = $('returning-rsvp-state');
   if (state) state.classList.toggle('has-answer', Boolean(response));
@@ -226,35 +341,62 @@ function setReturningSelection(response) {
   });
 }
 
+// An answered guest sees a clear status ("✓ You're going") with a Change
+// action; the two choice buttons appear only to answer or to change.
+function renderReturningState({ fresh = false } = {}) {
+  const response = EVENT.returningGuest?.response || null;
+  const ask = $('returning-rsvp-ask');
+  const answer = $('returning-rsvp-answer');
+  setReturningSelection(response);
+  const copy = RETURNING_COPY[response];
+  const asking = !copy || returningEditing;
+  ask.hidden = !asking;
+  answer.hidden = asking;
+  document.querySelector('.returning-rsvp-question').textContent =
+    response && returningEditing ? 'Update your answer.' : 'Are you going?';
+  if (asking) return;
+  answer.classList.toggle('is-not-going', response === 'not_going');
+  $('returning-rsvp-mark').textContent = copy.mark;
+  $('returning-rsvp-answer-title').textContent = copy.title;
+  $('returning-rsvp-detail').textContent = fresh ? copy.fresh : copy.detail;
+}
+
 if (EVENT.returningGuest) {
   $('returning-rsvp-name').textContent = EVENT.returningGuest.firstName;
   $('returning-rsvp-switch-name').textContent = EVENT.returningGuest.firstName;
-  setReturningSelection(EVENT.returningGuest.response);
+  renderReturningState();
 }
 
 if (EVENT.status === 'cancelled') show('cancelled-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.returningGuest) show('returning-rsvp-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.isFull) show('full-state');
 
-async function answerReturningRsvp(response) {
+async function answerReturningRsvp(response, { afterVerification = false } = {}) {
+  if (response === EVENT.returningGuest.response) {
+    returningEditing = false;
+    renderReturningState();
+    return;
+  }
   const buttons = Array.from(document.querySelectorAll('.returning-choice'));
   const error = $('returning-rsvp-error');
-  const question = document.querySelector('.returning-rsvp-question');
   buttons.forEach(button => { button.disabled = true; });
   error.style.display = 'none';
   try {
-    const result = await fetch(`/api/public/events/${EVENT.slug}/returning-rsvp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ response })
-    });
-    const data = await result.json().catch(() => ({}));
+    const { response: result, data } = await postJson(`/api/public/events/${EVENT.slug}/returning-rsvp`, { response });
+    if (result.status === 409 && data.error === 'verification_required' && !afterVerification) {
+      confirmItsYou({
+        container: $('returning-rsvp-verify'),
+        codeRequest: { remembered: true },
+        title: data.message,
+        onVerified: () => answerReturningRsvp(response, { afterVerification: true })
+      });
+      return;
+    }
     if (!result.ok) throw new Error(data.message || data.error || 'Could not update your RSVP');
     EVENT.returningGuest.response = response;
-    setReturningSelection(response);
-    question.textContent = response === 'going'
-      ? 'You’re on the list. Change your answer anytime.'
-      : 'Got it. You can change your answer anytime.';
+    returningEditing = false;
+    renderReturningState({ fresh: true });
+    $('returning-rsvp-change').focus({ preventScroll: true });
     if (response === 'going') await loadComments();
   } catch (errorValue) {
     error.textContent = errorValue.message;
@@ -268,14 +410,27 @@ document.querySelectorAll('.returning-choice').forEach(button => {
   button.addEventListener('click', () => answerReturningRsvp(button.dataset.response));
 });
 
+$('returning-rsvp-change')?.addEventListener('click', () => {
+  returningEditing = true;
+  renderReturningState();
+  document.querySelector('.returning-choice.is-selected')?.focus({ preventScroll: true });
+});
+
+// "Not Lucas? RSVP as yourself" — forget this browser's remembered guest (a
+// shared device, or a forwarded invitation) and open a blank RSVP form.
 $('returning-rsvp-switch')?.addEventListener('click', async () => {
   const button = $('returning-rsvp-switch');
   button.disabled = true;
   try {
     await fetch('/api/public/guest-session/forget', { method: 'POST' });
     EVENT.returningGuest = null;
+    $('returning-rsvp-verify').innerHTML = '';
+    ['full_name', 'email'].forEach(id => {
+      const field = $(id);
+      if (field) { field.value = ''; field.defaultValue = ''; }
+    });
     if (EVENT.isFull) show('full-state');
-    else show('cta-state');
+    else openRsvpForm({ trigger: null });
   } finally {
     button.disabled = false;
   }
@@ -390,11 +545,21 @@ smsOptin?.addEventListener('change', () => {
 });
 syncSmsPhoneRequirement();
 
-if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', async e => {
-  e.preventDefault();
+function rsvpVerifyContainer() {
+  let container = $('rsvp-verify');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'rsvp-verify';
+    $('rsvp-form').after(container);
+  }
+  return container;
+}
+
+async function submitRsvp({ afterVerification = false } = {}) {
   const btn = $('rsvp-submit');
   btn.disabled = true;
   btn.textContent = 'Confirming…';
+  $('rsvp-error').style.display = 'none';
   try {
     const res = await fetch(`/api/public/events/${EVENT.slug}/rsvp`, {
       method: 'POST',
@@ -414,9 +579,23 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', asyn
     const data = await res.json().catch(() => ({}));
     if (res.status === 409 && data.error === 'full') return show('full-state');
     if (res.status === 409 && data.error === 'party_full') throw new Error(data.message || 'There is not enough room for a guest.');
-    if (!res.ok) throw new Error(data.error || 'Something went wrong');
-    if (data.alreadyRsvpd) $('success-sub').textContent = "You were already on the list — we've re-sent your confirmation.";
-    else if (EVENT.commentsEnabled) {
+    if (res.status === 409 && data.error === 'verification_required' && !afterVerification) {
+      btn.disabled = false;
+      btn.textContent = 'Confirm RSVP';
+      confirmItsYou({
+        container: rsvpVerifyContainer(),
+        codeRequest: { email: $('email').value.trim() },
+        title: data.message,
+        onVerified: () => submitRsvp({ afterVerification: true })
+      });
+      return;
+    }
+    if (!res.ok) throw new Error(data.message || data.error || 'Something went wrong');
+    if (data.alreadyRsvpd) {
+      $('success-sub').textContent = data.confirmationResent
+        ? 'You’re already on the list. We’ve re-sent your confirmation email.'
+        : 'You’re already on the list. Your confirmation email went out in the last few minutes — check your inbox and spam folder.';
+    } else if (EVENT.commentsEnabled) {
       $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the comments below.';
       await loadComments();
     }
@@ -428,6 +607,11 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', asyn
     btn.disabled = false;
     btn.textContent = 'Confirm RSVP';
   }
+}
+
+if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', e => {
+  e.preventDefault();
+  submitRsvp();
 });
 
 const shareBtn = $('share-btn');

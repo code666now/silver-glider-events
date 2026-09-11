@@ -22,10 +22,12 @@ test('Follow Host migration extends the shared identity and magic-link models sa
 
 test('follow intent is stored server-side and verification completes it transactionally', () => {
   const auth = source('src/routes/auth.js');
+  const challenges = source('src/lib/sign-in-challenges.js');
   assert.match(auth, /intent === 'follow_host'/);
   assert.match(auth, /findPublicHost\(pool, req\.body\.host_slug\)/);
-  assert.match(auth, /target_organizer_id, return_path/);
-  assert.match(auth, /RETURNING email, intent, target_organizer_id, return_path/);
+  assert.match(challenges, /intent, target_organizer_id, return_path/);
+  assert.match(challenges, /PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path'/);
+  assert.match(challenges, /RETURNING \$\{PENDING_COLUMNS\}/);
   assert.match(auth, /await client\.query\('BEGIN'\)/);
   assert.match(auth, /await followHost\(client, organizer\.id, pending\.target_organizer_id\)/);
   assert.match(auth, /await client\.query\('COMMIT'\)/);

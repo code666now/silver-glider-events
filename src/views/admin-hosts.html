@@ -99,7 +99,7 @@
     </div>
 
     <section class="host-summary" aria-label="Host account summary">
-      <div class="host-summary-card"><strong id="total-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Total accounts</span></div>
+      <div class="host-summary-card"><strong id="total-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Host accounts</span><small id="guest-identity-note" style="display:block;margin-top:4px;color:var(--sg-text-faint);font-size:11px"></small></div>
       <div class="host-summary-card"><strong id="new-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>New in 30 days</span></div>
       <div class="host-summary-card"><strong id="active-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Created an event</span></div>
     </section>
@@ -207,6 +207,9 @@
       try {
         const data = await api('/api/admin/hosts');
         hosts = data.hosts;
+        const guests = Number(data.guestIdentityCount) || 0;
+        document.getElementById('guest-identity-note').textContent =
+          guests ? `+ ${guests} guest ${guests === 1 ? 'identity' : 'identities'} (RSVP only)` : '';
         renderSummary();
         list.classList.remove('admin-skeleton-stack');
         renderHosts();

@@ -28,6 +28,8 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
 .familiar-face-emoji { font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:34px;font-weight:400;line-height:1; }
 .familiar-face-name { width:100%;overflow:hidden;color:var(--sg-text);font-size:14px;font-weight:800;line-height:1.35;text-overflow:ellipsis;white-space:nowrap; }
 .familiar-face-status { margin-top:5px;color:var(--sg-text-dim);font-size:12px; }
+.familiar-face-card.is-declined .familiar-face-avatar { opacity:.5; }
+.familiar-face-card.is-declined .familiar-face-name { color:var(--sg-text-dim); }
 .familiar-face-check {
   width:22px;height:22px;display:grid;place-items:center;margin:13px 0 -5px;border:1px solid rgba(255,255,255,.18);
   border-radius:50%;color:transparent;font-size:13px;font-weight:900;

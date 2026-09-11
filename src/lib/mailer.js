@@ -351,9 +351,19 @@ function renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
   });
 }
 
+// Without RESEND_API_KEY (local development and tests) messages are printed
+// and kept here instead of sent, so local flows and integration tests can read
+// links and codes that are only ever stored hashed.
+const devOutbox = [];
+function recordDevEmail(entry) {
+  devOutbox.push({ ...entry, at: new Date() });
+  if (devOutbox.length > 100) devOutbox.shift();
+}
+
 async function send({ to, subject, html, attachments, replyTo }) {
   if (!resend) {
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
+    recordDevEmail({ to, subject, html });
     return { dev: true };
   }
   const payload = { from: FROM, to, subject, html, attachments };
@@ -363,26 +373,68 @@ async function send({ to, subject, html, attachments, replyTo }) {
   return result.data;
 }
 
-async function sendMagicLink({ to, link, followHostName }) {
+function signInCodeBlock(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (!digits) return '';
+  const spaced = `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;margin:0 0 8px;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:14px">
+    <tr><td align="center" style="padding:22px 18px">
+      <p style="color:#8f8f8f;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px">Your code</p>
+      <p style="color:#f4f4f4;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:.16em;line-height:1;margin:0">${esc(spaced)}</p>
+    </td></tr>
+  </table>`;
+}
+
+// The code lets people finish on the device where they asked (useful when an
+// email app opens links in its own browser); the link works anywhere. The
+// code is in the subject so it can be read straight from a notification.
+async function sendMagicLink({ to, link, code, followHostName }) {
   const hostName = String(followHostName || '').trim();
   const isFollow = Boolean(hostName);
   if (!resend) {
-    console.log(`[mailer:dev] MAGIC LINK for ${to}: ${link}`);
+    console.log(`[mailer:dev] MAGIC LINK for ${to}: ${link}${code ? ` (code ${code})` : ''}`);
+    recordDevEmail({ to, kind: 'magic_link', link, code: code || null });
     return { dev: true };
   }
+  const codeSubject = code ? ` — code ${code}` : '';
   return send({
     to,
-    subject: isFollow ? `Follow ${hostName} — Silver Glider Events` : 'Your sign-in link — Silver Glider Events',
+    subject: isFollow
+      ? `Follow ${hostName}${codeSubject}`
+      : (code ? `Your Silver Glider sign-in code: ${code}` : 'Your sign-in link — Silver Glider Events'),
     html: layout({
-      kicker: 'Magic link',
+      kicker: 'Sign in',
       headline: isFollow ? `Follow ${hostName}` : 'Sign in',
-      sub: isFollow
-        ? `Tap the button below to verify your email and follow ${hostName}. The link expires in 15 minutes.`
-        : 'Tap the button below to sign in to Silver Glider Events. The link expires in 15 minutes.',
+      sub: code
+        ? 'Enter this code where you asked for it, or use the button on any device. Both expire in 15 minutes.'
+        : (isFollow
+          ? `Tap the button below to verify your email and follow ${hostName}. The link expires in 15 minutes.`
+          : 'Tap the button below to sign in to Silver Glider Events. The link expires in 15 minutes.'),
+      bodyHtml: signInCodeBlock(code),
       cta: isFollow ? `Follow ${hostName}` : 'Sign in',
       ctaUrl: link,
       footerHtml: `<p style="color:#555;font-size:12px;line-height:1.7;margin:0">If the button doesn't work, paste this link into your browser:<br><a href="${esc(link)}" style="color:#1CC5BE;word-break:break-all">${esc(link)}</a></p>
       <p style="color:#555;font-size:12px;margin-top:14px">Didn't request this? You can safely ignore this email.</p>`
+    })
+  });
+}
+
+// Code-only email for confirming an RSVP identity on the event page.
+async function sendVerificationCode({ to, code }) {
+  if (!resend) {
+    console.log(`[mailer:dev] VERIFICATION CODE for ${to}: ${code}`);
+    recordDevEmail({ to, kind: 'verification_code', code });
+    return { dev: true };
+  }
+  return send({
+    to,
+    subject: `Your Silver Glider code: ${code}`,
+    html: layout({
+      kicker: 'Confirm it’s you',
+      headline: 'Your code',
+      sub: 'Enter this code on the event page to confirm your RSVP. It expires in 15 minutes.',
+      bodyHtml: signInCodeBlock(code),
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
     })
   });
 }
@@ -632,6 +684,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 }
 
 module.exports = {
+  devOutbox, sendVerificationCode,
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,

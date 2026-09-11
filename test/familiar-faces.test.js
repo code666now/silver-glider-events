@@ -67,15 +67,20 @@ test('Familiar Faces photo identity is verified, reusable, and never attached by
   assert.match(routes, /LEFT JOIN organizers o ON o\.id=r\.account_id/);
   assert.match(routes, /attendeeAvatar\(`email:/);
   assert.doesNotMatch(routes, /JOIN organizers o ON LOWER\(o\.email\)=LOWER\(r\.email\)/);
-  assert.match(index, /app\.get\('\/add-photo', requireOrganizer/);
+  // The confirmation's photo link is a photo-only grant, never an account
+  // session: /add-photo accepts it, the dashboard does not.
+  assert.match(index, /app\.get\('\/add-photo', requirePhotoAccess/);
+  assert.match(index, /app\.get\('\/dashboard', requireOrganizer/);
   assert.match(page, />Add your photo</);
   assert.match(page, /Help friends recognize you\./);
   assert.match(page, /Skip for now/);
   assert.match(client, /api\/uploads\/avatar/);
+  assert.match(client, /scope === 'photo'/);
   assert.doesNotMatch(client, /userId|organizerId/);
-  assert.match(publicRoutes, /crypto\.randomBytes\(32\)\.toString\('hex'\)/);
-  assert.match(publicRoutes, /returnPath = `\/add-photo\?event=/);
-  assert.match(publicRoutes, /NOW\(\) \+ INTERVAL '7 days'/);
+  assert.match(publicRoutes, /intent: 'add_photo'/);
+  assert.match(publicRoutes, /returnPath: `\/add-photo\?event=/);
+  assert.match(publicRoutes, /ttlMinutes: 7 \* 24 \* 60/);
+  assert.match(publicRoutes, /withCode: false/);
 });
 
 test('RSVP confirmation asks for a photo only when a secure URL is supplied', () => {

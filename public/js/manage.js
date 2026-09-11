@@ -274,7 +274,7 @@ function renderFamiliarFaces() {
     if (face.canInvite && familiarFaceState.canStartInvitation) {
       return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)} ${selected ? 'from' : 'for'} an invitation">${content}</button>`;
     }
-    return `<article class="familiar-face-card">${content}</article>`;
+    return `<article class="familiar-face-card${face.declined ? ' is-declined' : ''}">${content}</article>`;
   }).join('');
   $('no-guests').hidden = familiarFaceState.faces.length > 0;
 }

@@ -880,15 +880,24 @@
       </div>
 
       <div id="returning-rsvp-state" aria-live="polite">
-        <p class="returning-rsvp-kicker">Welcome back</p>
-        <h2>Hi <span id="returning-rsvp-name"></span> <span aria-hidden="true">👋</span></h2>
-        <p class="returning-rsvp-question">Are you going?</p>
-        <div class="returning-rsvp-choices" role="group" aria-label="Your RSVP">
-          <button class="returning-choice" id="returning-going" data-response="going" type="button" aria-pressed="false">I’m going</button>
-          <button class="returning-choice" id="returning-not-going" data-response="not_going" type="button" aria-pressed="false">I’m not going</button>
+        <div id="returning-rsvp-ask">
+          <p class="returning-rsvp-kicker">Welcome back</p>
+          <h2>Hi <span id="returning-rsvp-name"></span></h2>
+          <p class="returning-rsvp-question">Are you going?</p>
+          <div class="returning-rsvp-choices" role="group" aria-label="Your RSVP">
+            <button class="returning-choice" id="returning-going" data-response="going" type="button" aria-pressed="false">I’m going</button>
+            <button class="returning-choice" id="returning-not-going" data-response="not_going" type="button" aria-pressed="false">I’m not going</button>
+          </div>
+        </div>
+        <div class="returning-rsvp-answer" id="returning-rsvp-answer" hidden>
+          <p class="returning-rsvp-kicker">Your RSVP</p>
+          <h2><span class="returning-rsvp-mark" id="returning-rsvp-mark" aria-hidden="true">✓</span><span id="returning-rsvp-answer-title">You’re going</span></h2>
+          <p class="returning-rsvp-detail" id="returning-rsvp-detail"></p>
+          <button class="returning-rsvp-change" id="returning-rsvp-change" type="button">Change my answer</button>
         </div>
         <p class="returning-rsvp-error" id="returning-rsvp-error" role="alert"></p>
-        <button class="returning-rsvp-switch" id="returning-rsvp-switch" type="button">Not <span id="returning-rsvp-switch-name"></span>?</button>
+        <div id="returning-rsvp-verify"></div>
+        <button class="returning-rsvp-switch" id="returning-rsvp-switch" type="button">Not <span id="returning-rsvp-switch-name"></span>? RSVP as yourself</button>
       </div>
 
       <div id="rsvp-form-box">

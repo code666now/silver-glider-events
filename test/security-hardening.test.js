@@ -79,5 +79,16 @@ test('public RSVP route rate-limits submissions and atomically cools down email 
   assert.match(publicRoute, /status\(429\)/);
   assert.match(publicRoute, /ON CONFLICT \(rsvp_id, message_type, channel\)/);
   assert.match(publicRoute, /COALESCE\(message_log\.sent_at, message_log\.created_at\) < NOW\(\) - INTERVAL '15 minutes'/);
-  assert.match(publicRoute, /if \(!rows\.length\) return false/);
+  assert.match(publicRoute, /return rows\[0\]\?\.id \|\| null/);
+  assert.match(publicRoute, /if \(!logId\) return false/);
+  // "Already on the list" reports whether an email actually went out.
+  assert.match(publicRoute, /confirmationResent: Boolean\(confirmationResent\)/);
+});
+
+test('rate limits key on the proxy-resolved client address, not a spoofable header', () => {
+  const { clientIp } = require('../src/lib/rate-limit');
+  const spoofed = { ip: '203.0.113.9', headers: { 'x-forwarded-for': '1.2.3.4, 203.0.113.9' }, socket: {} };
+  assert.equal(clientIp(spoofed), '203.0.113.9');
+  assert.doesNotMatch(source('src/lib/rate-limit.js'), /split\(','\)\[0\]/);
+  assert.doesNotMatch(source('src/routes/auth.js'), /x-forwarded-for/);
 });

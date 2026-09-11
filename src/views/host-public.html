@@ -68,6 +68,7 @@
     .follow-modal-close { width:38px;height:38px;flex:0 0 auto;border:1px solid var(--sg-border);border-radius:50%;background:transparent;color:var(--sg-text-dim);font-size:22px;cursor:pointer; }
     .follow-modal-error { display:none;margin:-6px 0 14px;color:var(--sg-danger);font-size:12px; }
     .follow-modal-sent { display:none;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
+    .follow-modal-sent > p { margin:0 0 16px; }
     body.follow-modal-open { overflow:hidden; }
     .host-section + .host-section { margin-top:72px; }
     .host-section-head { display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:18px; }
@@ -156,7 +157,14 @@
         <p class="follow-modal-error" id="follow-error"></p>
         <button class="sg-btn sg-btn-primary sg-btn-block" id="follow-continue" type="submit">Continue</button>
       </form>
-      <p class="follow-modal-sent" id="follow-sent">Check your email. Tap the link we sent to verify your address and follow {{HOST_NAME}}.</p>
+      <div class="follow-modal-sent" id="follow-sent">
+        <p>Check your email. Enter the 6-digit code, or tap the link we sent, to verify your address and follow {{HOST_NAME}}.</p>
+        <form class="sg-code-row" id="follow-code-form" novalidate>
+          <input class="sg-input sg-code-input" id="follow-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
+          <button class="sg-btn sg-btn-primary" type="submit" id="follow-code-submit">Verify</button>
+        </form>
+        <p class="sg-code-error" id="follow-code-error" role="alert"></p>
+      </div>
     </div>
   </div>
   <script>
@@ -227,11 +235,47 @@
           if (!response.ok) throw new Error(payload.error || 'Please try again.');
           form.style.display = 'none';
           sent.style.display = 'block';
-          closeButton.focus();
+          codeInput.focus();
         } catch (err) {
           error.textContent = err.message;
           error.style.display = 'block';
         } finally { continueButton.disabled = false;continueButton.textContent = 'Continue'; }
+      });
+      // The emailed code finishes the follow in this browser; the link works too.
+      const codeInput = document.getElementById('follow-code');
+      const codeSubmit = document.getElementById('follow-code-submit');
+      const codeError = document.getElementById('follow-code-error');
+      let verifying = false;
+      async function verifyFollowCode() {
+        const code = codeInput.value.replace(/\D/g, '');
+        if (verifying || code.length !== 6) return;
+        verifying = true;
+        codeSubmit.disabled = true;
+        codeError.style.display = 'none';
+        try {
+          const response = await fetch('/api/auth/verify-code', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.message || 'That code didn’t work.');
+          location.href = payload.redirect || location.pathname;
+        } catch (err) {
+          codeError.textContent = err.message;
+          codeError.style.display = 'block';
+          codeInput.select();
+        } finally {
+          verifying = false;
+          codeSubmit.disabled = false;
+        }
+      }
+      codeInput.addEventListener('input', () => {
+        codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
+        if (codeInput.value.length === 6) verifyFollowCode();
+      });
+      document.getElementById('follow-code-form').addEventListener('submit', event => {
+        event.preventDefault();
+        verifyFollowCode();
       });
       closeButton.addEventListener('click', closeModal);
       modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });

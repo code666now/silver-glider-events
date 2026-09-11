@@ -816,11 +816,21 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
           AND ml.status IN ('pending','sent')
           AND NOT EXISTS (
             SELECT 1 FROM rsvps current_rsvp
-             WHERE current_rsvp.event_id=$1 AND current_rsvp.status='confirmed'
+             WHERE current_rsvp.event_id=$1 AND current_rsvp.status IN ('confirmed','cancelled')
                AND LOWER(current_rsvp.email)=LOWER(ml.recipient)
           )
         ORDER BY LOWER(ml.recipient), ml.id DESC`,
       [req.params.id, req.organizer.id]
+    );
+    // "I'm not going" (and a cancelled RSVP) is an answer the host should see,
+    // not a silent disappearance. These people are not invitation targets.
+    const { rows: declined } = await pool.query(
+      `SELECT r.id, r.first_name, r.last_name, r.email, r.created_at, o.avatar_url
+         FROM rsvps r
+         LEFT JOIN organizers o ON o.id=r.account_id
+        WHERE r.event_id=$1 AND r.status='cancelled'
+        ORDER BY r.created_at DESC, r.id DESC`,
+      [req.params.id]
     );
 
     const faces = [];
@@ -859,6 +869,20 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         canInvite: Boolean(invitation.host_email_allowed && String(invitation.recipient || '').trim()),
         searchText: `${name} ${invitation.recipient || ''}`.toLowerCase(),
         sortTime: invitation.created_at
+      });
+    }
+    for (const rsvp of declined) {
+      const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
+      faces.push({
+        id: familiarFaceKey('declined', rsvp.id),
+        name,
+        status: 'Can’t make it',
+        declined: true,
+        avatarUrl: safeAvatarUrl(rsvp.avatar_url),
+        avatarEmoji: attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
+        canInvite: false,
+        searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
+        sortTime: rsvp.created_at
       });
     }
     const search = String(req.query.search || '').trim().toLowerCase();

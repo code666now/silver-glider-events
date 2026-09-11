@@ -8,17 +8,20 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
-const { clearSessionCookie, parseSession, readSessionCookie } = require('../lib/session');
+const { clearSessionCookie } = require('../lib/session');
 const { linkVerifiedRsvps } = require('../lib/account-rsvps');
 const { ensureGuestIdentity } = require('../lib/guest-identity');
 const {
   clearGuestSessionCookie,
   createGuestSession,
+  guestVerifiedFor,
   readGuestSession,
   revokeGuestSession,
   setGuestSessionCookie,
   tokenHash
 } = require('../lib/guest-session');
+const { clearPhotoAccessCookie } = require('../lib/photo-access');
+const { createSignInChallenge, maskEmail } = require('../lib/sign-in-challenges');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
@@ -343,19 +346,16 @@ async function confirmedAttendee(req, event) {
   return rows[0] || null;
 }
 
+// req.sessionAccount is resolved once per request by sessionMiddleware and
+// already reflects server-side revocation ("Sign out of all devices").
 function organizerViewer(req, event) {
-  const session = parseSession(readSessionCookie(req));
-  return session?.id === event.organizer_id;
+  return Number(req.sessionAccount?.id) === Number(event.organizer_id);
 }
 
-async function verifiedSessionAccountId(client, req, email) {
-  const session = parseSession(readSessionCookie(req));
-  if (!session) return null;
-  const { rows } = await client.query(
-    'SELECT id FROM organizers WHERE id=$1 AND LOWER(email)=LOWER($2)',
-    [session.id, email]
-  );
-  return rows[0]?.id || null;
+function verifiedSessionAccountId(req, email) {
+  const account = req.sessionAccount;
+  if (!account) return null;
+  return String(account.email || '').toLowerCase() === String(email || '').toLowerCase() ? account.id : null;
 }
 
 function firstNameFrom(value) {
@@ -363,51 +363,56 @@ function firstNameFrom(value) {
 }
 
 async function returningGuestContext(db, req, eventId) {
-  const accountSession = parseSession(readSessionCookie(req));
-  if (accountSession) {
-    const { rows } = await db.query(
-      'SELECT id,email,name FROM organizers WHERE id=$1',
-      [accountSession.id]
-    );
-    if (rows[0]) {
-      const identity = rows[0];
-      const rsvp = (await db.query(
-        `SELECT *
-           FROM rsvps WHERE event_id=$1 AND account_id=$2 LIMIT 1`,
-        [eventId, identity.id]
-      )).rows[0] || null;
-      return {
-        identityId: identity.id,
-        email: identity.email,
-        displayFirstName: rsvp?.first_name || firstNameFrom(identity.name),
-        displayName: rsvp ? rsvp.first_name : (identity.name || firstNameFrom(identity.email)),
-        verified: true,
-        source: 'account',
-        sessionId: null,
-        rsvp
-      };
-    }
+  const identity = req.sessionAccount;
+  if (identity) {
+    const rsvp = (await db.query(
+      `SELECT *
+         FROM rsvps WHERE event_id=$1 AND account_id=$2 LIMIT 1`,
+      [eventId, identity.id]
+    )).rows[0] || null;
+    return {
+      identityId: identity.id,
+      email: identity.email,
+      displayFirstName: rsvp?.first_name || firstNameFrom(identity.name),
+      displayName: rsvp ? rsvp.first_name : (identity.name || firstNameFrom(identity.email)),
+      verified: true,
+      source: 'account',
+      sessionId: null,
+      rsvp
+    };
   }
 
   const guest = await readGuestSession(db, req, { touch: true });
   if (!guest) return null;
-  const ownershipClause = guest.verified_at
+  // Verified power (acting on the identity's RSVPs from any device) applies
+  // only where the email was proven: everywhere after a typed code, or on the
+  // one event a personal invitation link was for. Forwarded invitations stay
+  // scoped to that event.
+  const verifiedHere = guestVerifiedFor(guest, eventId);
+  const ownershipClause = verifiedHere
     ? '(guest_session_id=$2 OR account_id=$3)'
     : 'guest_session_id=$2';
-  const values = guest.verified_at
+  const values = verifiedHere
     ? [eventId, guest.id, guest.identity_id]
     : [eventId, guest.id];
-  const rsvp = (await db.query(
+  let rsvp = (await db.query(
     `SELECT *
        FROM rsvps WHERE event_id=$1 AND ${ownershipClause} LIMIT 1`,
     values
   )).rows[0] || null;
+  if (!rsvp && verifiedHere) {
+    // Proven email, RSVP made on another device and never linked.
+    rsvp = (await db.query(
+      'SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2) LIMIT 1',
+      [eventId, guest.email]
+    )).rows[0] || null;
+  }
   return {
     identityId: guest.identity_id,
     email: guest.email,
     displayFirstName: rsvp?.first_name || guest.display_first_name,
     displayName: guest.display_name,
-    verified: Boolean(guest.verified_at),
+    verified: verifiedHere,
     source: 'guest',
     sessionId: guest.id,
     rsvp
@@ -448,7 +453,9 @@ router.post('/api/public/events/:slug/unlock', async (req, res, next) => {
 
 // A Familiar Faces invitation is a mailbox-verification link, not an account
 // sign-in. GET only recognizes the guest; it never records an RSVP because
-// email security scanners frequently open links automatically.
+// email security scanners frequently open links automatically. Invitations
+// also get forwarded ("want to come?"), so the verification it grants is
+// scoped to this one event and the page offers "Not <name>?".
 router.get('/g/:token', async (req, res, next) => {
   const invitationToken = String(req.params.token || '').trim();
   if (!/^[A-Za-z0-9_-]{43}$/.test(invitationToken)) return res.status(404).send(render404());
@@ -476,7 +483,8 @@ router.get('/g/:token', async (req, res, next) => {
       identityId: invitation.identity_id,
       displayFirstName: firstNameFrom(displayName),
       displayName,
-      verified: true
+      verified: true,
+      verifiedEventId: invitation.target_event_id
     });
     await linkVerifiedRsvps(client, invitation.identity_id, invitation.recipient);
     await client.query(
@@ -500,16 +508,12 @@ router.get('/api/public/guest-session', async (req, res, next) => {
   try {
     const guest = await readGuestSession(pool, req, { touch: true });
     if (!guest) return res.status(404).json({ recognized: false });
-    const [local = '', domain = ''] = String(guest.email).split('@');
-    const maskedEmail = domain
-      ? `${local.slice(0, 1)}${local.length > 1 ? '•••' : ''}@${domain}`
-      : '';
     res.setHeader('Cache-Control', 'private, no-store');
     return res.json({
       recognized: true,
       firstName: guest.display_first_name,
-      maskedEmail,
-      verified: Boolean(guest.verified_at)
+      maskedEmail: maskEmail(guest.email),
+      verified: Boolean(guest.verified_at && guest.verified_event_id == null)
     });
   } catch (error) { next(error); }
 });
@@ -519,6 +523,7 @@ router.post('/api/public/guest-session/forget', async (req, res, next) => {
     await revokeGuestSession(pool, req);
     clearSessionCookie(res);
     clearGuestSessionCookie(res);
+    clearPhotoAccessCookie(res);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true });
   } catch (error) { next(error); }
@@ -942,22 +947,49 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     const { rows: existing } = await client.query(
       `SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2)`, [event.id, email]
     );
-    const accountId = await verifiedSessionAccountId(client, req, email);
+    const accountId = verifiedSessionAccountId(req, email);
     const rememberedGuest = accountId ? null : await readGuestSession(client, req, { touch: true });
-    const rememberedOwnsExisting = Boolean(existing[0] && rememberedGuest && (
-      Number(existing[0].guest_session_id) === Number(rememberedGuest.id) ||
-      (rememberedGuest.verified_at && Number(existing[0].account_id) === Number(rememberedGuest.identity_id))
+    // An identity is "proven" by a signed-in account with this email, or by a
+    // remembered guest that verified this email (a code, or this event's own
+    // invitation link).
+    const provenIdentityId = accountId || (
+      rememberedGuest && guestVerifiedFor(rememberedGuest, event.id) &&
+      String(rememberedGuest.email).toLowerCase() === email
+        ? rememberedGuest.identity_id
+        : null
+    );
+    const attendeeToken = readCookie(req, attendeeCookieName(event.id));
+    const ownsExisting = Boolean(existing[0] && (
+      provenIdentityId ||
+      (rememberedGuest && Number(existing[0].guest_session_id) === Number(rememberedGuest.id)) ||
+      (attendeeToken && attendeeToken === existing[0].manage_token)
     ));
     if (existing.length && existing[0].status === 'confirmed') {
-      if (accountId && !existing[0].account_id) {
+      if (provenIdentityId && !existing[0].account_id) {
         existing[0] = (await client.query(
           'UPDATE rsvps SET account_id=$2 WHERE id=$1 RETURNING *',
-          [existing[0].id, accountId]
+          [existing[0].id, provenIdentityId]
         )).rows[0];
       }
       await client.query('COMMIT');
-      void resendConfirmation(event, existing[0]);
-      return res.json({ ok: true, alreadyRsvpd: true });
+      const confirmationResent = await claimConfirmation(event, existing[0]).catch(error => {
+        console.error('[rsvp-confirmation]', error.message);
+        return null;
+      });
+      if (confirmationResent) void deliverClaimedConfirmation(event, existing[0], confirmationResent);
+      return res.json({ ok: true, alreadyRsvpd: true, confirmationResent: Boolean(confirmationResent) });
+    }
+
+    // Re-confirming a cancelled RSVP would overwrite its name, phone and text
+    // consent. Knowing someone's email is not enough for that: the guest proves
+    // it first with a code (the client shows it inline, then retries).
+    if (existing.length && !ownsExisting) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'verification_required',
+        message: 'Confirm it’s you to rejoin this event.',
+        maskedEmail: maskEmail(email)
+      });
     }
 
     const guest = parseNamedGuest({ allow_guests: event.allow_guests }, req.body);
@@ -980,7 +1012,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 
     let rsvp;
     const isNewRsvp = existing.length === 0;
-    let guestSessionId = rememberedOwnsExisting ? rememberedGuest.id : null;
+    let guestSessionId = rememberedGuest && ownsExisting ? rememberedGuest.id : null;
     let guestSessionToRemember = null;
     if (isNewRsvp && !accountId) {
       if (rememberedGuest && String(rememberedGuest.email).toLowerCase() === email) {
@@ -1013,7 +1045,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
           WHERE id=$1 RETURNING *`,
         [existing[0].id, firstName, lastName, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
-         guest.guestFirstName, guest.guestLastName, guest.guestEmail, accountId, guestSessionId]
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail, provenIdentityId, guestSessionId]
       )).rows[0];
     } else {
       rsvp = (await client.query(
@@ -1025,15 +1057,15 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         [event.id, firstName, lastName, email, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
-         crypto.randomBytes(16).toString('hex'), accountId, guestSessionId]
+         crypto.randomBytes(16).toString('hex'), provenIdentityId, guestSessionId]
       )).rows[0];
     }
     await client.query('COMMIT');
 
-    // A fresh RSVP establishes attendee access on this browser immediately.
-    // Existing-email attempts still require the confirmation link so knowing
-    // another attendee's email can never grant comment or deletion access.
-    if (isNewRsvp && event.comments_enabled) {
+    // A fresh RSVP, or a rejoin by its proven owner, establishes attendee
+    // access on this browser immediately. Knowing another attendee's email can
+    // never grant comment or deletion access.
+    if (event.comments_enabled && (isNewRsvp || ownsExisting)) {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
     if (guestSessionToRemember) setGuestSessionCookie(res, guestSessionToRemember.token);
@@ -1048,8 +1080,9 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
 });
 
 // A recognized guest can answer with one tap. Unverified browser sessions are
-// deliberately scoped to RSVPs created by that exact session; verified email
-// invitation/account sessions may use the reusable identity across events.
+// deliberately scoped to RSVPs created by that exact session. Account sessions
+// and code-verified guests may use the identity across events; an invitation
+// link's verification covers only its own event.
 router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, res, next) => {
   const answer = String(req.body?.response || '').trim();
   if (!['going', 'not_going'].includes(answer)) {
@@ -1098,10 +1131,13 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
         [event.id, guest.email]
       );
       if (sameEmail.length) {
+        // An RSVP under this email exists but this browser can't prove it owns
+        // it. The client offers an inline email code, then retries.
         await client.query('ROLLBACK');
         return res.status(409).json({
           error: 'verification_required',
-          message: 'Open your personal invitation or confirmation email to update this RSVP.'
+          message: 'Confirm it’s you to update this RSVP.',
+          maskedEmail: maskEmail(guest.email)
         });
       }
     }
@@ -1176,41 +1212,57 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
 // Confirmation email — an atomic database claim prevents duplicate sends across
 // rapid retries, app restarts, or multiple app instances. One resend is allowed
 // after 15 minutes so an attendee can recover a lost confirmation safely.
+// The "Add your photo" link is photo-only (intent add_photo): it opens the
+// avatar page and upload, never the dashboard, because confirmations get
+// forwarded. It has no code; the guest may open it days later on any device.
 async function createAddPhotoMagicLink(event, rsvp) {
   const identity = rsvp.account_id
     ? await pool.query('SELECT avatar_url FROM organizers WHERE id=$1', [rsvp.account_id])
     : await pool.query('SELECT avatar_url FROM organizers WHERE LOWER(email)=LOWER($1) LIMIT 1', [rsvp.email]);
   if (safeAvatarUrl(identity.rows[0]?.avatar_url)) return null;
-  const token = crypto.randomBytes(32).toString('hex');
-  const returnPath = `/add-photo?event=${encodeURIComponent(event.slug)}`;
-  await pool.query(
-    `INSERT INTO magic_link_tokens
-       (token, email, expires_at, intent, target_organizer_id, return_path)
-     VALUES ($1,$2,NOW() + INTERVAL '7 days','sign_in',NULL,$3)`,
-    [token, rsvp.email, returnPath]
-  );
+  const { token } = await createSignInChallenge(pool, {
+    email: rsvp.email,
+    intent: 'add_photo',
+    returnPath: `/add-photo?event=${encodeURIComponent(event.slug)}`,
+    ttlMinutes: 7 * 24 * 60,
+    withCode: false
+  });
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   return `${baseUrl}/auth/verify?token=${token}`;
 }
 
-async function resendConfirmation(event, rsvp) {
-  let logId = null;
-  try {
-    const { rows } = await pool.query(
-      `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
-       VALUES ($1,$2,$3,'rsvp_confirmation','email','pending')
-       ON CONFLICT (rsvp_id, message_type, channel)
-         WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL
-       DO UPDATE SET event_id=EXCLUDED.event_id, recipient=EXCLUDED.recipient,
-                     status='pending', provider_id=NULL, error=NULL,
-                     created_at=NOW(), sent_at=NULL
-       WHERE COALESCE(message_log.sent_at, message_log.created_at) < NOW() - INTERVAL '15 minutes'
-       RETURNING id`,
-      [rsvp.id, event.id, rsvp.email]
-    );
-    if (!rows.length) return false;
-    logId = rows[0].id;
+// Atomically claims the right to (re)send a confirmation. Returns the
+// message_log id when this caller should send, or null when one was sent in the
+// last 15 minutes — so the page can say truthfully whether an email went out.
+async function claimConfirmation(event, rsvp) {
+  const { rows } = await pool.query(
+    `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
+     VALUES ($1,$2,$3,'rsvp_confirmation','email','pending')
+     ON CONFLICT (rsvp_id, message_type, channel)
+       WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL
+     DO UPDATE SET event_id=EXCLUDED.event_id, recipient=EXCLUDED.recipient,
+                   status='pending', provider_id=NULL, error=NULL,
+                   created_at=NOW(), sent_at=NULL
+     WHERE COALESCE(message_log.sent_at, message_log.created_at) < NOW() - INTERVAL '15 minutes'
+     RETURNING id`,
+    [rsvp.id, event.id, rsvp.email]
+  );
+  return rows[0]?.id || null;
+}
 
+async function resendConfirmation(event, rsvp) {
+  try {
+    const logId = await claimConfirmation(event, rsvp);
+    if (!logId) return false;
+    return deliverClaimedConfirmation(event, rsvp, logId);
+  } catch (err) {
+    console.error('[rsvp-confirmation]', err.message);
+    return false;
+  }
+}
+
+async function deliverClaimedConfirmation(event, rsvp, logId) {
+  try {
     const ics = buildIcs(event);
     const addPhotoUrl = await createAddPhotoMagicLink(event, rsvp);
     const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics, addPhotoUrl });
@@ -1408,5 +1460,11 @@ router.post('/api/public/rsvps/:token/cancel', async (req, res, next) => {
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
+
+// Test-only: the in-memory limiters are process-wide.
+router.resetRateLimitsForTests = () => {
+  rsvpRateLimiter.reset();
+  secretUnlockLimiter.reset();
+};
 
 module.exports = router;
