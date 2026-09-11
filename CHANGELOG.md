@@ -2,6 +2,36 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.85
+
+Not yet released. Built by Claude Code on branch `claude/auth-returning-guests`.
+
+### Added
+
+* Every sign-in email now carries a 6-digit code next to the link. People can finish on the page where they asked (Luma-style), which fixes sign-ins that landed inside the Gmail or Instagram in-app browser; the link still works on any device. The code is in the subject line so it can be read from a notification.
+* The Host Page follow modal accepts the same code.
+* Returning guests who can’t prove an RSVP is theirs (a new device, or rejoining after cancelling) confirm with a 6-digit code inline on the event page, then their action completes. This replaces the “open your personal invitation or confirmation email” dead end.
+* **Sign out of all devices** in Account settings.
+* Hosts now see **Can’t make it** in Familiar Faces for guests who declined or cancelled.
+
+### Changed
+
+* An answered returning guest sees a clear status (**✓ You’re going** or **You can’t make it**) with **Change my answer**, instead of two buttons that looked the same before and after answering. The greeting no longer uses the 👋.
+* **Not [name]? RSVP as yourself** now opens a blank RSVP form.
+* “Already on the list” says truthfully whether the confirmation email was re-sent.
+* The admin Hosts list shows people who signed in or host events; RSVP-only guest identities are counted separately.
+
+### Security & reliability
+
+* Opening a sign-in link shows a **Continue** page and never uses the link up, so email security scanners can no longer turn real sign-ins into “expired”. Already-signed-in people who open an old link go straight to the app.
+* Sessions can be revoked server-side (`organizers.sessions_valid_after`). Signing out now also forgets the remembered guest, so a shared laptop stops greeting the last person.
+* A personal invitation link verifies the guest for its own event only; a forwarded invitation can no longer act as that guest on other events.
+* The **Add your photo** link in RSVP confirmations is photo-only. It previously signed the recipient in for 7 days, which exposed a host’s dashboard if they forwarded their own RSVP confirmation.
+* Re-confirming a cancelled RSVP requires proof of the email before overwriting its name, phone, or text consent.
+* Sign-in link tokens are stored hashed; codes are bound to the requesting browser and lock after five wrong tries; the Continue POST is protected against login CSRF.
+* Rate limits key on the proxy-resolved client IP instead of the spoofable first `X-Forwarded-For` entry.
+* Migration `037_sign_in_codes_and_session_revocation.sql` is additive except for hashing stored link tokens (outstanding links keep working) and scoping verification of existing invitation-link guest sessions.
+
 ## 1.0.84
 
 Released September 10, 2026.
