@@ -145,7 +145,8 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
         </td></tr>
         <tr><td class="sg-email-pad" style="padding:0 30px 36px">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-top:1px solid #242424">
-            <tr><td align="center" style="padding:30px 0 0"><p style="color:#686868;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p></td></tr>
+            <tr><td align="center" style="padding:30px 0 0"><p style="color:#686868;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p>
+              <p style="margin:12px 0 0"><a href="${esc(`${baseUrl}/login?next=%2Fevents%2Fnew`)}" style="color:#8f8f8f;font-size:13px;font-weight:700;text-decoration:none">Host your own event &rarr;</a></p></td></tr>
           </table>
         </td></tr>
       </table>

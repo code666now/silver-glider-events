@@ -893,7 +893,10 @@
           <p class="returning-rsvp-kicker">Your RSVP</p>
           <h2><span class="returning-rsvp-mark" id="returning-rsvp-mark" aria-hidden="true">✓</span><span id="returning-rsvp-answer-title">You’re going</span></h2>
           <p class="returning-rsvp-detail" id="returning-rsvp-detail"></p>
-          <button class="returning-rsvp-change" id="returning-rsvp-change" type="button">Change my answer</button>
+          <div class="returning-rsvp-actions">
+            <button class="returning-rsvp-change" id="returning-rsvp-change" type="button">Change my answer</button>
+            <a class="host-your-own" href="/login?next=%2Fevents%2Fnew">Host your own event →</a>
+          </div>
         </div>
         <p class="returning-rsvp-error" id="returning-rsvp-error" role="alert"></p>
         <div id="returning-rsvp-verify"></div>
@@ -926,6 +929,7 @@
         <div class="big-check">✓</div>
         <h2 style="font-size:26px;margin-bottom:8px">Your RSVP is confirmed.</h2>
         <p style="color:var(--sg-text-dim);font-size:14px;margin-bottom:26px" id="success-sub">Confirmation and calendar invite are on the way to your inbox.</p>
+        <a class="host-your-own" href="/login?next=%2Fevents%2Fnew">Host your own event →</a>
       </div>
 
       <div id="full-state">

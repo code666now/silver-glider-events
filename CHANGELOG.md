@@ -2,9 +2,17 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.86
+
+Not yet released. Built by Claude Code on branch `claude/host-your-own-event`.
+
+### Added
+
+* Guests are invited to host right after they RSVP: a quiet **Host your own event →** link on the RSVP success card, on the returning guest’s **✓ You’re going** card, and in the footer of RSVP confirmation emails (Standard and Flyer). It goes through sign-in straight to **Create Event**, and a remembered guest sees **Continue as [name]**, so there is nothing to retype.
+
 ## 1.0.85
 
-Not yet released. Built by Claude Code on branch `claude/auth-returning-guests`.
+Released September 10, 2026. Built by Claude Code (PRs #1 and #2), deployed by Codex.
 
 ### Added
 
