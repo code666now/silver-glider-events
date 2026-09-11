@@ -3074,3 +3074,65 @@ test('past-event pickers explain why a face can’t be selected', async () => {
   assert.equal(faces.faces.find(face => face.name === 'Una Person').note, 'Unsubscribed');
   assert.equal(faces.faces.find(face => face.name === 'Ok Person').note, null);
 });
+
+test('a personal link from the guest’s own email shows their RSVP on that event only', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'personal-link-night', title: 'Personal Link Night' });
+  const other = await createEvent({ slug: 'personal-link-other', title: 'Somewhere Else' });
+  await createRsvp(event.id, { first_name: 'Lucas', email: 'lucas-link@example.test', manage_token: 'personal-link-token' });
+
+  const opened = await fetch(`${baseUrl}/r/personal-link-token/event`, { redirect: 'manual' });
+  assert.equal(opened.status, 303);
+  const attendeeCookie = responseCookie(opened, `sge_attendee_${event.id}`);
+  assert.ok(attendeeCookie);
+
+  const page = await (await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: attendeeCookie } })).text();
+  assert.match(page, /"returningGuest":\{"firstName":"Lucas","response":"going"\}/);
+
+  const change = await fetch(`${baseUrl}/api/public/events/${event.slug}/returning-rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: attendeeCookie },
+    body: JSON.stringify({ response: 'not_going' })
+  });
+  assert.equal(change.status, 200);
+  assert.equal((await pool.query(`SELECT status FROM rsvps WHERE manage_token='personal-link-token'`)).rows[0].status, 'cancelled');
+  assert.match(await (await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: attendeeCookie } })).text(),
+    /"returningGuest":\{"firstName":"Lucas","response":"not_going"\}/);
+
+  // The proof is per event: it doesn't recognize Lucas anywhere else.
+  assert.match(await (await fetch(`${baseUrl}/e/${other.slug}`, { headers: { cookie: attendeeCookie } })).text(),
+    /"returningGuest":null/);
+
+  // "Not Lucas?" forgets this event's attendee access too.
+  const forget = await fetch(`${baseUrl}/api/public/guest-session/forget`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: attendeeCookie },
+    body: JSON.stringify({ eventSlug: event.slug })
+  });
+  assert.match(forget.headers.get('set-cookie'), new RegExp(`sge_attendee_${event.id}=;`));
+});
+
+test('“already on the list” in a new browser can be managed there after an emailed code', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'already-listed-night', title: 'Already Listed Night' });
+  const email = 'already-listed@example.test';
+  await createRsvp(event.id, { first_name: 'Robin', email });
+
+  const again = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Robin Person', email })
+  });
+  assert.equal((await again.json()).alreadyRsvpd, true);
+  assert.equal(responseCookie(again, 'sge_guest'), '', 'typing an email alone never remembers the browser');
+
+  const codeRequest = await fetch(`${baseUrl}/api/auth/guest-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
+  });
+  const verified = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: responseCookie(codeRequest, 'sge_sign_in') },
+    body: JSON.stringify({ code: lastDevEmail(email, 'verification_code').code })
+  });
+  assert.equal(verified.status, 200);
+  const page = await (await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: responseCookie(verified, 'sge_guest') }
+  })).text();
+  assert.match(page, /"returningGuest":\{"firstName":"Robin","response":"going"\}/);
+});

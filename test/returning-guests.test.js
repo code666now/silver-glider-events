@@ -121,3 +121,20 @@ test('recognized guests can become creators only through the existing magic link
   assert.match(login, /Email my sign-in link/);
   assert.match(login, /Use a different email/);
 });
+
+test('personal links and “already on the list” both lead back to the guest’s answer', () => {
+  const routes = read('src/routes/public.js');
+  const client = read('public/js/public-event.js');
+  const context = routes.slice(routes.indexOf('async function returningGuestContext'), routes.indexOf('const identity = req.sessionAccount;'));
+  assert.match(context, /readCookie\(req, attendeeCookieName\(eventId\)\)/);
+  assert.match(context, /status IN \('confirmed','cancelled'\)/);
+  for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = read(template);
+    assert.match(view, /id="success-title"/);
+    assert.match(view, /id="success-manage" hidden/);
+    assert.match(view, />Manage my RSVP here</);
+  }
+  assert.match(client, /You’re already on the list\./);
+  assert.match(client, /codeRequest: \{ email: alreadyListedEmail \}/);
+  assert.match(client, /body: JSON\.stringify\(\{ eventSlug: EVENT\.slug \}\)/);
+});

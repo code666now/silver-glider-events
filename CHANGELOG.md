@@ -2,9 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.88
+
+Not yet released. Built by Claude Code on branch `claude/recognize-personal-links`.
+
+### Fixed
+
+* Opening **View event** from an RSVP confirmation email (or the manage link, or a text-reminder link) now shows the guest’s answer — **✓ You’re going** with **Change my answer** — instead of a plain RSVP button. The link proves that one RSVP, so it counts for that event only.
+* “You’re already on the list” is no longer a dead end in a browser that doesn’t know the guest: it offers **Manage my RSVP here**, sends a 6-digit code, and after the code the page shows the RSVP and remembers the guest.
+* **Not [name]? RSVP as yourself** also forgets a personal link’s access for that event, so a shared browser stops showing the last person’s RSVP.
+
 ## 1.0.87
 
-Not yet released. Built by Claude Code on branch `claude/invite-your-people`.
+Released September 10, 2026. Built by Claude Code (PR #4), deployed by Codex.
 
 ### Added
 
