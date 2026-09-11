@@ -82,6 +82,20 @@ const secretUnlockLimiter = createRateLimiter({
 });
 setInterval(() => secretUnlockLimiter.prune(), SECRET_UNLOCK_WINDOW_MS).unref();
 
+// Confirmation emails are sent after the RSVP response so guests never wait on
+// the mail provider. Tracking the work lets tests wait for it to finish before
+// wiping the database; untracked, it raced the next test's TRUNCATE and
+// deadlocked (seen intermittently since September 4).
+const backgroundWork = new Set();
+function runInBackground(task) {
+  const work = Promise.resolve()
+    .then(task)
+    .catch(error => console.error('[background]', error.message))
+    .finally(() => backgroundWork.delete(work));
+  backgroundWork.add(work);
+  return work;
+}
+
 function protectRsvp(req, res, next) {
   const result = rsvpRateLimiter.consume({
     ip: clientIp(req),
@@ -976,7 +990,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         console.error('[rsvp-confirmation]', error.message);
         return null;
       });
-      if (confirmationResent) void deliverClaimedConfirmation(event, existing[0], confirmationResent);
+      if (confirmationResent) runInBackground(() => deliverClaimedConfirmation(event, existing[0], confirmationResent));
       return res.json({ ok: true, alreadyRsvpd: true, confirmationResent: Boolean(confirmationResent) });
     }
 
@@ -1069,7 +1083,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
     if (guestSessionToRemember) setGuestSessionCookie(res, guestSessionToRemember.token);
-    void resendConfirmation(event, rsvp);
+    runInBackground(() => resendConfirmation(event, rsvp));
     res.status(201).json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -1197,7 +1211,7 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
 
     if (answer === 'going') {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
-      if (guest.rsvp?.status !== 'confirmed') void resendConfirmation(event, rsvp);
+      if (guest.rsvp?.status !== 'confirmed') runInBackground(() => resendConfirmation(event, rsvp));
     }
     res.setHeader('Cache-Control', 'private, no-store');
     return res.json({ ok: true, response: answer });
@@ -1465,6 +1479,11 @@ router.post('/api/public/rsvps/:token/cancel', async (req, res, next) => {
 router.resetRateLimitsForTests = () => {
   rsvpRateLimiter.reset();
   secretUnlockLimiter.reset();
+};
+
+// Waits for in-flight confirmation emails (and anything they start) to finish.
+router.settleBackgroundWork = async () => {
+  while (backgroundWork.size) await Promise.allSettled([...backgroundWork]);
 };
 
 module.exports = router;

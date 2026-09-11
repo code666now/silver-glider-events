@@ -30,6 +30,7 @@ Not yet released. Built by Claude Code on branch `claude/auth-returning-guests`.
 * Re-confirming a cancelled RSVP requires proof of the email before overwriting its name, phone, or text consent.
 * Sign-in link tokens are stored hashed; codes are bound to the requesting browser and lock after five wrong tries; the Continue POST is protected against login CSRF.
 * Rate limits key on the proxy-resolved client IP instead of the spoofable first `X-Forwarded-For` entry.
+* Integration tests now wait for background confirmation emails before each database reset, fixing an intermittent deadlock that predates this release (first logged September 4).
 * Migration `037_sign_in_codes_and_session_revocation.sql` is additive except for hashing stored link tokens (outstanding links keep working) and scoping verification of existing invitation-link guest sessions.
 
 ## 1.0.84

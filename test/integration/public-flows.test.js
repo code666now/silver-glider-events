@@ -183,11 +183,31 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
-test.beforeEach(resetDatabase);
+// A confirmation email from the previous test may still be writing rows; let
+// it finish so it can't deadlock with the TRUNCATE.
+test.beforeEach(async () => {
+  await publicRoutes.settleBackgroundWork();
+  await resetDatabase();
+});
 
 test.after(async () => {
+  await publicRoutes.settleBackgroundWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
+});
+
+test('background confirmation work is tracked so tests can settle it before resetting', async () => {
+  const event = await createEvent({ slug: 'settle-background', title: 'Settle Background' });
+  const response = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Settle Person', email: 'settle@example.test' })
+  });
+  assert.equal(response.status, 201);
+  await publicRoutes.settleBackgroundWork();
+  const { rows } = await pool.query(
+    `SELECT status FROM message_log WHERE recipient='settle@example.test' AND message_type='rsvp_confirmation'`
+  );
+  assert.equal(rows[0]?.status, 'sent', 'settling waits for the confirmation to finish');
 });
 
 test('serves each protected settings destination from the responsive settings shell', async () => {
