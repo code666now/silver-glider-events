@@ -708,10 +708,10 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
   if (rsvpIds.length) {
     const { rows } = await queryable.query(
       `SELECT r.id, r.first_name, r.last_name, LOWER(r.email) AS email
-         FROM rsvps r
-         JOIN events source ON source.id=r.event_id
+        FROM rsvps r
+        JOIN events source ON source.id=r.event_id
         WHERE source.id=$1 AND source.organizer_id=$2
-          AND r.id=ANY($3::int[]) AND r.status='confirmed' AND r.organizer_optin=TRUE
+          AND r.id=ANY($3::int[]) AND r.status='confirmed'
           AND NULLIF(TRIM(r.email),'') IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM follower_optouts fo
@@ -785,12 +785,12 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
 
     const { rows: rsvps } = await pool.query(
       `SELECT r.id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
-              r.organizer_optin, r.created_at, o.avatar_url,
+              r.created_at, o.avatar_url,
               NOT EXISTS (
                 SELECT 1 FROM follower_optouts fo
                  WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
               ) AS host_email_allowed
-         FROM rsvps r
+        FROM rsvps r
          LEFT JOIN organizers o ON o.id=r.account_id
         WHERE r.event_id=$1 AND r.status='confirmed'
         ORDER BY r.created_at DESC, r.id DESC`,
@@ -832,7 +832,7 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         status: 'RSVP’d',
         avatarUrl: safeAvatarUrl(rsvp.avatar_url),
         avatarEmoji: attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
-        canInvite: Boolean(rsvp.organizer_optin && rsvp.host_email_allowed && String(rsvp.email || '').trim()),
+        canInvite: Boolean(rsvp.host_email_allowed && String(rsvp.email || '').trim()),
         searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
         sortTime: rsvp.created_at
       });
@@ -930,7 +930,7 @@ router.post('/api/events/:id/familiar-faces/preview', async (req, res, next) => 
 });
 
 // POST /api/events/:id/familiar-faces/invite — send a reviewed selection from
-// this old event to one upcoming event, with server-side consent and dedupe.
+// this old event to one upcoming event, with server-side eligibility and dedupe.
 router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
   const client = await pool.connect();
   try {
@@ -1071,7 +1071,7 @@ async function eligiblePreviousGuests(queryable, { organizerId, targetEventId, s
       WHERE source.organizer_id=$1 AND source.id=$3 AND source.id<>$2
         AND source.status='published'
         AND source.event_date < (CURRENT_TIMESTAMP AT TIME ZONE source.timezone)::date
-        AND r.status='confirmed' AND r.organizer_optin=TRUE
+        AND r.status='confirmed'
         AND NULLIF(TRIM(r.email),'') IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM follower_optouts fo
@@ -1095,7 +1095,7 @@ async function eligiblePreviousGuests(queryable, { organizerId, targetEventId, s
   return rows;
 }
 
-// GET /api/events/:id/previous-guests — past-event sources and consented recipients.
+// GET /api/events/:id/previous-guests — past-event sources and eligible recipients.
 router.get('/api/events/:id/previous-guests', async (req, res, next) => {
   try {
     const { rows: targets } = await pool.query(
@@ -1118,7 +1118,7 @@ router.get('/api/events/:id/previous-guests', async (req, res, next) => {
               ((COUNT(r.id) FILTER (WHERE r.status='confirmed')) +
                (COUNT(r.guest_first_name) FILTER (WHERE r.status='confirmed')))::int AS people_count,
               (COUNT(DISTINCT LOWER(r.email)) FILTER (
-                WHERE r.status='confirmed' AND r.organizer_optin=TRUE
+                WHERE r.status='confirmed'
                   AND NULLIF(TRIM(r.email),'') IS NOT NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM follower_optouts fo

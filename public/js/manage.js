@@ -629,8 +629,8 @@ function renderPreviousGuestAction(data) {
   button.style.display = hasEligibleSource ? '' : 'none';
   button.disabled = !hasEligibleSource;
   if (hasEligibleSource) {
-    $('invite-previous-guests-title').textContent = 'Invite previous guests';
-    $('invite-previous-guests-copy').textContent = 'Bring back guests from one of your past events.';
+    $('invite-previous-guests-title').textContent = 'Invite Familiar Faces';
+    $('invite-previous-guests-copy').textContent = 'Invite people who RSVP’d to one of your past events.';
   }
 }
 
@@ -740,11 +740,11 @@ function renderPreviousGuestRecipients(data, sourceId) {
   }).join('');
   $('previous-guests-content').innerHTML = `
     <p class="previous-guests-summary"><strong>${peopleCount}</strong> ${peopleCount === 1 ? 'person was' : 'people were'} on this guest list · <strong>${recipients.length}</strong> can be emailed</p>
-    <p class="previous-guests-consent-note">Only primary guests who asked for future event emails appear here. Named +1s are never added automatically.</p>
+    <p class="previous-guests-consent-note">Confirmed primary guests with an email appear here. Named +1s are never added automatically.</p>
     ${recipients.length ? `<label class="previous-guests-field"><span>Review guests</span><input class="sg-input" id="previous-guests-search" type="search" placeholder="Search names or emails…"></label>
       <div class="previous-guests-list-head"><span>Recipients</span><label class="previous-guests-select-all"><input id="previous-guests-select-all" type="checkbox" checked> Select all</label></div>
       <div class="previous-guests-list">${rows}</div>` : '<p class="previous-guests-empty">No guests from this event are currently eligible for an email invitation.</p>'}
-    ${unavailableCount ? `<p class="previous-guests-unavailable">${unavailableCount} ${unavailableCount === 1 ? 'other person was' : 'others were'} a +1, did not request future emails, opted out, or already joined this event. Share your event link with them personally.</p>` : ''}
+    ${unavailableCount ? `<p class="previous-guests-unavailable">${unavailableCount} ${unavailableCount === 1 ? 'other person was' : 'others were'} a +1, opted out, or already joined this event. Share your event link with them personally.</p>` : ''}
     <details class="previous-guests-preview">
       <summary>Preview invitation</summary>
       <div class="previous-guests-preview-card"><strong>${escapeHtml(eventData.title)}</strong><span>An invitation from ${escapeHtml(previousGuestState.organizerLabel || 'your host page')}</span><span>${escapeHtml($('meta').textContent)}</span></div>

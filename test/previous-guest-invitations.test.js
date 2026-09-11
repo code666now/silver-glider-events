@@ -29,7 +29,7 @@ test('manage page reviews one past crowd in a responsive, non-interruptive dialo
 
   assert.match(promotion, /id="invite-previous-guests"/);
   assert.match(view, /<dialog class="previous-guests-dialog"/);
-  assert.match(view, /Bring this crowd back/);
+  assert.match(view, /Invite Familiar Faces/);
   assert.match(view, /Choose a past event/);
   assert.match(client, /previous-guests\?sourceEventId=/);
   assert.match(client, /data-previous-guest/);
@@ -51,6 +51,7 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
     },
     recipientName: 'Ari <Guest>',
     organizerLabel: 'Host & Friends',
+    sourceEventTitle: 'First <Night>',
     unsubscribeUrl: 'https://silvergliderevents.com/unsubscribe?token=safe&host=1'
   });
   assert.match(html, /An invitation from Host &amp; Friends/);
@@ -58,19 +59,23 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
   assert.match(html, /Next &lt;Night&gt;/);
   assert.match(html, /next-night\.jpg/);
   assert.match(html, />RSVP<\/a>/);
-  assert.match(html, /Unsubscribe from this host/);
+  assert.match(html, /RSVP’d to First &lt;Night&gt;, hosted by Host &amp; Friends/);
+  assert.match(html, /Unsubscribe from invitations from this host/);
   assert.match(html, /token=safe&amp;host=1/);
   assert.doesNotMatch(html, /<Night>/);
 
   const mailer = read('src/lib/mailer.js');
+  const worker = read('src/jobs/previous-guest-invitations.js');
   const sender = mailer.slice(
     mailer.indexOf('async function sendPreviousGuestInvitation'),
     mailer.indexOf('function photoRequestArtwork')
   );
   assert.doesNotMatch(sender, /replyTo/);
+  assert.match(worker, /b\.source_event_title/);
+  assert.match(worker, /sourceEventTitle: event\.source_event_title/);
 });
 
-test('future-event consent language is explicit in both public RSVP modes', () => {
+test('optional host-update consent remains explicit and separate from direct event invitations', () => {
   for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
     const view = read(template);
     assert.match(view, /\{\{SMS_REMINDER_OPTIN_HTML\}\}/);
@@ -80,13 +85,16 @@ test('future-event consent language is explicit in both public RSVP modes', () =
     assert.equal((view.match(/class="channel-consent-copy"/g) || []).length, 1);
     assert.doesNotMatch(view, /Invite me to future events from this host/);
   }
-  assert.match(read('src/routes/public.js'), /id=\"sms_optin\"/);
+  const publicRoutes = read('src/routes/public.js');
+  assert.match(publicRoutes, /id=\"sms_optin\"/);
+  assert.match(publicRoutes, /Keep me posted about future events and updates from/);
 });
 
 test('server eligibility excludes opt-outs, +1s, existing attendees, duplicates, and Secret Shows', () => {
   const routes = read('src/routes/events.js');
   const helper = routes.slice(routes.indexOf('async function eligiblePreviousGuests'), routes.indexOf('// GET /api/events/:id/previous-guests'));
-  assert.match(helper, /r\.status='confirmed' AND r\.organizer_optin=TRUE/);
+  assert.match(helper, /r\.status='confirmed'/);
+  assert.doesNotMatch(helper, /organizer_optin/);
   assert.match(helper, /follower_optouts/);
   assert.match(helper, /target_rsvp\.status='confirmed'/);
   assert.match(helper, /message_type IN \('announcement','previous_guest_invite'\)/);

@@ -1,4 +1,4 @@
--- Hosts can invite consented primary RSVPs from one past event to one upcoming
+-- Hosts can invite eligible primary RSVPs from one past event to one upcoming
 -- event. Recipient details are snapshotted so a past event may later be deleted
 -- without interrupting already-queued delivery.
 CREATE TABLE IF NOT EXISTS previous_guest_invitation_batches (

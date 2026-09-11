@@ -44,7 +44,12 @@ test('old-event invitation flow selects faces, chooses an upcoming event, review
   assert.match(routes, /router\.get\('\/api\/events\/:id\/familiar-faces'/);
   assert.match(routes, /router\.post\('\/api\/events\/:id\/familiar-faces\/preview'/);
   assert.match(routes, /router\.post\('\/api\/events\/:id\/familiar-faces\/invite'/);
-  assert.match(routes, /r\.organizer_optin=TRUE/);
+  const recipientHelper = routes.slice(
+    routes.indexOf('async function selectedFamiliarFaceRecipients'),
+    routes.indexOf('async function targetRecipientState')
+  );
+  assert.match(recipientHelper, /r\.status='confirmed'/);
+  assert.doesNotMatch(recipientHelper, /organizer_optin/);
   assert.match(routes, /follower_optouts/);
   assert.match(routes, /targetRecipientState/);
   assert.match(routes, /faceIds\.length > 500/);
@@ -102,12 +107,14 @@ test('reusable guest invitation keeps artwork and uses one RSVP call to action',
     },
     recipientName: 'Maya Lopez',
     organizerLabel: 'Heatwave Booking',
+    sourceEventTitle: 'Summer Party',
     unsubscribeUrl: 'https://silvergliderevents.com/unsubscribe?token=safe'
   });
   assert.match(html, />RSVP<\/a>/);
   assert.doesNotMatch(html, />View event<\/a>/);
   assert.match(html, /art\.jpg/);
-  assert.match(html, /Unsubscribe from this host/);
+  assert.match(html, /RSVP’d to Summer Party, hosted by Heatwave Booking/);
+  assert.match(html, /Unsubscribe from invitations from this host/);
 });
 
 test('SMS lifecycle copy is untouched by the photo opportunity', () => {

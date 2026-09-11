@@ -263,7 +263,7 @@ test('RSVP SMS consent requires an enabled reminder and valid phone, then powers
   const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
   const publicHtml = await publicPage.text();
   assert.match(publicHtml, /Text me a reminder the day before this event from Test Host through Silver Glider\./);
-  assert.match(publicHtml, /Email me invitations to future events from Test Host\./);
+  assert.match(publicHtml, /Keep me posted about future events and updates from Test Host\./);
   assert.match(publicHtml, /Consent isn’t required to RSVP\./);
   assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
   assert.doesNotMatch(publicHtml, /id="organizer_optin"[^>]*checked/);
@@ -1697,7 +1697,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(hiddenShortUploadPage.status, 404);
 });
 
-test('invites only consented primary guests from one past event and never emails them twice', async () => {
+test('invites confirmed primary guests from one past event and never emails them twice', async () => {
   const source = await createEvent({
     slug: 'past-birthday-crowd',
     title: 'Past Birthday Crowd',
@@ -1709,14 +1709,14 @@ test('invites only consented primary guests from one past event and never emails
     event_date: '2030-11-14',
     visibility: 'private'
   });
-  const eligible = await createRsvp(source.id, {
+  await createRsvp(source.id, {
     first_name: 'Alice', last_name: 'Eligible', email: 'alice@example.test', organizer_optin: true,
     guest_first_name: 'Plus', guest_last_name: 'One', guest_email: 'plus-one@example.test'
   });
   await createRsvp(source.id, {
     first_name: 'Frank', last_name: 'Selectable', email: 'frank@example.test', organizer_optin: true
   });
-  await createRsvp(source.id, {
+  const rsvpOnly = await createRsvp(source.id, {
     first_name: 'No', last_name: 'Consent', email: 'no-consent@example.test', organizer_optin: false
   });
   await createRsvp(source.id, {
@@ -1745,7 +1745,7 @@ test('invites only consented primary guests from one past event and never emails
   assert.equal(overview.canInvite, true);
   assert.equal(overview.sources.length, 1);
   assert.equal(overview.sources[0].peopleCount, 6);
-  assert.equal(overview.sources[0].eligibleCount, 2);
+  assert.equal(overview.sources[0].eligibleCount, 3);
 
   const reviewResponse = await fetch(
     `${baseUrl}/api/events/${target.id}/previous-guests?sourceEventId=${source.id}`,
@@ -1754,14 +1754,14 @@ test('invites only consented primary guests from one past event and never emails
   const review = await reviewResponse.json();
   assert.equal(reviewResponse.status, 200);
   assert.deepEqual(review.recipients.map(person => person.email).sort(), [
-    'alice@example.test', 'frank@example.test'
+    'alice@example.test', 'frank@example.test', 'no-consent@example.test'
   ]);
-  assert.doesNotMatch(JSON.stringify(review.recipients), /plus-one|no-consent|cancelled|host-optout|already-going/);
+  assert.doesNotMatch(JSON.stringify(review.recipients), /plus-one|cancelled|host-optout|already-going/);
 
   const sendResponse = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [eligible.id] })
+    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [rsvpOnly.id] })
   });
   assert.equal(sendResponse.status, 202);
   assert.equal((await sendResponse.json()).queued, 1);
@@ -1778,19 +1778,19 @@ test('invites only consented primary guests from one past event and never emails
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   assert.deepEqual(delivery, {
-    recipient: 'alice@example.test', recipient_name: 'Alice Eligible', status: 'sent', attempt_count: 1
+    recipient: 'no-consent@example.test', recipient_name: 'No Consent', status: 'sent', attempt_count: 1
   });
 
   const repeated = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [eligible.id] })
+    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [rsvpOnly.id] })
   });
   assert.equal(repeated.status, 409);
 
   const followers = await fetch(`${baseUrl}/api/events/${target.id}/followers`, { headers: { cookie } });
   const followerData = await followers.json();
-  assert.equal(followerData.count, 1);
+  assert.equal(followerData.count, 2);
   assert.equal(followerData.canAnnounce, false);
 });
 
@@ -1825,7 +1825,7 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
   const ari = await createRsvp(source.id, {
     first_name: 'Ari', last_name: 'Lee', email: 'ari@example.test', organizer_optin: true
   });
-  await createRsvp(source.id, {
+  const rsvpOnly = await createRsvp(source.id, {
     first_name: 'No', last_name: 'Consent', email: 'private@example.test', organizer_optin: false
   });
   const priorBatch = (await pool.query(
@@ -1856,7 +1856,7 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
   const ariFace = list.faces.find(face => face.id === `rsvp:${ari.id}`);
   assert.equal(ariFace.avatarEmoji, attendeeAvatar('email:ari@example.test'));
   assert.equal(list.faces.find(face => face.name === 'Sam Friend').canInvite, false);
-  assert.equal(list.faces.find(face => face.name === 'No Consent').canInvite, false);
+  assert.equal(list.faces.find(face => face.name === 'No Consent').canInvite, true);
   assert.doesNotMatch(JSON.stringify(list), /maya@example|ari@example|private@example|invited@example/);
 
   const emailSearch = await fetch(
@@ -1871,13 +1871,13 @@ test('Familiar Faces keeps verified photos reusable and safely invites selected 
   const previewResponse = await fetch(`${baseUrl}/api/events/${source.id}/familiar-faces/preview`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ faceIds: [`rsvp:${maya.id}`, `rsvp:${ari.id}`] })
+    body: JSON.stringify({ faceIds: [`rsvp:${maya.id}`, `rsvp:${ari.id}`, `rsvp:${rsvpOnly.id}`] })
   });
   assert.equal(previewResponse.status, 200);
   const preview = await previewResponse.json();
-  assert.equal(preview.selectedCount, 2);
+  assert.equal(preview.selectedCount, 3);
   assert.deepEqual(preview.events.map(event => event.id), [targetOne.id, targetTwo.id]);
-  assert.ok(preview.events.every(event => event.eligibleCount === 2));
+  assert.ok(preview.events.every(event => event.eligibleCount === 3));
 
   async function invite(targetEventId, faceIds) {
     return fetch(`${baseUrl}/api/events/${source.id}/familiar-faces/invite`, {

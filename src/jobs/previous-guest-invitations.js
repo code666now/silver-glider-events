@@ -34,7 +34,7 @@ async function finalizeBatch(batchId) {
 
 async function processPreviousGuestInvitationBatch(batchId) {
   const { rows: batchRows } = await pool.query(
-    `SELECT b.id AS invitation_batch_id, e.*, o.id AS host_id,
+    `SELECT b.id AS invitation_batch_id, b.source_event_title, e.*, o.id AS host_id,
             COALESCE(o.org_name, o.name, 'Silver Glider Events') AS organizer_label
        FROM previous_guest_invitation_batches b
        JOIN events e ON e.id=b.target_event_id
@@ -78,6 +78,7 @@ async function processPreviousGuestInvitationBatch(batchId) {
         recipientName: delivery.recipient_name,
         event,
         organizerLabel: event.organizer_label,
+        sourceEventTitle: event.source_event_title,
         unsubscribeUrl
       });
       await pool.query(

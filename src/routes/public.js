@@ -44,7 +44,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function emailConsentHeading(hostName) {
   const host = String(hostName || '').trim().replace(/\s+/g, ' ').slice(0, 120) || 'this host';
-  return `Email me invitations to future events from ${host}.`;
+  return `Keep me posted about future events and updates from ${host}.`;
 }
 
 const RSVP_RATE_WINDOW_MS = 15 * 60 * 1000;

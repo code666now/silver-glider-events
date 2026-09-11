@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.83
+
+Released September 10, 2026.
+
+### Changed
+
+* Confirmed primary RSVPs can now be selected as Familiar Faces for a direct invitation to another published event without requiring the separate host-update opt-in.
+* Renamed the upcoming-event action to **Invite Familiar Faces** and clarified that unsubscribed guests, named +1s, existing attendees, and already-invited recipients remain excluded.
+* Reframed the optional RSVP email checkbox as broader host updates, keeping it independent from direct event invitations and from event-specific SMS consent.
+* Direct invitation emails now explain which previous event connected the guest to the host and retain a host-specific unsubscribe action.
+
+### Security & reliability
+
+* Preserved server-side ownership checks, past/upcoming event boundaries, Secret Show exclusions, recipient caps, opt-outs, and per-destination recipient deduplication.
+* Left all phone collection, SMS opt-in, STOP/HELP behavior, texting credits, Stripe, ticketing, RSVP mechanics, and named +1 handling unchanged.
+
 ## 1.0.82
 
 Released September 10, 2026.
