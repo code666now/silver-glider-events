@@ -43,11 +43,11 @@ function createRateLimiter({ windowMs, rules, now = () => Date.now() }) {
   return { consume, prune, reset };
 }
 
+// The leftmost X-Forwarded-For entry is whatever the client chose to send, so
+// keying limits on it lets anyone rotate past them. `req.ip` honors the app's
+// `trust proxy` setting and resolves to the address Railway's edge observed.
 function clientIp(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '')
-    .split(',')[0]
-    .trim();
-  return forwarded || req.socket?.remoteAddress || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 module.exports = { createRateLimiter, clientIp };

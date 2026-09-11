@@ -29,10 +29,51 @@ const sms = require('../../src/lib/sms');
 const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
 const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
+const mailer = require('../../src/lib/mailer');
+const authRoutes = require('../../src/routes/auth');
+const publicRoutes = require('../../src/routes/public');
 
 let server;
 let baseUrl;
 let organizerId;
+
+// Sign-in links and codes are stored only as hashes, so tests read them the
+// way a person would: from the (dev-mode) email.
+function lastDevEmail(to, kind) {
+  for (let index = mailer.devOutbox.length - 1; index >= 0; index -= 1) {
+    const message = mailer.devOutbox[index];
+    if (message.to === to && (!kind || message.kind === kind)) return message;
+  }
+  return assert.fail(`no ${kind || 'email'} captured for ${to}`);
+}
+
+function tokenFromLink(link) {
+  return new URL(link).searchParams.get('token');
+}
+
+// Opening a sign-in link renders a Continue page and must not use it up; the
+// Continue button's POST signs in. Returns the POST response.
+async function followSignInLink(link, { cookie = '', next = '' } = {}) {
+  const token = tokenFromLink(link);
+  const view = await fetch(`${baseUrl}/auth/verify?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ''}`, {
+    redirect: 'manual', headers: cookie ? { cookie } : {}
+  });
+  assert.equal(view.status, 200);
+  assert.match(await view.text(), /<form method="POST" action="\/auth\/verify">/);
+  const form = new URLSearchParams({ token });
+  if (next) form.set('next', next);
+  return fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
+    body: form
+  });
+}
+
+function resetRateLimits() {
+  authRoutes.resetRateLimitsForTests();
+  publicRoutes.resetRateLimitsForTests();
+}
 
 async function resetDatabase() {
   await pool.query('TRUNCATE stripe_sms_webhook_events, paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
@@ -930,7 +971,8 @@ test('personal RSVP photos require verified identity or attendee ownership and s
   const me = await fetch(`${baseUrl}/api/me`, { headers: { cookie: accountCookie } });
   assert.equal(me.status, 200);
   assert.deepEqual(await me.json(), {
-    user: { id: accountId, email: 'avatar@example.test', name: 'Avatar Person', avatarUrl }
+    user: { id: accountId, email: 'avatar@example.test', name: 'Avatar Person', avatarUrl },
+    scope: 'account'
   });
 
   const signedOutLink = await fetch(`${baseUrl}/api/me/link-rsvps`, { method: 'POST' });
@@ -1472,9 +1514,11 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   assert.equal(pending.intent, 'follow_host');
   assert.equal(pending.target_organizer_id, organizerId);
   assert.equal(pending.return_path, '/h/test-host');
+  const followEmail = lastDevEmail('new-follower@example.test', 'magic_link');
+  assert.notEqual(pending.token, tokenFromLink(followEmail.link), 'only a hash of the link token is stored');
 
-  const verify = await fetch(`${baseUrl}/auth/verify?token=${pending.token}&next=%2Fdashboard`, { redirect: 'manual' });
-  assert.equal(verify.status, 302);
+  const verify = await followSignInLink(followEmail.link, { next: '/dashboard' });
+  assert.equal(verify.status, 303);
   assert.equal(verify.headers.get('location'), '/h/test-host', 'stored intent return must win over URL tampering');
   const follower = (await pool.query(
     `SELECT id, org_name, public_slug FROM organizers WHERE email='new-follower@example.test'`
@@ -1501,8 +1545,8 @@ test('keeps ordinary Create Event magic-link destinations unchanged', async () =
   assert.equal(pending.intent, 'sign_in');
   assert.equal(pending.target_organizer_id, null);
   assert.equal(pending.return_path, '/events/new');
-  const verify = await fetch(`${baseUrl}/auth/verify?token=${pending.token}`, { redirect: 'manual' });
-  assert.equal(verify.status, 302);
+  const verify = await followSignInLink(lastDevEmail('creator-flow@example.test', 'magic_link').link);
+  assert.equal(verify.status, 303);
   assert.equal(verify.headers.get('location'), '/events/new');
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM host_follows hf
@@ -2092,23 +2136,37 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
   await waitForConfirmation(email);
 
   const tokenRow = (await pool.query(
-    `SELECT token, return_path, expires_at, used_at FROM magic_link_tokens
+    `SELECT token, intent, return_path, expires_at, used_at FROM magic_link_tokens
       WHERE email=$1 ORDER BY id DESC LIMIT 1`,
     [email]
   )).rows[0];
+  assert.equal(tokenRow.intent, 'add_photo');
   assert.equal(tokenRow.return_path, `/add-photo?event=${event.slug}`);
   assert.equal(tokenRow.used_at, null);
   assert.ok(new Date(tokenRow.expires_at) > new Date());
 
-  const verify = await fetch(`${baseUrl}/auth/verify?token=${tokenRow.token}`, { redirect: 'manual' });
-  assert.equal(verify.status, 302);
+  const confirmation = lastDevEmail(email);
+  const photoLink = confirmation.html.match(/https?:\/\/[^"]+\/auth\/verify\?token=[a-f0-9]{64}/)[0];
+  const verify = await followSignInLink(photoLink);
+  assert.equal(verify.status, 303);
   assert.equal(verify.headers.get('location'), `/add-photo?event=${event.slug}`);
-  const guestCookie = verify.headers.get('set-cookie').split(';')[0];
+  // A forwarded confirmation must not hand out an account: the link grants a
+  // photo-only cookie, never sge_session.
+  assert.doesNotMatch(verify.headers.get('set-cookie'), /sge_session=[^;]/);
+  const guestCookie = responseCookie(verify, 'sge_photo');
+  assert.ok(guestCookie);
   const page = await fetch(`${baseUrl}/add-photo?event=${event.slug}`, { headers: { cookie: guestCookie } });
   assert.equal(page.status, 200);
   const pageHtml = await page.text();
   assert.match(pageHtml, /Add your photo/);
   assert.match(pageHtml, /Help friends recognize you\./);
+  const photoMe = await fetch(`${baseUrl}/api/me`, { headers: { cookie: guestCookie } });
+  assert.equal((await photoMe.json()).scope, 'photo');
+  const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: guestCookie }, redirect: 'manual' });
+  assert.equal(dashboard.status, 302);
+  assert.equal(dashboard.headers.get('location'), '/login');
+  const accountApi = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: guestCookie } });
+  assert.equal(accountApi.status, 401);
 
   const identity = (await pool.query(
     `SELECT r.account_id, o.email
@@ -2119,7 +2177,7 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
   assert.ok(identity.account_id);
   assert.equal(identity.email, email);
 
-  const reused = await fetch(`${baseUrl}/auth/verify?token=${tokenRow.token}`, { redirect: 'manual' });
+  const reused = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(photoLink)}`, { redirect: 'manual' });
   assert.equal(reused.status, 302);
   assert.equal(reused.headers.get('location'), '/login?error=expired');
 
@@ -2545,4 +2603,339 @@ test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempo
       else process.env[key] = originalEnv[key];
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Sign-in hardening and returning guests (v1.0.85)
+// ---------------------------------------------------------------------------
+
+test('email scanners cannot use up a sign-in link, and signed-in people are not sent to "expired"', async () => {
+  resetRateLimits();
+  const email = 'scanner-safe@example.test';
+  const request = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next: '/events' })
+  });
+  assert.equal(request.status, 200);
+  const { link } = lastDevEmail(email, 'magic_link');
+
+  // A scanner (or link preview) opens the link twice. Nothing is consumed.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const scanned = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(link)}`, { redirect: 'manual' });
+    assert.equal(scanned.status, 200);
+    assert.doesNotMatch(scanned.headers.get('set-cookie') || '', /sge_session=/);
+  }
+  const { rows: pending } = await pool.query('SELECT used_at FROM magic_link_tokens WHERE email=$1', [email]);
+  assert.equal(pending[0].used_at, null);
+
+  const signedIn = await followSignInLink(link);
+  assert.equal(signedIn.status, 303);
+  assert.equal(signedIn.headers.get('location'), '/events');
+  const sessionCookie = responseCookie(signedIn, 'sge_session');
+  assert.ok(sessionCookie);
+
+  // The same link again: signed in → straight to the app, signed out → expired.
+  const againSignedIn = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(link)}`, {
+    redirect: 'manual', headers: { cookie: sessionCookie }
+  });
+  assert.equal(againSignedIn.headers.get('location'), '/dashboard');
+  const againSignedOut = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(link)}&next=%2Fevents`, { redirect: 'manual' });
+  assert.equal(againSignedOut.headers.get('location'), '/login?error=expired&next=%2Fevents');
+
+  // Login CSRF: another origin cannot post a token into this browser.
+  const second = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
+  });
+  assert.equal(second.status, 200);
+  const secondToken = tokenFromLink(lastDevEmail(email, 'magic_link').link);
+  const crossSite = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://evil.example' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(crossSite.status, 403);
+  const crossSiteMetadata = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'null', 'sec-fetch-site': 'cross-site' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(crossSiteMetadata.status, 403);
+  // Regression: a real browser submitting the Continue page may send
+  // `Origin: null`; same-origin fetch metadata must still be accepted.
+  const realBrowser = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'null', 'sec-fetch-site': 'same-origin' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(realBrowser.status, 303);
+  const continuePage = await fetch(`${baseUrl}/auth/verify?token=${secondToken}`, { redirect: 'manual' });
+  assert.equal(continuePage.status, 302, 'the link is used up after the successful Continue');
+});
+
+test('a 6-digit code signs in only the browser that asked for it and locks after five wrong tries', async () => {
+  resetRateLimits();
+  const email = 'code-sign-in@example.test';
+  const request = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next: '/events/new' })
+  });
+  assert.equal(request.status, 200);
+  assert.equal((await request.json()).codeLength, 6);
+  const requestCookie = responseCookie(request, 'sge_sign_in');
+  assert.ok(requestCookie);
+  const { code } = lastDevEmail(email, 'magic_link');
+  assert.match(code, /^\d{6}$/);
+  const wrong = code === '000000' ? '111111' : '000000';
+
+  const otherBrowser = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code })
+  });
+  assert.equal(otherBrowser.status, 400);
+  assert.equal((await otherBrowser.json()).error, 'expired');
+
+  const miss = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code: wrong })
+  });
+  assert.equal(miss.status, 400);
+  assert.deepEqual(
+    { error: (await miss.clone().json()).error, remaining: (await miss.json()).remaining },
+    { error: 'invalid', remaining: 4 }
+  );
+
+  const ok = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code: `${code.slice(0, 3)} ${code.slice(3)}` })
+  });
+  assert.equal(ok.status, 200);
+  const okBody = await ok.json();
+  assert.equal(okBody.kind, 'account');
+  assert.equal(okBody.redirect, '/events/new');
+  const sessionCookie = responseCookie(ok, 'sge_session');
+  const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: sessionCookie }, redirect: 'manual' });
+  assert.equal(dashboard.status, 200);
+
+  // The link from the same email is now used up too.
+  const link = lastDevEmail(email, 'magic_link').link;
+  const usedLink = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(link)}`, { redirect: 'manual' });
+  assert.equal(usedLink.headers.get('location'), '/login?error=expired');
+
+  // Brute force: five wrong codes lock that request; the right code then fails.
+  const again = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
+  });
+  const lockCookie = responseCookie(again, 'sge_sign_in');
+  const lockCode = lastDevEmail(email, 'magic_link').code;
+  const lockWrong = lockCode === '000000' ? '111111' : '000000';
+  let last;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    last = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: lockCookie },
+      body: JSON.stringify({ code: lockWrong })
+    });
+  }
+  assert.equal((await last.json()).error, 'locked');
+  const tooLate = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: lockCookie },
+    body: JSON.stringify({ code: lockCode })
+  });
+  assert.equal((await tooLate.json()).error, 'locked');
+});
+
+test('sign out of all devices rejects older cookies everywhere, including pre-upgrade cookies', async () => {
+  resetRateLimits();
+  const account = (await pool.query(
+    `INSERT INTO organizers (email, name, last_login_at) VALUES ('revoke-me@example.test','Revoke Me',NOW()) RETURNING id`
+  )).rows[0];
+  const laptop = `sge_session=${signSession(account.id, Date.now() - 60000)}`;
+  const phone = `sge_session=${signSession(account.id, Date.now() - 30000)}`;
+  // A cookie in the pre-v1.0.85 format (id.exp.sig) still works until revoked.
+  const crypto = require('node:crypto');
+  const legacyPayload = `${account.id}.${Math.floor(Date.now() / 1000) + 3600}`;
+  const legacy = `sge_session=${legacyPayload}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(legacyPayload).digest('hex')}`;
+  for (const cookie of [laptop, phone, legacy]) {
+    assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie } })).status, 200);
+  }
+
+  const signOutAll = await fetch(`${baseUrl}/api/auth/logout-all`, { method: 'POST', headers: { cookie: laptop } });
+  assert.equal(signOutAll.status, 200);
+  for (const cookie of [laptop, phone, legacy]) {
+    assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie } })).status, 401);
+  }
+  // A revoked cookie on /login shows the sign-in page instead of looping.
+  const login = await fetch(`${baseUrl}/login`, { headers: { cookie: phone }, redirect: 'manual' });
+  assert.equal(login.status, 200);
+  assert.match(login.headers.get('set-cookie') || '', /sge_session=;/);
+
+  // Signing in again afterwards works normally.
+  const fresh = `sge_session=${signSession(account.id)}`;
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: fresh } })).status, 200);
+});
+
+test('signing out forgets the remembered guest so a shared browser stops greeting the last person', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'shared-laptop-one', title: 'Shared Laptop One' });
+  const next = await createEvent({ slug: 'shared-laptop-two', title: 'Shared Laptop Two' });
+  const rsvp = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Robin Shared', email: 'robin-shared@example.test' })
+  });
+  const guestCookie = responseCookie(rsvp, 'sge_guest');
+  assert.ok(guestCookie);
+  assert.match(await (await fetch(`${baseUrl}/e/${next.slug}`, { headers: { cookie: guestCookie } })).text(), /"firstName":"Robin"/);
+
+  const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST', headers: { cookie: guestCookie } });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie'), /sge_guest=;/);
+  // Even if the old cookie lingered, the server no longer honors it.
+  const after = await fetch(`${baseUrl}/e/${next.slug}`, { headers: { cookie: guestCookie } });
+  assert.match(await after.text(), /"returningGuest":null/);
+});
+
+test('a forwarded invitation can answer for its own event but cannot act as the guest anywhere else', async () => {
+  resetRateLimits();
+  const invited = await createEvent({ slug: 'forwarded-invite-target', title: 'Forwarded Invite Target' });
+  const elsewhere = await createEvent({ slug: 'forwarded-invite-elsewhere', title: 'Somewhere Else' });
+  const identity = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ('lucas-forward@example.test','Lucas Forward') RETURNING id`
+  )).rows[0];
+  // Lucas already RSVP'd to another event under his verified identity.
+  await createRsvp(elsewhere.id, { first_name: 'Lucas', email: 'lucas-forward@example.test', account_id: identity.id });
+  const message = (await pool.query(
+    `INSERT INTO message_log (event_id,recipient,recipient_name,message_type,channel,status)
+     VALUES ($1,'lucas-forward@example.test','Lucas Forward','previous_guest_invite','email','sent') RETURNING id`,
+    [invited.id]
+  )).rows[0];
+  const invitation = await createGuestInvitation(pool, {
+    messageLogId: message.id, eventId: invited.id, eventDate: invited.event_date,
+    email: 'lucas-forward@example.test', recipientName: 'Lucas Forward'
+  });
+
+  // Lucas forwards the email; his friend opens it.
+  const opened = await fetch(`${baseUrl}/g/${invitation.token}`, { redirect: 'manual' });
+  const friendCookie = responseCookie(opened, 'sge_guest');
+  const scope = (await pool.query(
+    'SELECT verified_event_id FROM guest_sessions WHERE identity_id=$1 ORDER BY id DESC LIMIT 1', [identity.id]
+  )).rows[0];
+  assert.equal(scope.verified_event_id, invited.id);
+
+  const cancelElsewhere = await fetch(`${baseUrl}/api/public/events/${elsewhere.slug}/returning-rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: friendCookie },
+    body: JSON.stringify({ response: 'not_going' })
+  });
+  assert.equal(cancelElsewhere.status, 409);
+  assert.equal((await cancelElsewhere.json()).error, 'verification_required');
+  const { rows: untouched } = await pool.query(
+    `SELECT status FROM rsvps WHERE event_id=$1 AND email='lucas-forward@example.test'`, [elsewhere.id]
+  );
+  assert.equal(untouched[0].status, 'confirmed');
+
+  const answerInvited = await fetch(`${baseUrl}/api/public/events/${invited.slug}/returning-rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: friendCookie },
+    body: JSON.stringify({ response: 'going' })
+  });
+  assert.equal(answerInvited.status, 200);
+});
+
+test('rejoining after cancelling needs an emailed code, then keeps the new details', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'rejoin-night', title: 'Rejoin Night', comments_enabled: true });
+  const email = 'rejoin@example.test';
+  await createRsvp(event.id, { first_name: 'Sam', last_name: 'Original', email, status: 'cancelled', manage_token: 'rejoin-token' });
+
+  // Someone who merely knows the email cannot overwrite the cancelled RSVP.
+  const stranger = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Not Sam', email, phone: '+14155550123', sms_optin: true })
+  });
+  assert.equal(stranger.status, 409);
+  const strangerBody = await stranger.json();
+  assert.equal(strangerBody.error, 'verification_required');
+  assert.equal(strangerBody.maskedEmail, 'r•••@example.test');
+  const { rows: stillCancelled } = await pool.query('SELECT status, last_name FROM rsvps WHERE event_id=$1', [event.id]);
+  assert.deepEqual(stillCancelled[0], { status: 'cancelled', last_name: 'Original' });
+
+  // Sam, on a new phone: request a code, type it, and the retry goes through.
+  const codeRequest = await fetch(`${baseUrl}/api/auth/guest-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email })
+  });
+  assert.equal(codeRequest.status, 200);
+  const requestCookie = responseCookie(codeRequest, 'sge_sign_in');
+  const { code } = lastDevEmail(email, 'verification_code');
+  const verified = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(verified.status, 200);
+  const verifiedBody = await verified.json();
+  assert.equal(verifiedBody.kind, 'guest');
+  assert.equal(verifiedBody.firstName, 'Sam');
+  assert.doesNotMatch(verified.headers.get('set-cookie'), /sge_session=[^;]/, 'guest verification is not an account sign-in');
+  const guestCookie = responseCookie(verified, 'sge_guest');
+
+  const rejoin = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: guestCookie },
+    body: JSON.stringify({ full_name: 'Sam Updated', email })
+  });
+  assert.equal(rejoin.status, 201);
+  assert.ok(responseCookie(rejoin, `sge_attendee_${event.id}`), 'the proven owner gets comment access');
+  const { rows: rejoined } = await pool.query('SELECT status, last_name, account_id FROM rsvps WHERE event_id=$1', [event.id]);
+  assert.equal(rejoined[0].status, 'confirmed');
+  assert.equal(rejoined[0].last_name, 'Updated');
+  assert.ok(rejoined[0].account_id);
+});
+
+test('"already on the list" says truthfully whether a confirmation email went out', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'truthful-resend', title: 'Truthful Resend' });
+  const email = 'truthful@example.test';
+  const first = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'True Person', email })
+  });
+  assert.equal(first.status, 201);
+  await waitForConfirmation(email);
+  const again = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'True Person', email })
+  });
+  assert.deepEqual(await again.json(), { ok: true, alreadyRsvpd: true, confirmationResent: false });
+
+  await pool.query(
+    `UPDATE message_log SET sent_at=NOW() - INTERVAL '20 minutes', created_at=NOW() - INTERVAL '20 minutes'
+      WHERE recipient=$1 AND message_type='rsvp_confirmation'`,
+    [email]
+  );
+  const later = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'True Person', email })
+  });
+  assert.equal((await later.json()).confirmationResent, true);
+});
+
+test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only identities', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'cant-make-it', title: 'Can’t Make It Night' });
+  await createRsvp(event.id, { first_name: 'Dana', last_name: 'Declines', email: 'dana-declines@example.test', status: 'cancelled' });
+  await createRsvp(event.id, { first_name: 'Gia', last_name: 'Going', email: 'gia-going@example.test' });
+  const faces = await (await fetch(`${baseUrl}/api/events/${event.id}/familiar-faces`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  })).json();
+  const dana = faces.faces.find(face => face.name === 'Dana Declines');
+  assert.equal(dana.status, 'Can’t make it');
+  assert.equal(dana.canInvite, false);
+  assert.equal(faces.faces.find(face => face.name === 'Gia Going').status, 'RSVP’d');
+
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at) VALUES ('hosts-admin@example.test','Hosts Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  await pool.query(`INSERT INTO organizers (email,name) VALUES ('rsvp-only-identity@example.test','RSVP Only')`);
+  const hosts = await (await fetch(`${baseUrl}/api/admin/hosts`, {
+    headers: { cookie: `sge_session=${signSession(admin.id)}` }
+  })).json();
+  const emails = hosts.hosts.map(host => host.email);
+  assert.ok(emails.includes('host@example.test'));
+  assert.ok(emails.includes('hosts-admin@example.test'));
+  assert.ok(!emails.includes('rsvp-only-identity@example.test'));
+  assert.ok(hosts.guestIdentityCount >= 1);
 });

@@ -35,6 +35,8 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
+// Resolve the signed-in account (with server-side revocation) once per request.
+app.use(require('./lib/session').sessionMiddleware(pool));
 
 // Routes
 app.use(require('./routes/auth'));
@@ -56,7 +58,8 @@ app.use(require('./routes/admin'));
 // Auth guards for app pages (server-side redirect to /login when signed out)
 const requireOrganizer = require('./middleware/requireOrganizer');
 const requireAdmin = require('./middleware/requireAdmin');
-const { parseSession, readSessionCookie } = require('./lib/session');
+const requirePhotoAccess = require('./middleware/requirePhotoAccess');
+const { clearSessionCookie } = require('./lib/session');
 
 // Public pages
 app.get('/', view('index.html'));
@@ -66,7 +69,8 @@ app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
 app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
-  if (parseSession(readSessionCookie(req))) return res.redirect(safeNext(req.query.next) || '/dashboard');
+  if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');
+  if (req.sessionStale) clearSessionCookie(res);
   res.sendFile(path.join(VIEWS, 'login.html'));
 });
 
@@ -74,7 +78,7 @@ app.get('/login', (req, res) => {
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
 app.get('/following', requireOrganizer, view('following.html'));
-app.get('/add-photo', requireOrganizer, view('add-photo.html'));
+app.get('/add-photo', requirePhotoAccess, view('add-photo.html'));
 app.get('/events/new', requireOrganizer, async (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
   if (!invitationToken) return res.sendFile(path.join(VIEWS, 'event-form.html'));

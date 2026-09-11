@@ -66,11 +66,19 @@ const hostAccountSelect = `
     LEFT JOIN account_stats s ON s.organizer_id=o.id
     LEFT JOIN latest_invitation i ON i.joined_organizer_id=o.id`;
 
+// Since v1.0.84 every RSVP email gets an `organizers` identity row, so this
+// list keeps to people who have actually signed in or host something. Guest
+// identities are counted separately.
+const HOST_ACCOUNT_FILTER = `
+  WHERE o.last_login_at IS NOT NULL OR o.org_name IS NOT NULL OR o.is_admin
+     OR COALESCE(s.event_count,0) > 0 OR i.invitation_id IS NOT NULL`;
+
 // GET /api/admin/hosts — read-only account overview for early MVP tracking
 router.get('/api/admin/hosts', async (req, res, next) => {
   try {
-    const { rows } = await pool.query(`${hostAccountSelect} ORDER BY o.created_at DESC, o.id DESC`);
-    res.json({ hosts: rows });
+    const { rows } = await pool.query(`${hostAccountSelect} ${HOST_ACCOUNT_FILTER} ORDER BY o.created_at DESC, o.id DESC`);
+    const { rows: countRows } = await pool.query('SELECT COUNT(*)::int AS n FROM organizers');
+    res.json({ hosts: rows, guestIdentityCount: Math.max(0, countRows[0].n - rows.length) });
   } catch (err) { next(err); }
 });
 

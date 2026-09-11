@@ -517,3 +517,12 @@ document.querySelectorAll('.settings-logout').forEach(button => {
     window.location.href = '/login';
   });
 });
+
+document.getElementById('logout-all-btn')?.addEventListener('click', async event => {
+  if (!confirm('Sign out of Silver Glider on every device, including this one?')) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = 'Signing out…';
+  try { await api('/api/auth/logout-all', { method: 'POST' }); } catch (_) {}
+  window.location.href = '/login';
+});

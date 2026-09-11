@@ -464,3 +464,46 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sms-reminder-optin .check { margin-bottom: 0; }
 .sms-reminder-phone { margin: 14px 0 0; }
 .sms-reminder-phone[hidden] { display: none; }
+
+/* Returning guest: the answered state reads as a status, not two buttons. */
+.returning-rsvp-answer[hidden], #returning-rsvp-ask[hidden] { display: none; }
+.returning-rsvp-answer h2 { display: flex; align-items: center; gap: 12px; }
+.returning-rsvp-mark {
+  display: inline-grid; place-items: center; flex: none;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--sg-accent); color: #071211;
+  font: 900 16px/1 var(--sg-font-body);
+}
+.returning-rsvp-answer.is-not-going .returning-rsvp-mark { background: rgba(255,255,255,.14); color: var(--sg-text); }
+.returning-rsvp-detail { margin: 0 0 18px; color: var(--sg-text-dim); font-size: 15px; line-height: 1.55; }
+.returning-rsvp-change {
+  padding: 11px 18px; border: 1px solid rgba(255,255,255,.18); border-radius: 999px;
+  background: transparent; color: var(--sg-text); font: 800 13px var(--sg-font-body); cursor: pointer;
+}
+.returning-rsvp-change:hover, .returning-rsvp-change:focus-visible { border-color: var(--sg-accent); }
+
+/* Email code entry — sign-in page and "confirm it's you" in the RSVP flow. */
+.sg-code-panel {
+  margin-top: 16px; padding: 18px;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 18px;
+  background: rgba(255,255,255,.04);
+}
+.sg-code-title { margin: 0 0 4px; color: var(--sg-text); font-size: 15px; font-weight: 800; }
+.sg-code-copy { margin: 0 0 14px; color: var(--sg-text-dim); font-size: 14px; line-height: 1.5; }
+.sg-code-copy strong { color: var(--sg-text); }
+.sg-code-row { display: flex; gap: 10px; }
+.sg-code-row .sg-btn { flex: none; }
+.sg-input.sg-code-input {
+  flex: 1; min-width: 0;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 22px;
+  letter-spacing: .3em; text-align: center;
+}
+.sg-code-error { display: none; margin: 10px 0 0; color: var(--sg-danger); font-size: 13px; }
+.sg-code-actions { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+.sg-code-link {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--sg-text-faint); font: 700 12px var(--sg-font-body);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.sg-code-link:hover, .sg-code-link:focus-visible { color: var(--sg-text); }
+.sg-code-link[disabled] { opacity: .5; cursor: default; }

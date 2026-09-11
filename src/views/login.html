@@ -15,7 +15,7 @@
 
     <div id="form-state">
       <h1 style="font-size:34px;margin-bottom:10px">Sign in</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:32px">Enter your email and we'll send you a sign-in link. No password needed.</p>
+      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
       <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
       <div id="returning-guest" hidden style="padding:22px;border:1px solid var(--sg-border);border-radius:18px;background:rgba(255,255,255,.035);margin-bottom:18px">
         <p class="sg-label" style="margin-bottom:8px">Welcome back</p>
@@ -29,14 +29,25 @@
           <label for="email">Email</label>
           <input class="sg-input" type="email" id="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com">
         </div>
-        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="submit-btn">Send magic link</button>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="submit-btn">Continue</button>
       </form>
     </div>
 
+    <!-- Luma-style: finish right here with the emailed code, or tap the link
+         in the email on any device. The code only works in this browser. -->
     <div id="sent-state" style="display:none">
       <h1 style="font-size:34px;margin-bottom:10px">Check your email</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7">We sent a sign-in link to <strong id="sent-email" style="color:var(--sg-text)"></strong>. It expires in 15 minutes.</p>
-      <p style="color:var(--sg-text-faint);font-size:13px;margin-top:24px">Wrong address? <a href="/login">Try again</a></p>
+      <p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7;margin-bottom:22px">Enter the 6-digit code we sent to <strong id="sent-email" style="color:var(--sg-text)"></strong>, or tap the link in that email.</p>
+      <form id="code-form" class="sg-code-row" novalidate>
+        <input class="sg-input sg-code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" placeholder="000000">
+        <button class="sg-btn sg-btn-primary" type="submit" id="code-submit">Sign in</button>
+      </form>
+      <p class="sg-code-error" id="code-error" role="alert"></p>
+      <div class="sg-code-actions" style="margin-top:22px">
+        <button class="sg-code-link" type="button" id="resend-code" disabled>Send a new code</button>
+        <a class="sg-code-link" href="/login">Use a different email</a>
+      </div>
+      <p style="color:var(--sg-text-faint);font-size:13px;margin-top:18px">The code and link expire in 15 minutes.</p>
     </div>
   </main>
 
@@ -45,18 +56,98 @@
     const requestedNext = params.get('next') || '';
     const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
     let returningGuest = null;
+    let lastRequest = null;
     const form = document.getElementById('login-form');
     const returningPanel = document.getElementById('returning-guest');
+    const codeInput = document.getElementById('code');
+    const codeSubmit = document.getElementById('code-submit');
+    const codeError = document.getElementById('code-error');
+    const resendButton = document.getElementById('resend-code');
     if (params.get('error') === 'expired') {
       const err = document.getElementById('error');
       err.textContent = 'That link expired or was already used. Request a new one.';
       err.style.display = 'block';
     }
+
+    function showCodeError(message) {
+      codeError.textContent = message || '';
+      codeError.style.display = message ? 'block' : 'none';
+    }
+
+    function enableResendSoon() {
+      resendButton.disabled = true;
+      setTimeout(() => { resendButton.disabled = false; }, 30000);
+    }
+
     async function showSent(emailLabel) {
       document.getElementById('form-state').style.display = 'none';
       document.getElementById('sent-email').textContent = emailLabel;
       document.getElementById('sent-state').style.display = 'block';
+      codeInput.focus();
+      enableResendSoon();
     }
+
+    async function requestSignIn(url, body) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Something went wrong. Try again.');
+      lastRequest = { url, body };
+    }
+
+    let verifying = false;
+    async function verifyCode() {
+      const code = codeInput.value.replace(/\D/g, '');
+      if (verifying || code.length !== 6) return;
+      verifying = true;
+      codeSubmit.disabled = true;
+      codeSubmit.textContent = 'Checking…';
+      showCodeError('');
+      try {
+        const response = await fetch('/api/auth/verify-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || 'That code didn’t work.');
+        location.href = data.redirect || next || '/dashboard';
+      } catch (error) {
+        showCodeError(error.message);
+        codeInput.select();
+        codeSubmit.disabled = false;
+        codeSubmit.textContent = 'Sign in';
+      } finally {
+        verifying = false;
+      }
+    }
+
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
+      if (codeInput.value.length === 6) verifyCode();
+    });
+    document.getElementById('code-form').addEventListener('submit', event => {
+      event.preventDefault();
+      verifyCode();
+    });
+    resendButton.addEventListener('click', async () => {
+      if (!lastRequest) return;
+      resendButton.disabled = true;
+      showCodeError('');
+      try {
+        await requestSignIn(lastRequest.url, lastRequest.body);
+        codeInput.value = '';
+        codeInput.focus();
+        showCodeError('');
+        enableResendSoon();
+      } catch (error) {
+        showCodeError(error.message);
+        resendButton.disabled = false;
+      }
+    });
+
     fetch('/api/public/guest-session', { headers: { Accept: 'application/json' } })
       .then(response => response.ok ? response.json() : null)
       .then(guest => {
@@ -79,12 +170,7 @@
       button.disabled = true;
       button.textContent = 'Sending…';
       try {
-        const response = await fetch('/api/auth/guest-magic-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ next })
-        });
-        if (!response.ok) throw new Error((await response.json()).error || 'Failed');
+        await requestSignIn('/api/auth/guest-magic-link', { next });
         showSent(returningGuest.maskedEmail);
       } catch (error) {
         const el = document.getElementById('error');
@@ -101,19 +187,14 @@
       btn.disabled = true;
       btn.textContent = 'Sending…';
       try {
-        const res = await fetch('/api/auth/magic-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, next })
-        });
-        if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+        await requestSignIn('/api/auth/magic-link', { email, next });
         showSent(email);
       } catch (err) {
         const el = document.getElementById('error');
         el.textContent = err.message;
         el.style.display = 'block';
         btn.disabled = false;
-        btn.textContent = 'Send magic link';
+        btn.textContent = 'Continue';
       }
     });
   </script>

@@ -98,10 +98,13 @@ Keep Standard and Flyer behavior isolated.
 - Preserve Secret Show scrypt hashes, signed versioned cookies, and per-session/per-IP attempt limits.
 - Do not expose private-event emails, phones, surnames, IDs, or Secret Show metadata publicly.
 - Keep secrets in environment variables only.
+- `GET /auth/verify` stays read-only (Continue page); only the POST signs in. Sign-in tokens and codes are stored as hashes via `src/lib/sign-in-challenges.js`.
+- Route ownership checks use `req.sessionAccount` (revocation-aware), not `parseSession`. Guest verification is checked with `guestVerifiedFor(guest, eventId)`; invitation links verify one event only.
+- The Add your photo link grants the photo-only `sge_photo` cookie, never `sge_session`. See HANDOFF → "Sign-in, sessions, and returning guests — rules to keep".
 
 ## Test expectations
 
-`npm test` currently runs 205 tests: 174 focused unit/source-contract tests and 31 HTTP/PostgreSQL integration tests. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 233 tests: 192 focused unit/source-contract tests and 41 HTTP/PostgreSQL integration tests. Emails are never sent locally; integration tests read links and codes from `mailer.devOutbox`. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 
@@ -143,9 +146,9 @@ The explicit application path and `--path-as-root` are required because the pare
 
 `.git-sha` is tracked and remaining modified after a deploy is expected.
 
-### Current GitHub limitation
+### GitHub
 
-GitHub HTTPS authentication is not configured on this Mac. `git push origin main` currently fails with `could not read Username for 'https://github.com'`. This does **not** mean the Railway deploy failed. Direct `railway up . --path-as-root --service silver-glider-events` is the authoritative production deployment path; GitHub credentials should be repaired separately.
+GitHub CLI authentication works for `code666now` over HTTPS, and `origin` points at `https://github.com/code666now/silver-glider-events`. Claude Code also works in this repository through `claude/*` branches and pull requests, so `git pull` before starting. A GitHub push never deploys; `railway up . --path-as-root --service silver-glider-events` remains the only production deployment path.
 
 ## Do not
 

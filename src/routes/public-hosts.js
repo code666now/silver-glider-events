@@ -5,7 +5,6 @@ const pool = require('../config/db');
 const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { formatTime } = require('../lib/mailer');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
-const { parseSession, readSessionCookie } = require('../lib/session');
 const { isFollowingHost } = require('../lib/host-follows');
 
 const router = express.Router();
@@ -106,7 +105,7 @@ router.get('/h/:slug', async (req, res, next) => {
     const bioHtml = host.bio ? `<p class="host-bio">${esc(host.bio)}</p>` : '';
     const description = String(host.bio || `Public events presented by ${host.org_name}.`).replace(/\s+/g, ' ').trim().slice(0, 160);
     const appUrl = String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-    const session = parseSession(readSessionCookie(req));
+    const session = req.sessionAccount;
     const isOwnHost = Number(session?.id) === Number(host.id);
     const ownerNavHtml = isOwnHost
       ? '<a class="host-owner-dashboard" href="/dashboard" aria-label="Return to Dashboard">← Dashboard</a>'

@@ -36,6 +36,8 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 - If the event hits capacity, RSVPs stop and it shows "Event full."
 - Guests can cancel their RSVP from a link in their email (which frees a spot).
 - The on-page success message is **“Your RSVP is confirmed.”**
+- A browser that has RSVP’d before is remembered: other events greet the guest by first name with **I’m going / I’m not going**, and once answered show **✓ You’re going** (or **You can’t make it**) with **Change my answer**. **Not [name]? RSVP as yourself** forgets the browser and opens a blank form.
+- When a browser can’t prove an RSVP is the guest’s (a new phone, or rejoining after cancelling), the page emails a 6-digit code and the guest types it right there — no account, and no hunting for the confirmation email.
 - When a private host enables **Allow guests**, an RSVP can include one named guest with an optional email. Capacity and the displayed attendance total count both the attendee and guest.
 - When enabled, the public guest list shows first names only. A fresh RSVP unlocks the comment wall immediately on that browser; the confirmation-email link restores attendee access on another or returning device. Attendees can post or delete their own 300-character comments, while the event host can delete any comment. Existing-email attempts never grant access based on email knowledge alone.
 - Signed-in RSVP forms reuse the saved account name and email. When identity is verified by the signed session or the attendee's private manage token, the saved personal RSVP photo appears in the guest list; arbitrary email entry cannot claim another account's image.
@@ -54,9 +56,10 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 | **Unsplash** | Free photo search in the form | Photographer is auto-credited on the event page; searches use a bounded 30-minute in-memory cache to reduce repeat API calls |
 
 ## 5. Login & security (plain English)
-- Login is by **magic link** (email). No passwords ever.
+- Login is by **email**, no passwords ever. Each sign-in email has a **6-digit code** and a link. The code is typed on the page that asked for it (so sign-in works even when the email app opens links in its own browser); the link works on any device. Opening the link shows a **Continue** page — only pressing Continue signs in, so email security scanners can't use the link up.
 - After the first login, a secure **30-day session** keeps you signed in on that browser; it auto-refreshes while you're active.
-- Signing out clears it. Requesting too many magic links too fast is rate-limited.
+- **Sign out** ends the session on that browser and forgets any remembered RSVP guest there. **Sign out of all devices** (Settings → Account) rejects every older session everywhere. Requesting too many sign-in emails, or guessing codes, is rate-limited; five wrong codes lock that request.
+- The **Add your photo** link in RSVP confirmations only opens the photo page — it never signs anyone into the dashboard.
 - Public event pages are open to everyone; the organizer dashboard is protected. Secret Shows are private link-only events with a separately stored scrypt code hash, signed versioned unlock cookies, and per-session/per-IP attempt limits. Replacing the code invalidates prior unlocks.
 - Public RSVP submissions and confirmation-email resend attempts are rate-limited to reduce spam and fake capacity filling.
 - Host/admin-rendered text is escaped before insertion into HTML, and executable URL schemes are rejected. Database IDs from the authenticated session—not editable names or emails—are the authorization source of truth.
@@ -67,7 +70,7 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 - **Entry point:** `src/index.js`
 - **Key folders:** `src/routes/` (auth, events, public event/RSVP flows, isolated public host pages, uploads, photos, Stripe and legacy PayPal webhooks, SMS credits, paid SMS notifications, admin), `src/lib/` (mailer, server-only Twilio SMS transport/lifecycle copy, Stripe SMS Checkout, legacy PayPal client, SMS credit ledger, session, shared public HTML, calendar/ics, unsplash, cloudinary, slug, csv), `src/jobs/reminders.js` (scheduled email reminders), `src/jobs/event-notifications.js` (critical email update/cancellation delivery and retry), `src/jobs/previous-guest-invitations.js` (reviewed past-guest email delivery and retry), `src/jobs/sms-notifications.js` (paid Twilio delivery/retry/audit), `src/views/` (HTML pages), `public/` (CSS + JS/assets).
 - **Database:** auto-migrations run on startup from `src/db/migrations/*.sql`. Core tables include organizers, magic_link_tokens, events, event_secret_codes, rsvps, event_comments, message_log, event_notification_batches, previous_guest_invitation_batches, sms_notification_batches, sms_notification_recipients, line_submissions, feedback_submissions, host_invitations, host_follows, event_photos, commerce_feature_interests, sms_credit_purchases, sms_credit_transactions, stripe_sms_webhook_events, and paypal_webhook_events.
-- **Current migrations:** `001` through `035_familiar_faces.sql`.
+- **Current migrations:** `001` through `037_sign_in_codes_and_session_revocation.sql`.
 - **Health check:** `GET /health` returns `{status:"ok", version:"...", sha:"..."}`.
 - **Release version:** `package.json` is the canonical semantic version, production commits receive matching annotated Git tags, and `CHANGELOG.md` records user-facing releases. `/health` returns both `version` and `sha` for deployment verification.
 
@@ -148,7 +151,7 @@ Magic-link login + persistent sessions · **Follow Host V1** with a lightweight 
 - **Standard mobile artwork fitting (implemented August 3):** Standard desktop and Flyer Mode are unchanged. Standard phone pages default portrait cover art to an uncropped, centered 4:5 hero with an image-derived static color surround; landscape and square covers retain the existing fill treatment. Organizers can override the phone treatment with **Show full flyer** or **Fill the space**, and `cover_fit_mode` persists through editing and duplication via migration `017_standard_mobile_cover_fit.sql`.
 - **Artwork-adaptive RSVP accents (updated August 4):** cover and flyer uploads request Cloudinary color data, free photos use the same shared browser sampler, and migration `018_event_artwork_accent.sql` stores one normalized event accent. RSVP confirmations use the subject **RSVP confirmed for [Event Title]** and move directly from the **RSVP CONFIRMED** label to the event title, without a generic “You’re on the list” headline. The email always keeps its original black Silver Glider shell, dark-gray cards, and neutral typography. The primary **View Event** button uses the saved artwork accent; RSVP status, linked host, conditional **Music vibe**, and Calendar/Maps/Manage RSVP actions use a brighter WCAG-safe tint from the same hue. `src/routes/email-icons.js` returns ordinary cacheable recolored PNG icons so compatibility does not rely on CSS filters. Near-black, near-white, gray, or muddy colors are rejected; button text automatically chooses the stronger black/white WCAG contrast; missing or unusable palettes fall back to Silver Glider teal. Shared reminders and non-RSVP transactional emails remain unchanged.
 - **Two-artist Event Vibe (implemented August 4):** migration `019_event_vibe_choices.sql` adds optional labels and a second supported music/media URL while preserving the original `event_vibe_url`. Existing one-link events render exactly the original single embed. Hosts can opt into **Add another artist**, label both links, and show compact accessible artist tabs immediately above one active player on both Standard and Flyer pages. Inactive players remain inside inert templates and do not load until selected, preventing stacked video/audio and protecting mobile scroll performance. Duplication preserves all Event Vibe choices; confirmation email behavior remains based on the original primary link.
-- **Automated tests:** `npm test` currently runs **208 tests**, including real HTTP/PostgreSQL integration coverage for authentication, RSVP, privacy, Familiar Faces identity and email-data boundaries, multi-event invitation selection/deduplication, one-time Add Photo authentication, event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic debits, private one-tap attendee access, status callbacks, STOP handling, rendering, event management, previous-guest invitation privacy/delivery, admin-only Twilio proof boundaries, Stripe Checkout allowlisting, verified webhook fulfillment and retry idempotency, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, desktop-safe public sharing, and the duplicate-event dashboard interaction. Integration tests are hard-guarded to the dedicated local `sge_test` database. `npm run check:static` validates syntax, local imports/assets, public-template placeholders, and browser event-data usage; `npm run check` runs the complete verification sequence. Public host routing lives in `src/routes/public-hosts.js`, while event, RSVP, comment, calendar, and attendee flows remain in `src/routes/public.js`.
+- **Automated tests:** `npm test` currently runs **233 tests**, including sign-in codes, scanner-safe links, login CSRF, session revocation, photo-only grants, event-scoped invitation verification, verified RSVP rejoins, real HTTP/PostgreSQL integration coverage for authentication, RSVP, privacy, Familiar Faces identity and email-data boundaries, multi-event invitation selection/deduplication, one-time Add Photo authentication, event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic debits, private one-tap attendee access, status callbacks, STOP handling, rendering, event management, previous-guest invitation privacy/delivery, admin-only Twilio proof boundaries, Stripe Checkout allowlisting, verified webhook fulfillment and retry idempotency, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, desktop-safe public sharing, and the duplicate-event dashboard interaction. Integration tests are hard-guarded to the dedicated local `sge_test` database. `npm run check:static` validates syntax, local imports/assets, public-template placeholders, and browser event-data usage; `npm run check` runs the complete verification sequence. Public host routing lives in `src/routes/public-hosts.js`, while event, RSVP, comment, calendar, and attendee flows remain in `src/routes/public.js`.
 - **Repository backup:** GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through v1.0.77; Railway remains the authoritative production deployment path.
 
 ## 11. Future (planned, not in V1)
@@ -156,30 +159,21 @@ Commerce API contract wiring and checkout handoff completion · multiple brands/
 
 ## New Session Handoff
 
-### In progress — Claude Code (started September 10, 2026)
+### Two agents share this repository
 
-Claude Code is working on a separate clone (`~/sge-claude`) on branch
-`claude/auth-returning-guests`, and will open a GitHub pull request against
-`main`. **Until that PR merges, please avoid editing these areas** so the two
-agents don't produce conflicting changes:
+Codex and Claude Code both work here. Claude Code works in its own clone (`~/sge-claude`) on `claude/*` branches and lands changes through GitHub pull requests; `origin` points at GitHub, so `git pull` brings merged work in. Start every task with `git status --short` and `git pull`; commit before handing back; only one agent deploys at a time. Merge Claude PRs with **Create a merge commit** (not squash) so local `main` fast-forwards.
 
-- `src/routes/auth.js`, `src/lib/session.js`, `src/middleware/requireOrganizer.js`, `src/lib/rate-limit.js`
-- `src/lib/guest-session.js`, `src/lib/guest-invitations.js`, and the returning-guest / RSVP / `/g/:token` / add-photo handlers in `src/routes/public.js`
-- `src/views/login.html`, the returning-guest card in `src/views/event-public*.html` and `public/js/public-event.js`
-- `/api/admin/hosts` in `src/routes/admin.js`, and the magic-link email in `src/lib/mailer.js`
+### Sign-in, sessions, and returning guests — rules to keep (v1.0.85)
 
-Scope of the PR:
-
-- Magic links that email scanners can't burn (the link opens a Continue page; only the button signs in).
-- A Luma-style 6-digit email code next to every magic link, typed on the page that asked for it. This fixes sign-ins landing in the Gmail/Instagram in-app browser, and replaces the "open your confirmation email" dead ends in the RSVP flow.
-- Server-side session revocation (`organizers.sessions_valid_after`) and Sign out of all devices; Sign out now also forgets the remembered guest.
-- Invite links (`/g/:token`) grant verified power for their own event only, so a forwarded invitation can't act as the original guest elsewhere.
-- The Add your photo email link becomes photo-only instead of a full 7-day sign-in.
-- Re-confirming a cancelled RSVP requires proof of the email before it overwrites name, phone or SMS consent.
-- Rate limits key on `req.ip`; magic-link tokens are hashed at rest.
-- Returning-guest polish: a clear answered state, hosts see who can't make it, the admin Hosts page lists hosts rather than every guest identity, and the "re-sent your confirmation" message tells the truth.
-
-The PR description lists every file touched. Merge it with **Create a merge commit** (not squash) so this folder's `git pull` fast-forwards. `origin` in this folder now points at GitHub, so `git pull` picks the merge up. Delete this section once the PR is merged.
+- **`GET /auth/verify` must stay read-only.** It renders the Continue page via `peekLink`; only `POST /auth/verify` (`consumeLink`) signs in. Email scanners open every link — a GET that consumes turns real sign-ins into "expired".
+- The Continue page uses `Referrer-Policy: same-origin`, not `no-referrer`: with `no-referrer` browsers send `Origin: null` on the POST. The login-CSRF check (`sameOriginPost`) trusts `Sec-Fetch-Site` first, then `Origin`.
+- `magic_link_tokens.token` stores **SHA-256 hashes** (`tokenHash`). Codes are HMAC'd, bound to the requesting browser by the `sge_sign_in` cookie (`request_hash`), and lock after 5 wrong tries. All of this lives in `src/lib/sign-in-challenges.js`; create challenges only through `createSignInChallenge`.
+- **Account ownership checks read `req.sessionAccount`**, resolved once per request by `sessionMiddleware` (`src/lib/session.js`), which enforces `organizers.sessions_valid_after`. Don't call `parseSession` directly in routes — it can't see revocation. Session cookies now carry an issue time (`id.iat.exp.sig`); the old `id.exp.sig` format is still accepted.
+- Cookies are **appended** (`res.append('Set-Cookie')`), never set, so one response can carry several.
+- Guest verification has a scope: `guest_sessions.verified_event_id`. An invitation link (`/g/:token`) verifies for its own event only; a typed code (`intent: 'verify_guest'`) verifies everywhere (NULL). Always check with `guestVerifiedFor(guest, eventId)`.
+- The Add your photo link uses `intent: 'add_photo'` and sets the short-lived `sge_photo` cookie, accepted only by `requirePhotoAccess` on `/add-photo`, `/api/me`, and `/api/uploads/avatar`. Never let it create `sge_session`.
+- When a browser can't prove it owns an RSVP, routes answer `409 { error: 'verification_required', maskedEmail }`; `public/js/public-event.js` shows the inline code (`confirmItsYou`) and retries. Reuse that instead of sending people to their inbox.
+- Local dev and tests: with no `RESEND_API_KEY`, emails land in `mailer.devOutbox` (and the console). Integration tests read links and codes from there — the database only has hashes. Test helpers `followSignInLink` and `resetRateLimits` are at the top of `test/integration/public-flows.test.js`.
 
 This repository is a continuation of the same Silver Glider Events project, not a restart. Treat the code, migrations, tests, and current production health response as the source of truth.
 
@@ -187,15 +181,17 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release: annotated tag `v1.0.83` on the current release commit. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.84`. `v1.0.85` (sign-in codes and returning-guest hardening) is built and tested on `claude/auth-returning-guests`, pending merge and deploy. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
-- Production `/health` must report version `1.0.83`, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
-- GitHub CLI authentication is active for `code666now` over HTTPS. The accumulated `main` history and release tags are synchronized to `origin` through `v1.0.83`.
+- Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
+- GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
 - `.git-sha` is intentionally left modified after deployment so Railway receives the release SHA. Do not revert or include it blindly in a later commit.
-- Migrations currently run from `001_initial.sql` through `035_familiar_faces.sql`.
+- Migrations currently run from `001_initial.sql` through `037_sign_in_codes_and_session_revocation.sql`.
 
 ### Most recently completed
 
+- `v1.0.85` (Claude Code, pending merge) adds Luma-style 6-digit sign-in codes alongside every sign-in link, scanner-safe links behind a Continue page, server-side session revocation with **Sign out of all devices**, and an inline "Confirm it’s you" code in the RSVP flow. It fixes four holes: the Add your photo link was a full 7-day sign-in, forwarded invitations could act as the guest on other events, Sign out left the remembered guest behind, and knowing an email could overwrite a cancelled RSVP. Returning guests now see a clear answered status, and hosts see **Can’t make it** in Familiar Faces. See the rules above before touching auth.
+- `v1.0.84` adds reusable guest identities, remembered-browser one-tap RSVPs, and individual Familiar Faces invitation links.
 - `v1.0.83` makes every confirmed primary RSVP eligible for a reviewed direct invitation to another event, independent of the optional broader host-update checkbox. **Invite Familiar Faces** remains progressively hidden until an upcoming published event has a usable past audience; opt-outs, named +1s, existing attendees, prior invitations, and all SMS consent rules remain enforced.
 - `v1.0.82` prevents the desktop native share UI from remaining stranded when a guest moves from **Share** to **Add to calendar**. Desktop sharing now copies the event URL, touch devices retain native sharing, and calendar navigation is guarded while a mobile share sheet is active.
 - `v1.0.81` restores the shared logo and transactional-email action icons by rooting Railway uploads at the application directory, and makes `/health` reject deployments missing those critical PNG assets.

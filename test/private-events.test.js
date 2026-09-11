@@ -148,8 +148,14 @@ test('comments are text-only and limited to 300 characters', () => {
 test('fresh comment-enabled RSVPs receive attendee access without trusting existing emails', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'public.js'), 'utf8');
   assert.match(source, /const isNewRsvp = existing\.length === 0/);
-  assert.match(source, /if \(isNewRsvp && event\.comments_enabled\)/);
+  assert.match(source, /if \(event\.comments_enabled && \(isNewRsvp \|\| ownsExisting\)\)/);
   assert.match(source, /setAttendeeCookie\(res, event\.id, rsvp\.manage_token\)/);
+  // Owning an existing RSVP takes proof (a verified identity, this browser's
+  // guest session, or its attendee token) — never the typed email alone.
+  const ownership = source.slice(source.indexOf('const ownsExisting'), source.indexOf('if (existing.length && existing[0].status'));
+  assert.match(ownership, /provenIdentityId/);
+  assert.match(ownership, /attendeeToken === existing\[0\]\.manage_token/);
+  assert.doesNotMatch(ownership, /email/);
 
   const clientSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'public-event.js'), 'utf8');
   assert.match(clientSource, /await loadComments\(\)/);

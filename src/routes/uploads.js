@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
+const requirePhotoAccess = require('../middleware/requirePhotoAccess');
 const pool = require('../config/db');
 const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar, configured } = require('../lib/cloudinary');
 const { selectAccentColor } = require('../../public/js/artwork-color');
@@ -59,7 +60,9 @@ router.post('/api/uploads/flyer', requireOrganizer, handleUpload, async (req, re
   }
 });
 
-router.post('/api/uploads/avatar', requireOrganizer, handleUpload, async (req, res) => {
+// Accepts a full account session or the photo-only grant from an RSVP
+// confirmation's "Add your photo" link — this is the one write that grant opens.
+router.post('/api/uploads/avatar', requirePhotoAccess, handleUpload, async (req, res) => {
   if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
   if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 5 MB)' });
   try {
