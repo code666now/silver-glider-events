@@ -481,6 +481,16 @@ a { color: var(--sg-accent); text-decoration: none; }
   background: transparent; color: var(--sg-text); font: 800 13px var(--sg-font-body); cursor: pointer;
 }
 .returning-rsvp-change:hover, .returning-rsvp-change:focus-visible { border-color: var(--sg-accent); }
+.returning-rsvp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+
+/* Post-RSVP invitation to host. Deliberately quiet: it follows the guest's
+   answer and never competes with the event itself. */
+.host-your-own {
+  display: inline-block; padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255,255,255,.2);
+  color: var(--sg-text-dim); font: 700 13px var(--sg-font-body); text-decoration: none;
+}
+.host-your-own:hover, .host-your-own:focus-visible { color: var(--sg-accent); border-color: var(--sg-accent); }
 
 /* Email code entry — sign-in page and "confirm it's you" in the RSVP flow. */
 .sg-code-panel {
