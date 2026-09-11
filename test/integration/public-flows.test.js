@@ -440,6 +440,8 @@ test('personal Familiar Faces links recognize one guest but do not RSVP until a 
   const opened = await fetch(`${baseUrl}/g/${invitation.token}`, { redirect: 'manual' });
   assert.equal(opened.status, 303);
   assert.equal(opened.headers.get('location'), '/e/invite-target?invited=1');
+  assert.doesNotMatch(opened.headers.get('set-cookie') || '', /sge_session=[^;]/,
+    'an event invitation remains event-scoped');
   const guestCookie = responseCookie(opened, 'sge_guest');
   assert.ok(guestCookie);
   assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [target.id])).rows[0].count, 0);
@@ -1550,6 +1552,74 @@ test('completes logged-in and magic-link Host follows without creating Host Page
       WHERE follower_organizer_id=$1 AND host_organizer_id=$2 AND unsubscribed_at IS NULL`,
     [follower.id, organizerId]
   )).rows[0].count, 1);
+
+  // A first-time RSVP still creates only a lightweight remembered guest. If
+  // that person later follows a Host, the server uses the remembered email,
+  // the typed code completes the pending follow, and the browser becomes
+  // globally signed in without asking for the email again.
+  const rememberedEvent = await createEvent({
+    slug: 'remembered-follower-first-rsvp', title: 'Remembered Follower First RSVP'
+  });
+  const rememberedRsvp = await fetch(`${baseUrl}/api/public/events/${rememberedEvent.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Riley Remembered', email: 'riley-remembered@example.test' })
+  });
+  assert.equal(rememberedRsvp.status, 201);
+  const rememberedGuestCookie = responseCookie(rememberedRsvp, 'sge_guest');
+  assert.ok(rememberedGuestCookie);
+  assert.doesNotMatch(rememberedRsvp.headers.get('set-cookie') || '', /sge_session=[^;]/);
+
+  const rememberedFollowRequest = await fetch(`${baseUrl}/api/auth/guest-magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: rememberedGuestCookie },
+    body: JSON.stringify({
+      email: 'ignored-attacker@example.test', intent: 'follow_host', host_slug: 'second-host'
+    })
+  });
+  assert.equal(rememberedFollowRequest.status, 200);
+  const rememberedChallenge = (await pool.query(
+    `SELECT email,intent,target_organizer_id,return_path
+       FROM magic_link_tokens ORDER BY id DESC LIMIT 1`
+  )).rows[0];
+  assert.deepEqual(rememberedChallenge, {
+    email: 'riley-remembered@example.test',
+    intent: 'follow_host',
+    target_organizer_id: secondHostId,
+    return_path: '/h/second-host'
+  });
+  const rememberedRequestCookie = responseCookie(rememberedFollowRequest, 'sge_sign_in');
+  const rememberedCode = lastDevEmail('riley-remembered@example.test', 'magic_link').code;
+  const rememberedVerified = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `${rememberedGuestCookie}; ${rememberedRequestCookie}`
+    },
+    body: JSON.stringify({ code: rememberedCode })
+  });
+  assert.equal(rememberedVerified.status, 200);
+  assert.equal((await rememberedVerified.json()).redirect, '/h/second-host');
+  const rememberedAccountCookie = responseCookie(rememberedVerified, 'sge_session');
+  assert.ok(rememberedAccountCookie);
+  const rememberedIdentity = (await pool.query(
+    `SELECT id FROM organizers WHERE email='riley-remembered@example.test'`
+  )).rows[0];
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM organizers WHERE LOWER(email)=LOWER('riley-remembered@example.test')`
+  )).rows[0].count, 1, 'verification reuses the RSVP identity');
+  assert.equal(Number((await pool.query(
+    `SELECT account_id FROM rsvps WHERE event_id=$1 AND email='riley-remembered@example.test'`,
+    [rememberedEvent.id]
+  )).rows[0].account_id), Number(rememberedIdentity.id), 'the verified identity retains its RSVP history');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_follows
+      WHERE follower_organizer_id=$1 AND host_organizer_id=$2 AND unsubscribed_at IS NULL`,
+    [rememberedIdentity.id, secondHostId]
+  )).rows[0].count, 1);
+  const rememberedHostPage = await fetch(`${baseUrl}/h/second-host`, {
+    headers: { cookie: rememberedAccountCookie }
+  });
+  assert.match(await rememberedHostPage.text(), /data-following="true"/);
 });
 
 test('keeps ordinary Create Event magic-link destinations unchanged', async () => {
@@ -2858,7 +2928,7 @@ test('a forwarded invitation can answer for its own event but cannot act as the 
   assert.equal(answerInvited.status, 200);
 });
 
-test('rejoining after cancelling needs an emailed code, then keeps the new details', async () => {
+test('rejoining after cancelling needs an emailed code, then signs in globally and keeps the new details', async () => {
   resetRateLimits();
   const event = await createEvent({ slug: 'rejoin-night', title: 'Rejoin Night', comments_enabled: true });
   const email = 'rejoin@example.test';
@@ -2891,7 +2961,9 @@ test('rejoining after cancelling needs an emailed code, then keeps the new detai
   const verifiedBody = await verified.json();
   assert.equal(verifiedBody.kind, 'guest');
   assert.equal(verifiedBody.firstName, 'Sam');
-  assert.doesNotMatch(verified.headers.get('set-cookie'), /sge_session=[^;]/, 'guest verification is not an account sign-in');
+  const accountCookie = responseCookie(verified, 'sge_session');
+  assert.ok(accountCookie, 'typing the guest verification code establishes the global account session');
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: accountCookie } })).status, 200);
   const guestCookie = responseCookie(verified, 'sge_guest');
 
   const rejoin = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
@@ -2904,6 +2976,15 @@ test('rejoining after cancelling needs an emailed code, then keeps the new detai
   assert.equal(rejoined[0].status, 'confirmed');
   assert.equal(rejoined[0].last_name, 'Updated');
   assert.ok(rejoined[0].account_id);
+
+  const forget = await fetch(`${baseUrl}/api/public/guest-session/forget`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: `${guestCookie}; ${accountCookie}` },
+    body: JSON.stringify({ eventSlug: event.slug })
+  });
+  assert.match(forget.headers.get('set-cookie') || '', /sge_guest=;/);
+  assert.match(forget.headers.get('set-cookie') || '', /sge_session=;/,
+    'Not Sam clears the promoted global session on this browser too');
 });
 
 test('"already on the list" says truthfully whether a confirmation email went out', async () => {

@@ -86,26 +86,33 @@ async function issueSignIn(res, { email, intent = 'sign_in', targetOrganizerId =
   setSignInRequestCookie(res, requestToken);
 }
 
+async function signInIntent(body = {}) {
+  body = body && typeof body === 'object' ? body : {};
+  const requestedIntent = String(body.intent || '').trim();
+  const intent = requestedIntent === 'follow_host' ? 'follow_host' : 'sign_in';
+  let targetOrganizerId = null;
+  let returnPath = safeNext(body.next);
+  let followHostName = '';
+  if (intent === 'follow_host') {
+    const host = await findPublicHost(pool, body.host_slug);
+    if (!host) return null;
+    targetOrganizerId = host.id;
+    followHostName = host.org_name;
+    returnPath = `/h/${encodeURIComponent(host.public_slug)}`;
+  }
+  return { intent, targetOrganizerId, returnPath, followHostName };
+}
+
 // POST /api/auth/magic-link — always responds ok (no email enumeration)
 router.post('/api/auth/magic-link', async (req, res, next) => {
   try {
-    const email = String(req.body.email || '').trim().toLowerCase();
+    const email = String(req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
     if (!limitEmailRequest(req, res, email)) return;
 
-    const requestedIntent = String(req.body.intent || '').trim();
-    const intent = requestedIntent === 'follow_host' ? 'follow_host' : 'sign_in';
-    let targetOrganizerId = null;
-    let returnPath = safeNext(req.body.next);
-    let followHostName = '';
-    if (intent === 'follow_host') {
-      const host = await findPublicHost(pool, req.body.host_slug);
-      if (!host) return res.status(404).json({ error: 'Host Page not found' });
-      targetOrganizerId = host.id;
-      followHostName = host.org_name;
-      returnPath = `/h/${encodeURIComponent(host.public_slug)}`;
-    }
-    await issueSignIn(res, { email, intent, targetOrganizerId, returnPath, followHostName });
+    const challenge = await signInIntent(req.body);
+    if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
+    await issueSignIn(res, { email, ...challenge });
     res.json({ ok: true, codeLength: CODE_LENGTH });
   } catch (err) {
     next(err);
@@ -120,15 +127,18 @@ router.post('/api/auth/guest-magic-link', async (req, res, next) => {
     if (!guest) return res.status(401).json({ error: 'This browser is no longer recognized' });
     const email = String(guest.email || '').trim().toLowerCase();
     if (!limitEmailRequest(req, res, email)) return;
-    await issueSignIn(res, { email, returnPath: safeNext(req.body?.next) });
+    const challenge = await signInIntent(req.body);
+    if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
+    await issueSignIn(res, { email, ...challenge });
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }
 });
 
 // POST /api/auth/guest-code — Luma-style "confirm it's you" for the public RSVP
 // flow. Emails a code only (the guest is on the page that asked). Proving the
-// email upgrades this browser's remembered guest; it never creates an account
-// session. `remembered: true` targets the email this browser already knows.
+// email upgrades this browser's remembered guest and, when the code is typed,
+// establishes the normal account session. `remembered: true` targets the email
+// this browser already knows.
 router.post('/api/auth/guest-code', async (req, res, next) => {
   try {
     let email;
@@ -162,7 +172,7 @@ function displayNameParts(value, email) {
 // Finishes a consumed link or code. Database work happens on `client` inside
 // the caller's transaction; cookies are applied only after COMMIT through
 // `afterCommit(res)`.
-async function completeChallenge(client, req, pending) {
+async function completeChallenge(client, req, pending, { globalizeTypedGuestCode = false } = {}) {
   const email = pending.email;
 
   if (pending.intent === 'verify_guest') {
@@ -185,11 +195,20 @@ async function completeChallenge(client, req, pending) {
       displayName: names.full,
       verified: true
     });
+    if (globalizeTypedGuestCode) {
+      await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [identity.id]);
+    }
     return {
       kind: 'guest',
       firstName: names.first,
       redirect: safeNext(pending.return_path) || null,
-      afterCommit: res => setGuestSessionCookie(res, session.token)
+      afterCommit: res => {
+        setGuestSessionCookie(res, session.token);
+        if (globalizeTypedGuestCode) {
+          clearPhotoAccessCookie(res);
+          setSessionCookie(res, identity.id);
+        }
+      }
     };
   }
 
@@ -381,7 +400,12 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
       res.setHeader('Cache-Control', 'private, no-store');
       return res.status(400).json({ error: result.error, message: CODE_ERRORS[result.error], remaining: result.remaining });
     }
-    const outcome = await completeChallenge(client, req, result.pending);
+    // Typing a browser-bound code is an explicit proof of the inbox. A guest
+    // verification code therefore also establishes the normal account
+    // session; limited email links keep their narrower scopes.
+    const outcome = await completeChallenge(client, req, result.pending, {
+      globalizeTypedGuestCode: result.pending.intent === 'verify_guest'
+    });
     await client.query('COMMIT');
     outcome.afterCommit(res);
     clearSignInRequestCookie(res);

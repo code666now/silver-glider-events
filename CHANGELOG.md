@@ -2,9 +2,26 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.89
+
+Released September 10, 2026. Built and deployed by Codex.
+
+### Added
+
+* A returning RSVP guest can now follow a host without retyping their email. **Follow** offers **Continue as [name]**, sends the existing browser-bound verification code to the remembered email, and automatically completes the follow after the code is accepted.
+
+### Changed
+
+* Successfully typing the existing RSVP identity-verification code now establishes the normal 30-day Silver Glider account session in addition to the remembered guest session. The first RSVP remains the same lightweight **Name + Email → RSVP** flow with no verification step, and later authenticated follows and creator actions can be completed without another code while the session remains valid.
+
+### Security
+
+* The remembered-email Follow flow resolves the email from the signed guest-session cookie and resolves the host from its public slug; neither identity nor follow target is trusted from editable client data.
+* Personal RSVP/invitation links, text-reminder links, and Add Photo access retain their event- or feature-limited scopes and do not create a global account session.
+
 ## 1.0.88
 
-Not yet released. Built by Claude Code on branch `claude/recognize-personal-links`.
+Released September 10, 2026. Built by Claude Code (PR #5), deployed by Codex.
 
 ### Fixed
 

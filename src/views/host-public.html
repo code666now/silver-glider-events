@@ -67,6 +67,11 @@
     .follow-modal-head p { margin-top:7px;color:var(--sg-text-dim);font-size:14px; }
     .follow-modal-close { width:38px;height:38px;flex:0 0 auto;border:1px solid var(--sg-border);border-radius:50%;background:transparent;color:var(--sg-text-dim);font-size:22px;cursor:pointer; }
     .follow-modal-error { display:none;margin:-6px 0 14px;color:var(--sg-danger);font-size:12px; }
+    .follow-returning { display:grid;gap:12px; }
+    .follow-returning[hidden] { display:none; }
+    .follow-returning-email { color:var(--sg-text-dim);font-size:13px;line-height:1.5;text-align:center; }
+    .follow-use-email { justify-self:center;border:0;background:transparent;color:var(--sg-text-dim);font:700 12px var(--sg-font-body);text-decoration:underline;text-underline-offset:3px;cursor:pointer; }
+    .follow-use-email:hover,.follow-use-email:focus-visible { color:var(--sg-text); }
     .follow-modal-sent { display:none;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
     .follow-modal-sent > p { margin:0 0 16px; }
     body.follow-modal-open { overflow:hidden; }
@@ -149,12 +154,17 @@
   <div class="follow-modal" id="follow-modal" role="dialog" aria-modal="true" aria-labelledby="follow-modal-title">
     <div class="follow-modal-card">
       <div class="follow-modal-head">
-        <div><h2 id="follow-modal-title">Follow {{HOST_NAME}}</h2><p>Enter your email to follow.</p></div>
+        <div><h2 id="follow-modal-title">Follow {{HOST_NAME}}</h2><p id="follow-modal-copy">Enter your email to follow.</p></div>
         <button class="follow-modal-close" id="follow-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="follow-modal-error" id="follow-error"></p>
+      <div class="follow-returning" id="follow-returning" hidden>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="follow-returning-continue" type="button">Continue</button>
+        <p class="follow-returning-email" id="follow-returning-email"></p>
+        <button class="follow-use-email" id="follow-use-email" type="button">Use a different email</button>
       </div>
       <form id="follow-form">
         <div class="sg-field"><label for="follow-email">Email address</label><input class="sg-input" id="follow-email" type="email" autocomplete="email" required placeholder="you@example.com"></div>
-        <p class="follow-modal-error" id="follow-error"></p>
         <button class="sg-btn sg-btn-primary sg-btn-block" id="follow-continue" type="submit">Continue</button>
       </form>
       <div class="follow-modal-sent" id="follow-sent">
@@ -177,24 +187,67 @@
       const email = document.getElementById('follow-email');
       const error = document.getElementById('follow-error');
       const sent = document.getElementById('follow-sent');
+      const modalCopy = document.getElementById('follow-modal-copy');
+      const returningPanel = document.getElementById('follow-returning');
+      const returningButton = document.getElementById('follow-returning-continue');
+      const returningEmail = document.getElementById('follow-returning-email');
+      const useEmailButton = document.getElementById('follow-use-email');
       const continueButton = document.getElementById('follow-continue');
       const closeButton = document.getElementById('follow-modal-close');
       const slug = root.dataset.hostSlug;
       const hostName = root.dataset.hostName;
       let following = root.dataset.following === 'true';
       let priorFocus = null;
+      let rememberedGuestPromise = null;
 
       function render() {
         button.classList.toggle('following', following);
         button.setAttribute('aria-pressed', String(following));
         button.textContent = following ? 'Following ✓' : 'Follow';
       }
-      function openModal() {
+      function loadRememberedGuest() {
+        if (!rememberedGuestPromise) {
+          rememberedGuestPromise = fetch('/api/public/guest-session', {
+            headers: { Accept: 'application/json' }, credentials: 'same-origin'
+          }).then(async response => response.ok ? response.json() : null).catch(() => null);
+        }
+        return rememberedGuestPromise;
+      }
+      function showEmailForm() {
+        returningPanel.hidden = true;
+        form.style.display = 'block';
+        modalCopy.textContent = 'Enter your email to follow.';
+      }
+      function showRememberedGuest(guest) {
+        form.style.display = 'none';
+        returningPanel.hidden = false;
+        returningButton.textContent = `Continue as ${guest.firstName}`;
+        returningEmail.textContent = `We’ll send a code to ${guest.maskedEmail}.`;
+        modalCopy.textContent = 'Confirm it’s you once, then future follows are instant.';
+      }
+      async function openModal() {
         priorFocus = document.activeElement;
         error.style.display = 'none';
+        sent.style.display = 'none';
+        const guest = await loadRememberedGuest();
+        if (guest?.recognized) showRememberedGuest(guest);
+        else showEmailForm();
         modal.classList.add('open');
         document.body.classList.add('follow-modal-open');
-        requestAnimationFrame(() => email.focus());
+        requestAnimationFrame(() => (guest?.recognized ? returningButton : email).focus());
+      }
+
+      async function requestFollowChallenge(url, body) {
+        const response = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin', body: JSON.stringify(body)
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Please try again.');
+        returningPanel.hidden = true;
+        form.style.display = 'none';
+        sent.style.display = 'block';
+        codeInput.focus();
       }
       function closeModal() {
         modal.classList.remove('open');
@@ -211,7 +264,10 @@
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin'
           });
-          if (response.status === 401) return openModal();
+          if (response.status === 401) {
+            await openModal();
+            return;
+          }
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.error || 'Please try again.');
           following = payload.following;
@@ -227,19 +283,34 @@
         continueButton.disabled = true;
         continueButton.textContent = 'Sending…';
         try {
-          const response = await fetch('/api/auth/magic-link', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email.value.trim(), intent: 'follow_host', host_slug: slug })
+          await requestFollowChallenge('/api/auth/magic-link', {
+            email: email.value.trim(), intent: 'follow_host', host_slug: slug
           });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(payload.error || 'Please try again.');
-          form.style.display = 'none';
-          sent.style.display = 'block';
-          codeInput.focus();
         } catch (err) {
           error.textContent = err.message;
           error.style.display = 'block';
         } finally { continueButton.disabled = false;continueButton.textContent = 'Continue'; }
+      });
+      returningButton.addEventListener('click', async () => {
+        error.style.display = 'none';
+        returningButton.disabled = true;
+        const label = returningButton.textContent;
+        returningButton.textContent = 'Sending…';
+        try {
+          await requestFollowChallenge('/api/auth/guest-magic-link', {
+            intent: 'follow_host', host_slug: slug
+          });
+        } catch (err) {
+          error.textContent = err.message;
+          error.style.display = 'block';
+        } finally {
+          returningButton.disabled = false;
+          returningButton.textContent = label;
+        }
+      });
+      useEmailButton.addEventListener('click', () => {
+        showEmailForm();
+        email.focus();
       });
       // The emailed code finishes the follow in this browser; the link works too.
       const codeInput = document.getElementById('follow-code');

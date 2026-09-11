@@ -24,7 +24,8 @@ test('follow intent is stored server-side and verification completes it transact
   const auth = source('src/routes/auth.js');
   const challenges = source('src/lib/sign-in-challenges.js');
   assert.match(auth, /intent === 'follow_host'/);
-  assert.match(auth, /findPublicHost\(pool, req\.body\.host_slug\)/);
+  assert.match(auth, /findPublicHost\(pool, body\.host_slug\)/);
+  assert.match(auth, /await signInIntent\(req\.body\)/);
   assert.match(challenges, /intent, target_organizer_id, return_path/);
   assert.match(challenges, /PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path'/);
   assert.match(challenges, /RETURNING \$\{PENDING_COLUMNS\}/);
@@ -40,6 +41,11 @@ test('public Host Page offers an explicit accessible follow flow without replaci
   assert.match(view, /data-host-follow/);
   assert.match(view, /id="follow-modal" role="dialog" aria-modal="true"/);
   assert.match(view, /Enter your email to follow\./);
+  assert.match(view, /id="follow-returning" hidden/);
+  assert.match(view, /Continue as \$\{guest\.firstName\}/);
+  assert.match(view, /\/api\/public\/guest-session/);
+  assert.match(view, /\/api\/auth\/guest-magic-link/);
+  assert.match(view, /Use a different email/);
   assert.match(view, /intent: 'follow_host'/);
   assert.match(view, /method: following \? 'DELETE' : 'POST'/);
   assert.match(view, /event\.key === 'Escape'/);

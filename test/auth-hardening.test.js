@@ -103,3 +103,12 @@ test('the sign-in page and Host Page follow modal accept the emailed code', () =
   }
   assert.match(login, /Enter the 6-digit code/);
 });
+
+test('only a typed guest verification code promotes the guest to an account session', () => {
+  const auth = read('src/routes/auth.js');
+  const verifyLink = auth.slice(auth.indexOf("router.post('/auth/verify'"), auth.indexOf('const CODE_ERRORS'));
+  const verifyCode = auth.slice(auth.indexOf("router.post('/api/auth/verify-code'"), auth.indexOf('// Signing out'));
+  assert.doesNotMatch(verifyLink, /globalizeTypedGuestCode:\s*true/);
+  assert.match(verifyCode, /globalizeTypedGuestCode: result\.pending\.intent === 'verify_guest'/);
+  assert.match(auth, /if \(globalizeTypedGuestCode\)[\s\S]*setSessionCookie\(res, identity\.id\)/);
+});

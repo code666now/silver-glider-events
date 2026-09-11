@@ -11,7 +11,7 @@ const { invitationExpiry, tokenHash } = {
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('returning guest persistence is separate from privileged account authentication', () => {
+test('first-RSVP persistence stays separate from privileged account authentication', () => {
   const migration = read('src/db/migrations/036_returning_guest_identity.sql');
   const guestSession = read('src/lib/guest-session.js');
   const publicRoutes = read('src/routes/public.js');
@@ -115,7 +115,8 @@ test('recognized guests can become creators only through the existing magic link
   const login = read('src/views/login.html');
   assert.match(auth, /router\.post\('\/api\/auth\/guest-magic-link'/);
   assert.match(auth, /sendMagicLink/);
-  assert.match(auth, /await issueSignIn\(res, \{ email, returnPath: safeNext\(req\.body\?\.next\) \}\)/);
+  assert.match(auth, /const challenge = await signInIntent\(req\.body\)/);
+  assert.match(auth, /await issueSignIn\(res, \{ email, \.\.\.challenge \}\)/);
   assert.doesNotMatch(auth.slice(auth.indexOf("router.post('/api/auth/guest-magic-link'"), auth.indexOf("router.post('/api/auth/guest-code'")), /setSessionCookie/);
   assert.match(login, /Continue as \$\{guest\.firstName\}/);
   assert.match(login, /Email my sign-in link/);
