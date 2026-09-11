@@ -21,25 +21,36 @@ test('previous-guest invitation storage is nullable, retryable, and recipient-de
   assert.match(familiarFacesMigration, /message_log_previous_guest_target_recipient_uq/);
 });
 
-test('manage page reviews one past crowd in a responsive, non-interruptive dialog', () => {
+test('upcoming events invite past guests as faces inside Familiar Faces, not a one-time dialog', () => {
   const view = read('src/views/event-manage.html');
   const client = read('public/js/manage.js');
-  const styles = read('public/css/previous-guest-invites.css');
+  const styles = read('public/css/familiar-faces.css');
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
+  // The promotion row stays, but now jumps to the in-page section.
   assert.match(promotion, /id="invite-previous-guests"/);
-  assert.match(view, /<dialog class="previous-guests-dialog"/);
   assert.match(view, /Invite Familiar Faces/);
-  assert.match(view, /Choose a past event/);
-  assert.match(client, /previous-guests\?sourceEventId=/);
-  assert.match(client, /data-previous-guest/);
-  assert.match(client, /Send \$\{selected\.length\}/);
-  assert.match(client, /Named \+1s are never added automatically/);
-  assert.match(client, /method: 'POST'/);
-  assert.match(styles, /@media \(max-width:620px\)/);
-  assert.match(styles, /margin:auto 0 0/);
   assert.ok(promotion.indexOf('download-qr') < promotion.indexOf('invite-previous-guests'));
   assert.ok(promotion.indexOf('invite-previous-guests') < promotion.indexOf('announce'));
+  assert.doesNotMatch(view, /previous-guests-dialog|previous-guest-invites\.css/);
+  assert.doesNotMatch(client, /\/previous-guests|renderPreviousGuestAction|loadPreviousGuests/);
+
+  const section = view.slice(view.indexOf('id="familiar-people"'));
+  assert.match(section, />Invite your people</);
+  assert.match(section, /id="familiar-people-grid"/);
+  assert.match(section, /id="familiar-people-source"[\s\S]*All past events/);
+  assert.match(client, /familiar-faces\/people\?/);
+  assert.match(client, /familiar-faces\/people\/invite/);
+  // Nothing is pre-selected; there's a review step before sending.
+  assert.match(client, /const peopleSelection = new Map\(\)/);
+  assert.doesNotMatch(section, /checked/);
+  assert.match(client, /Invite \$\{people\} to \$\{eventData\.title\}\?/);
+  // One search box filters both grids.
+  assert.match(client, /peopleSearch = query;\s*\n\s*loadPeople\(\)/);
+  // +1s are shown with a share action, never selectable.
+  assert.match(client, /data-share-person/);
+  assert.match(styles, /\.familiar-face-share/);
+  assert.match(styles, /\.familiar-people-head \{ align-items:stretch;flex-direction:column; \}/);
 });
 
 test('invitation email is artwork-led, escaped, unsubscribable, and one-way', () => {
