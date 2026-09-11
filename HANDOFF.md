@@ -156,6 +156,31 @@ Commerce API contract wiring and checkout handoff completion · multiple brands/
 
 ## New Session Handoff
 
+### In progress — Claude Code (started September 10, 2026)
+
+Claude Code is working on a separate clone (`~/sge-claude`) on branch
+`claude/auth-returning-guests`, and will open a GitHub pull request against
+`main`. **Until that PR merges, please avoid editing these areas** so the two
+agents don't produce conflicting changes:
+
+- `src/routes/auth.js`, `src/lib/session.js`, `src/middleware/requireOrganizer.js`, `src/lib/rate-limit.js`
+- `src/lib/guest-session.js`, `src/lib/guest-invitations.js`, and the returning-guest / RSVP / `/g/:token` / add-photo handlers in `src/routes/public.js`
+- `src/views/login.html`, the returning-guest card in `src/views/event-public*.html` and `public/js/public-event.js`
+- `/api/admin/hosts` in `src/routes/admin.js`, and the magic-link email in `src/lib/mailer.js`
+
+Scope of the PR:
+
+- Magic links that email scanners can't burn (the link opens a Continue page; only the button signs in).
+- A Luma-style 6-digit email code next to every magic link, typed on the page that asked for it. This fixes sign-ins landing in the Gmail/Instagram in-app browser, and replaces the "open your confirmation email" dead ends in the RSVP flow.
+- Server-side session revocation (`organizers.sessions_valid_after`) and Sign out of all devices; Sign out now also forgets the remembered guest.
+- Invite links (`/g/:token`) grant verified power for their own event only, so a forwarded invitation can't act as the original guest elsewhere.
+- The Add your photo email link becomes photo-only instead of a full 7-day sign-in.
+- Re-confirming a cancelled RSVP requires proof of the email before it overwrites name, phone or SMS consent.
+- Rate limits key on `req.ip`; magic-link tokens are hashed at rest.
+- Returning-guest polish: a clear answered state, hosts see who can't make it, the admin Hosts page lists hosts rather than every guest identity, and the "re-sent your confirmation" message tells the truth.
+
+The PR description lists every file touched. Merge it with **Create a merge commit** (not squash) so this folder's `git pull` fast-forwards. `origin` in this folder now points at GitHub, so `git pull` picks the merge up. Delete this section once the PR is merged.
+
 This repository is a continuation of the same Silver Glider Events project, not a restart. Treat the code, migrations, tests, and current production health response as the source of truth.
 
 ### Exact repository and production state
