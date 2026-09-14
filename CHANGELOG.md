@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.90
+
+Not yet released. Built by Claude Code on branch `claude/create-event-shortcut`.
+
+### Fixed
+
+* **Create your event** on the home page now lands in the event builder after sign-in instead of the dashboard. The flow is unchanged: it still goes through the normal sign-in screen, and already signed-in hosts go straight there.
+* A bookmarked or typed `/events/123` (without `/manage`) now opens that event's manage page instead of showing "Cannot GET". Signed-out visitors still go to sign-in, and non-numeric addresses still 404.
+
 ## 1.0.89
 
 Released September 10, 2026. Built and deployed by Codex.

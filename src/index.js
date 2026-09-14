@@ -96,6 +96,12 @@ app.get('/events/new', requireOrganizer, async (req, res, next) => {
     res.redirect('/events/new');
   } catch (err) { next(err); }
 });
+// Hosts type or bookmark /events/123 without /manage; send them to the page
+// they meant rather than "Cannot GET". Non-numeric ids fall through to 404.
+app.get('/events/:id', requireOrganizer, (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  res.redirect(302, `/events/${req.params.id}/manage`);
+});
 app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
 app.get([
