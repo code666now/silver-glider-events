@@ -241,7 +241,7 @@ function renderCreditPacks(packs, checkoutReady) {
     if (index === 1) {
       const badge = document.createElement('small');
       badge.className = 'credit-pack-badge';
-      badge.textContent = 'RECOMMENDED';
+      badge.textContent = 'MOST POPULAR';
       button.appendChild(badge);
     }
     button.append(amount, price, unit);

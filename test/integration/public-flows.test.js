@@ -3217,3 +3217,24 @@ test('“already on the list” in a new browser can be managed there after an e
   })).text();
   assert.match(page, /"returningGuest":\{"firstName":"Robin","response":"going"\}/);
 });
+
+test('a bookmarked /events/:id lands on the manage page, and Create your event opens the builder', async () => {
+  const event = await createEvent({ slug: 'bookmarked-event', title: 'Bookmarked Event' });
+  const cookie = `sge_session=${signSession(organizerId)}`;
+
+  const owner = await fetch(`${baseUrl}/events/${event.id}`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(owner.status, 302);
+  assert.equal(owner.headers.get('location'), `/events/${event.id}/manage`);
+
+  const signedOut = await fetch(`${baseUrl}/events/${event.id}`, { redirect: 'manual' });
+  assert.equal(signedOut.headers.get('location'), '/login');
+
+  const notAnId = await fetch(`${baseUrl}/events/not-an-id`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(notAnId.status, 404);
+
+  // Unchanged flow: the home CTA still goes through sign-in, but lands in the builder.
+  const home = await (await fetch(`${baseUrl}/`)).text();
+  assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event</);
+  const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(signedInLogin.headers.get('location'), '/events/new');
+});
