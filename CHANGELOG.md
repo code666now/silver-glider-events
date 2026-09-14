@@ -11,6 +11,10 @@ Not yet released. Built by Claude Code on branch `claude/create-event-shortcut`.
 * **Create your event** on the home page now lands in the event builder after sign-in instead of the dashboard. The flow is unchanged: it still goes through the normal sign-in screen, and already signed-in hosts go straight there.
 * A bookmarked or typed `/events/123` (without `/manage`) now opens that event's manage page instead of showing "Cannot GET". Signed-out visitors still go to sign-in, and non-numeric addresses still 404.
 
+### Changed
+
+* The middle texting pack in Settings → Messaging is labeled **Most popular** instead of **Recommended**. Pricing and packs are unchanged.
+
 ## 1.0.89
 
 Released September 10, 2026. Built and deployed by Codex.

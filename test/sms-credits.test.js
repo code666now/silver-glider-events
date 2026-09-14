@@ -199,7 +199,7 @@ test('Host Settings owns the feature while secrets remain server-only', () => {
   assert.match(settings, /id="sms-credit-continue" disabled>Continue to payment/);
   assert.doesNotMatch(settings, /PayPal|Venmo|sms-payment-sheet|sms-payment-progress/);
   assert.match(settingsClient, /function unitPrice\(pack\)/);
-  assert.match(settingsClient, /badge\.textContent = 'RECOMMENDED'/);
+  assert.match(settingsClient, /badge\.textContent = 'MOST POPULAR'/);
   assert.match(settingsClient, /credits selected/);
   assert.match(settingsClient, /function startStripeCheckout\(\)/);
   assert.match(settingsClient, /api\('\/api\/sms-credits\/checkout-sessions'/);
