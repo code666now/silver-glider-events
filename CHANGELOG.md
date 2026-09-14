@@ -4,7 +4,7 @@ Silver Glider Events uses semantic versioning. `package.json` is the source of t
 
 ## 1.0.90
 
-Not yet released. Built by Claude Code on branch `claude/create-event-shortcut`.
+Released September 14, 2026. Built by Claude Code (PR #6), reviewed and deployed by Codex.
 
 ### Fixed
 

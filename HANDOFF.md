@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.89`. `v1.0.90` (home Create your event opens the builder; bookmarked `/events/:id` redirects to manage) is built and tested on `claude/create-event-shortcut`, pending merge and deploy. It promotes a successfully typed guest verification code into the normal account session and lets remembered guests continue into Follow Host without retyping their email. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.90`. The home **Create your event** action opens the builder after sign-in, bookmarked `/events/:id` addresses redirect to the manage page, and the middle texting pack is labeled **Most popular** without changing its price or size. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -194,6 +194,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 ### Most recently completed
 
+- `v1.0.90` sends the home **Create your event** action through the existing sign-in flow directly into the builder, redirects bookmarked numeric `/events/:id` addresses to their manage pages, and relabels the unchanged middle texting pack **Most popular**.
 - `v1.0.89` promotes a successfully typed, browser-bound guest verification code into the normal 30-day account session while preserving the no-code first RSVP. Follow Host recognizes a remembered guest, offers **Continue as [name]**, sends the existing code to the session-bound email, and automatically completes the pending follow after verification. Limited personal RSVP, invitation, text-reminder, and Add Photo links remain non-global.
 - `v1.0.88` (Claude Code): a personal link from the guest’s own email (confirmation View event, manage link, text reminder) shows their answer on that event via the per-event attendee cookie (`returningGuestContext` checks it first); “already on the list” offers **Manage my RSVP here** with the inline code; “Not [name]?” clears that event’s attendee cookie.
 - `v1.0.87` (Claude Code) replaces the one-time Invite Familiar Faces popup with **Invite your people** inside Familiar Faces on upcoming events: all past guests as searchable faces, tap to select, review, send; +1s get a Share link; past-event pickers explain unselectable faces; sticky selection bars clear the Feedback bubble.
