@@ -9,7 +9,7 @@ const { sendEventAnnouncement } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { attendeeAvatar, canAppearInPublicListings, normalizeGuestExperienceSettings, safeAvatarUrl } = require('../lib/private-events');
 const { hashCode, normalizeCode, validateCode } = require('../lib/secret-show');
-const { isManagedFlyerUrl } = require('../lib/cloudinary');
+const { isManagedFlyerUrl, isManagedVibePhotoUrl } = require('../lib/cloudinary');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('../lib/admission');
 const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
@@ -160,6 +160,12 @@ function cleanVibeLabel(v) {
   return value ? value.slice(0, 80) : null;
 }
 
+function cleanVibeImageUrl(v) {
+  const raw = String(v ?? '').trim();
+  if (!raw) return null;
+  return isManagedVibePhotoUrl(raw) ? raw.slice(0, 1000) : null;
+}
+
 function cleanFlyerUrl(v) {
   const raw = String(v ?? '').trim();
   if (!raw) return null;
@@ -189,8 +195,13 @@ function validateEventBody(body, { partial = false } = {}) {
     description:     v => String(v ?? '').trim(),
     event_vibe_url:  cleanVibeUrl,
     event_vibe_label: cleanVibeLabel,
+    event_vibe_image_url: cleanVibeImageUrl,
     event_vibe_url_2: cleanVibeUrl,
     event_vibe_label_2: cleanVibeLabel,
+    event_vibe_image_url_2: cleanVibeImageUrl,
+    event_vibe_url_3: cleanVibeUrl,
+    event_vibe_label_3: cleanVibeLabel,
+    event_vibe_image_url_3: cleanVibeImageUrl,
     cover_image_url: v => String(v ?? '').trim() || null,
     cover_fit_mode: v => (COVER_FIT_MODES.includes(v) ? v : 'auto'),
     presentation_mode: v => (PRESENTATION_MODES.includes(v) ? v : 'standard'),
@@ -231,16 +242,37 @@ function validateEventBody(body, { partial = false } = {}) {
   }
   if (body.event_vibe_url && !out.event_vibe_url) errors.push('Enter a supported Event Vibe link');
   if (body.event_vibe_url_2 && !out.event_vibe_url_2) errors.push('Enter a supported second Event Vibe link');
-  const requestedSecondVibe = Boolean(String(body.event_vibe_url_2 ?? '').trim() || String(body.event_vibe_label_2 ?? '').trim());
-  if (requestedSecondVibe && !out.event_vibe_url) errors.push('Add the first artist link');
-  if (body.event_vibe_url !== undefined && !out.event_vibe_url) {
-    out.event_vibe_label = null;
-    out.event_vibe_url_2 = null;
-    out.event_vibe_label_2 = null;
-  } else if (body.event_vibe_url_2 !== undefined || body.event_vibe_label_2 !== undefined) {
-    if (out.event_vibe_url_2 && !out.event_vibe_label) errors.push('Add the first artist name');
-    if (out.event_vibe_url_2 && !out.event_vibe_label_2) errors.push('Add the second artist name');
-    if (out.event_vibe_label_2 && !out.event_vibe_url_2) errors.push('Add the second artist link');
+  if (body.event_vibe_url_3 && !out.event_vibe_url_3) errors.push('Enter a supported third Event Vibe link');
+  for (const field of ['event_vibe_image_url', 'event_vibe_image_url_2', 'event_vibe_image_url_3']) {
+    if (body[field] && !out[field]) errors.push('Upload Event Vibe photos through Silver Glider Events');
+  }
+  const vibeEntries = [
+    { number: 'first', label: out.event_vibe_label, url: out.event_vibe_url, image: out.event_vibe_image_url },
+    { number: 'second', label: out.event_vibe_label_2, url: out.event_vibe_url_2, image: out.event_vibe_image_url_2 },
+    { number: 'third', label: out.event_vibe_label_3, url: out.event_vibe_url_3, image: out.event_vibe_image_url_3 }
+  ];
+  const vibeRequested = [
+    Boolean(String(body.event_vibe_label ?? '').trim() || String(body.event_vibe_url ?? '').trim() || String(body.event_vibe_image_url ?? '').trim()),
+    Boolean(String(body.event_vibe_label_2 ?? '').trim() || String(body.event_vibe_url_2 ?? '').trim() || String(body.event_vibe_image_url_2 ?? '').trim()),
+    Boolean(String(body.event_vibe_label_3 ?? '').trim() || String(body.event_vibe_url_3 ?? '').trim() || String(body.event_vibe_image_url_3 ?? '').trim())
+  ];
+  const vibeHasContent = vibeEntries.map(entry => Boolean(entry.url || entry.image));
+  vibeRequested.forEach((requested, index) => {
+    if (requested && !vibeHasContent[index]) errors.push(`Add a photo or link for the ${vibeEntries[index].number} artist`);
+  });
+  if (vibeRequested[1] && !vibeHasContent[0]) errors.push('Add a photo or link for the first artist');
+  if (vibeRequested[2] && !vibeHasContent[1]) errors.push('Add a photo or link for the second artist');
+  if (vibeHasContent[1] || vibeHasContent[2]) {
+    vibeEntries.forEach((entry, index) => {
+      if (vibeHasContent[index] && !entry.label) errors.push(`Add the ${entry.number} artist name`);
+    });
+  }
+  const primaryVibeTouched = ['event_vibe_url', 'event_vibe_label', 'event_vibe_image_url'].some(field => body[field] !== undefined);
+  const secondVibeTouched = ['event_vibe_url_2', 'event_vibe_label_2', 'event_vibe_image_url_2'].some(field => body[field] !== undefined);
+  if (primaryVibeTouched && !vibeHasContent[0]) {
+    for (const field of ['event_vibe_label', 'event_vibe_url_2', 'event_vibe_label_2', 'event_vibe_image_url_2', 'event_vibe_url_3', 'event_vibe_label_3', 'event_vibe_image_url_3']) out[field] = null;
+  } else if (secondVibeTouched && !vibeHasContent[1]) {
+    for (const field of ['event_vibe_label_2', 'event_vibe_url_3', 'event_vibe_label_3', 'event_vibe_image_url_3']) out[field] = null;
   }
   if (!partial) {
     out.presentation_mode = out.presentation_mode || 'standard';
@@ -374,11 +406,13 @@ router.post('/api/events', async (req, res, next) => {
                                flyer_designer_name, flyer_designer_instagram_handle, event_date,
                                start_time, end_time, venue_name, venue_address, category, capacity, visibility, background_theme,
                                cover_credit_name, cover_credit_link, admission_type, ticket_price, ticket_url,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
-                               event_vibe_label, event_vibe_url_2, event_vibe_label_2,
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id,
+                               event_vibe_url, event_vibe_label, event_vibe_image_url,
+                               event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
+                               event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
                                show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
                                artwork_accent_color, commerce_event_id, sms_reminder_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.cover_fit_mode, out.presentation_mode, out.flyer_image_url,
@@ -388,8 +422,10 @@ router.post('/api/events', async (req, res, next) => {
            out.cover_credit_name || null, out.cover_credit_link || null,
            out.admission_type || 'free_rsvp', out.ticket_price ?? null, out.ticket_url || null,
            out.venue_city || null, out.venue_state || null, out.venue_latitude, out.venue_longitude,
-           out.google_place_id || null, out.event_vibe_url || null,
-           out.event_vibe_label || null, out.event_vibe_url_2 || null, out.event_vibe_label_2 || null,
+           out.google_place_id || null,
+           out.event_vibe_url || null, out.event_vibe_label || null, out.event_vibe_image_url || null,
+           out.event_vibe_url_2 || null, out.event_vibe_label_2 || null, out.event_vibe_image_url_2 || null,
+           out.event_vibe_url_3 || null, out.event_vibe_label_3 || null, out.event_vibe_image_url_3 || null,
            out.show_guest_list, out.allow_guests, out.comments_enabled,
            secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
            out.commerce_event_id || null, out.sms_reminder_enabled === true]
@@ -583,10 +619,12 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                start_time, end_time, timezone, venue_name, venue_address, category,
                                capacity, visibility, admission_type, ticket_price, ticket_url, status, duplicated_from_id,
                                background_theme, cover_credit_name, cover_credit_link,
-                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id, event_vibe_url,
-                               event_vibe_label, event_vibe_url_2, event_vibe_label_2,
+                               venue_city, venue_state, venue_latitude, venue_longitude, google_place_id,
+                               event_vibe_url, event_vibe_label, event_vibe_image_url,
+                               event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
+                               event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
                                show_guest_list, allow_guests, comments_enabled, artwork_accent_color, commerce_event_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'draft',$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,NULL)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'draft',$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,NULL)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url,
            e.cover_fit_mode || 'auto', e.presentation_mode || 'standard', e.flyer_image_url || null,
@@ -595,8 +633,10 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
            e.capacity, e.visibility, e.admission_type, e.ticket_price, e.ticket_url, e.id,
            e.background_theme || 'midnight', e.cover_credit_name || null, e.cover_credit_link || null,
            e.venue_city || null, e.venue_state || null, e.venue_latitude, e.venue_longitude,
-           e.google_place_id || null, e.event_vibe_url || null,
-           e.event_vibe_label || null, e.event_vibe_url_2 || null, e.event_vibe_label_2 || null,
+           e.google_place_id || null,
+           e.event_vibe_url || null, e.event_vibe_label || null, e.event_vibe_image_url || null,
+           e.event_vibe_url_2 || null, e.event_vibe_label_2 || null, e.event_vibe_image_url_2 || null,
+           e.event_vibe_url_3 || null, e.event_vibe_label_3 || null, e.event_vibe_image_url_3 || null,
            e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true,
            e.artwork_accent_color || null]
         );

@@ -14,6 +14,8 @@ const accountAvatarFolder = process.env.CLOUDINARY_ACCOUNT_AVATAR_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/avatars' : 'sg-events-dev/avatars');
 const eventPhotoFolder = process.env.CLOUDINARY_EVENT_PHOTO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/event-photos' : 'sg-events-dev/event-photos');
+const vibePhotoFolder = process.env.CLOUDINARY_VIBE_PHOTO_FOLDER ||
+  (process.env.NODE_ENV === 'production' ? 'sg-events/vibes' : 'sg-events-dev/vibes');
 
 if (configured) {
   cloudinary.config({
@@ -125,6 +127,33 @@ async function uploadEventPhoto(buffer) {
   });
 }
 
+async function uploadVibePhoto(buffer) {
+  if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: vibePhotoFolder,
+        transformation: [{ width: 1600, height: 1200, crop: 'limit', quality: 'auto', fetch_format: 'auto' }]
+      },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+function isManagedVibePhotoUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const folderPath = `/${vibePhotoFolder.split('/').map(encodeURIComponent).join('/')}/`;
+    return url.protocol === 'https:' &&
+      url.hostname === 'res.cloudinary.com' &&
+      url.pathname.includes('/image/upload/') &&
+      url.pathname.includes(folderPath);
+  } catch (_) {
+    return false;
+  }
+}
+
 async function deleteEventPhoto(publicId) {
   if (!configured || !publicId) return;
   await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
@@ -132,5 +161,5 @@ async function deleteEventPhoto(publicId) {
 
 module.exports = {
   uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar,
-  uploadEventPhoto, deleteEventPhoto, isManagedFlyerUrl, configured
+  uploadEventPhoto, uploadVibePhoto, deleteEventPhoto, isManagedFlyerUrl, isManagedVibePhotoUrl, configured
 };

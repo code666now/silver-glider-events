@@ -165,6 +165,17 @@
     .vibe-editor [hidden] { display: none !important; }
     .vibe-editor .sg-field { margin-bottom: 12px; }
     .vibe-editor .sg-field:last-child { margin-bottom: 0; }
+    .vibe-artist-card {
+      padding: 14px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 14px;
+      background: rgba(0,0,0,.12);
+    }
+    .vibe-artist-card + .vibe-artist-card { margin-top: 12px; }
+    .vibe-artist-card[hidden] { display: none; }
+    .vibe-artist-heading { margin: 0 0 12px; }
+    .vibe-artist-heading strong { display: block; color: var(--sg-text); font-size: 13px; }
+    .vibe-artist-heading span { display: block; margin-top: 3px; color: var(--sg-text-faint); font-size: 11px; line-height: 1.45; }
     .vibe-choice-fields {
       display: grid;
       grid-template-columns: minmax(140px,.42fr) minmax(0,1fr);
@@ -175,6 +186,18 @@
     .vibe-editor-actions { display: flex; justify-content: flex-start; gap: 10px; margin-top: 10px; }
     .vibe-editor-actions .sg-btn { padding: 9px 14px; font-size: 12px; }
     .vibe-editor-help { margin-top: 8px; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
+    .vibe-photo-control { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+    .vibe-photo-control .sg-btn { flex: 0 0 auto; padding: 9px 13px; font-size: 12px; }
+    .vibe-photo-preview {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 10px;
+    }
+    .vibe-photo-preview[hidden] { display: none; }
+    .vibe-photo-preview img { width: 64px; height: 48px; border-radius: 10px; object-fit: cover; border: 1px solid var(--sg-border); }
+    .vibe-photo-remove { border: 0; padding: 3px 0; background: none; color: var(--sg-text-dim); font: 700 11px/1.2 var(--sg-font-body); cursor: pointer; text-decoration: underline; }
+    .vibe-photo-status { min-height: 16px; margin: 6px 0 0; color: var(--sg-text-faint); font-size: 11px; }
     .vis-toggle { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
     .vis-toggle button {
       min-height:104px;padding:14px;border-radius:15px;font-family:var(--sg-font-body);
@@ -1130,24 +1153,57 @@
           </div>
 
           <div class="sg-field">
-            <label for="event_vibe_url">What does this event sound like? <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+            <label for="event_vibe_label">Event Vibe <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
             <div class="vibe-editor">
-              <div class="sg-field" id="vibe-single-link">
-                <input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="Paste a Bandcamp, YouTube, SoundCloud, Spotify, or playlist link." aria-label="Event Vibe link">
-              </div>
-              <div class="vibe-choice-fields" id="vibe-choice-one" hidden>
-                <div class="sg-field"><label for="event_vibe_label">Artist name</label><input class="sg-input" id="event_vibe_label" maxlength="80" placeholder="Fire in the Sky"></div>
-                <div class="sg-field"><label for="event_vibe_url_labeled">Artist link</label><input class="sg-input" id="event_vibe_url_labeled" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
-              </div>
-              <div class="vibe-choice-fields" id="vibe-choice-two" hidden>
-                <div class="sg-field"><label for="event_vibe_label_2">Second artist</label><input class="sg-input" id="event_vibe_label_2" maxlength="80" placeholder="TL Tramps"></div>
-                <div class="sg-field"><label for="event_vibe_url_2">Artist link</label><input class="sg-input" id="event_vibe_url_2" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
-              </div>
+              <section class="vibe-artist-card" id="vibe-choice-one" aria-labelledby="vibe-choice-one-title">
+                <div class="vibe-artist-heading"><strong id="vibe-choice-one-title">Artist 1</strong><span>Add a photo, a music link, or both.</span></div>
+                <div class="vibe-choice-fields">
+                  <div class="sg-field"><label for="event_vibe_label">Artist name</label><input class="sg-input" id="event_vibe_label" maxlength="80" placeholder="DJ Walkin Love"></div>
+                  <div class="sg-field"><label for="event_vibe_url">Music or video link</label><input class="sg-input" id="event_vibe_url" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
+                </div>
+                <input id="event_vibe_image_url" type="hidden">
+                <input id="event-vibe-photo-input-1" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                <div class="vibe-photo-control">
+                  <button class="sg-btn sg-btn-ghost" id="event-vibe-photo-button-1" type="button">Upload artist photo</button>
+                  <div class="vibe-photo-preview" id="event-vibe-photo-preview-1" hidden><img id="event-vibe-photo-image-1" alt="Artist 1 preview"><button class="vibe-photo-remove" id="event-vibe-photo-remove-1" type="button">Remove photo</button></div>
+                </div>
+                <p class="vibe-photo-status" id="event-vibe-photo-status-1" aria-live="polite"></p>
+              </section>
+              <section class="vibe-artist-card" id="vibe-choice-two" aria-labelledby="vibe-choice-two-title" hidden>
+                <div class="vibe-artist-heading"><strong id="vibe-choice-two-title">Artist 2</strong><span>Add a photo, a music link, or both.</span></div>
+                <div class="vibe-choice-fields">
+                  <div class="sg-field"><label for="event_vibe_label_2">Artist name</label><input class="sg-input" id="event_vibe_label_2" maxlength="80" placeholder="Second artist"></div>
+                  <div class="sg-field"><label for="event_vibe_url_2">Music or video link</label><input class="sg-input" id="event_vibe_url_2" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
+                </div>
+                <input id="event_vibe_image_url_2" type="hidden">
+                <input id="event-vibe-photo-input-2" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                <div class="vibe-photo-control">
+                  <button class="sg-btn sg-btn-ghost" id="event-vibe-photo-button-2" type="button">Upload artist photo</button>
+                  <div class="vibe-photo-preview" id="event-vibe-photo-preview-2" hidden><img id="event-vibe-photo-image-2" alt="Artist 2 preview"><button class="vibe-photo-remove" id="event-vibe-photo-remove-2" type="button">Remove photo</button></div>
+                </div>
+                <p class="vibe-photo-status" id="event-vibe-photo-status-2" aria-live="polite"></p>
+              </section>
+              <section class="vibe-artist-card" id="vibe-choice-three" aria-labelledby="vibe-choice-three-title" hidden>
+                <div class="vibe-artist-heading"><strong id="vibe-choice-three-title">Artist 3</strong><span>Add a photo, a music link, or both.</span></div>
+                <div class="vibe-choice-fields">
+                  <div class="sg-field"><label for="event_vibe_label_3">Artist name</label><input class="sg-input" id="event_vibe_label_3" maxlength="80" placeholder="Third artist"></div>
+                  <div class="sg-field"><label for="event_vibe_url_3">Music or video link</label><input class="sg-input" id="event_vibe_url_3" inputmode="url" placeholder="YouTube, Spotify, SoundCloud, or Bandcamp"></div>
+                </div>
+                <input id="event_vibe_image_url_3" type="hidden">
+                <input id="event-vibe-photo-input-3" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+                <div class="vibe-photo-control">
+                  <button class="sg-btn sg-btn-ghost" id="event-vibe-photo-button-3" type="button">Upload artist photo</button>
+                  <div class="vibe-photo-preview" id="event-vibe-photo-preview-3" hidden><img id="event-vibe-photo-image-3" alt="Artist 3 preview"><button class="vibe-photo-remove" id="event-vibe-photo-remove-3" type="button">Remove photo</button></div>
+                </div>
+                <p class="vibe-photo-status" id="event-vibe-photo-status-3" aria-live="polite"></p>
+              </section>
               <div class="vibe-editor-actions">
                 <button class="sg-btn sg-btn-ghost" id="add-vibe-choice" type="button">+ Add another artist</button>
                 <button class="sg-btn sg-btn-ghost" id="remove-vibe-choice" type="button" hidden>Remove second artist</button>
+                <button class="sg-btn sg-btn-ghost" id="add-third-vibe-choice" type="button" hidden>+ Add a third artist</button>
+                <button class="sg-btn sg-btn-ghost" id="remove-third-vibe-choice" type="button" hidden>Remove third artist</button>
               </div>
-              <p class="vibe-editor-help" id="vibe-editor-help">Add one link for a simple Event Vibe, or offer guests a choice between two artists.</p>
+              <p class="vibe-editor-help" id="vibe-editor-help">Artist photos appear with audio links and become the play preview for YouTube videos.</p>
             </div>
           </div>
         </div>

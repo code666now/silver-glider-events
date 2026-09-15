@@ -100,27 +100,75 @@ function showEditLoadError() {
 }
 
 function setSecondVibeVisible(visible) {
-  const singleLink = $('vibe-single-link');
-  const firstChoice = $('vibe-choice-one');
   const secondChoice = $('vibe-choice-two');
-  if (visible) {
-    $('event_vibe_url_labeled').value = $('event_vibe_url_labeled').value || $('event_vibe_url').value;
-    singleLink.hidden = true;
-    firstChoice.hidden = false;
-    secondChoice.hidden = false;
-    $('add-vibe-choice').hidden = true;
-    $('remove-vibe-choice').hidden = false;
-  } else {
-    $('event_vibe_url').value = $('event_vibe_url_labeled').value || $('event_vibe_url').value;
-    $('event_vibe_label').value = '';
-    $('event_vibe_url_labeled').value = '';
+  secondChoice.hidden = !visible;
+  if (!visible) {
+    setThirdVibeVisible(false);
     $('event_vibe_label_2').value = '';
     $('event_vibe_url_2').value = '';
-    singleLink.hidden = false;
-    firstChoice.hidden = true;
-    secondChoice.hidden = true;
-    $('add-vibe-choice').hidden = false;
-    $('remove-vibe-choice').hidden = true;
+    setVibePhoto(2, '');
+  }
+  syncVibeActions();
+}
+
+function setThirdVibeVisible(visible) {
+  const thirdChoice = $('vibe-choice-three');
+  thirdChoice.hidden = !visible;
+  if (!visible) {
+    $('event_vibe_label_3').value = '';
+    $('event_vibe_url_3').value = '';
+    setVibePhoto(3, '');
+  }
+  syncVibeActions();
+}
+
+function syncVibeActions() {
+  const hasSecond = !$('vibe-choice-two').hidden;
+  const hasThird = !$('vibe-choice-three').hidden;
+  $('add-vibe-choice').hidden = hasSecond;
+  $('remove-vibe-choice').hidden = !hasSecond || hasThird;
+  $('add-third-vibe-choice').hidden = !hasSecond || hasThird;
+  $('remove-third-vibe-choice').hidden = !hasThird;
+  $('add-vibe-choice').setAttribute('aria-expanded', String(hasSecond));
+  $('add-third-vibe-choice').setAttribute('aria-expanded', String(hasThird));
+}
+
+function setVibePhoto(index, url) {
+  const suffix = index === 1 ? '' : `_${index}`;
+  const value = String(url || '');
+  $(`event_vibe_image_url${suffix}`).value = value;
+  const preview = $(`event-vibe-photo-preview-${index}`);
+  const image = $(`event-vibe-photo-image-${index}`);
+  const button = $(`event-vibe-photo-button-${index}`);
+  if (value) {
+    image.src = value;
+    preview.hidden = false;
+    button.textContent = 'Replace artist photo';
+  } else {
+    image.removeAttribute('src');
+    preview.hidden = true;
+    button.textContent = 'Upload artist photo';
+  }
+}
+
+async function uploadVibePhoto(index, file) {
+  const button = $(`event-vibe-photo-button-${index}`);
+  const status = $(`event-vibe-photo-status-${index}`);
+  const body = new FormData();
+  body.append('image', file);
+  button.disabled = true;
+  status.textContent = 'Uploading photo…';
+  try {
+    const response = await fetch('/api/uploads/vibe-photo', { method: 'POST', body });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Upload failed');
+    setVibePhoto(index, data.url);
+    status.textContent = 'Photo added.';
+  } catch (err) {
+    status.textContent = err.message;
+  } finally {
+    button.disabled = false;
+    $(`event-vibe-photo-input-${index}`).value = '';
   }
 }
 
@@ -129,6 +177,24 @@ $('add-vibe-choice').addEventListener('click', () => {
   $('event_vibe_label').focus();
 });
 $('remove-vibe-choice').addEventListener('click', () => setSecondVibeVisible(false));
+$('add-third-vibe-choice').addEventListener('click', () => {
+  setThirdVibeVisible(true);
+  $('event_vibe_label_3').focus();
+});
+$('remove-third-vibe-choice').addEventListener('click', () => setThirdVibeVisible(false));
+
+[1, 2, 3].forEach(index => {
+  $(`event-vibe-photo-button-${index}`).addEventListener('click', () => $(`event-vibe-photo-input-${index}`).click());
+  $(`event-vibe-photo-input-${index}`).addEventListener('change', event => {
+    const file = event.target.files[0];
+    if (file) uploadVibePhoto(index, file);
+  });
+  $(`event-vibe-photo-remove-${index}`).addEventListener('click', () => {
+    setVibePhoto(index, '');
+    $(`event-vibe-photo-status-${index}`).textContent = 'Photo removed.';
+  });
+});
+syncVibeActions();
 
 function activeArtworkUrl() {
   return presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
@@ -983,6 +1049,7 @@ function showError(msg) {
 
 function collect() {
   const hasSecondVibe = !$('vibe-choice-two').hidden;
+  const hasThirdVibe = !$('vibe-choice-three').hidden;
   const venueName = $('venue_name').value.trim();
   const venueAddress = $('venue_address').value.trim();
   if (!venueName && !venueAddress) {
@@ -998,10 +1065,15 @@ function collect() {
   const body = {
     title: $('title').value.trim(),
     description: $('description').value.trim(),
-    event_vibe_url: (hasSecondVibe ? $('event_vibe_url_labeled') : $('event_vibe_url')).value.trim() || null,
-    event_vibe_label: hasSecondVibe ? ($('event_vibe_label').value.trim() || null) : null,
+    event_vibe_url: $('event_vibe_url').value.trim() || null,
+    event_vibe_label: $('event_vibe_label').value.trim() || null,
+    event_vibe_image_url: $('event_vibe_image_url').value || null,
     event_vibe_url_2: hasSecondVibe ? ($('event_vibe_url_2').value.trim() || null) : null,
     event_vibe_label_2: hasSecondVibe ? ($('event_vibe_label_2').value.trim() || null) : null,
+    event_vibe_image_url_2: hasSecondVibe ? ($('event_vibe_image_url_2').value || null) : null,
+    event_vibe_url_3: hasThirdVibe ? ($('event_vibe_url_3').value.trim() || null) : null,
+    event_vibe_label_3: hasThirdVibe ? ($('event_vibe_label_3').value.trim() || null) : null,
+    event_vibe_image_url_3: hasThirdVibe ? ($('event_vibe_image_url_3').value || null) : null,
     cover_image_url: $('cover_image_url').value || null,
     cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
@@ -1053,12 +1125,19 @@ if (editId) {
     $('title').value = event.title;
     $('description').value = event.description || '';
     $('event_vibe_url').value = event.event_vibe_url || '';
-    if (event.event_vibe_url_2) {
+    $('event_vibe_label').value = event.event_vibe_label || '';
+    setVibePhoto(1, event.event_vibe_image_url || '');
+    if (event.event_vibe_url_2 || event.event_vibe_label_2 || event.event_vibe_image_url_2) {
       setSecondVibeVisible(true);
-      $('event_vibe_label').value = event.event_vibe_label || '';
-      $('event_vibe_url_labeled').value = event.event_vibe_url || '';
       $('event_vibe_label_2').value = event.event_vibe_label_2 || '';
       $('event_vibe_url_2').value = event.event_vibe_url_2 || '';
+      setVibePhoto(2, event.event_vibe_image_url_2 || '');
+    }
+    if (event.event_vibe_url_3 || event.event_vibe_label_3 || event.event_vibe_image_url_3) {
+      setThirdVibeVisible(true);
+      $('event_vibe_label_3').value = event.event_vibe_label_3 || '';
+      $('event_vibe_url_3').value = event.event_vibe_url_3 || '';
+      setVibePhoto(3, event.event_vibe_image_url_3 || '');
     }
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
@@ -1095,7 +1174,7 @@ if (editId) {
         : 'free_rsvp', { force: true });
     $('ticket_price').value = event.ticket_price || '';
     $('ticket_url').value = event.ticket_url || '';
-    $('more-details').open = Boolean(event.description || event.event_vibe_url || event.event_vibe_url_2);
+    $('more-details').open = Boolean(event.description || event.event_vibe_url || event.event_vibe_image_url || event.event_vibe_url_2 || event.event_vibe_image_url_2 || event.event_vibe_url_3 || event.event_vibe_image_url_3);
     if (event.cover_image_url) {
       setCover(event.cover_image_url, event.cover_credit_name, event.cover_credit_link, { preserveFit: true });
     }

@@ -29,6 +29,7 @@ const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
 const { cleanInstagramHandle } = require('../lib/host-profile');
+const { isManagedVibePhotoUrl } = require('../lib/cloudinary');
 const {
   SMS_CONSENT_DISCLOSURE,
   prepareRsvpSmsConsent,
@@ -129,28 +130,30 @@ function youtubePlaylistId(url) {
   return /^[\w-]{6,}$/.test(list) ? list : '';
 }
 
-function vibeEmbed(urlString) {
-  if (!urlString) return '';
+function vibeMedia(urlString, { autoplay = false } = {}) {
+  if (!urlString) return { html: '', kind: null };
   let url;
-  try { url = new URL(urlString); } catch (_) { return ''; }
-  if (!['http:', 'https:'].includes(url.protocol)) return '';
+  try { url = new URL(urlString); } catch (_) { return { html: '', kind: null }; }
+  if (!['http:', 'https:'].includes(url.protocol)) return { html: '', kind: null };
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
   const isHost = domain => host === domain || host.endsWith(`.${domain}`);
 
   if (isHost('youtube.com') || isHost('youtube-nocookie.com') || host === 'youtu.be') {
     const id = youtubeId(url);
     if (id && /^[\w-]{6,}$/.test(id)) {
-      return `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/${esc(id)}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+      const autoplayParam = autoplay ? '?autoplay=1' : '';
+      return { kind: 'video', html: `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/${esc(id)}${autoplayParam}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` };
     }
     const list = youtubePlaylistId(url);
     if (list) {
-      return `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/videoseries?list=${esc(list)}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+      const autoplayParam = autoplay ? '&amp;autoplay=1' : '';
+      return { kind: 'video', html: `<iframe class="vibe-embed vibe-embed-video" src="https://www.youtube-nocookie.com/embed/videoseries?list=${esc(list)}${autoplayParam}" title="YouTube music preview" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>` };
     }
   }
 
   if (isHost('soundcloud.com')) {
     const src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url.toString())}&color=%231cc5be&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=true`;
-    return `<iframe class="vibe-embed vibe-embed-audio" src="${esc(src)}" title="SoundCloud music preview" loading="lazy" allow="autoplay"></iframe>`;
+    return { kind: 'audio', html: `<iframe class="vibe-embed vibe-embed-audio" src="${esc(src)}" title="SoundCloud music preview" loading="lazy" allow="autoplay"></iframe>` };
   }
 
   if (isHost('spotify.com')) {
@@ -160,38 +163,61 @@ function vibeEmbed(urlString) {
     const id = parts[1];
     if (['track', 'album', 'artist', 'playlist'].includes(type) && id && /^[A-Za-z0-9]+$/.test(id)) {
       const src = `https://open.spotify.com/embed/${type}/${id}`;
-      return `<iframe class="vibe-embed vibe-embed-spotify" src="${esc(src)}" title="Spotify music preview" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+      return { kind: 'audio', html: `<iframe class="vibe-embed vibe-embed-spotify" src="${esc(src)}" title="Spotify music preview" loading="lazy" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>` };
     }
   }
 
   if (isHost('bandcamp.com') && url.pathname.startsWith('/EmbeddedPlayer/')) {
-    return `<iframe class="vibe-embed vibe-embed-bandcamp" src="${esc(url.toString())}" title="Bandcamp music preview" loading="lazy"></iframe>`;
+    return { kind: 'audio', html: `<iframe class="vibe-embed vibe-embed-bandcamp" src="${esc(url.toString())}" title="Bandcamp music preview" loading="lazy"></iframe>` };
   }
 
   if (isHost('bandcamp.com') || isHost('soundcloud.com') || isHost('spotify.com')) {
-    return `<a class="sg-btn sg-btn-ghost vibe-listen" href="${esc(url.toString())}" target="_blank" rel="noopener">Listen</a>`;
+    return { kind: 'link', html: `<a class="sg-btn sg-btn-ghost vibe-listen" href="${esc(url.toString())}" target="_blank" rel="noopener">Listen</a>` };
   }
-  return '';
+  return { html: '', kind: null };
+}
+
+function renderVibeEntry(entry, { showLabel = false } = {}) {
+  const media = vibeMedia(entry.url);
+  const imageUrl = isManagedVibePhotoUrl(entry.image) ? entry.image : '';
+  if (!media.html && !imageUrl) return '';
+  const label = String(entry.label || '').trim();
+  const nameHtml = showLabel && label ? `<h3 class="vibe-artist-name">${esc(label)}</h3>` : '';
+  const imageAlt = label ? `${label} artist photo` : 'Event Vibe artist photo';
+  let content = media.html;
+  if (imageUrl && media.kind === 'video') {
+    const autoplayVideo = vibeMedia(entry.url, { autoplay: true }).html;
+    content = `<div class="vibe-video-poster" data-vibe-video>
+      <button class="vibe-video-play" type="button" data-vibe-video-play aria-label="Play ${esc(label || 'artist')} video">
+        <img src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">
+        <span class="vibe-video-play-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M19 14l16 10-16 10z"/></svg></span>
+      </button>
+      <template data-vibe-video-template>${autoplayVideo}</template>
+    </div>`;
+  } else if (imageUrl) {
+    content = `<img class="vibe-artist-photo" src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">${media.html}`;
+  }
+  return `<div class="vibe-artist-unit">${nameHtml}${content}</div>`;
 }
 
 function renderVibe(event) {
-  const firstEmbed = vibeEmbed(event.event_vibe_url);
-  if (!firstEmbed) return '';
-  const secondEmbed = vibeEmbed(event.event_vibe_url_2);
-  const firstLabel = String(event.event_vibe_label || '').trim();
-  const secondLabel = String(event.event_vibe_label_2 || '').trim();
-  if (!secondEmbed || !firstLabel || !secondLabel) {
-    return `<section class="vibe-section"><h2>Event Vibe</h2>${firstEmbed}</section>`;
+  const entries = [
+    { label: event.event_vibe_label, url: event.event_vibe_url, image: event.event_vibe_image_url },
+    { label: event.event_vibe_label_2, url: event.event_vibe_url_2, image: event.event_vibe_image_url_2 },
+    { label: event.event_vibe_label_3, url: event.event_vibe_url_3, image: event.event_vibe_image_url_3 }
+  ].map(entry => ({ ...entry, html: renderVibeEntry(entry) })).filter(entry => entry.html);
+  if (!entries.length) return '';
+  if (entries.length === 1) {
+    const entryHtml = renderVibeEntry(entries[0], { showLabel: true });
+    return `<section class="vibe-section"><h2>Event Vibe</h2>${entryHtml}</section>`;
   }
+  const tabs = entries.map((entry, index) => `<button class="vibe-choice-tab${index === 0 ? ' is-active' : ''}" type="button" role="tab" id="vibe-choice-${index}" aria-controls="vibe-player" aria-selected="${index === 0}" tabindex="${index === 0 ? '0' : '-1'}" data-vibe-choice="${index}">${esc(entry.label || `Artist ${index + 1}`)}</button>`).join('');
+  const templates = entries.map((entry, index) => `<template data-vibe-template="${index}">${entry.html}</template>`).join('');
   return `<section class="vibe-section" data-vibe-switcher>
     <h2>Event Vibe</h2>
-    <div class="vibe-choice-tabs" role="tablist" aria-label="Choose an artist">
-      <button class="vibe-choice-tab is-active" type="button" role="tab" id="vibe-choice-0" aria-controls="vibe-player" aria-selected="true" tabindex="0" data-vibe-choice="0">${esc(firstLabel)}</button>
-      <button class="vibe-choice-tab" type="button" role="tab" id="vibe-choice-1" aria-controls="vibe-player" aria-selected="false" tabindex="-1" data-vibe-choice="1">${esc(secondLabel)}</button>
-    </div>
-    <div class="vibe-player" id="vibe-player" role="tabpanel" aria-labelledby="vibe-choice-0" data-vibe-player>${firstEmbed}</div>
-    <template data-vibe-template="0">${firstEmbed}</template>
-    <template data-vibe-template="1">${secondEmbed}</template>
+    <div class="vibe-choice-tabs" role="tablist" aria-label="Choose an artist">${tabs}</div>
+    <div class="vibe-player" id="vibe-player" role="tabpanel" aria-labelledby="vibe-choice-0" data-vibe-player>${entries[0].html}</div>
+    ${templates}
   </section>`;
 }
 

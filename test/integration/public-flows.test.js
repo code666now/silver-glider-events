@@ -1673,6 +1673,64 @@ test('serves two labeled Event Vibe choices in both public presentations', async
   }
 });
 
+test('creates, renders, and duplicates three Event Vibe artists with photo and media combinations', async () => {
+  const organizerCookie = `sge_session=${signSession(organizerId)}`;
+  const fields = {
+    event_vibe_url: 'https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT',
+    event_vibe_label: 'DJ Walkin Love',
+    event_vibe_image_url: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events-dev/vibes/walkin-love.jpg',
+    event_vibe_url_2: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    event_vibe_label_2: 'Fire in the Sky',
+    event_vibe_image_url_2: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events-dev/vibes/fire-sky.jpg',
+    event_vibe_url_3: null,
+    event_vibe_label_3: 'Closing Set',
+    event_vibe_image_url_3: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events-dev/vibes/closing-set.jpg'
+  };
+  const createdResponse = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({
+      title: 'Three Artist Night',
+      event_date: '2030-11-02',
+      start_time: '20:00',
+      venue_name: 'Vibe Hall',
+      ...fields
+    })
+  });
+  assert.equal(createdResponse.status, 201);
+  const created = (await createdResponse.json()).event;
+  assert.equal(created.event_vibe_label_3, 'Closing Set');
+  assert.equal(created.event_vibe_image_url_2, fields.event_vibe_image_url_2);
+
+  const page = await fetch(`${baseUrl}/e/${created.slug}`);
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(html, />DJ Walkin Love<\/button>/);
+  assert.match(html, />Fire in the Sky<\/button>/);
+  assert.match(html, />Closing Set<\/button>/);
+  assert.equal((html.match(/data-vibe-template=/g) || []).length, 3);
+  assert.match(html, /class="vibe-artist-photo"[^>]+walkin-love\.jpg/);
+  assert.match(html, /class="vibe-video-play"/);
+  assert.match(html, /fire-sky\.jpg/);
+  assert.match(html, /autoplay=1/);
+  assert.match(html, /closing-set\.jpg/);
+
+  const duplicateResponse = await fetch(`${baseUrl}/api/events/${created.id}/duplicate`, {
+    method: 'POST', headers: { cookie: organizerCookie }
+  });
+  assert.equal(duplicateResponse.status, 201);
+  const duplicate = (await duplicateResponse.json()).event;
+  for (const [field, value] of Object.entries(fields)) assert.equal(duplicate[field], value);
+
+  const rejected = await fetch(`${baseUrl}/api/events/${created.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ event_vibe_image_url: 'https://images.example.test/not-managed.jpg' })
+  });
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /Upload Event Vibe photos through Silver Glider Events/);
+});
+
 test('keeps Secret Show details out of locked responses and reveals them after unlock', async () => {
   const event = await createEvent({
     slug: 'secret-night',

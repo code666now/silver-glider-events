@@ -44,7 +44,7 @@ Never use the Railway production database for development or tests.
 - Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
 - Flyer events with a centered, uncropped poster-first public layout
-- Optional Event Vibe with one link or two labeled artist choices sharing a single active player
+- Optional Event Vibe with up to three progressively revealed artist choices, each supporting a photo, a media link, or both, while sharing a single active player
 - Free RSVP, external ticket links, and a feature-gated Silver Glider Commerce handoff; hosts can request one launch email while native ticketing is marked Coming soon
 - Progressive RSVP form, mobile docked CTA, capacity enforcement, cancellation links, and confirmation resends
 - Artwork-led RSVP confirmation emails with adaptive color treatment, linked host/vibe identity, conditional details, calendar attachments, and an optional secure Add Photo prompt; separate day-before/day-of reminders
@@ -78,7 +78,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, scheduled email jobs
-src/db/migrations/           numbered SQL migrations (currently 001–035)
+src/db/migrations/           numbered SQL migrations (currently 001–038)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
@@ -100,7 +100,7 @@ test/                        focused Node test suite
 - **Capacity:** the RSVP endpoint locks the event row and counts attendance inside the transaction before confirming.
 - **Reminder idempotency:** `message_log` has a partial unique index; a reminder sends only after a successful claim.
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
-- **Event Vibe:** one supported music/media link keeps the original simple embed. Hosts can optionally add a second labeled artist; Standard and Flyer pages show compact accessible tabs above one active player, and the inactive embed is not loaded.
+- **Event Vibe:** hosts can progressively add up to three labeled artists, each with a managed photo, a supported music/media link, or both. Audio links place the photo above the player; YouTube uses it as a play-to-load poster. Standard and Flyer pages show compact accessible tabs above one active artist unit, and inactive embeds are not loaded.
 - **Admission:** `free_rsvp` keeps the established guest flow, `external_tickets` keeps the existing displayed-price and outbound-link behavior, and `silver_glider_tickets` stores only a `commerce_event_id`. Commerce remains authoritative for price, inventory, availability, checkout, orders, and issued tickets.
 - **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited.
 
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 10, 2026, the suite contains 205 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic credit reservation, one-tap attendee access, deduplication, Twilio delivery callbacks and STOP handling, Familiar Faces identity/privacy, source-first invitation filtering and delivery, one-time Add Photo authentication, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 14, 2026, the suite contains 244 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic credit reservation, one-tap attendee access, deduplication, Twilio delivery callbacks and STOP handling, Familiar Faces identity/privacy, source-first invitation filtering and delivery, Event Vibe photos and three-artist rendering/duplication, one-time Add Photo authentication, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

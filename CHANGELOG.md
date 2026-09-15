@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.91
+
+Released September 14, 2026. Built and deployed by Codex.
+
+### Added
+
+* **Event Vibe artist photos.** Each artist can now have a managed photo, a supported music/video link, or both. A photo sits above Spotify, SoundCloud, Bandcamp, and other audio embeds; for YouTube it becomes a poster that loads the video only after the guest presses play.
+* Hosts can progressively add up to three artist entries. The second entry is revealed only after **Add another artist**, and **Add a third artist** appears only after the second entry is present.
+
+### Changed
+
+* Multi-artist Event Vibe tabs now switch the complete artist presentation—name, photo, and player—while keeping only one video or audio embed active at a time. Existing one- and two-link events retain their current presentation.
+
+### Security & reliability
+
+* Event Vibe photo uploads require organizer authentication, use the existing managed Cloudinary pipeline, and are validated as managed assets before being stored. The additive migration uses nullable columns and event duplication preserves all three artist entries.
+
 ## 1.0.90
 
 Released September 14, 2026. Built by Claude Code (PR #6), reviewed and deployed by Codex.

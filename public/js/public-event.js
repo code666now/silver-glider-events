@@ -46,6 +46,15 @@ function mountVibeSwitchers() {
 
 mountVibeSwitchers();
 
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-vibe-video-play]');
+  if (!button) return;
+  const poster = button.closest('[data-vibe-video]');
+  const template = poster && poster.querySelector('[data-vibe-video-template]');
+  if (!poster || !template) return;
+  poster.innerHTML = template.innerHTML;
+});
+
 async function applyCoverPalette() {
   if (document.body.classList.contains('flyer-public-page')) return;
   if (!EVENT.coverImageUrl) return;
