@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.96
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Added
+
+* New events now begin with four essentials—title, date, time, and location—then open immediately as an owner-only draft on the real event page.
+* The live event editor now controls Standard or Flyer presentation and admission alongside appearance, essential details, visibility, and guest settings. Hosts can preview every change in context before saving or publishing.
+* Draft owners get an explicit **Publish event** action. Draft pages remain private, unindexed, and unavailable to guests until that action succeeds.
+
+### Changed
+
+* **Edit** from event management and the legacy edit URL now reopen the live event editor. The full form remains available as **Music & advanced settings** for optional capabilities that have not yet moved into the live surface.
+* The advanced form no longer uses the persistent Publish/Save dock. It keeps one ordinary end-of-form submit control, avoiding the mobile and short-desktop obstruction that the dock introduced.
+
+### Safety
+
+* Publishing revalidates the event inside a database transaction, including Flyer artwork, admission details, Commerce linkage, and Secret Show consistency. Existing published events, RSVPs, guest identities, emails, reminders, assets, and database schema are unchanged.
+
 ## 1.0.95
 
 Released September 15, 2026. Built and deployed by Codex.
