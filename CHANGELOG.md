@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.95
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Fixed
+
+* On mobile, the persistent Publish/Save control now releases into normal document flow at the true end of the form. **Private event options** remain fully visible and tappable instead of being covered by the dock.
+* Scrolling back into the form restores the sticky control, while the end state continues to clear the fixed **Feedback** bubble.
+
 ## 1.0.94
 
 Released September 15, 2026. Built and deployed by Codex.
