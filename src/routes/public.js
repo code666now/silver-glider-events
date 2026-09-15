@@ -225,7 +225,7 @@ function renderVibe(event) {
   </section>`;
 }
 
-async function loadEventBySlug(slug) {
+async function loadEventBySlug(slug, { includeDraft = false } = {}) {
   const { rows } = await pool.query(
     `SELECT e.*,
             e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
@@ -235,19 +235,19 @@ async function loadEventBySlug(slug) {
             COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count,
             o.org_name, o.name AS organizer_name, o.public_slug AS organizer_public_slug, o.logo_url AS organizer_logo_url
        FROM events e JOIN organizers o ON o.id = e.organizer_id
-      WHERE e.slug=$1 AND e.status <> 'draft'`,
-    [slug]
+      WHERE e.slug=$1 AND ($2::boolean OR e.status <> 'draft')`,
+    [slug, includeDraft]
   );
   return rows[0] || null;
 }
 
-async function loadEventAccessEnvelope(slug) {
+async function loadEventAccessEnvelope(slug, { includeDraft = false } = {}) {
   const { rows } = await pool.query(
     `SELECT id, slug, organizer_id, visibility, status,
             secret_show_enabled, secret_show_version
        FROM events
-      WHERE slug=$1 AND status <> 'draft'`,
-    [slug]
+      WHERE slug=$1 AND ($2::boolean OR status <> 'draft')`,
+    [slug, includeDraft]
   );
   return rows[0] || null;
 }
@@ -608,8 +608,14 @@ router.post('/api/public/guest-session/forget', async (req, res, next) => {
 // GET /e/:slug — server-rendered so OG tags work for link previews
 router.get('/e/:slug', async (req, res, next) => {
   try {
-    const accessEvent = await loadEventAccessEnvelope(req.params.slug);
+    const accessEvent = await loadEventAccessEnvelope(req.params.slug, { includeDraft: true });
     if (!accessEvent) return res.status(404).send(render404());
+    const ownerDraft = accessEvent.status === 'draft';
+    if (ownerDraft && !organizerViewer(req, accessEvent)) return res.status(404).send(render404());
+    if (ownerDraft) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      res.setHeader('Cache-Control', 'private, no-store');
+    }
 
     if (accessEvent.secret_show_enabled) {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -620,10 +626,10 @@ router.get('/e/:slug', async (req, res, next) => {
       }
     }
 
-    const event = await loadEventBySlug(req.params.slug);
+    const event = await loadEventBySlug(req.params.slug, { includeDraft: ownerDraft });
     if (!event) return res.status(404).send(render404());
-    const rsvpEnabled = !isSilverGliderTickets(event);
     const ownerPreview = organizerViewer(req, event);
+    const rsvpEnabled = event.status === 'published' && !isSilverGliderTickets(event);
     const returningGuest = rsvpEnabled && !event.is_past && event.status === 'published' && !ownerPreview
       ? await returningGuestContext(pool, req, event.id)
       : null;
@@ -683,30 +689,38 @@ router.get('/e/:slug', async (req, res, next) => {
     const endedMobileActionHtml = recapHref
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${recapHref}">View event photos</a>`
       : '';
-    const standardPrimaryActionHtml = event.is_past
+    const standardPrimaryActionHtml = ownerDraft
+      ? '<p class="event-ended-note">Draft preview · Only you can see this</p>'
+      : event.is_past
       ? endedActionHtml
       : isCommerceTicketed
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="ticket-cta" data-primary-action="ticket" href="/e/${encodeURIComponent(event.slug)}/tickets" style="font-size:17px;padding:17px">Get Tickets</a>`
       : '<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP</button>';
-    const standardMobileActionHtml = event.is_past
+    const standardMobileActionHtml = ownerDraft
+      ? ''
+      : event.is_past
       ? endedMobileActionHtml
       : isCommerceTicketed
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="/e/${encodeURIComponent(event.slug)}/tickets">Get Tickets</a>`
       : '<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button>';
-    const flyerPrimaryActionHtml = event.is_past
+    const flyerPrimaryActionHtml = ownerDraft
+      ? '<p class="event-ended-note">Draft preview · Only you can see this</p>'
+      : event.is_past
       ? endedActionHtml
       : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
       : flyerAction.type === 'commerce_ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
-    const flyerSecondaryActionHtml = !event.is_past && flyerAction.secondaryRsvp
+    const flyerSecondaryActionHtml = !ownerDraft && !event.is_past && flyerAction.secondaryRsvp
       ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
       : '';
-    const flyerActionSupportHtml = !event.is_past && flyerAction.supportingText
+    const flyerActionSupportHtml = !ownerDraft && !event.is_past && flyerAction.supportingText
       ? `<p class="primary-action-support">${esc(flyerAction.supportingText)}</p>`
       : '';
-    const flyerMobileActionHtml = event.is_past
+    const flyerMobileActionHtml = ownerDraft
+      ? ''
+      : event.is_past
       ? endedMobileActionHtml
       : flyerAction.type === 'ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
@@ -800,7 +814,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate
       .replace(/{{TITLE}}/g, esc(event.title))
-      .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(robotsDirective(event.visibility)))
+      .replace(/{{ROBOTS_DIRECTIVE}}/g, esc(ownerDraft ? 'noindex, nofollow, noarchive' : robotsDirective(event.visibility)))
       .replace(/{{OG_DESCRIPTION}}/g, esc(`${fmtDate(event.event_date)} · ${locationDisplay.name}`))
       .replace(/{{OG_IMAGE}}/g, esc(primaryImageUrl || `${process.env.APP_URL}/logo.png`))
       .replace(/{{OG_URL}}/g, esc(`${process.env.APP_URL}/e/${event.slug}`))

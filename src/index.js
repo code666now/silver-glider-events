@@ -81,7 +81,10 @@ app.get('/following', requireOrganizer, view('following.html'));
 app.get('/add-photo', requirePhotoAccess, view('add-photo.html'));
 app.get('/events/new', requireOrganizer, async (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
-  if (!invitationToken) return res.sendFile(path.join(VIEWS, 'event-form.html'));
+  if (!invitationToken) {
+    const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
+    return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
+  }
   try {
     if (/^[a-z0-9-]{12,220}$/.test(invitationToken)) {
       await pool.query(

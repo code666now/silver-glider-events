@@ -245,7 +245,10 @@ test('creates an event only for an authenticated organizer and publishes its pag
     headers: { cookie: sessionCookie }
   });
   assert.equal(createPage.status, 200);
-  assert.match(await createPage.text(), /<title>Create Event/);
+  const createHtml = await createPage.text();
+  assert.match(createHtml, /<title>Create Event/);
+  assert.match(createHtml, /Start with the essentials/);
+  assert.match(createHtml, /id="quick-create-form"/);
 
   const body = {
     title: 'Created Through HTTP',
@@ -318,6 +321,49 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(updatedHtml, /class="guest-avatar"/);
   assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
   await waitForConfirmation('public-attendee@example.test');
+});
+
+test('minimal creation makes an owner-only draft without exposing guest actions', async () => {
+  const ownerCookie = `sge_session=${signSession(organizerId)}`;
+  const response = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: ownerCookie },
+    body: JSON.stringify({
+      status: 'draft',
+      title: 'Private Working Draft',
+      event_date: '2030-10-12',
+      start_time: '20:00',
+      venue_name: 'Draft Hall',
+      venue_address: '10 Draft Way',
+      presentation_mode: 'standard',
+      admission_type: 'free_rsvp'
+    })
+  });
+  assert.equal(response.status, 201);
+  const event = (await response.json()).event;
+  assert.equal(event.status, 'draft');
+
+  const anonymous = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(anonymous.status, 404);
+
+  const otherOrganizer = (await pool.query(
+    `INSERT INTO organizers (email, name) VALUES ('other-owner@example.test','Other Owner') RETURNING id`
+  )).rows[0];
+  const wrongOwner = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(otherOrganizer.id)}` }
+  });
+  assert.equal(wrongOwner.status, 404);
+
+  const ownerView = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: ownerCookie } });
+  assert.equal(ownerView.status, 200);
+  assert.match(ownerView.headers.get('cache-control'), /private, no-store/);
+  assert.match(ownerView.headers.get('x-robots-tag'), /noindex/);
+  const ownerHtml = await ownerView.text();
+  assert.match(ownerHtml, /Draft preview · Only you can see this/);
+  assert.match(ownerHtml, /class="owner-draft-notice"/);
+  assert.match(ownerHtml, /"status":"draft"/);
+  assert.match(ownerHtml, /"rsvpEnabled":false/);
+  assert.doesNotMatch(ownerHtml, /data-open-rsvp/);
 });
 
 test('remembers a first RSVP and makes future public-event answers one tap without granting account access', async () => {
@@ -1579,7 +1625,9 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   assert.equal(rememberedFollowRequest.status, 200);
   const rememberedChallenge = (await pool.query(
     `SELECT email,intent,target_organizer_id,return_path
-       FROM magic_link_tokens ORDER BY id DESC LIMIT 1`
+       FROM magic_link_tokens
+      WHERE email='riley-remembered@example.test' AND intent='follow_host'
+      ORDER BY id DESC LIMIT 1`
   )).rows[0];
   assert.deepEqual(rememberedChallenge, {
     email: 'riley-remembered@example.test',

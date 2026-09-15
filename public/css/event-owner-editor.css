@@ -87,6 +87,8 @@ body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: o
 .owner-editor-close:hover { color: #fff; border-color: rgba(255,255,255,.3); }
 .owner-editor-peek { display: none; }
 .owner-editor-form { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.owner-draft-notice { display: flex; align-items: center; gap: 9px; padding: 10px 16px; border-bottom: 1px solid rgba(245,185,66,.18); background: rgba(245,185,66,.065); color: #d9bd82; font-size: 10px; }
+.owner-draft-notice strong { padding: 4px 7px; border-radius: 999px; background: rgba(245,185,66,.12); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
 .owner-editor-tabs {
   display: grid;
   grid-template-columns: repeat(3,minmax(0,1fr));

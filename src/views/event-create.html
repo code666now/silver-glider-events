@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Event — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/event-owner-editor.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .quick-create-shell { width: min(720px,calc(100% - 32px)); margin: 0 auto; padding: 28px 0 100px; }
+    .quick-create-card { margin-top: 48px; padding: clamp(24px,5vw,48px); border: 1px solid var(--sg-border-soft); border-radius: 28px; background: rgba(17,17,19,.9); box-shadow: var(--sg-shadow); }
+    .quick-create-kicker { margin: 0 0 12px; color: var(--sg-accent); font-size: 11px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+    .quick-create-card h1 { margin: 0; font-size: clamp(38px,7vw,62px); line-height: .98; }
+    .quick-create-intro { max-width: 520px; margin: 16px 0 34px; color: var(--sg-text-dim); font-size: 15px; line-height: 1.65; }
+    .quick-create-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .quick-create-card .owner-field > span,
+    .quick-create-card .owner-field-label { color: var(--sg-text-dim); }
+    .quick-create-location { margin-top: 2px; }
+    .quick-create-error { min-height: 22px; margin: 6px 0 12px; color: var(--sg-danger); font-size: 12px; line-height: 1.5; }
+    .quick-create-submit { min-height: 56px; font-size: 15px; }
+    .quick-create-footnote { margin: 12px 0 0; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; text-align: center; }
+    @media (max-width: 620px) {
+      .quick-create-shell { width: min(100% - 24px,720px); padding-top: 18px; }
+      .quick-create-card { margin-top: 28px; padding: 24px 18px; border-radius: 22px; }
+      .quick-create-row { grid-template-columns: 1fr; gap: 0; }
+      .quick-create-card h1 { font-size: 42px; }
+      .quick-create-submit { min-height: 54px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="quick-create-shell">
+    <nav id="nav"></nav>
+    <section class="quick-create-card" aria-labelledby="quick-create-title">
+      <p class="quick-create-kicker">New event</p>
+      <h1 id="quick-create-title">Start with the essentials.</h1>
+      <p class="quick-create-intro">Add the four things you already know. Then you’ll design the event on its real page before anyone else can see it.</p>
+
+      <form id="quick-create-form" novalidate>
+        <label class="owner-field"><span>Event title</span><input class="owner-input" id="create-title" maxlength="140" required placeholder="Vinyl Night at Make Out Room" autocomplete="off"></label>
+        <div class="quick-create-row">
+          <label class="owner-field"><span>Date</span><input class="owner-input" id="create-date" type="date" required></label>
+          <label class="owner-field"><span>Start time</span><input class="owner-input" id="create-start-time" type="time" required></label>
+        </div>
+
+        <div class="owner-field owner-location-picker quick-create-location">
+          <label class="owner-field-label" for="create-location-search">Location</label>
+          <div class="owner-location-search-mode" id="create-location-search-mode">
+            <input class="owner-input" id="create-location-search" autocomplete="off" aria-required="true" aria-describedby="create-places-status" placeholder="Search venue or address">
+            <button class="owner-location-mode-button" id="create-location-manual-toggle" type="button">Enter manually</button>
+          </div>
+          <div class="owner-location-manual-mode" id="create-location-manual-mode" hidden>
+            <label for="create-location-manual-address">Address</label>
+            <div class="owner-location-manual-actions">
+              <input class="owner-input" id="create-location-manual-address" autocomplete="street-address" placeholder="346 Corbett Ave, San Francisco">
+              <button class="owner-location-mode-button" id="create-location-search-toggle" type="button">Search instead</button>
+            </div>
+          </div>
+          <small class="owner-places-status" id="create-places-status" role="status" aria-live="polite"></small>
+          <div class="owner-location-selection" id="create-location-selection" hidden>
+            <span class="owner-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+            <span class="owner-location-copy"><strong id="create-location-selection-name"></strong><small id="create-location-selection-address"></small></span>
+            <button class="owner-location-change" id="create-location-change" type="button">Change</button>
+          </div>
+          <label class="owner-location-name-field" id="create-location-name-field" for="create-location-name" hidden>
+            <span>Location name <small>Optional</small></span>
+            <input class="owner-input" id="create-location-name" maxlength="140" placeholder="Adrian’s place or Rooftop">
+            <small>Add a friendly name for this address, or leave it blank.</small>
+          </label>
+        </div>
+
+        <p class="quick-create-error" id="quick-create-error" role="alert"></p>
+        <button class="sg-btn sg-btn-primary sg-btn-block quick-create-submit" id="quick-create-submit" type="submit">Continue to design</button>
+        <p class="quick-create-footnote">This creates a private draft. Nothing is shared until you publish.</p>
+      </form>
+    </section>
+  </main>
+  <script src="/js/api.js"></script>
+  <script src="/js/location-utils.js"></script>
+  <script src="/js/event-create.js"></script>
+</body>
+</html>

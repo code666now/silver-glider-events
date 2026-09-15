@@ -74,6 +74,9 @@ function renderOwnerEditor(event) {
   const data = JSON.stringify(ownerEventData(event)).replace(/</g, '\\u003c');
   const advancedHref = `/events/${encodeURIComponent(event.id)}/edit`;
   const manageHref = `/events/${encodeURIComponent(event.id)}/manage`;
+  const draftNotice = event.status === 'draft'
+    ? '<div class="owner-draft-notice"><strong>Draft</strong><span>Only you can see this event.</span></div>'
+    : '';
   return `<div class="owner-edit-root" id="owner-edit-root">
     <button class="owner-edit-trigger" id="owner-edit-trigger" type="button" aria-controls="owner-editor" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
@@ -93,6 +96,7 @@ function renderOwnerEditor(event) {
       </header>
 
       <form class="owner-editor-form" id="owner-editor-form">
+        ${draftNotice}
         <div class="owner-editor-tabs" role="tablist" aria-label="Event editing sections">
           <button type="button" role="tab" id="owner-tab-appearance" aria-controls="owner-panel-appearance" aria-selected="true" data-owner-tab="appearance">Appearance</button>
           <button type="button" role="tab" id="owner-tab-details" aria-controls="owner-panel-details" aria-selected="false" tabindex="-1" data-owner-tab="details">Details</button>

@@ -308,7 +308,7 @@ function validateEventBody(body, { partial = false } = {}) {
     out.ticket_url = null;
     if (!out.commerce_event_id && !partial) errors.push('Connect this event to Silver Glider Commerce before publishing');
   }
-  if (out.status !== undefined && out.status === undefined) delete out.status;
+  if (body.status !== undefined && out.status === undefined) errors.push('Choose a valid event status');
   return { out, errors };
 }
 
@@ -411,8 +411,8 @@ router.post('/api/events', async (req, res, next) => {
                                event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
                                event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
                                show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
-                               artwork_accent_color, commerce_event_id, sms_reminder_enabled)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46)
+                               artwork_accent_color, commerce_event_id, sms_reminder_enabled, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
            RETURNING *`,
           [req.organizer.id, slug, out.title, out.description || null, out.cover_image_url,
            out.cover_fit_mode, out.presentation_mode, out.flyer_image_url,
@@ -428,7 +428,8 @@ router.post('/api/events', async (req, res, next) => {
            out.event_vibe_url_3 || null, out.event_vibe_label_3 || null, out.event_vibe_image_url_3 || null,
            out.show_guest_list, out.allow_guests, out.comments_enabled,
            secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
-           out.commerce_event_id || null, out.sms_reminder_enabled === true]
+           out.commerce_event_id || null, out.sms_reminder_enabled === true,
+           out.status === 'draft' ? 'draft' : 'published']
         );
         if (secretShowEnabled) {
           await client.query(
