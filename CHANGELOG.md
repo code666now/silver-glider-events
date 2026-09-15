@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.94
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Added
+
+* Create and Edit Event now keep their existing single publish/save control reachable while hosts work through the form. The dock stays inside the Event Information column on large desktops and clears the fixed **Feedback** bubble on phones.
+* The dock explains which four core details are still needed, then shifts to the primary treatment as soon as title, date, time, and the existing validated location are complete.
+
+### Improved
+
+* Short desktop windows and mobile keyboard-height layouts automatically return the dock to normal document flow so it cannot crowd essential fields.
+* Incomplete submissions still use the browser and existing location validation, while Flyer artwork, Secret Show codes, admission details, and all publish behavior retain their existing safeguards.
+
 ## 1.0.93
 
 Released September 15, 2026. Built and deployed by Codex.
