@@ -91,7 +91,6 @@ function finishEditLoading() {
   $('event-form').inert = false;
   $('event-form').setAttribute('aria-busy', 'false');
   $('publish-btn').disabled = false;
-  updatePublishReadiness();
 }
 
 function showEditLoadError() {
@@ -608,7 +607,6 @@ function applySelectedPlace(place) {
   $('venue_longitude').value = location ? String(location.lng()) : '';
   setPlacesStatus('');
   renderLocationSelection();
-  updatePublishReadiness();
   window.setTimeout(() => { applyingPlace = false; }, 0);
 }
 
@@ -1166,80 +1164,11 @@ function collect() {
   return body;
 }
 
-function updatePublishReadiness() {
-  const coreFieldsComplete = ['title', 'event_date', 'start_time']
-    .every(id => $(id).checkValidity() && Boolean($(id).value.trim()));
-  const ready = coreFieldsComplete && publishLocationState().valid;
-  const dock = $('publish-dock');
-  dock.classList.toggle('is-ready', ready);
-  dock.dataset.ready = String(ready);
-  $('publish-helper').textContent = ready
-    ? (editId ? 'Core details complete. Save now or keep customizing.' : 'Core details complete. Publish now or keep customizing.')
-    : (editId ? 'Add a title, date, time, and location to save' : 'Add a title, date, time, and location to publish');
-}
-
-$('event-form').addEventListener('input', updatePublishReadiness);
-$('event-form').addEventListener('change', updatePublishReadiness);
-updatePublishReadiness();
-
-let publishDockFrame = null;
-
-function updatePublishDockEndState() {
-  publishDockFrame = null;
-  const details = document.querySelector('.event-editor-details');
-  if (!details) return;
-
-  const dock = $('publish-dock');
-  let stickyTop = null;
-  if (window.matchMedia('(min-width: 1200px) and (min-height: 900px)').matches) {
-    stickyTop = window.innerHeight - 135;
-  } else if (window.matchMedia('(max-width: 767px) and (min-height: 700px), (min-width: 768px) and (max-width: 1199px) and (min-height: 900px)').matches) {
-    stickyTop = window.innerHeight - 195;
-  }
-
-  if (stickyTop === null) {
-    dock.classList.remove('is-at-form-end');
-    return;
-  }
-
-  // Release the dock before it can cover the last visible settings card.
-  // Geometry is checked again after async edit data, image previews, and
-  // private options change the form height.
-  const privateSettings = $('private-settings');
-  const finalSettings = privateSettings.classList.contains('show')
-    ? privateSettings
-    : $('automatic-text-settings');
-  const releaseLine = stickyTop + dock.offsetHeight + 24;
-  const atFormEnd = finalSettings.getBoundingClientRect().top <= releaseLine
-    || details.getBoundingClientRect().bottom <= window.innerHeight + 1;
-  dock.classList.toggle('is-at-form-end', atFormEnd);
-}
-
-function schedulePublishDockEndState() {
-  if (publishDockFrame !== null) return;
-  publishDockFrame = window.requestAnimationFrame(updatePublishDockEndState);
-}
-
-window.addEventListener('scroll', schedulePublishDockEndState, { passive: true });
-window.addEventListener('resize', schedulePublishDockEndState);
-
-if ('ResizeObserver' in window) {
-  const publishDetailsObserver = new ResizeObserver(schedulePublishDockEndState);
-  publishDetailsObserver.observe(document.querySelector('.event-editor-details'));
-}
-
-if ('IntersectionObserver' in window) {
-  const publishEndObserver = new IntersectionObserver(schedulePublishDockEndState);
-  publishEndObserver.observe($('publish-end-anchor'));
-}
-
-schedulePublishDockEndState();
-
 // Edit mode — prefill
 if (editId) {
-  document.title = 'Edit Event — Silver Glider Events';
-  $('page-title').textContent = 'Edit Event';
-  document.querySelector('.sg-page-sub').textContent = 'Changes go live as soon as you save.';
+  document.title = 'Music & Advanced Settings — Silver Glider Events';
+  $('page-title').textContent = 'Music & advanced settings';
+  document.querySelector('.sg-page-sub').textContent = 'Fine-tune the optional parts of your event.';
   $('publish-btn').textContent = 'Save Changes';
   $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {

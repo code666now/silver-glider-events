@@ -143,28 +143,18 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.doesNotMatch(html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>')), /id="image-modal"/);
 });
 
-test('event editor keeps one publish control reachable with truthful core-field readiness', () => {
+test('advanced event editor keeps one ordinary submit control at the end of the form', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
   const form = html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>'));
 
   assert.equal((form.match(/id="publish-btn"/g) || []).length, 1);
-  assert.match(form, /id="publish-end-anchor" aria-hidden="true"[\s\S]*class="publish-dock" id="publish-dock"[\s\S]*id="publish-helper" aria-live="polite"[\s\S]*type="submit" id="publish-btn" aria-describedby="publish-helper"/);
-  assert.match(html, /@media \(min-width: 1200px\) and \(min-height: 900px\)[\s\S]*\.event-editor-details \{[\s\S]*display: flex;[\s\S]*padding-bottom: 156px;[\s\S]*\.publish-dock \{[\s\S]*order: -1;[\s\S]*position: sticky;[\s\S]*top: calc\(100dvh - 135px\)/);
-  assert.match(html, /@media \(max-width: 767px\) and \(min-height: 700px\),[\s\S]*\(min-width: 768px\) and \(max-width: 1199px\) and \(min-height: 900px\)[\s\S]*\.event-editor-details \{[\s\S]*display: flex;[\s\S]*padding-bottom: 124px;[\s\S]*\.publish-dock \{[\s\S]*order: -1;[\s\S]*position: sticky;[\s\S]*top: calc\(100dvh - 195px\)/);
-  assert.match(html, /\.publish-dock #publish-btn \{[\s\S]*min-height: 52px/);
+  assert.match(form, /class="sg-btn sg-btn-primary sg-btn-block event-editor-submit" type="submit" id="publish-btn">Publish Event<\/button>/);
+  assert.match(html, /\.event-editor-submit \{ min-height: 52px;/);
   assert.match(js, /function publishLocationState\(\)[\s\S]*manualLocationMode && !venueAddress/);
   assert.match(js, /function collect\(\)[\s\S]*const locationState = publishLocationState\(\)[\s\S]*if \(!locationState\.valid\) throw new Error\(locationState\.error\)/);
-  assert.match(js, /function updatePublishReadiness\(\)[\s\S]*\['title', 'event_date', 'start_time'\][\s\S]*publishLocationState\(\)\.valid/);
-  assert.match(js, /classList\.toggle\('is-ready', ready\)/);
-  assert.match(html, /\.publish-dock\.is-at-form-end \{[\s\S]*order: 0;[\s\S]*position: relative;[\s\S]*top: auto/);
-  assert.match(js, /function updatePublishDockEndState\(\)[\s\S]*matchMedia\('\(min-width: 1200px\) and \(min-height: 900px\)'\)[\s\S]*finalSettings\.getBoundingClientRect\(\)\.top <= releaseLine[\s\S]*classList\.toggle\('is-at-form-end', atFormEnd\)/);
-  assert.match(js, /addEventListener\('scroll', schedulePublishDockEndState, \{ passive: true \}\)[\s\S]*addEventListener\('resize', schedulePublishDockEndState\)/);
-  assert.match(js, /new ResizeObserver\(schedulePublishDockEndState\)[\s\S]*observe\(document\.querySelector\('\.event-editor-details'\)\)/);
-  assert.match(js, /new IntersectionObserver\(schedulePublishDockEndState\)[\s\S]*observe\(\$\('publish-end-anchor'\)\)/);
-  assert.match(js, /'Core details complete\. Publish now or keep customizing\.'/);
-  assert.match(js, /'Core details complete\. Save now or keep customizing\.'/);
-  assert.doesNotMatch(js, /disabled\s*=\s*!ready/);
+  assert.doesNotMatch(html, /publish-dock|publish-helper|publish-end-anchor/);
+  assert.doesNotMatch(js, /updatePublishReadiness|updatePublishDockEndState|schedulePublishDockEndState/);
 });
 
 test('event editor gives editable fields a restrained hover and focus halo', () => {
