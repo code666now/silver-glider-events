@@ -389,7 +389,8 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
   assert.match(flyerHtml, /class="sg-email-actions"/);
   assert.match(flyerHtml, /View event &amp; comments/);
   assert.match(flyerHtml, /Heat Wave Booking/);
-  assert.match(flyerHtml, /Powered by Silver Glider/);
+  assert.match(flyerHtml, /Silver Glider Events/);
+  assert.ok(flyerHtml.indexOf('logo.png') > flyerHtml.indexOf('View event &amp; comments'));
 });
 
 test('existing reminder senders select the flyer-focused template and attendee calendar link', () => {

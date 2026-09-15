@@ -30,7 +30,6 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   const html = renderRsvpConfirmationEmail({ event, rsvp });
   const theme = createEmailTheme(event.artwork_accent_color);
   const markers = [
-    'logo.png',
     'class="sg-event-artwork"',
     'RSVP Confirmed',
     'class="sg-event-title"',
@@ -44,7 +43,9 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
     'Open in Maps',
     'Manage RSVP',
     'A calendar invite is attached.',
-    'Powered by Silver Glider'
+    'logo.png',
+    'Silver Glider Events',
+    'Host your own event'
   ];
 
   for (let index = 1; index < markers.length; index += 1) {
@@ -115,7 +116,8 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.match(html, /max-width:620px/);
   assert.match(html, /\[if mso\][\s\S]*width="620"/);
   assert.doesNotMatch(html, /You(?:'|’)re on the list/);
-  assert.match(html, /width="34" height="34" alt="Silver Glider Events"/);
+  assert.match(html, /width="34" height="34" alt=""/);
+  assert.ok(html.indexOf('logo.png') > html.indexOf('A calendar invite is attached.'));
   assert.doesNotMatch(html, /bgcolor="#071522"|background:#071522/);
   assert.match(html, /class="sg-event-artwork"[\s\S]*width="620"[\s\S]*width:100%;max-width:620px;height:auto;display:block/);
   assert.match(html, /if_ar_gt_1\.15[\s\S]*b_auto,c_pad,h_560,w_620[\s\S]*f_jpg,q_auto/);

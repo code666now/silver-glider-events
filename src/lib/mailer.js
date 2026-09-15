@@ -88,15 +88,44 @@ function layout({ kicker, headline, sub, bodyHtml, cta, ctaUrl, footerHtml, foot
 </html>`;
 }
 
-// RSVP confirmations use the same dark, spacious visual language as Silver
-// Glider's activation emails without changing the shared transactional layout.
-function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_accent_color), sub, bodyHtml, cta, ctaUrl, secondaryHtml, footerBrand = 'Powered by Silver Glider' }) {
+function eventEmailBrandFooter(baseUrl, { actionLabel = '', actionUrl = '' } = {}) {
+  const action = actionLabel && actionUrl
+    ? `<p style="margin:12px 0 0"><a href="${esc(actionUrl)}" style="color:#8f8f8f;font-size:13px;font-weight:700;text-decoration:none">${esc(actionLabel)} &rarr;</a></p>`
+    : '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-top:1px solid #242424">
+    <tr><td align="center" style="padding:30px 0 0">
+      <img src="${esc(baseUrl)}/logo.png" width="34" height="34" alt="" style="display:block;width:34px;height:34px;border:0;outline:none;text-decoration:none;margin:0 auto">
+      <p style="color:#777777;font-size:9px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin:9px 0 0">Silver Glider Events</p>
+      ${action}
+    </td></tr>
+  </table>`;
+}
+
+// Event-focused emails share the RSVP confirmation hierarchy and saved artwork
+// accent while keeping Silver Glider's identity quiet in the footer.
+function rsvpConfirmationLayout({
+  event,
+  theme = createEmailTheme(event.artwork_accent_color),
+  kicker = 'RSVP Confirmed',
+  sub,
+  bodyHtml,
+  cta,
+  ctaUrl,
+  secondaryHtml,
+  footerHtml,
+  showEventIdentity = true,
+  footerActionLabel = 'Host your own event',
+  footerActionUrl
+}) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const outerBackground = '#080808';
   const artworkRow = confirmationArtworkRow(event);
   const hasArtwork = Boolean(artworkRow);
-  const hostHtml = confirmationHostHtml(event, baseUrl, theme);
-  const listeningHtml = confirmationListeningHtml(event, baseUrl, theme);
+  const hostHtml = showEventIdentity ? confirmationHostHtml(event, baseUrl, theme) : '';
+  const listeningHtml = showEventIdentity ? confirmationListeningHtml(event, baseUrl, theme) : '';
+  const resolvedFooterActionUrl = footerActionUrl === undefined
+    ? `${baseUrl}/login?next=%2Fevents%2Fnew`
+    : footerActionUrl;
   return `
 <!DOCTYPE html>
 <html>
@@ -108,7 +137,6 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
   <style>
     @media only screen and (max-width:620px) {
       .sg-email-pad { padding-left:20px !important;padding-right:20px !important; }
-      .sg-email-brand { padding-left:20px !important;padding-right:20px !important;padding-top:28px !important; }
       .sg-email-headline { font-size:38px !important; }
       .sg-event-title { font-size:30px !important;line-height:1.12 !important; }
       .sg-email-sub,.sg-email-secondary,.sg-detail-label,.sg-detail-value,.sg-map-link,.sg-email-action-label { font-size:16px !important; }
@@ -122,13 +150,9 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
     <tr><td align="center">
       <!--[if mso]><table role="presentation" width="620" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-container" bgcolor="#080808" style="width:100%;max-width:620px;margin:0 auto;background:#080808">
-        <tr><td align="center" class="sg-email-brand" style="padding:34px 30px ${hasArtwork ? '18px' : '44px'}">
-          <img src="${esc(baseUrl)}/logo.png" width="34" height="34" alt="Silver Glider Events" style="display:block;width:34px;height:34px;border:0;outline:none;text-decoration:none;margin:0 auto">
-          <p style="color:#777777;font-size:9px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;margin:9px 0 0">Silver Glider Events</p>
-        </td></tr>
         ${artworkRow}
-        <tr><td class="sg-email-pad" style="padding:${hasArtwork ? '32px' : '0'} 30px 0">
-          <p style="font-size:13px;font-weight:800;color:${theme.secondaryAccentColor};letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">RSVP Confirmed</p>
+        <tr><td class="sg-email-pad" style="padding:${hasArtwork ? '32px' : '44px'} 30px 0">
+          <p style="font-size:13px;font-weight:800;color:${theme.secondaryAccentColor};letter-spacing:.14em;text-transform:uppercase;margin:0 0 18px">${esc(kicker)}</p>
           <h1 class="sg-event-title" style="font-size:36px;font-weight:800;margin:0 0 ${hostHtml || listeningHtml ? '10px' : '16px'};color:#f4f4f4;letter-spacing:-.025em;line-height:1.12;overflow-wrap:anywhere;word-break:break-word">${esc(event.title)}</h1>
           ${hostHtml}
           ${listeningHtml}
@@ -142,12 +166,10 @@ function rsvpConfirmationLayout({ event, theme = createEmailTheme(event.artwork_
           </table>
           <div style="height:26px;line-height:26px">&nbsp;</div>
           ${secondaryHtml || ''}
+          ${footerHtml ? `<div style="margin:0 0 34px">${footerHtml}</div>` : ''}
         </td></tr>
         <tr><td class="sg-email-pad" style="padding:0 30px 36px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-top:1px solid #242424">
-            <tr><td align="center" style="padding:30px 0 0"><p style="color:#686868;font-size:12px;font-weight:700;letter-spacing:.04em;margin:0">${esc(footerBrand)}</p>
-              <p style="margin:12px 0 0"><a href="${esc(`${baseUrl}/login?next=%2Fevents%2Fnew`)}" style="color:#8f8f8f;font-size:13px;font-weight:700;text-decoration:none">Host your own event &rarr;</a></p></td></tr>
-          </table>
+          ${eventEmailBrandFooter(baseUrl, { actionLabel: footerActionLabel, actionUrl: resolvedFooterActionUrl })}
         </td></tr>
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
@@ -227,6 +249,13 @@ function confirmationDetailsCard(event) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
     ${rowHtml}
   </table>`;
+}
+
+function confirmationMapLink(event, theme) {
+  const location = LocationUtils.locationQuery(event.venue_name, event.venue_address);
+  if (!location) return '';
+  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(location)}`;
+  return `<p class="sg-map-link" style="margin:14px 0 0;text-align:right"><a href="${esc(mapsUrl)}" style="color:${theme.secondaryAccentColor};font-size:14px;font-weight:700;text-decoration:none">Open in Maps &rarr;</a></p>`;
 }
 
 function confirmationActionLinks(event, rsvp, theme) {
@@ -347,8 +376,7 @@ function renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
     bodyHtml: confirmationDetailsCard(event),
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`,
-    footerBrand: 'Powered by Silver Glider'
+    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
   });
 }
 
@@ -618,14 +646,19 @@ function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLab
   const firstName = String(recipientName || '').trim().split(/\s+/)[0];
   const greeting = firstName ? `Hi ${firstName}. ` : '';
   const previousEvent = String(sourceEventTitle || '').trim() || 'a previous event';
-  return layout({
+  const theme = createEmailTheme(event.artwork_accent_color);
+  return rsvpConfirmationLayout({
+    event,
+    theme,
     kicker: `An invitation from ${organizerLabel}`,
-    headline: event.title,
     sub: `${greeting}${organizerLabel} thought you’d like this next event.`,
-    bodyHtml: `${photoRequestArtwork(event)}${eventCard(event)}`,
+    bodyHtml: `${confirmationDetailsCard(event)}${confirmationMapLink(event, theme)}`,
     cta: 'RSVP',
     ctaUrl: invitationUrl || `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
-    footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re receiving this invitation because you RSVP’d to ${esc(previousEvent)}, hosted by ${esc(organizerLabel)}.<br><a href="${esc(unsubscribeUrl)}" style="color:#777;text-decoration:underline">Unsubscribe from invitations from this host</a></p>`
+    footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re receiving this invitation because you RSVP’d to ${esc(previousEvent)}, hosted by ${esc(organizerLabel)}.<br><a href="${esc(unsubscribeUrl)}" style="color:${theme.secondaryAccentColor};text-decoration:underline">Unsubscribe from invitations from this host</a></p>`,
+    showEventIdentity: false,
+    footerActionLabel: '',
+    footerActionUrl: ''
   });
 }
 

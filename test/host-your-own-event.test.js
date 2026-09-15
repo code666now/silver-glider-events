@@ -39,6 +39,6 @@ test('RSVP confirmation emails end with a quiet host invitation', () => {
     assert.match(html, /href="https:\/\/silvergliderevents\.com\/login\?next=%2Fevents%2Fnew"/);
     assert.match(html, /Host your own event &rarr;/);
     // It sits after the event's own call to action, in the footer.
-    assert.ok(html.indexOf('Host your own event') > html.indexOf('Powered by Silver Glider'));
+    assert.ok(html.indexOf('Host your own event') > html.indexOf('Silver Glider Events'));
   }
 });

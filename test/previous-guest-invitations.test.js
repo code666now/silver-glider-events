@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { renderPreviousGuestInvitationEmail } = require('../src/lib/mailer');
+const { createEmailTheme } = require('../public/js/artwork-color');
 
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -58,7 +59,7 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
     event: {
       slug: 'next-night', title: 'Next <Night>', event_date: '2030-11-14', start_time: '20:00',
       venue_name: 'Test Hall', venue_address: '1 Test Way', presentation_mode: 'standard',
-      cover_image_url: 'https://images.example.test/next-night.jpg'
+      cover_image_url: 'https://images.example.test/next-night.jpg', artwork_accent_color: '#D96524'
     },
     recipientName: 'Ari <Guest>',
     organizerLabel: 'Host & Friends',
@@ -74,6 +75,15 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
   assert.match(html, /Unsubscribe from invitations from this host/);
   assert.match(html, /token=safe&amp;host=1/);
   assert.doesNotMatch(html, /<Night>/);
+  const theme = createEmailTheme('#D96524');
+  assert.match(html, new RegExp(`height="52" bgcolor="${theme.accentColor}"`));
+  assert.match(html, new RegExp(`color:${theme.secondaryAccentColor}`));
+  assert.doesNotMatch(html, /background:#1CC5BE/);
+  for (const marker of ['class="sg-event-artwork"', 'An invitation from Host &amp; Friends', 'Next &lt;Night&gt;', 'class="sg-detail-label"', '>RSVP</a>', 'logo.png', 'Silver Glider Events']) {
+    assert.ok(html.includes(marker), `missing invitation marker: ${marker}`);
+  }
+  assert.ok(html.indexOf('class="sg-event-artwork"') < html.indexOf('An invitation from Host &amp; Friends'));
+  assert.ok(html.indexOf('>RSVP</a>') < html.indexOf('logo.png'));
 
   const mailer = read('src/lib/mailer.js');
   const worker = read('src/jobs/previous-guest-invitations.js');

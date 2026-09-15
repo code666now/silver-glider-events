@@ -33,6 +33,7 @@ test('Event Vibe progressively supports three artists with optional managed phot
   assert.match(form, /id="event_vibe_label" maxlength="80"/);
   assert.match(form, /id="event_vibe_label_2" maxlength="80"/);
   assert.match(form, /id="event_vibe_label_3" maxlength="80"/);
+  assert.match(form, /\.vibe-choice-fields\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   assert.equal((form.match(/Add a photo, a music link, or both\./g) || []).length, 3);
   assert.match(formClient, /function setSecondVibeVisible\(visible\)/);
   assert.match(formClient, /function setThirdVibeVisible\(visible\)/);
