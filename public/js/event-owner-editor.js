@@ -89,6 +89,12 @@
     flyerImageUrl: source.flyerImageUrl || '',
     flyerDesignerName: source.flyerDesignerName || '',
     flyerDesignerInstagramHandle: comparableInstagramHandle(source.flyerDesignerInstagramHandle),
+    presentationMode: source.presentationMode === 'flyer' ? 'flyer' : 'standard',
+    admissionType: ['free_rsvp', 'external_tickets', 'silver_glider_tickets'].includes(source.admissionType)
+      ? source.admissionType
+      : 'free_rsvp',
+    ticketPrice: source.ticketPrice === '' || source.ticketPrice == null ? null : Number(source.ticketPrice),
+    ticketUrl: source.ticketUrl || '',
     coverCreditName: source.coverCreditName || '',
     coverCreditLink: source.coverCreditLink || '',
     artworkAccentColor: source.artworkAccentColor || ''
@@ -168,6 +174,10 @@
       $('owner-show-guests').checked !== draft.showGuestList ||
       $('owner-allow-guests').checked !== draft.allowGuests ||
       $('owner-comments').checked !== draft.commentsEnabled ||
+      (document.querySelector('input[name="owner_presentation_mode"]:checked')?.value || saved.presentationMode) !== draft.presentationMode ||
+      (document.querySelector('input[name="owner_admission"]:checked')?.value || saved.admissionType) !== draft.admissionType ||
+      ($('owner-ticket-price').value ? Number($('owner-ticket-price').value) : null) !== draft.ticketPrice ||
+      $('owner-ticket-url').value.trim() !== draft.ticketUrl ||
       (draft.presentationMode === 'flyer' && (
         $('owner-flyer-designer-name').value.trim() !== draft.flyerDesignerName ||
         comparableInstagramHandle($('owner-flyer-designer-instagram').value) !== comparableInstagramHandle(draft.flyerDesignerInstagramHandle)
@@ -194,6 +204,30 @@
     preview.setGuestListVisible(draft.showGuestList);
     preview.setGuestFieldsVisible(draft.allowGuests);
     preview.setCommentsVisible(draft.commentsEnabled);
+  }
+
+  function formatTicketPrice(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) return 'Tickets';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  }
+
+  function previewAdmission() {
+    const note = document.querySelector('.ticket-note');
+    if (note) {
+      if (draft.admissionType === 'external_tickets') {
+        note.innerHTML = `<span>${formatTicketPrice(draft.ticketPrice)}</span>${draft.ticketUrl ? '<a>Ticket link →</a>' : '<em>At the door</em>'}`;
+      } else if (draft.admissionType === 'silver_glider_tickets') {
+        note.innerHTML = '<span>Tickets</span><em>Sold by Silver Glider</em>';
+      } else {
+        note.innerHTML = '<span>Free</span><em>RSVP</em>';
+      }
+    }
+    document.querySelectorAll('[data-primary-action]').forEach(action => {
+      if (draft.admissionType === 'external_tickets' && draft.ticketUrl) action.textContent = 'Get Tickets';
+      else if (draft.admissionType === 'silver_glider_tickets') action.textContent = 'Get Tickets';
+      else action.textContent = 'RSVP';
+    });
   }
 
   function formatDate(value) {
@@ -416,10 +450,50 @@
       card.classList.remove('has-image');
       updateAdaptiveSwatch([]);
     }
-    $('owner-remove-image').disabled = !url;
+    $('owner-remove-image').disabled = !url || draft.presentationMode === 'flyer';
     const showFlyerCredit = draft.presentationMode === 'flyer' && Boolean(url);
     $('owner-flyer-credit-fields').hidden = !showFlyerCredit;
     if (!showFlyerCredit) setOwnerFlyerDesignerError('');
+  }
+
+  function renderPresentationControls() {
+    document.querySelectorAll('input[name="owner_presentation_mode"]').forEach(input => {
+      input.checked = input.value === draft.presentationMode;
+    });
+    $('owner-browse-photos').hidden = draft.presentationMode === 'flyer';
+    $('owner-upload-image').textContent = draft.presentationMode === 'flyer'
+      ? (draft.flyerImageUrl ? 'Replace flyer' : 'Upload flyer')
+      : (draft.coverImageUrl ? 'Replace image' : 'Upload image');
+    $('owner-image-card').setAttribute('aria-label', draft.presentationMode === 'flyer'
+      ? 'Upload a new event flyer'
+      : 'Upload a new event image');
+    $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
+    document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
+    document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
+    document.querySelector('[data-owner-theme="adaptive"]').hidden = draft.presentationMode === 'flyer';
+  }
+
+  function setPresentationMode(mode) {
+    draft.presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
+    if (draft.presentationMode === 'flyer' && !draft.flyerImageUrl) {
+      $('owner-upload-status').textContent = 'Upload your flyer to use the Flyer layout.';
+    } else {
+      $('owner-upload-status').textContent = '';
+    }
+    renderPresentationControls();
+    previewImage();
+    previewTheme(draft.backgroundTheme);
+    syncDirtyState();
+  }
+
+  function renderAdmissionControls() {
+    document.querySelectorAll('input[name="owner_admission"]').forEach(input => {
+      input.checked = input.value === draft.admissionType;
+    });
+    const external = draft.admissionType === 'external_tickets';
+    $('owner-ticket-fields').hidden = !external;
+    $('owner-ticket-price').required = external;
+    previewAdmission();
   }
 
   function setOwnerFlyerDesignerError(message) {
@@ -699,6 +773,8 @@
     $('owner-show-guests').checked = draft.showGuestList;
     $('owner-allow-guests').checked = draft.allowGuests;
     $('owner-comments').checked = draft.commentsEnabled;
+    $('owner-ticket-price').value = draft.ticketPrice == null ? '' : draft.ticketPrice;
+    $('owner-ticket-url').value = draft.ticketUrl;
     $('owner-flyer-designer-name').value = draft.flyerDesignerName;
     const flyerInstagram = cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle).value;
     $('owner-flyer-designer-instagram').value = flyerInstagram ? `@${flyerInstagram}` : '';
@@ -706,17 +782,14 @@
     $('owner-secret-note').hidden = !draft.secretShowEnabled;
     const publicChoice = document.querySelector('input[name="owner_visibility"][value="public"]');
     publicChoice.disabled = draft.secretShowEnabled;
-    $('owner-browse-photos').hidden = draft.presentationMode === 'flyer';
-    $('owner-upload-image').textContent = draft.presentationMode === 'flyer' ? 'Replace flyer' : 'Upload image';
-    $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
-    document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
-    document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
-    document.querySelector('[data-owner-theme="adaptive"]').hidden = draft.presentationMode === 'flyer';
+    renderPresentationControls();
+    renderAdmissionControls();
     setCoverFit(draft.coverFitMode);
     previewDetails();
     previewImage();
     previewTheme(draft.backgroundTheme);
     previewGuestSettings();
+    previewAdmission();
     syncDirtyState();
   }
 
@@ -886,6 +959,7 @@
   }
 
   function readInputs() {
+    draft.presentationMode = document.querySelector('input[name="owner_presentation_mode"]:checked')?.value || saved.presentationMode;
     draft.title = $('owner-title').value.trim();
     draft.description = $('owner-description').value.trim();
     draft.eventDate = $('owner-date').value;
@@ -896,6 +970,9 @@
     draft.showGuestList = $('owner-show-guests').checked;
     draft.allowGuests = $('owner-allow-guests').checked;
     draft.commentsEnabled = $('owner-comments').checked;
+    draft.admissionType = document.querySelector('input[name="owner_admission"]:checked')?.value || saved.admissionType;
+    draft.ticketPrice = $('owner-ticket-price').value ? Number($('owner-ticket-price').value) : null;
+    draft.ticketUrl = $('owner-ticket-url').value.trim();
     if (draft.presentationMode === 'flyer') {
       draft.flyerDesignerName = $('owner-flyer-designer-name').value.trim();
       const flyerInstagramRaw = $('owner-flyer-designer-instagram').value.trim();
@@ -905,6 +982,7 @@
     }
     previewDetails();
     previewGuestSettings();
+    renderAdmissionControls();
     syncDirtyState();
   }
 
@@ -927,6 +1005,11 @@
       show_guest_list: draft.showGuestList,
       allow_guests: draft.allowGuests,
       comments_enabled: draft.commentsEnabled,
+      presentation_mode: draft.presentationMode,
+      admission_type: draft.admissionType,
+      ticket_price: draft.admissionType === 'external_tickets' ? draft.ticketPrice : null,
+      ticket_url: draft.admissionType === 'external_tickets' ? (draft.ticketUrl || null) : null,
+      commerce_event_id: draft.admissionType === 'silver_glider_tickets' ? (draft.commerceEventId || null) : null,
       background_theme: draft.backgroundTheme,
       artwork_accent_color: draft.artworkAccentColor || null
     };
@@ -1009,6 +1092,14 @@
     setCoverFit(input.value);
     syncDirtyState();
   }));
+  document.querySelectorAll('input[name="owner_presentation_mode"]').forEach(input => input.addEventListener('change', () => {
+    setPresentationMode(input.value);
+  }));
+  document.querySelectorAll('input[name="owner_admission"]').forEach(input => input.addEventListener('change', () => {
+    draft.admissionType = input.value;
+    renderAdmissionControls();
+    syncDirtyState();
+  }));
 
   $('owner-upload-image').addEventListener('click', () => $('owner-image-input').click());
   $('owner-image-card').addEventListener('click', () => $('owner-image-input').click());
@@ -1052,6 +1143,18 @@
         saveStatus.textContent = flyerInstagram.error;
         return;
       }
+      if (!draft.flyerImageUrl) {
+        activateTab('appearance');
+        saveStatus.textContent = 'Upload a flyer before saving the Flyer layout.';
+        $('owner-upload-image').focus();
+        return;
+      }
+    }
+    if (draft.admissionType === 'external_tickets' && (!Number.isFinite(draft.ticketPrice) || draft.ticketPrice <= 0)) {
+      activateTab('settings');
+      saveStatus.textContent = 'Add the external ticket price before saving.';
+      $('owner-ticket-price').focus();
+      return;
     }
     if (!draft.title || !draft.eventDate || !draft.startTime || (!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
       activateTab('details');

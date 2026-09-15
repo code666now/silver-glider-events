@@ -23,7 +23,12 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /They stay private until you save\./);
   assert.match(renderer, /role="switch"/);
   assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 3);
-  assert.match(renderer, /Admission, music &amp; advanced settings/);
+  assert.match(renderer, /Music &amp; advanced settings/);
+  assert.match(renderer, /name="owner_presentation_mode" value="standard"/);
+  assert.match(renderer, /name="owner_presentation_mode" value="flyer"/);
+  assert.match(renderer, /name="owner_admission" value="free_rsvp"/);
+  assert.match(renderer, /name="owner_admission" value="external_tickets"/);
+  assert.match(renderer, /id="owner-ticket-price"/);
   assert.match(renderer, /owner-flyer-default[\s\S]*Match Photo/);
   assert.doesNotMatch(renderer, /id="owner-end-time"/);
 
@@ -32,6 +37,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function previewImage\(/);
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
+  assert.match(client, /function previewAdmission\(\)/);
+  assert.match(client, /function setPresentationMode\(mode\)/);
   assert.match(client, /function reconcileEditorFields\(\)/);
   assert.match(client, /setInterval\(reconcileEditorFields, 200\)/);
   assert.match(client, /function closeEditor[\s\S]*reconcileEditorFields\(\)/);
@@ -56,6 +63,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /LocationUtils\.displayParts\(activeName, activeAddress\)/);
   assert.match(client, /venue_city: draft\.venueCity \|\| null/);
   assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
+  assert.match(client, /presentation_mode: draft\.presentationMode/);
+  assert.match(client, /admission_type: draft\.admissionType/);
   assert.match(client, /clearPlaceMeta\(\);[\s\S]*renderOwnerLocation\(\);[\s\S]*previewDetails\(\);[\s\S]*syncDirtyState\(\)/);
 });
 

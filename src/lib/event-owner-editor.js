@@ -1,4 +1,5 @@
 const { esc } = require('./public-html');
+const { ADMISSION_TYPES, normalizeAdmissionType } = require('./admission');
 
 const THEMES = [
   ['midnight', 'Midnight', 'gradient'],
@@ -27,10 +28,12 @@ function themeButtons(kind) {
 }
 
 function ownerEventData(event) {
+  const admissionType = normalizeAdmissionType(event.admission_type) || ADMISSION_TYPES.FREE_RSVP;
   return {
     id: event.id,
     slug: event.slug,
     presentationMode: event.presentation_mode === 'flyer' ? 'flyer' : 'standard',
+    status: event.status,
     title: event.title,
     description: event.description || '',
     eventDate: event.event_date,
@@ -45,6 +48,10 @@ function ownerEventData(event) {
     googlePlaceId: event.google_place_id || '',
     category: event.category || '',
     capacity: event.capacity,
+    admissionType,
+    ticketPrice: event.ticket_price == null ? null : Number(event.ticket_price),
+    ticketUrl: event.ticket_url || '',
+    commerceEventId: event.commerce_event_id || '',
     visibility: event.visibility === 'private' ? 'private' : 'public',
     showGuestList: event.show_guest_list === true,
     allowGuests: event.allow_guests === true,
@@ -95,6 +102,15 @@ function renderOwnerEditor(event) {
         <div class="owner-editor-scroll">
           <section class="owner-editor-panel" id="owner-panel-appearance" role="tabpanel" aria-labelledby="owner-tab-appearance" data-owner-panel="appearance">
             <div class="owner-section-intro"><h3>Appearance</h3><p>Try changes on the live page. They stay private until you save.</p></div>
+
+            <fieldset class="owner-fit-field owner-presentation-field">
+              <legend>Page style</legend>
+              <div class="owner-segmented">
+                <label><input type="radio" name="owner_presentation_mode" value="standard"><span>Standard</span></label>
+                <label><input type="radio" name="owner_presentation_mode" value="flyer"><span>Flyer</span></label>
+              </div>
+              <small class="owner-field-help">Standard uses a cover image. Flyer centers your complete poster.</small>
+            </fieldset>
 
             <div class="owner-image-card" id="owner-image-card" role="button" tabindex="0" aria-label="Upload a new event image">
               <img id="owner-image-preview" alt="Current event artwork">
@@ -202,6 +218,16 @@ function renderOwnerEditor(event) {
 
           <section class="owner-editor-panel" id="owner-panel-settings" role="tabpanel" aria-labelledby="owner-tab-settings" data-owner-panel="settings" hidden>
             <div class="owner-section-intro"><h3>Guest settings</h3><p>Control who can find the event and how guests participate.</p></div>
+            <fieldset class="owner-choice-field owner-admission-field">
+              <legend>Admission</legend>
+              <label class="owner-choice"><input type="radio" name="owner_admission" value="free_rsvp"><span><strong>Free RSVP</strong><small>Collect guest names and confirmations here.</small></span></label>
+              <label class="owner-choice"><input type="radio" name="owner_admission" value="external_tickets"><span><strong>External tickets</strong><small>Send guests to another ticket link or sell at the door.</small></span></label>
+              <label class="owner-choice"><input type="radio" name="owner_admission" value="silver_glider_tickets"${event.commerce_event_id ? '' : ' disabled'}><span><strong>Sell with Silver Glider</strong><small>${event.commerce_event_id ? 'Connected to Silver Glider Commerce.' : 'Coming soon'}</small></span></label>
+            </fieldset>
+            <div class="owner-admission-fields" id="owner-ticket-fields" hidden>
+              <label class="owner-field"><span>Ticket price</span><input class="owner-input" id="owner-ticket-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="15"></label>
+              <label class="owner-field"><span>Ticket link <small>Optional</small></span><input class="owner-input" id="owner-ticket-url" type="url" inputmode="url" placeholder="At the door, or paste https://..."></label>
+            </div>
             <fieldset class="owner-choice-field">
               <legend>Visibility</legend>
               <label class="owner-choice"><input type="radio" name="owner_visibility" value="public"><span><strong>Public</strong><small>Visible on your Host Page and shareable.</small></span></label>
@@ -217,7 +243,7 @@ function renderOwnerEditor(event) {
             <div class="owner-rsvp-warning" id="owner-rsvp-warning" role="status" hidden></div>
             <div class="owner-editor-links">
               <a href="${esc(manageHref)}">Manage guests <span aria-hidden="true">→</span></a>
-              <a href="${esc(advancedHref)}">Admission, music &amp; advanced settings <span aria-hidden="true">→</span></a>
+              <a href="${esc(advancedHref)}">Music &amp; advanced settings <span aria-hidden="true">→</span></a>
             </div>
           </section>
         </div>
