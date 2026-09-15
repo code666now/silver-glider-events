@@ -1182,12 +1182,58 @@ $('event-form').addEventListener('input', updatePublishReadiness);
 $('event-form').addEventListener('change', updatePublishReadiness);
 updatePublishReadiness();
 
+let publishDockFrame = null;
+
+function updatePublishDockEndState() {
+  publishDockFrame = null;
+  const details = document.querySelector('.event-editor-details');
+  if (!details) return;
+
+  const dock = $('publish-dock');
+  let stickyTop = null;
+  if (window.matchMedia('(min-width: 1200px) and (min-height: 900px)').matches) {
+    stickyTop = window.innerHeight - 135;
+  } else if (window.matchMedia('(max-width: 767px) and (min-height: 700px), (min-width: 768px) and (max-width: 1199px) and (min-height: 900px)').matches) {
+    stickyTop = window.innerHeight - 195;
+  }
+
+  if (stickyTop === null) {
+    dock.classList.remove('is-at-form-end');
+    return;
+  }
+
+  // Release the dock before it can cover the last visible settings card.
+  // Geometry is checked again after async edit data, image previews, and
+  // private options change the form height.
+  const privateSettings = $('private-settings');
+  const finalSettings = privateSettings.classList.contains('show')
+    ? privateSettings
+    : $('automatic-text-settings');
+  const releaseLine = stickyTop + dock.offsetHeight + 24;
+  const atFormEnd = finalSettings.getBoundingClientRect().top <= releaseLine
+    || details.getBoundingClientRect().bottom <= window.innerHeight + 1;
+  dock.classList.toggle('is-at-form-end', atFormEnd);
+}
+
+function schedulePublishDockEndState() {
+  if (publishDockFrame !== null) return;
+  publishDockFrame = window.requestAnimationFrame(updatePublishDockEndState);
+}
+
+window.addEventListener('scroll', schedulePublishDockEndState, { passive: true });
+window.addEventListener('resize', schedulePublishDockEndState);
+
+if ('ResizeObserver' in window) {
+  const publishDetailsObserver = new ResizeObserver(schedulePublishDockEndState);
+  publishDetailsObserver.observe(document.querySelector('.event-editor-details'));
+}
+
 if ('IntersectionObserver' in window) {
-  const publishEndObserver = new IntersectionObserver(([entry]) => {
-    $('publish-dock').classList.toggle('is-at-form-end', entry.isIntersecting);
-  });
+  const publishEndObserver = new IntersectionObserver(schedulePublishDockEndState);
   publishEndObserver.observe($('publish-end-anchor'));
 }
+
+schedulePublishDockEndState();
 
 // Edit mode — prefill
 if (editId) {

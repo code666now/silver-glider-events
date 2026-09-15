@@ -158,7 +158,10 @@ test('event editor keeps one publish control reachable with truthful core-field 
   assert.match(js, /function updatePublishReadiness\(\)[\s\S]*\['title', 'event_date', 'start_time'\][\s\S]*publishLocationState\(\)\.valid/);
   assert.match(js, /classList\.toggle\('is-ready', ready\)/);
   assert.match(html, /\.publish-dock\.is-at-form-end \{[\s\S]*order: 0;[\s\S]*position: relative;[\s\S]*top: auto/);
-  assert.match(js, /new IntersectionObserver\(\(\[entry\]\) => \{[\s\S]*classList\.toggle\('is-at-form-end', entry\.isIntersecting\)[\s\S]*observe\(\$\('publish-end-anchor'\)\)/);
+  assert.match(js, /function updatePublishDockEndState\(\)[\s\S]*matchMedia\('\(min-width: 1200px\) and \(min-height: 900px\)'\)[\s\S]*finalSettings\.getBoundingClientRect\(\)\.top <= releaseLine[\s\S]*classList\.toggle\('is-at-form-end', atFormEnd\)/);
+  assert.match(js, /addEventListener\('scroll', schedulePublishDockEndState, \{ passive: true \}\)[\s\S]*addEventListener\('resize', schedulePublishDockEndState\)/);
+  assert.match(js, /new ResizeObserver\(schedulePublishDockEndState\)[\s\S]*observe\(document\.querySelector\('\.event-editor-details'\)\)/);
+  assert.match(js, /new IntersectionObserver\(schedulePublishDockEndState\)[\s\S]*observe\(\$\('publish-end-anchor'\)\)/);
   assert.match(js, /'Core details complete\. Publish now or keep customizing\.'/);
   assert.match(js, /'Core details complete\. Save now or keep customizing\.'/);
   assert.doesNotMatch(js, /disabled\s*=\s*!ready/);
