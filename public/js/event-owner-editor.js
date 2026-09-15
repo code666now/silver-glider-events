@@ -137,6 +137,14 @@
     return JSON.stringify(normalized(draft)) !== JSON.stringify(normalized(saved));
   }
 
+  function isDraftEvent() {
+    return saved.status === 'draft';
+  }
+
+  function primaryActionLabel() {
+    return isDraftEvent() ? 'Publish event' : 'Save changes';
+  }
+
   function showToast(message) {
     toastNode.textContent = message;
     toastNode.classList.add('is-visible');
@@ -151,8 +159,11 @@
 
   function syncDirtyState() {
     const dirty = isDirty();
-    saveButton.disabled = !dirty;
-    saveStatus.textContent = dirty ? 'Unsaved changes' : 'No unsaved changes';
+    saveButton.disabled = !dirty && !isDraftEvent();
+    saveButton.textContent = primaryActionLabel();
+    saveStatus.textContent = isDraftEvent()
+      ? (dirty ? 'Unsaved draft changes' : 'Ready to publish')
+      : (dirty ? 'Unsaved changes' : 'No unsaved changes');
     const warning = $('owner-rsvp-warning');
     const needsWarning = saved.rsvpCount > 0 && sensitiveChanges();
     warning.hidden = !needsWarning;
@@ -1135,6 +1146,7 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     readInputs();
+    const publishing = isDraftEvent();
     if (draft.presentationMode === 'flyer') {
       const flyerInstagram = validateOwnerFlyerDesignerHandle({ normalize: true });
       if (flyerInstagram.error) {
@@ -1166,29 +1178,37 @@
       return;
     }
     saveButton.disabled = true;
-    saveButton.textContent = 'Saving…';
-    saveStatus.textContent = 'Saving changes…';
+    saveButton.textContent = publishing ? 'Publishing…' : 'Saving…';
+    saveStatus.textContent = publishing ? 'Preparing your event…' : 'Saving changes…';
     try {
-      const body = payload();
-      if (saved.rsvpCount > 0) {
-        const changes = window.SGEEventChanges.compare(saved, draft);
-        if (changes.length) {
-          saveButton.textContent = 'Review changes…';
-          saveStatus.textContent = 'Choose whether to notify your guests.';
-          const choice = await window.SGEEventChanges.confirmUpdate({ changes, count: saved.rsvpCount });
-          if (choice === 'cancel') {
-            saveButton.disabled = false;
-            saveButton.textContent = 'Save changes';
-            saveStatus.textContent = 'Unsaved changes';
-            return;
+      let data = {};
+      if (isDirty()) {
+        const body = payload();
+        if (saved.rsvpCount > 0) {
+          const changes = window.SGEEventChanges.compare(saved, draft);
+          if (changes.length) {
+            saveButton.textContent = 'Review changes…';
+            saveStatus.textContent = 'Choose whether to notify your guests.';
+            const choice = await window.SGEEventChanges.confirmUpdate({ changes, count: saved.rsvpCount });
+            if (choice === 'cancel') {
+              syncDirtyState();
+              return;
+            }
+            body.notify_attendees = choice === 'notify';
+            saveButton.textContent = 'Saving…';
+            saveStatus.textContent = 'Saving changes…';
           }
-          body.notify_attendees = choice === 'notify';
-          saveButton.textContent = 'Saving…';
-          saveStatus.textContent = 'Saving changes…';
         }
+        data = await request(`/api/events/${EVENT.id}`, { method: 'PUT', body });
+        saved = clone(draft);
       }
-      const data = await request(`/api/events/${EVENT.id}`, { method: 'PUT', body });
-      saved = clone(draft);
+      if (publishing) {
+        saveButton.textContent = 'Publishing…';
+        saveStatus.textContent = 'Publishing your event…';
+        await request(`/api/events/${EVENT.id}/publish`, { method: 'POST' });
+        window.location.assign(`/events/${encodeURIComponent(EVENT.id)}/manage?created=1`);
+        return;
+      }
       sessionStorage.setItem('sge-owner-editor-reopen', EVENT.slug);
       sessionStorage.setItem('sge-owner-editor-saved', data.notification?.queued
         ? `Event updated. We’re notifying ${data.notification.queued} ${data.notification.queued === 1 ? 'guest' : 'guests'}.`
@@ -1196,7 +1216,7 @@
       location.reload();
     } catch (error) {
       saveButton.disabled = false;
-      saveButton.textContent = 'Save changes';
+      saveButton.textContent = primaryActionLabel();
       saveStatus.textContent = error.message;
     }
   });
@@ -1213,9 +1233,11 @@
     event.returnValue = '';
   });
 
+  const requestedTab = new URLSearchParams(window.location.search).get('edit');
+  const initialTab = ['appearance', 'details', 'settings'].includes(requestedTab) ? requestedTab : 'appearance';
   populate();
-  activateTab('appearance');
-  if (sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug) {
+  activateTab(initialTab);
+  if (requestedTab || sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug) {
     sessionStorage.removeItem('sge-owner-editor-reopen');
     openEditor();
     const message = sessionStorage.getItem('sge-owner-editor-saved');

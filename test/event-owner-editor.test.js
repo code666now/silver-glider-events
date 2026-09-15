@@ -34,6 +34,9 @@ test('public event pages provide an owner-only progressive live editing shell', 
 
   assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}`/);
   assert.match(client, /method: 'PUT'/);
+  assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}\/publish`/);
+  assert.match(client, /window\.location\.assign\(`\/events\/\$\{encodeURIComponent\(EVENT\.id\)\}\/manage\?created=1`/);
+  assert.match(client, /new URLSearchParams\(window\.location\.search\)\.get\('edit'\)/);
   assert.match(client, /function previewImage\(/);
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
@@ -44,6 +47,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function closeEditor[\s\S]*reconcileEditorFields\(\)/);
   assert.match(client, /Discard your unsaved event changes\?/);
   assert.match(client, /sessionStorage\.setItem\('sge-owner-editor-reopen'/);
+  assert.match(renderer, /Music &amp; advanced settings/);
+  assert.match(renderer, /events\/new\?id=\$\{encodeURIComponent\(event\.id\)\}&advanced=1/);
   assert.match(client, /people have'\} RSVP’d\. This change may affect their plans\./);
   assert.doesNotMatch(client, /\$\('owner-end-time'\)/);
   assert.doesNotMatch(client, /end_time:/);

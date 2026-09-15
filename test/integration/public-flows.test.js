@@ -364,6 +364,27 @@ test('minimal creation makes an owner-only draft without exposing guest actions'
   assert.match(ownerHtml, /"status":"draft"/);
   assert.match(ownerHtml, /"rsvpEnabled":false/);
   assert.doesNotMatch(ownerHtml, /data-open-rsvp/);
+
+  const wrongPublisher = await fetch(`${baseUrl}/api/events/${event.id}/publish`, {
+    method: 'POST', headers: { cookie: `sge_session=${signSession(otherOrganizer.id)}` }
+  });
+  assert.equal(wrongPublisher.status, 404);
+
+  const publish = await fetch(`${baseUrl}/api/events/${event.id}/publish`, {
+    method: 'POST', headers: { cookie: ownerCookie }
+  });
+  assert.equal(publish.status, 200);
+  assert.equal((await publish.json()).event.status, 'published');
+
+  const publishedPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(publishedPage.status, 200);
+  assert.match(await publishedPage.text(), /data-open-rsvp/);
+
+  const publishAgain = await fetch(`${baseUrl}/api/events/${event.id}/publish`, {
+    method: 'POST', headers: { cookie: ownerCookie }
+  });
+  assert.equal(publishAgain.status, 200);
+  assert.equal((await publishAgain.json()).alreadyPublished, true);
 });
 
 test('remembers a first RSVP and makes future public-event answers one tap without granting account access', async () => {
@@ -3331,6 +3352,10 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
   const owner = await fetch(`${baseUrl}/events/${event.id}`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(owner.status, 302);
   assert.equal(owner.headers.get('location'), `/events/${event.id}/manage`);
+
+  const edit = await fetch(`${baseUrl}/events/${event.id}/edit`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(edit.status, 302);
+  assert.equal(edit.headers.get('location'), `/e/${event.slug}?edit=details`);
 
   const signedOut = await fetch(`${baseUrl}/events/${event.id}`, { redirect: 'manual' });
   assert.equal(signedOut.headers.get('location'), '/login');

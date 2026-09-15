@@ -105,7 +105,17 @@ app.get('/events/:id', requireOrganizer, (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
   res.redirect(302, `/events/${req.params.id}/manage`);
 });
-app.get('/events/:id/edit', requireOrganizer, (req, res) => res.redirect(`/events/new?id=${req.params.id}`));
+app.get('/events/:id/edit', requireOrganizer, async (req, res, next) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) return next();
+    const { rows } = await pool.query(
+      'SELECT slug FROM events WHERE id=$1 AND organizer_id=$2',
+      [req.params.id, req.organizer.id]
+    );
+    if (!rows.length) return res.status(404).send('Event not found');
+    res.redirect(302, `/e/${encodeURIComponent(rows[0].slug)}?edit=details`);
+  } catch (err) { next(err); }
+});
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
 app.get([
   '/settings',

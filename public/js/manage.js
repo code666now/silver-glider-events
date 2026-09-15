@@ -141,7 +141,7 @@ async function loadEvent() {
   }
 
   $('view-link').href = eventUrl();
-  $('edit-link').href = `/events/${eventId}/edit`;
+  $('edit-link').href = `/e/${encodeURIComponent(event.slug)}?edit=details`;
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
@@ -584,7 +584,8 @@ $('duplicate').addEventListener('click', async () => {
   try {
     const { event } = await api(`/api/events/${eventId}/duplicate`, { method: 'POST' });
     if (!event?.id) throw new Error('The duplicate was created without an editable event');
-    window.location.assign(`/events/new?id=${encodeURIComponent(event.id)}`);
+    if (!event.slug) throw new Error('The duplicate was created without an event page');
+    window.location.assign(`/e/${encodeURIComponent(event.slug)}?edit=appearance`);
   } catch (err) {
     delete button.dataset.busy;
     button.disabled = false;

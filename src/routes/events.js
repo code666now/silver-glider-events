@@ -601,6 +601,68 @@ router.put('/api/events/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/events/:id/publish — make one owner-only draft public.
+// Publishing is intentionally separate from ordinary edits so a save can
+// never expose a draft by accident.
+router.post('/api/events/:id/publish', async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT e.*,
+              EXISTS(SELECT 1 FROM event_secret_codes c WHERE c.event_id=e.id) AS has_secret_code
+         FROM events e
+        WHERE e.id=$1 AND e.organizer_id=$2
+        FOR UPDATE`,
+      [req.params.id, req.organizer.id]
+    );
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const event = rows[0];
+    if (event.status === 'published') {
+      await client.query('COMMIT');
+      return res.json({ event, alreadyPublished: true });
+    }
+    if (event.status !== 'draft') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Only a draft can be published' });
+    }
+
+    if (!String(event.title || '').trim() || !event.event_date || !event.start_time || !String(event.venue_name || '').trim()) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Add the title, date, time, and location before publishing' });
+    }
+    if (event.presentation_mode === 'flyer' && !event.flyer_image_url) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Upload a flyer before publishing the Flyer layout' });
+    }
+    if (normalizeAdmissionType(event.admission_type) === ADMISSION_TYPES.SILVER_GLIDER_TICKETS && !event.commerce_event_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Connect this event to Silver Glider Commerce before publishing' });
+    }
+    if (event.secret_show_enabled && (event.visibility !== 'private' || event.sms_reminder_enabled || !event.has_secret_code)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Finish the Secret Show settings before publishing' });
+    }
+
+    const published = await client.query(
+      `UPDATE events SET status='published', updated_at=NOW()
+        WHERE id=$1 AND organizer_id=$2
+        RETURNING *`,
+      [req.params.id, req.organizer.id]
+    );
+    await client.query('COMMIT');
+    res.json({ event: published.rows[0], alreadyPublished: false });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // POST /api/events/:id/duplicate
 // PRO GATE: when billing exists, require req.organizer.plan === 'pro' here.
 router.post('/api/events/:id/duplicate', async (req, res, next) => {

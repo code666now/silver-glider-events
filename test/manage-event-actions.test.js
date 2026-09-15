@@ -92,7 +92,7 @@ test('duplicate event exposes progress, prevents repeat requests, and recovers f
   assert.match(handler, /button\.textContent = 'Duplicating…'/);
   assert.match(handler, /button\.setAttribute\('aria-busy', 'true'\)/);
   assert.match(handler, /api\(`\/api\/events\/\$\{eventId\}\/duplicate`, \{ method: 'POST' \}\)/);
-  assert.match(handler, /window\.location\.assign\(`\/events\/new\?id=\$\{encodeURIComponent\(event\.id\)\}`\)/);
+  assert.match(handler, /window\.location\.assign\(`\/e\/\$\{encodeURIComponent\(event\.slug\)\}\?edit=appearance`\)/);
   assert.match(handler, /catch \(err\)/);
   assert.match(handler, /button\.textContent = 'Duplicate event'/);
   assert.match(handler, /toast\(err\.message \|\| 'Could not duplicate this event'\)/);

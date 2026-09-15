@@ -72,7 +72,7 @@ function ownerEventData(event) {
 
 function renderOwnerEditor(event) {
   const data = JSON.stringify(ownerEventData(event)).replace(/</g, '\\u003c');
-  const advancedHref = `/events/${encodeURIComponent(event.id)}/edit`;
+  const advancedHref = `/events/new?id=${encodeURIComponent(event.id)}&advanced=1`;
   const manageHref = `/events/${encodeURIComponent(event.id)}/manage`;
   const draftNotice = event.status === 'draft'
     ? '<div class="owner-draft-notice"><strong>Draft</strong><span>Only you can see this event.</span></div>'
@@ -253,10 +253,10 @@ function renderOwnerEditor(event) {
         </div>
 
         <footer class="owner-editor-foot">
-          <p id="owner-save-status" role="status">No unsaved changes</p>
+          <p id="owner-save-status" role="status">${event.status === 'draft' ? 'Ready to publish' : 'No unsaved changes'}</p>
           <div>
             <button class="owner-cancel" id="owner-editor-cancel" type="button">Cancel</button>
-            <button class="owner-save" id="owner-editor-save" type="submit" disabled>Save changes</button>
+            <button class="owner-save" id="owner-editor-save" type="submit"${event.status === 'draft' ? '' : ' disabled'}>${event.status === 'draft' ? 'Publish event' : 'Save changes'}</button>
           </div>
         </footer>
       </form>
