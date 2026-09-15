@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.93
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Fixed
+
+* On phones, the fixed **Feedback** bubble no longer overlaps the Create Event cover-image actions. The page reserves mobile-only clearance beneath **Choose image** and **Browse free photos**, keeping both labels visible and both tap targets usable.
+
 ## 1.0.92
 
 Released September 15, 2026. Built and deployed by Codex.

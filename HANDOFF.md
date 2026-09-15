@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 15, 2026 (v1.0.92)
+**Last updated:** September 15, 2026 (v1.0.93)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.92`. Event Vibe supports up to three progressively revealed artists, each with a photo, supported media link, or both. Artist photos can be dropped or selected, and public pages preserve the complete image in a blurred-fill media stage. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.93`. On phones, the Create Event cover-image actions reserve enough space to remain fully visible and tappable above the fixed Feedback bubble. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -194,6 +194,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 ### Most recently completed
 
+- `v1.0.93` keeps the mobile Create Event cover-image actions fully visible and tappable above the fixed Feedback bubble without shifting other pages or desktop layouts.
 - `v1.0.92` preserves complete Event Vibe photos inside a consistent blurred-fill stage, adds a large drop-or-select upload surface with uncropped previews and Replace/Remove actions, keeps artist fields vertically aligned, and brings Familiar Faces invitation email colors and footer branding into the RSVP confirmation system.
 - `v1.0.91` expands Event Vibe to three progressively revealed artist entries with optional managed photos. Audio can show a photo above its player, YouTube uses the photo as a lazy-loading poster, and tabs switch the complete artist unit without loading inactive embeds.
 - `v1.0.90` sends the home **Create your event** action through the existing sign-in flow directly into the builder, redirects bookmarked numeric `/events/:id` addresses to their manage pages, and relabels the unchanged middle texting pack **Most popular**.
