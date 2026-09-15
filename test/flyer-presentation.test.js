@@ -222,6 +222,7 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   const js = read('public/js/event-form.js');
   assert.match(html, /id="btn-upload"[^>]*>Choose image<\/button>/);
   assert.match(html, /id="btn-search"[^>]*>Browse free photos<\/button>/);
+  assert.match(html, /@media \(max-width: 640px\) \{[\s\S]*#event-form #cover-actions \{ padding-bottom: 68px; \}/);
   assert.match(js, /drop\.addEventListener\('click', event => \{\s*if \(event\.target !== fileInput\) fileInput\.click\(\);\s*\}\)/);
   assert.match(js, /\$\('btn-upload'\)\.addEventListener\('click', \(\) => fileInput\.click\(\)\)/);
   assert.match(js, /\$\('btn-search'\)\.addEventListener\('click', openImageModal\)/);
