@@ -35,10 +35,18 @@ test('Event Vibe progressively supports three artists with optional managed phot
   assert.match(form, /id="event_vibe_label_3" maxlength="80"/);
   assert.match(form, /\.vibe-choice-fields\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
   assert.equal((form.match(/Add a photo, a music link, or both\./g) || []).length, 3);
+  assert.equal((form.match(/data-vibe-photo-dropzone=/g) || []).length, 3);
+  assert.equal((form.match(/Drop an artist photo here/g) || []).length, 3);
+  assert.equal((form.match(/The complete image will be shown\./g) || []).length, 3);
+  assert.equal((form.match(/event-vibe-photo-replace-/g) || []).length, 3);
   assert.match(formClient, /function setSecondVibeVisible\(visible\)/);
   assert.match(formClient, /function setThirdVibeVisible\(visible\)/);
   assert.match(formClient, /event_vibe_url_3: hasThirdVibe/);
   assert.match(formClient, /fetch\('\/api\/uploads\/vibe-photo'/);
+  assert.match(formClient, /VIBE_PHOTO_MAX_BYTES = 5 \* 1024 \* 1024/);
+  assert.match(formClient, /dropzone\.addEventListener\('dragover'/);
+  assert.match(formClient, /dropzone\.addEventListener\('drop'/);
+  assert.match(formClient, /event\.dataTransfer\?\.files\?\.\[0\]/);
   assert.match(formClient, /if \(event\.event_vibe_url_3 \|\| event\.event_vibe_label_3 \|\| event\.event_vibe_image_url_3\)/);
   assert.match(uploads, /router\.post\('\/api\/uploads\/vibe-photo', requireOrganizer/);
   assert.match(cloudinary, /sg-events\/vibes/);
@@ -57,6 +65,9 @@ test('public Event Vibe switches complete artist units and uses photos as YouTub
   assert.equal((route.match(/data-vibe-player/g) || []).length, 1);
   assert.match(route, /event\.event_vibe_image_url_3/);
   assert.match(route, /data-vibe-video-play/);
+  assert.match(route, /class="vibe-photo-stage"/);
+  assert.equal((route.match(/class="vibe-photo-backdrop"/g) || []).length, 2);
+  assert.match(route, /class="vibe-video-poster-image"/);
   assert.match(route, /vibeMedia\(entry\.url, \{ autoplay: true \}\)/);
   assert.match(client, /function mountVibeSwitchers\(\)/);
   assert.match(client, /player\.innerHTML = template\.innerHTML/);
@@ -67,6 +78,10 @@ test('public Event Vibe switches complete artist units and uses photos as YouTub
     assert.match(styles, /\.vibe-choice-tabs/);
     assert.match(styles, /\.vibe-choice-tab\.is-active/);
     assert.match(styles, /\.vibe-artist-photo/);
+    assert.match(styles, /\.vibe-photo-backdrop/);
+    assert.match(styles, /\.vibe-video-poster-image/);
+    assert.match(styles, /object-fit:\s*contain/);
+    assert.match(styles, /filter:\s*blur\(22px\)/);
     assert.match(styles, /\.vibe-video-play-icon/);
     assert.match(styles, /min-height: 44px/);
   }

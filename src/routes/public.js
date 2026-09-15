@@ -189,13 +189,17 @@ function renderVibeEntry(entry, { showLabel = false } = {}) {
     const autoplayVideo = vibeMedia(entry.url, { autoplay: true }).html;
     content = `<div class="vibe-video-poster" data-vibe-video>
       <button class="vibe-video-play" type="button" data-vibe-video-play aria-label="Play ${esc(label || 'artist')} video">
-        <img src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">
+        <img class="vibe-photo-backdrop" src="${esc(imageUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async">
+        <img class="vibe-video-poster-image" src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">
         <span class="vibe-video-play-icon" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M19 14l16 10-16 10z"/></svg></span>
       </button>
       <template data-vibe-video-template>${autoplayVideo}</template>
     </div>`;
   } else if (imageUrl) {
-    content = `<img class="vibe-artist-photo" src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">${media.html}`;
+    content = `<div class="vibe-photo-stage">
+      <img class="vibe-photo-backdrop" src="${esc(imageUrl)}" alt="" aria-hidden="true" loading="lazy" decoding="async">
+      <img class="vibe-artist-photo" src="${esc(imageUrl)}" alt="${esc(imageAlt)}" loading="lazy" decoding="async">
+    </div>${media.html}`;
   }
   return `<div class="vibe-artist-unit">${nameHtml}${content}</div>`;
 }

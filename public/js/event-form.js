@@ -143,20 +143,37 @@ function setVibePhoto(index, url) {
   if (value) {
     image.src = value;
     preview.hidden = false;
-    button.textContent = 'Replace artist photo';
+    button.hidden = true;
   } else {
     image.removeAttribute('src');
     preview.hidden = true;
-    button.textContent = 'Upload artist photo';
+    button.hidden = false;
   }
+}
+
+const VIBE_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const VIBE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+
+function vibePhotoFileError(file) {
+  if (!file || !VIBE_PHOTO_TYPES.has(file.type)) return 'Choose a JPG, PNG, WebP, or GIF image.';
+  if (file.size > VIBE_PHOTO_MAX_BYTES) return 'Image is too large (max 5 MB).';
+  return '';
 }
 
 async function uploadVibePhoto(index, file) {
   const button = $(`event-vibe-photo-button-${index}`);
+  const replaceButton = $(`event-vibe-photo-replace-${index}`);
   const status = $(`event-vibe-photo-status-${index}`);
+  const fileError = vibePhotoFileError(file);
+  if (fileError) {
+    status.textContent = fileError;
+    return;
+  }
   const body = new FormData();
   body.append('image', file);
   button.disabled = true;
+  replaceButton.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   status.textContent = 'Uploading photo…';
   try {
     const response = await fetch('/api/uploads/vibe-photo', { method: 'POST', body });
@@ -168,6 +185,8 @@ async function uploadVibePhoto(index, file) {
     status.textContent = err.message;
   } finally {
     button.disabled = false;
+    replaceButton.disabled = false;
+    button.setAttribute('aria-busy', 'false');
     $(`event-vibe-photo-input-${index}`).value = '';
   }
 }
@@ -184,9 +203,35 @@ $('add-third-vibe-choice').addEventListener('click', () => {
 $('remove-third-vibe-choice').addEventListener('click', () => setThirdVibeVisible(false));
 
 [1, 2, 3].forEach(index => {
-  $(`event-vibe-photo-button-${index}`).addEventListener('click', () => $(`event-vibe-photo-input-${index}`).click());
-  $(`event-vibe-photo-input-${index}`).addEventListener('change', event => {
+  const dropzone = $(`event-vibe-photo-button-${index}`);
+  const input = $(`event-vibe-photo-input-${index}`);
+  const openPicker = () => input.click();
+  let dragDepth = 0;
+  dropzone.addEventListener('click', openPicker);
+  $(`event-vibe-photo-replace-${index}`).addEventListener('click', openPicker);
+  input.addEventListener('change', event => {
     const file = event.target.files[0];
+    if (file) uploadVibePhoto(index, file);
+  });
+  dropzone.addEventListener('dragenter', event => {
+    event.preventDefault();
+    dragDepth += 1;
+    dropzone.classList.add('is-dragging');
+  });
+  dropzone.addEventListener('dragover', event => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  dropzone.addEventListener('dragleave', event => {
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) dropzone.classList.remove('is-dragging');
+  });
+  dropzone.addEventListener('drop', event => {
+    event.preventDefault();
+    dragDepth = 0;
+    dropzone.classList.remove('is-dragging');
+    const file = event.dataTransfer?.files?.[0];
     if (file) uploadVibePhoto(index, file);
   });
   $(`event-vibe-photo-remove-${index}`).addEventListener('click', () => {

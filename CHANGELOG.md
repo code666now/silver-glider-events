@@ -2,6 +2,24 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.92
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Added
+
+* Event Vibe artist photos can now be dropped directly onto a large upload area on desktop or selected normally on any device. The uploaded state shows an uncropped preview with clear **Replace** and **Remove** actions.
+
+### Changed
+
+* Event Vibe photos now show the complete image on public Standard and Flyer pages. Portrait and landscape photos share a consistent frame with a subtle blurred fill instead of being cropped.
+* Artist name, photo, and music/video link controls use one consistent full-width vertical layout on desktop and mobile.
+* Familiar Faces invitation emails now inherit the event artwork accent used by RSVP confirmations. Both event-focused emails lead with the event and place the quiet Silver Glider logo and name in the footer.
+
+### Security & reliability
+
+* Drag-and-drop files receive the same type, size, authenticated upload, managed-asset, and server validation as files selected through the picker. No RSVP, invitation, authentication, data, payment, or messaging behavior changed.
+
 ## 1.0.91
 
 Released September 14, 2026. Built and deployed by Codex.

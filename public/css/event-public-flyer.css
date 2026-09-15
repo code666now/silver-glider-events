@@ -538,22 +538,42 @@
 .vibe-player { min-width: 0; }
 .vibe-artist-unit { min-width: 0; }
 .vibe-artist-name { margin: 0 0 12px; color: var(--sg-text); font-size: 16px; }
-.vibe-artist-photo,
+.vibe-photo-stage,
 .vibe-video-play {
+  position: relative;
+  isolation: isolate;
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   margin: 0 0 12px;
   border: 0;
   border-radius: 14px;
-  object-fit: cover;
   overflow: hidden;
-  background: var(--sg-surface);
+  background: rgba(0,0,0,.34);
 }
-.vibe-video-play { position: relative; padding: 0; cursor: pointer; }
-.vibe-video-play img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.vibe-video-play::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 42%, rgba(0,0,0,.36)); }
-.vibe-video-play-icon { position: absolute; z-index: 1; inset: 50% auto auto 50%; display: grid; width: 58px; height: 58px; place-items: center; transform: translate(-50%,-50%); border: 1px solid rgba(255,255,255,.46); border-radius: 50%; background: rgba(0,0,0,.68); color: white; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.vibe-photo-backdrop {
+  position: absolute;
+  z-index: 0;
+  inset: -8%;
+  display: block;
+  width: 116%;
+  height: 116%;
+  object-fit: cover;
+  filter: blur(22px) saturate(.85);
+  opacity: .3;
+}
+.vibe-artist-photo,
+.vibe-video-poster-image {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.vibe-video-play { padding: 0; cursor: pointer; }
+.vibe-video-play::after { content: ''; position: absolute; z-index: 2; inset: 0; background: linear-gradient(180deg, transparent 42%, rgba(0,0,0,.36)); }
+.vibe-video-play-icon { position: absolute; z-index: 3; inset: 50% auto auto 50%; display: grid; width: 58px; height: 58px; place-items: center; transform: translate(-50%,-50%); border: 1px solid rgba(255,255,255,.46); border-radius: 50%; background: rgba(0,0,0,.68); color: white; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
 .vibe-video-play-icon svg { width: 31px; height: 31px; fill: currentColor; }
 .vibe-video-play:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
 .vibe-embed {
