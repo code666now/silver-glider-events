@@ -1182,6 +1182,13 @@ $('event-form').addEventListener('input', updatePublishReadiness);
 $('event-form').addEventListener('change', updatePublishReadiness);
 updatePublishReadiness();
 
+if ('IntersectionObserver' in window) {
+  const publishEndObserver = new IntersectionObserver(([entry]) => {
+    $('publish-dock').classList.toggle('is-at-form-end', entry.isIntersecting);
+  });
+  publishEndObserver.observe($('publish-end-anchor'));
+}
+
 // Edit mode — prefill
 if (editId) {
   document.title = 'Edit Event — Silver Glider Events';
