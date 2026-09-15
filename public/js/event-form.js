@@ -91,6 +91,7 @@ function finishEditLoading() {
   $('event-form').inert = false;
   $('event-form').setAttribute('aria-busy', 'false');
   $('publish-btn').disabled = false;
+  updatePublishReadiness();
 }
 
 function showEditLoadError() {
@@ -508,6 +509,18 @@ function setStoredLocation(venueName, venueAddress) {
   $('venue_address').value = LocationUtils.clean(venueAddress);
 }
 
+function publishLocationState() {
+  const venueName = $('venue_name').value.trim();
+  const venueAddress = $('venue_address').value.trim();
+  if (!venueName && !venueAddress) {
+    return { valid: false, error: 'Choose a venue or address, or enter the location manually', venueName, venueAddress };
+  }
+  if (manualLocationMode && !venueAddress) {
+    return { valid: false, error: 'Add an address for this location', venueName, venueAddress };
+  }
+  return { valid: true, error: null, venueName, venueAddress };
+}
+
 function renderLocationSelection() {
   const parts = LocationUtils.displayParts($('venue_name').value, $('venue_address').value);
   const selection = $('location-selection');
@@ -595,6 +608,7 @@ function applySelectedPlace(place) {
   $('venue_longitude').value = location ? String(location.lng()) : '';
   setPlacesStatus('');
   renderLocationSelection();
+  updatePublishReadiness();
   window.setTimeout(() => { applyingPlace = false; }, 0);
 }
 
@@ -1095,14 +1109,9 @@ function showError(msg) {
 function collect() {
   const hasSecondVibe = !$('vibe-choice-two').hidden;
   const hasThirdVibe = !$('vibe-choice-three').hidden;
-  const venueName = $('venue_name').value.trim();
-  const venueAddress = $('venue_address').value.trim();
-  if (!venueName && !venueAddress) {
-    throw new Error('Choose a venue or address, or enter the location manually');
-  }
-  if (manualLocationMode && !venueAddress) {
-    throw new Error('Add an address for this location');
-  }
+  const locationState = publishLocationState();
+  if (!locationState.valid) throw new Error(locationState.error);
+  const { venueName, venueAddress } = locationState;
   const flyerInstagram = presentationMode === 'flyer'
     ? normalizeFlyerDesignerHandle({ focus: true })
     : { value: null, error: null };
@@ -1156,6 +1165,22 @@ function collect() {
   if (!editId) body.presenter_name = $('presenter_name').value.trim() || null;
   return body;
 }
+
+function updatePublishReadiness() {
+  const coreFieldsComplete = ['title', 'event_date', 'start_time']
+    .every(id => $(id).checkValidity() && Boolean($(id).value.trim()));
+  const ready = coreFieldsComplete && publishLocationState().valid;
+  const dock = $('publish-dock');
+  dock.classList.toggle('is-ready', ready);
+  dock.dataset.ready = String(ready);
+  $('publish-helper').textContent = ready
+    ? (editId ? 'Core details complete. Save now or keep customizing.' : 'Core details complete. Publish now or keep customizing.')
+    : (editId ? 'Add a title, date, time, and location to save' : 'Add a title, date, time, and location to publish');
+}
+
+$('event-form').addEventListener('input', updatePublishReadiness);
+$('event-form').addEventListener('change', updatePublishReadiness);
+updatePublishReadiness();
 
 // Edit mode — prefill
 if (editId) {

@@ -45,6 +45,39 @@
     .event-editor-details { min-width: 0; }
     .event-editor-section-heading,
     .event-editor-group-heading { display: none; }
+    .publish-dock {
+      position: relative;
+      z-index: 6;
+      margin-top: 28px;
+      padding: 14px;
+      border: 1px solid var(--sg-border-soft);
+      border-radius: 20px;
+      background: rgba(14,14,16,.94);
+      box-shadow: 0 14px 38px rgba(0,0,0,.28);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .publish-dock-helper {
+      margin: 0;
+      color: var(--sg-text-faint);
+      font-size: 12px;
+      line-height: 1.45;
+      text-align: center;
+    }
+    .publish-dock #publish-btn {
+      min-height: 52px;
+      margin-top: 10px !important;
+    }
+    .publish-dock:not(.is-ready) #publish-btn:not(:disabled) {
+      border: 1px solid var(--sg-border);
+      background: rgba(255,255,255,.07);
+      color: var(--sg-text-dim);
+    }
+    .publish-dock:not(.is-ready) #publish-btn:not(:disabled):hover {
+      border-color: rgba(28,197,190,.45);
+      background: rgba(255,255,255,.1);
+      color: var(--sg-text);
+    }
     .page-style-segmented {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -961,15 +994,38 @@
       .event-editor-group-heading-first { margin-top: 0; }
       .event-editor-design .page-style-segmented { max-width: none; }
       .event-editor-design .presentation-toggle { margin-bottom: 24px; }
-      .event-editor-details #publish-btn {
-        min-height: 52px;
-        margin-top: 16px !important;
-      }
     }
     @media (min-width: 1200px) and (min-height: 900px) {
       .event-editor-design {
         position: sticky;
         top: 24px;
+      }
+      .event-editor-details {
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 156px;
+      }
+      .publish-dock {
+        order: -1;
+        position: sticky;
+        top: calc(100dvh - 135px);
+        margin-top: 0;
+        margin-bottom: 28px;
+      }
+    }
+    @media (max-width: 767px) and (min-height: 700px),
+           (min-width: 768px) and (max-width: 1199px) and (min-height: 900px) {
+      .event-editor-details {
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 124px;
+      }
+      .publish-dock {
+        order: -1;
+        position: sticky;
+        top: calc(100dvh - 195px);
+        margin-top: 0;
+        margin-bottom: 28px;
       }
     }
     @media (max-width: 640px) {
@@ -1397,7 +1453,10 @@
         </div>
       </section>
 
-      <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" style="margin-top:12px">Publish Event</button>
+      <div class="publish-dock" id="publish-dock" data-ready="false">
+        <p class="publish-dock-helper" id="publish-helper" aria-live="polite">Add a title, date, time, and location to publish</p>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="publish-btn" aria-describedby="publish-helper">Publish Event</button>
+      </div>
       </div>
       </div>
     </form>
