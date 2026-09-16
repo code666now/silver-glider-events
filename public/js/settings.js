@@ -515,23 +515,128 @@ settingsElement('logo-input').addEventListener('change', () => uploadProfileImag
 settingsElement('header-btn').addEventListener('click', () => settingsElement('header-input').click());
 settingsElement('header-input').addEventListener('change', () => uploadProfileImage('header'));
 
-settingsElement('host-follow-copy').addEventListener('click', async () => {
+const hostFollowShareDialog = settingsElement('host-follow-share-dialog');
+const hostFollowNativeShareMedia = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(hover: none) and (pointer: coarse)')
+  : { matches: false };
+let hostFollowShareReturnFocus = null;
+
+function hostFollowShareDetails() {
   const url = settingsElement('host-follow-share-url').value;
-  if (!url) return;
+  const hostName = currentOrganizer?.org_name || currentOrganizer?.name || 'my events';
+  const title = `Follow ${hostName}`;
+  const message = `Follow ${hostName} on Silver Glider Events for new-event updates.`;
+  return { url, title, message };
+}
+
+async function copyHostFollowLink({ selectOnFailure = true } = {}) {
+  const { url } = hostFollowShareDetails();
+  if (!url) return false;
+  let copied = false;
   try {
-    await navigator.clipboard.writeText(url);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    }
+  } catch (_) {}
+  if (!copied) {
+    const fallback = document.createElement('textarea');
+    fallback.value = url;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.appendChild(fallback);
+    fallback.select();
+    try { copied = document.execCommand('copy'); } catch (_) {}
+    fallback.remove();
+  }
+  if (copied) {
     settingsElement('host-follow-share-status').textContent = 'Follow link copied.';
-  } catch (_) {
+  } else if (selectOnFailure) {
     settingsElement('host-follow-share-url').select();
     settingsElement('host-follow-share-status').textContent = 'Link selected. Copy it from the field.';
   }
+  return copied;
+}
+
+function prepareHostFollowShareDialog() {
+  const { url, title, message } = hostFollowShareDetails();
+  const encodedUrl = encodeURIComponent(url);
+  const encodedMessage = encodeURIComponent(message);
+  const mediaUrl = currentOrganizer?.header_image_url || currentOrganizer?.logo_url || '';
+  settingsElement('host-follow-share-email').href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${message}\n\n${url}`)}`;
+  settingsElement('host-follow-share-pinterest').href = `https://www.pinterest.com/pin/create/button/?url=${encodedUrl}&description=${encodedMessage}${mediaUrl ? `&media=${encodeURIComponent(mediaUrl)}` : ''}`;
+  settingsElement('host-follow-share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
+  settingsElement('host-follow-share-x').href = `https://twitter.com/intent/tweet?text=${encodedMessage}&url=${encodedUrl}`;
+}
+
+function openHostFollowShareDialog() {
+  if (!hostFollowShareDetails().url) return;
+  if (typeof hostFollowShareDialog.showModal !== 'function') {
+    copyHostFollowLink();
+    return;
+  }
+  prepareHostFollowShareDialog();
+  hostFollowShareReturnFocus = document.activeElement;
+  try {
+    hostFollowShareDialog.showModal();
+  } catch (_) {
+    hostFollowShareReturnFocus = null;
+    copyHostFollowLink();
+    return;
+  }
+  document.body.classList.add('host-share-dialog-open');
+  settingsElement('host-follow-share-dialog-close').focus();
+}
+
+function closeHostFollowShareDialog() {
+  if (!hostFollowShareDialog.open) return;
+  hostFollowShareDialog.close();
+}
+
+settingsElement('host-follow-copy').addEventListener('click', () => copyHostFollowLink());
+settingsElement('host-follow-share-copy-dialog').addEventListener('click', async () => {
+  const copied = await copyHostFollowLink({ selectOnFailure: false });
+  closeHostFollowShareDialog();
+  if (!copied) {
+    window.requestAnimationFrame(() => {
+      settingsElement('host-follow-share-url').focus();
+      settingsElement('host-follow-share-url').select();
+      settingsElement('host-follow-share-status').textContent = 'Link selected. Copy it from the field.';
+    });
+  }
 });
 settingsElement('host-follow-native-share').addEventListener('click', async () => {
-  const url = settingsElement('host-follow-share-url').value;
+  const { url, title } = hostFollowShareDetails();
   if (!url) return;
-  if (!navigator.share) return settingsElement('host-follow-copy').click();
-  try { await navigator.share({ title: `Follow ${currentOrganizer.org_name || currentOrganizer.name || 'my events'}`, url }); }
-  catch (error) { if (error.name !== 'AbortError') settingsElement('host-follow-share-status').textContent = 'Sharing is unavailable. Copy the link instead.'; }
+  const shareData = { title, url };
+  const canUseNativeShare = hostFollowNativeShareMedia.matches
+    && typeof navigator.share === 'function'
+    && (typeof navigator.canShare !== 'function' || navigator.canShare(shareData));
+  if (!canUseNativeShare) return openHostFollowShareDialog();
+  try { await navigator.share(shareData); }
+  catch (error) { if (error.name !== 'AbortError') openHostFollowShareDialog(); }
+});
+settingsElement('host-follow-share-dialog-close').addEventListener('click', closeHostFollowShareDialog);
+hostFollowShareDialog.addEventListener('close', () => {
+  document.body.classList.remove('host-share-dialog-open');
+  hostFollowShareReturnFocus?.focus();
+  hostFollowShareReturnFocus = null;
+});
+hostFollowShareDialog.addEventListener('click', event => {
+  if (event.target !== hostFollowShareDialog) return;
+  const bounds = hostFollowShareDialog.getBoundingClientRect();
+  const outside = event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom;
+  if (outside) closeHostFollowShareDialog();
+});
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || !hostFollowShareDialog.open) return;
+  event.preventDefault();
+  closeHostFollowShareDialog();
+});
+hostFollowShareDialog.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', closeHostFollowShareDialog);
 });
 
 settingsElement('sms-credit-continue').addEventListener('click', startStripeCheckout);

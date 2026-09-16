@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 16, 2026 (v1.0.102)
+**Last updated:** September 16, 2026 (v1.0.103)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -128,7 +128,7 @@ Magic-link login + persistent sessions · **Follow Host V1** with a lightweight 
 
 **Ticketing launch interest (September 3, 2026):** migration `025_commerce_feature_interest.sql` adds a separate `commerce_feature_interests` table for explicit, reversible, one-time Commerce launch consent. Signed-in hosts see a compact **Notify me** action under the Coming soon admission choice; no duplicate identity form is shown because the authenticated organizer email is reused. Opting in twice remains one row, and **Remove me** immediately excludes the host. Super Admins use `/admin/ticketing` to review interested, awaiting, and notified hosts and to send a private test email. The launch button stays locked until Commerce is fully configured and requires an explicit confirmation. Atomic delivery claims, stale-claim recovery, success timestamps, and per-recipient errors make retries safe without emailing a delivered host twice. Nothing sends automatically, and RSVP updates, Host follows, and general marketing consent remain independent.
 
-**Follow Host (unified in v1.0.102):** `organizers` remains the shared email identity table; following never creates a public Host Page. Signed-in people follow immediately, while signed-out people use the existing code/link verification and 30-day session. One host-scoped `/h/<slug>?follow=1` link opens the same Follow flow. Email updates are included through explicit, versioned consent. If the host currently owns SMS credits, the form also offers a separate unchecked text option and reveals the phone field only when selected. SMS consent has its own disclosure, normalized number, source, version, and timestamp. Existing follow rows are deliberately not backfilled. A host-approved public-event update combines eligible legacy email subscribers and explicit Follow email subscribers, dedupes/suppresses them, and can add only explicitly consented text followers after previewing exact segment cost. SMS uses the existing atomic wallet, batch/recipient audit, retry, and STOP machinery. Unfollow writes the shared host-level email suppression and disables text consent. RSVP, Familiar Faces invitations, and event-specific reminders stay independent.
+**Follow Host (unified in v1.0.102):** `organizers` remains the shared email identity table; following never creates a public Host Page. Signed-in people follow immediately, while signed-out people use the existing code/link verification and 30-day session. One host-scoped `/h/<slug>?follow=1` link opens the same Follow flow. Hosts share that URL through the native phone share sheet on touch devices or an app-owned desktop dialog with Email, Pinterest, Facebook, X, and Copy link. Email updates are included through explicit, versioned consent. If the host currently owns SMS credits, the form also offers a separate unchecked text option and reveals the phone field only when selected. SMS consent has its own disclosure, normalized number, source, version, and timestamp. Existing follow rows are deliberately not backfilled. A host-approved public-event update combines eligible legacy email subscribers and explicit Follow email subscribers, dedupes/suppresses them, and can add only explicitly consented text followers after previewing exact segment cost. SMS uses the existing atomic wallet, batch/recipient audit, retry, and STOP machinery. Unfollow writes the shared host-level email suppression and disables text consent. RSVP, Familiar Faces invitations, and event-specific reminders stay independent.
 
 **Photo picker (developer note):** Category presets live in `public/js/event-form.js`. **Halloween** is the initial collection, followed by **Fall**, **Silver Glider Picks**, and supporting visual categories. Each pill issues one tuned Unsplash search only when the user selects the pill, presses Enter, or uses Search; typing alone does not call the API. `/api/photos/search` accepts a capped `per_page` value (1–24). `src/lib/unsplash.js` caches search responses in memory for 30 minutes and evicts the oldest entry once the cache reaches 200 keys. The cache is per server instance and does not require Redis at the current single-instance scale.
 
@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.102`. Follow is one shareable, remembered relationship with included email updates and a progressively disclosed optional paid-text channel when the host has credits. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.103`. Host Follow sharing uses the native phone share sheet on touch devices and a consistent five-option desktop share menu. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -193,6 +193,8 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - Migrations currently run from `001_initial.sql` through `040_unified_follow_notifications.sql`.
 
 ### Most recently completed
+
+- `v1.0.103` makes Host Follow sharing platform-appropriate and dependable: touch devices retain the native share sheet, while desktop gets an accessible Silver Glider menu for Email, Pinterest, Facebook, X, and Copy link using the same host-scoped Follow URL.
 
 - `v1.0.102` unifies Follow around one shareable host link: email updates are included, text updates appear as a separate unchecked option only when the host owns credits, and the host approves one fixed new-event update after reviewing exact email/text audience and SMS cost. Consent is independently audited by channel; existing followers are not backfilled; STOP and Unfollow suppress future delivery.
 

@@ -105,6 +105,34 @@ test('Host settings expose one shareable Follow link, not a separate text-signup
   assert.doesNotMatch(`${view}\n${browser}`, /text-signup|text_signup|signup-for-text/i);
 });
 
+test('Follow sharing uses the native mobile sheet and an accessible desktop menu', () => {
+  const view = source('src/views/settings-v2.html');
+  const browser = source('public/js/settings.js');
+  const styles = source('public/css/settings.css');
+
+  assert.match(view, /<dialog class="host-share-dialog" id="host-follow-share-dialog" aria-modal="true" aria-labelledby="host-follow-share-dialog-title">/);
+  assert.match(view, /class="host-share-options" role="group" aria-label="Share Follow link"/);
+  for (const option of ['Email', 'Pinterest', 'Facebook', 'X', 'Copy link']) {
+    assert.match(view, new RegExp(`>${option}<`));
+  }
+  assert.match(browser, /matchMedia\('\(hover: none\) and \(pointer: coarse\)'\)/);
+  assert.match(browser, /hostFollowNativeShareMedia\.matches[\s\S]*typeof navigator\.share === 'function'/);
+  assert.match(browser, /function openHostFollowShareDialog\(\)/);
+  assert.match(browser, /https:\/\/www\.pinterest\.com\/pin\/create\/button/);
+  assert.match(browser, /https:\/\/www\.facebook\.com\/sharer\/sharer\.php/);
+  assert.match(browser, /https:\/\/twitter\.com\/intent\/tweet/);
+  assert.match(browser, /document\.execCommand\('copy'\)/);
+  assert.match(browser, /window\.requestAnimationFrame\(\(\) => \{[\s\S]*host-follow-share-url'[\s\S]*\.select\(\)/);
+  assert.match(browser, /event\.target !== hostFollowShareDialog/);
+  assert.match(browser, /event\.key !== 'Escape' \|\| !hostFollowShareDialog\.open/);
+  assert.match(browser, /hostFollowShareReturnFocus\?\.focus\(\)/);
+  assert.doesNotMatch(browser, /Sharing is unavailable/);
+  assert.match(styles, /\.host-share-dialog::backdrop/);
+  assert.match(styles, /\.host-share-dialog\[open\] \{ display:flex;flex-direction:column; \}/);
+  assert.match(styles, /\.host-share-options \{ min-height:0;overflow-y:auto;/);
+  assert.match(styles, /\.host-share-option \{[\s\S]*min-height:72px/);
+});
+
 test('follower texts reuse paid batches and STOP disables both RSVP and Follow consent', () => {
   const migration = source('src/db/migrations/040_unified_follow_notifications.sql');
   const job = source('src/jobs/sms-notifications.js');

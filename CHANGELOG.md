@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.103
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Sharing a Host Page Follow link keeps the native share sheet on touch devices and opens a consistent Silver Glider share menu on desktop with Email, Pinterest, Facebook, X, and Copy link.
+* Desktop browsers no longer report that sharing is unavailable when their Web Share implementation cannot open the expected picker.
+
+### Accessibility and safety
+
+* The desktop menu is a labeled modal dialog with keyboard focus management, Escape and backdrop dismissal, large action targets, and focus restoration to the Share button.
+* Every destination receives the same host-scoped Follow URL; Copy link retains a safe clipboard fallback and sharing does not change Follow, RSVP, or text consent.
+
 ## 1.0.102
 
 Released September 16, 2026. Built and deployed by Codex.
