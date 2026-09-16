@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.96`. New events start with four essentials, open as owner-only drafts on the real event page, and publish explicitly from the live editor. The full form remains the Music & advanced settings escape hatch. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.97`. New events start with four essentials and continue in the live editor; the empty Flyer artwork area now supports a plus-led click, keyboard, and desktop drag-and-drop upload target. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -194,6 +194,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 ### Most recently completed
 
+- `v1.0.97` makes the empty Flyer artwork area an explicit plus-led drop zone. Desktop drag-and-drop, click/tap selection, keyboard activation, and the existing authenticated Flyer upload endpoint all share the same upload path.
 - `v1.0.96` makes the live event page the primary creation and editing surface: four-field draft creation, owner-only draft preview, Standard/Flyer and admission controls, transactional explicit publishing, Manage/Edit routing back into the live panel, and a demoted advanced form without the persistent dock. `/events/new` is the short creator; `/events/new?id=<id>&advanced=1` is the advanced editor. Non-owners receive 404 for drafts, and draft pages expose no guest actions.
 - `v1.0.95` releases the mobile publish/save dock into its original end-of-form position when the host reaches the final controls, keeping Private event options and Feedback clear; scrolling back restores the sticky action.
 - `v1.0.94` keeps the existing single Create/Edit Event submit control reachable while scrolling, adds a core-field readiness explanation without disabling validation, clears the Feedback bubble on phones, and falls back to normal flow in short or keyboard-constrained viewports.
