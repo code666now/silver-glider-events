@@ -1,6 +1,12 @@
 const EVENT = JSON.parse(document.getElementById('event-data').textContent);
 const $ = id => document.getElementById(id);
 const ArtworkColor = window.SGArtworkColor;
+const eventUrlParams = new URLSearchParams(window.location.search);
+const personalAccess = {
+  inviteToken: eventUrlParams.get('invite') || '',
+  rsvpToken: eventUrlParams.get('rsvp') || ''
+};
+const hasPersonalAccess = Boolean(personalAccess.inviteToken || personalAccess.rsvpToken);
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
@@ -391,7 +397,10 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
   buttons.forEach(button => { button.disabled = true; });
   error.style.display = 'none';
   try {
-    const { response: result, data } = await postJson(`/api/public/events/${EVENT.slug}/returning-rsvp`, { response });
+    const { response: result, data } = await postJson(`/api/public/events/${EVENT.slug}/returning-rsvp`, {
+      response,
+      ...personalAccess
+    });
     if (result.status === 409 && data.error === 'verification_required' && !afterVerification) {
       confirmItsYou({
         container: $('returning-rsvp-verify'),
@@ -430,6 +439,10 @@ $('returning-rsvp-change')?.addEventListener('click', () => {
 $('returning-rsvp-switch')?.addEventListener('click', async () => {
   const button = $('returning-rsvp-switch');
   button.disabled = true;
+  if (hasPersonalAccess) {
+    window.location.assign(`/e/${encodeURIComponent(EVENT.slug)}`);
+    return;
+  }
   try {
     await fetch('/api/public/guest-session/forget', {
       method: 'POST',
@@ -586,7 +599,8 @@ async function submitRsvp({ afterVerification = false } = {}) {
         guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
         organizer_optin: $('organizer_optin').checked,
-        sms_optin: Boolean(smsOptin?.checked)
+        sms_optin: Boolean(smsOptin?.checked),
+        ...personalAccess
       })
     });
     const data = await res.json().catch(() => ({}));

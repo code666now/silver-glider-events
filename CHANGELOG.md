@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.99
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Personal **Invite your people** links now recognize their recipient directly from the event-scoped URL token on any device, without depending on a remembered-browser cookie.
+* A personal link with an existing RSVP opens in the guest's current **Going** or **Not going** state. An unanswered invitation keeps the existing lightweight Name + Email RSVP flow.
+* Confirmation-email and SMS event links now carry their existing RSVP authorization into the event URL so the guest's answer remains visible across browsers.
+
+### Safety
+
+* Familiar Faces invitation tokens remain opaque, hashed at rest, event-scoped, and revocable. They no longer expire, and simply opening one never creates or changes an RSVP.
+* Forwarded invitation links cannot attach a different submitted email to the original recipient's identity. Host authentication, global account sessions, RSVP management, comments, ticketing, and messaging behavior remain separate and unchanged.
+
 ## 1.0.98
 
 Released September 15, 2026. Built and deployed by Codex.

@@ -387,7 +387,7 @@ test('minimal creation makes an owner-only draft without exposing guest actions'
   assert.equal((await publishAgain.json()).alreadyPublished, true);
 });
 
-test('remembers a first RSVP and makes future public-event answers one tap without granting account access', async () => {
+test('keeps first-RSVP persistence without using its browser cookie as event-page identity', async () => {
   const firstEvent = await createEvent({ slug: 'lucas-first-night', title: 'Lucas First Night' });
   const nextEvent = await createEvent({ slug: 'lucas-next-night', title: 'Lucas Next Night' });
   const protectedEvent = await createEvent({ slug: 'lucas-protected-night', title: 'Lucas Protected Night' });
@@ -414,35 +414,17 @@ test('remembers a first RSVP and makes future public-event answers one tap witho
   assert.equal(stored.verified_at, null);
 
   const returningPage = await fetch(`${baseUrl}/e/${nextEvent.slug}`, { headers: { cookie: guestCookie } });
-  const returningHtml = await returningPage.text();
-  assert.match(returningHtml, /"returningGuest":\{"firstName":"Lucas","response":null\}/);
-  assert.match(returningHtml, />I’m going<\/button>/);
-  assert.match(returningHtml, />I’m not going<\/button>/);
+  assert.match(await returningPage.text(), /"returningGuest":null/);
 
-  const going = await fetch(`${baseUrl}/api/public/events/${nextEvent.slug}/returning-rsvp`, {
+  const cookieOnlyAnswer = await fetch(`${baseUrl}/api/public/events/${nextEvent.slug}/returning-rsvp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: guestCookie },
     body: JSON.stringify({ response: 'going' })
   });
-  assert.equal(going.status, 200);
-  assert.equal((await going.json()).response, 'going');
-  await waitForConfirmation('lucas@example.test');
-  let nextRsvp = (await pool.query(
-    'SELECT status,account_id,guest_session_id FROM rsvps WHERE event_id=$1',
-    [nextEvent.id]
-  )).rows[0];
-  assert.equal(nextRsvp.status, 'confirmed');
-  assert.equal(nextRsvp.account_id, null);
-  assert.equal(Number(nextRsvp.guest_session_id), Number(stored.guest_session_id));
-
-  const notGoing = await fetch(`${baseUrl}/api/public/events/${nextEvent.slug}/returning-rsvp`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: guestCookie },
-    body: JSON.stringify({ response: 'not_going' })
-  });
-  assert.equal(notGoing.status, 200);
-  nextRsvp = (await pool.query('SELECT status FROM rsvps WHERE event_id=$1', [nextEvent.id])).rows[0];
-  assert.equal(nextRsvp.status, 'cancelled');
+  assert.equal(cookieOnlyAnswer.status, 401);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [nextEvent.id]
+  )).rows[0].count, 0);
 
   await createRsvp(protectedEvent.id, {
     first_name: 'Real', last_name: 'Lucas', email: 'lucas@example.test', status: 'confirmed'
@@ -452,8 +434,7 @@ test('remembers a first RSVP and makes future public-event answers one tap witho
     headers: { 'content-type': 'application/json', cookie: guestCookie },
     body: JSON.stringify({ response: 'not_going' })
   });
-  assert.equal(blocked.status, 409);
-  assert.equal((await blocked.json()).error, 'verification_required');
+  assert.equal(blocked.status, 401);
   assert.equal((await pool.query(
     'SELECT status FROM rsvps WHERE event_id=$1 AND email=$2',
     [protectedEvent.id, 'lucas@example.test']
@@ -479,7 +460,7 @@ test('remembers a first RSVP and makes future public-event answers one tap witho
   )).rows[0].return_path, '/events/new');
 });
 
-test('personal Familiar Faces links recognize one guest but do not RSVP until a button is pressed', async () => {
+test('personal Familiar Faces links are permanent, cross-device, and link a matching RSVP', async () => {
   const source = await createEvent({ slug: 'invite-source', title: 'Invite Source' });
   const target = await createEvent({ slug: 'invite-target', title: 'Invite Target' });
   const person = await createRsvp(source.id, {
@@ -503,25 +484,33 @@ test('personal Familiar Faces links recognize one guest but do not RSVP until a 
     recipientName: 'Maya Lopez'
   });
   assert.equal(invitation.identity.id, identity.id);
+  await pool.query(
+    `UPDATE guest_invitation_tokens SET expires_at=NOW() - INTERVAL '1 day' WHERE message_log_id=$1`,
+    [message.id]
+  );
 
   const opened = await fetch(`${baseUrl}/g/${invitation.token}`, { redirect: 'manual' });
   assert.equal(opened.status, 303);
-  assert.equal(opened.headers.get('location'), '/e/invite-target?invited=1');
+  const personalLocation = `/e/invite-target?invite=${encodeURIComponent(invitation.token)}`;
+  assert.equal(opened.headers.get('location'), personalLocation);
   assert.doesNotMatch(opened.headers.get('set-cookie') || '', /sge_session=[^;]/,
     'an event invitation remains event-scoped');
-  const guestCookie = responseCookie(opened, 'sge_guest');
-  assert.ok(guestCookie);
+  assert.equal(responseCookie(opened, 'sge_guest'), '');
   assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [target.id])).rows[0].count, 0);
   assert.ok((await pool.query('SELECT opened_at FROM guest_invitation_tokens WHERE message_log_id=$1', [message.id])).rows[0].opened_at);
 
-  const page = await fetch(`${baseUrl}/e/${target.slug}`, { headers: { cookie: guestCookie } });
-  assert.match(await page.text(), /"returningGuest":\{"firstName":"Maya","response":null\}/);
-  const answer = await fetch(`${baseUrl}/api/public/events/${target.slug}/returning-rsvp`, {
+  const page = await fetch(`${baseUrl}${personalLocation}`);
+  assert.match(await page.text(), /"returningGuest":null/);
+  const answer = await fetch(`${baseUrl}/api/public/events/${target.slug}/rsvp`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: guestCookie },
-    body: JSON.stringify({ response: 'going' })
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Maya Lopez',
+      email: 'maya-personal@example.test',
+      inviteToken: invitation.token
+    })
   });
-  assert.equal(answer.status, 200);
+  assert.equal(answer.status, 201);
   const linked = (await pool.query(
     `SELECT r.status,r.account_id,t.response,t.responded_at
        FROM rsvps r JOIN guest_invitation_tokens t ON t.rsvp_id=r.id
@@ -532,6 +521,23 @@ test('personal Familiar Faces links recognize one guest but do not RSVP until a 
   assert.equal(linked.account_id, identity.id);
   assert.equal(linked.response, 'going');
   assert.ok(linked.responded_at);
+
+  // The token, not a cookie, recognizes the same answer on another device.
+  const otherDevice = await (await fetch(`${baseUrl}${personalLocation}`)).text();
+  assert.match(otherDevice, /"returningGuest":\{"firstName":"Maya","source":"invitation","response":"going"\}/);
+  const changed = await fetch(`${baseUrl}/api/public/events/${target.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ response: 'not_going', inviteToken: invitation.token })
+  });
+  assert.equal(changed.status, 200);
+  assert.equal((await changed.json()).response, 'not_going');
+
+  await pool.query(
+    'UPDATE guest_invitation_tokens SET revoked_at=NOW() WHERE message_log_id=$1', [message.id]
+  );
+  assert.equal((await fetch(`${baseUrl}/g/${invitation.token}`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}${personalLocation}`)).status, 404);
 });
 
 test('RSVP SMS consent requires an enabled reminder and valid phone, then powers the host eligibility count', async () => {
@@ -747,7 +753,7 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
 
     const oneTap = await fetch(`${baseUrl}/t/${delivery.access_token}`, { redirect: 'manual' });
     assert.equal(oneTap.status, 303);
-    assert.equal(oneTap.headers.get('location'), `/e/${event.slug}`);
+    assert.equal(oneTap.headers.get('location'), `/e/${event.slug}?rsvp=${recipient.manage_token}`);
     assert.match(oneTap.headers.get('set-cookie') || '', new RegExp(`sge_attendee_${event.id}=`));
     assert.ok((await pool.query(
       'SELECT sms_phone_verified_at FROM rsvps WHERE id=$1', [recipient.id]
@@ -3053,7 +3059,7 @@ test('sign out of all devices rejects older cookies everywhere, including pre-up
   assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: fresh } })).status, 200);
 });
 
-test('signing out forgets the remembered guest so a shared browser stops greeting the last person', async () => {
+test('remembered guest cookies remain forgettable but never drive event-page greetings', async () => {
   resetRateLimits();
   const event = await createEvent({ slug: 'shared-laptop-one', title: 'Shared Laptop One' });
   const next = await createEvent({ slug: 'shared-laptop-two', title: 'Shared Laptop Two' });
@@ -3063,7 +3069,7 @@ test('signing out forgets the remembered guest so a shared browser stops greetin
   });
   const guestCookie = responseCookie(rsvp, 'sge_guest');
   assert.ok(guestCookie);
-  assert.match(await (await fetch(`${baseUrl}/e/${next.slug}`, { headers: { cookie: guestCookie } })).text(), /"firstName":"Robin"/);
+  assert.match(await (await fetch(`${baseUrl}/e/${next.slug}`, { headers: { cookie: guestCookie } })).text(), /"returningGuest":null/);
 
   const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST', headers: { cookie: guestCookie } });
   assert.equal(logout.status, 200);
@@ -3073,7 +3079,7 @@ test('signing out forgets the remembered guest so a shared browser stops greetin
   assert.match(await after.text(), /"returningGuest":null/);
 });
 
-test('a forwarded invitation can answer for its own event but cannot act as the guest anywhere else', async () => {
+test('a forwarded invitation cannot act elsewhere or attach a different email to the invited identity', async () => {
   resetRateLimits();
   const invited = await createEvent({ slug: 'forwarded-invite-target', title: 'Forwarded Invite Target' });
   const elsewhere = await createEvent({ slug: 'forwarded-invite-elsewhere', title: 'Somewhere Else' });
@@ -3094,28 +3100,35 @@ test('a forwarded invitation can answer for its own event but cannot act as the 
 
   // Lucas forwards the email; his friend opens it.
   const opened = await fetch(`${baseUrl}/g/${invitation.token}`, { redirect: 'manual' });
-  const friendCookie = responseCookie(opened, 'sge_guest');
-  const scope = (await pool.query(
-    'SELECT verified_event_id FROM guest_sessions WHERE identity_id=$1 ORDER BY id DESC LIMIT 1', [identity.id]
-  )).rows[0];
-  assert.equal(scope.verified_event_id, invited.id);
+  assert.equal(opened.headers.get('location'), `/e/${invited.slug}?invite=${encodeURIComponent(invitation.token)}`);
+  assert.equal(responseCookie(opened, 'sge_guest'), '');
 
   const cancelElsewhere = await fetch(`${baseUrl}/api/public/events/${elsewhere.slug}/returning-rsvp`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: friendCookie },
-    body: JSON.stringify({ response: 'not_going' })
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ response: 'not_going', inviteToken: invitation.token })
   });
-  assert.equal(cancelElsewhere.status, 409);
-  assert.equal((await cancelElsewhere.json()).error, 'verification_required');
+  assert.equal(cancelElsewhere.status, 401);
   const { rows: untouched } = await pool.query(
     `SELECT status FROM rsvps WHERE event_id=$1 AND email='lucas-forward@example.test'`, [elsewhere.id]
   );
   assert.equal(untouched[0].status, 'confirmed');
 
-  const answerInvited = await fetch(`${baseUrl}/api/public/events/${invited.slug}/returning-rsvp`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: friendCookie },
-    body: JSON.stringify({ response: 'going' })
+  const answerInvited = await fetch(`${baseUrl}/api/public/events/${invited.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Forwarded Friend',
+      email: 'friend-forward@example.test',
+      inviteToken: invitation.token
+    })
   });
-  assert.equal(answerInvited.status, 200);
+  assert.equal(answerInvited.status, 201);
+  const friendRsvp = (await pool.query(
+    `SELECT account_id FROM rsvps WHERE event_id=$1 AND email='friend-forward@example.test'`, [invited.id]
+  )).rows[0];
+  assert.equal(friendRsvp.account_id, null);
+  assert.equal((await pool.query(
+    'SELECT rsvp_id FROM guest_invitation_tokens WHERE message_log_id=$1', [message.id]
+  )).rows[0].rsvp_id, null);
 });
 
 test('rejoining after cancelling needs an emailed code, then signs in globally and keeps the new details', async () => {
@@ -3354,20 +3367,22 @@ test('a personal link from the guest’s own email shows their RSVP on that even
 
   const opened = await fetch(`${baseUrl}/r/personal-link-token/event`, { redirect: 'manual' });
   assert.equal(opened.status, 303);
+  assert.equal(opened.headers.get('location'), `/e/${event.slug}?rsvp=personal-link-token`);
   const attendeeCookie = responseCookie(opened, `sge_attendee_${event.id}`);
   assert.ok(attendeeCookie);
 
-  const page = await (await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: attendeeCookie } })).text();
-  assert.match(page, /"returningGuest":\{"firstName":"Lucas","response":"going"\}/);
+  const personalUrl = `${baseUrl}/e/${event.slug}?rsvp=personal-link-token`;
+  const page = await (await fetch(personalUrl)).text();
+  assert.match(page, /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"going"\}/);
 
   const change = await fetch(`${baseUrl}/api/public/events/${event.slug}/returning-rsvp`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: attendeeCookie },
-    body: JSON.stringify({ response: 'not_going' })
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ response: 'not_going', rsvpToken: 'personal-link-token' })
   });
   assert.equal(change.status, 200);
   assert.equal((await pool.query(`SELECT status FROM rsvps WHERE manage_token='personal-link-token'`)).rows[0].status, 'cancelled');
-  assert.match(await (await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: attendeeCookie } })).text(),
-    /"returningGuest":\{"firstName":"Lucas","response":"not_going"\}/);
+  assert.match(await (await fetch(personalUrl)).text(),
+    /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"not_going"\}/);
 
   // The proof is per event: it doesn't recognize Lucas anywhere else.
   assert.match(await (await fetch(`${baseUrl}/e/${other.slug}`, { headers: { cookie: attendeeCookie } })).text(),
@@ -3403,9 +3418,9 @@ test('“already on the list” in a new browser can be managed there after an e
   });
   assert.equal(verified.status, 200);
   const page = await (await fetch(`${baseUrl}/e/${event.slug}`, {
-    headers: { cookie: responseCookie(verified, 'sge_guest') }
+    headers: { cookie: responseCookie(verified, 'sge_session') }
   })).text();
-  assert.match(page, /"returningGuest":\{"firstName":"Robin","response":"going"\}/);
+  assert.match(page, /"returningGuest":\{"firstName":"Robin","source":"account","response":"going"\}/);
 });
 
 test('a bookmarked /events/:id lands on the manage page, and Create your event opens the builder', async () => {
