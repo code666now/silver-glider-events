@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.104
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Improved
+
+* The homepage now leads with the personality-forward promise **“You have a personality. Your events should too.”** in both the visible hero and browser title.
+
+### Safety
+
+* This copy-only release does not change event pages, host or guest data, authentication, invitations, confirmations, reminders, ticketing, or messaging behavior.
+
 ## 1.0.103
 
 Released September 16, 2026. Built and deployed by Codex.
