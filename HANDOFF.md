@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 16, 2026 (v1.0.100)
+**Last updated:** September 16, 2026 (v1.0.101)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.100`. First RSVPs and answered personal-token visits share one responsive on-page confirmation surface; confirmation email is now a lightweight backup link to it. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.101`. First RSVPs and answered personal-token visits share one responsive on-page confirmation surface; confirmation email is a lightweight backup link whose accents follow the event artwork or selected atmosphere. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -195,6 +195,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 ### Most recently completed
 
 - `v1.0.99` makes personal Familiar Faces links permanent, revocable, token-authoritative event URLs. Existing RSVP answers render across devices without guest cookies; unanswered links keep the normal form; matching submissions link safely; forwarded links with a different email cannot claim the invited identity. Confirmation and SMS links likewise carry their existing RSVP authorization into the event URL.
+- `v1.0.101` restores event-aware accents across RSVP confirmations and Familiar Faces invitations, including safe atmosphere-based fallbacks for older events without a saved artwork accent.
 - `v1.0.100` adds the shared RSVP confirmation dialog/bottom sheet after submission and on answered personal links, keeps status changes and calendar access in place, leaves a compact View RSVP card on close, and reduces confirmation email to one personal return action.
 - `v1.0.97` makes the empty Flyer artwork area an explicit plus-led drop zone. Desktop drag-and-drop, click/tap selection, keyboard activation, and the existing authenticated Flyer upload endpoint all share the same upload path.
 - `v1.0.96` makes the live event page the primary creation and editing surface: four-field draft creation, owner-only draft preview, Standard/Flyer and admission controls, transactional explicit publishing, Manage/Edit routing back into the live panel, and a demoted advanced form without the persistent dock. `/events/new` is the short creator; `/events/new?id=<id>&advanced=1` is the advanced editor. Non-owners receive 404 for drafts, and draft pages expose no guest actions.

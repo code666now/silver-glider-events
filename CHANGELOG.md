@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.101
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Improved
+
+* RSVP confirmations and Familiar Faces invitations again inherit the event artwork's saved accent across the label, host identity, supporting links, confirmation state, and primary action.
+* Older events and events using only a built-in atmosphere now receive a matching safe email accent instead of reverting to generic teal. Halloween and Sunset use warm orange, while the other available atmospheres use their corresponding accessible color family.
+
+### Safety
+
+* The simplified one-action confirmation email, personal RSVP link, dark email-safe layout, and contrast-aware button text remain unchanged. Stored artwork accents always take precedence over atmosphere fallbacks.
+
 ## 1.0.100
 
 Released September 16, 2026. Built and deployed by Codex.

@@ -5,6 +5,30 @@ const LocationUtils = require('../../public/js/location-utils');
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
 
+// Artwork uploads normally persist a sampled accent. Older events and events
+// using only a built-in backdrop may not have one, so keep those emails tied
+// to the selected event atmosphere instead of falling back to brand teal.
+const EVENT_THEME_ACCENTS = Object.freeze({
+  aurora: '#32B78A',
+  sunset: '#D96524',
+  ocean: '#2F6CC4',
+  violet: '#8C5AD4',
+  ember: '#D96524',
+  paper: '#B98249',
+  halloween: '#D96524',
+  'last-guest': '#B98A36',
+  disco: '#A55DE5',
+  fog: '#7780C6',
+  static: '#8C91A6',
+  'liquid-stardust': '#8557D6',
+  'color-static': '#D94C9B',
+  saloon: '#B9773F'
+});
+
+function eventEmailTheme(event = {}) {
+  return createEmailTheme(event.artwork_accent_color || EVENT_THEME_ACCENTS[event.background_theme]);
+}
+
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -105,7 +129,7 @@ function eventEmailBrandFooter(baseUrl, { actionLabel = '', actionUrl = '' } = {
 // accent while keeping Silver Glider's identity quiet in the footer.
 function rsvpConfirmationLayout({
   event,
-  theme = createEmailTheme(event.artwork_accent_color),
+  theme = eventEmailTheme(event),
   kicker = 'RSVP Confirmed',
   sub,
   bodyHtml,
@@ -334,10 +358,10 @@ function attendeeEventUrl(event, rsvp) {
   return `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/event`;
 }
 
-function confirmationStatusBlock() {
+function confirmationStatusBlock(theme) {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
     <tr><td align="center" style="padding:20px 18px">
-      <p style="color:#f4f4f4;font-size:18px;font-weight:800;line-height:1.4;margin:0">✓ You’re going</p>
+      <p style="color:${theme.secondaryAccentColor};font-size:18px;font-weight:800;line-height:1.4;margin:0">✓ You’re going</p>
       <p style="color:#8f8f8f;font-size:14px;line-height:1.5;margin:5px 0 0">Open your RSVP any time to view it or change your answer.</p>
     </td></tr>
   </table>`;
@@ -375,12 +399,12 @@ function flyerSecondaryLinks(event, rsvp, { includeManage = true, includeHost = 
 }
 
 function renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
-  const theme = createEmailTheme(event.artwork_accent_color);
+  const theme = eventEmailTheme(event);
   return rsvpConfirmationLayout({
     event,
     theme,
     sub: rsvp.first_name ? `${rsvp.first_name}, your RSVP is saved.` : 'Your RSVP is saved.',
-    bodyHtml: confirmationStatusBlock(),
+    bodyHtml: confirmationStatusBlock(theme),
     cta: 'View or change RSVP',
     ctaUrl: attendeeEventUrl(event, rsvp),
     secondaryHtml: `${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
@@ -493,12 +517,12 @@ function confirmationPhotoOpportunity(addPhotoUrl, theme) {
 
 function renderRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
   if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl });
-  const theme = createEmailTheme(event.artwork_accent_color);
+  const theme = eventEmailTheme(event);
   return rsvpConfirmationLayout({
     event,
     theme,
     sub: rsvp.first_name ? `${rsvp.first_name}, your RSVP is saved.` : 'Your RSVP is saved.',
-    bodyHtml: confirmationStatusBlock(),
+    bodyHtml: confirmationStatusBlock(theme),
     cta: 'View or change RSVP',
     ctaUrl: attendeeEventUrl(event, rsvp),
     secondaryHtml: `${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
@@ -652,7 +676,7 @@ function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLab
   const firstName = String(recipientName || '').trim().split(/\s+/)[0];
   const greeting = firstName ? `Hi ${firstName}. ` : '';
   const previousEvent = String(sourceEventTitle || '').trim() || 'a previous event';
-  const theme = createEmailTheme(event.artwork_accent_color);
+  const theme = eventEmailTheme(event);
   return rsvpConfirmationLayout({
     event,
     theme,

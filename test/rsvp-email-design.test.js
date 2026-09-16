@@ -87,7 +87,8 @@ test('RSVP email sends guests back to the reusable confirmation and keeps calend
       org_name: null,
       organizer_public_slug: null,
       event_vibe_url: null,
-      artwork_accent_color: null
+      artwork_accent_color: null,
+      background_theme: 'midnight'
     },
     rsvp
   });
@@ -98,6 +99,20 @@ test('RSVP email sends guests back to the reusable confirmation and keeps calend
   assert.ok((fallbackHtml.match(/color:#1CC5BE/g) || []).length >= 1);
   assert.match(fallbackHtml, /View or change RSVP/);
   assert.doesNotMatch(fallbackHtml, /\/images\/email\/(?:calendar|manage)\.png|Add to Calendar|Manage RSVP/);
+
+  const halloweenTheme = createEmailTheme('#D96524');
+  const themedFallbackHtml = renderRsvpConfirmationEmail({
+    event: {
+      ...event,
+      cover_image_url: null,
+      artwork_accent_color: null,
+      background_theme: 'halloween'
+    },
+    rsvp
+  });
+  assert.match(themedFallbackHtml, new RegExp(`height="52" bgcolor="${halloweenTheme.accentColor}"`));
+  assert.ok((themedFallbackHtml.match(new RegExp(`color:${halloweenTheme.secondaryAccentColor}`, 'g')) || []).length >= 3);
+  assert.doesNotMatch(themedFallbackHtml, /color:#1CC5BE|background:#1CC5BE/);
 });
 
 test('RSVP confirmation remains responsive and dark', () => {
@@ -119,10 +134,12 @@ test('RSVP confirmation remains responsive and dark', () => {
   assert.doesNotMatch(html, /<video|\.mp4|\.gif/);
 
   const effectFallbackHtml = renderRsvpConfirmationEmail({
-    event: { ...event, cover_image_url: null, background_theme: 'fog' },
+    event: { ...event, cover_image_url: null, artwork_accent_color: null, background_theme: 'fog' },
     rsvp
   });
   assert.match(effectFallbackHtml, /video\/upload\/so_0,f_jpg,q_auto,w_1240,c_limit\/sg-events\/effects\/fog\.jpg/);
+  const fogTheme = createEmailTheme('#7780C6');
+  assert.match(effectFallbackHtml, new RegExp(`height="52" bgcolor="${fogTheme.accentColor}"`));
   assert.equal((effectFallbackHtml.match(/bgcolor="#080808"/g) || []).length, 2);
   assert.doesNotMatch(effectFallbackHtml, /bgcolor="#100B18"|background:#100B18/);
   assert.doesNotMatch(effectFallbackHtml, /<video|\.mp4|\.gif/);
