@@ -321,6 +321,28 @@ router.get('/api/places/config', (req, res) => {
 
 // GET /api/events — mine, with confirmed RSVP counts.
 // Excludes archived by default; ?archived=1 returns only archived.
+router.get('/api/events/going', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (e.id)
+              e.id, e.slug, e.title, e.event_date, e.start_time, e.end_time,
+              e.venue_name, e.venue_city, e.venue_state, e.status, e.visibility,
+              e.presentation_mode, e.flyer_image_url, e.cover_image_url,
+              o.org_name AS host_name, o.name AS host_person_name,
+              r.created_at AS rsvp_created_at
+         FROM rsvps r
+         JOIN events e ON e.id=r.event_id
+         JOIN organizers o ON o.id=e.organizer_id
+        WHERE r.account_id=$1 AND r.status='confirmed'
+          AND e.status IN ('published','cancelled')
+        ORDER BY e.id, r.created_at DESC`,
+      [req.organizer.id]
+    );
+    rows.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)) || Number(b.id) - Number(a.id));
+    res.json({ events: rows });
+  } catch (err) { next(err); }
+});
+
 router.get('/api/events', async (req, res, next) => {
   try {
     const archivedOnly = req.query.archived === '1';

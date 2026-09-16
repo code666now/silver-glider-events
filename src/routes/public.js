@@ -262,14 +262,17 @@ function rejectLockedSecret(res) {
   return res.status(404).json({ error: 'Event not found' });
 }
 
-function renderGuestList(event, rows, { ownerPreview = false } = {}) {
+function renderGuestList(event, rows, { ownerPreview = false, viewerIdentityId = null } = {}) {
   if (!event.show_guest_list && !ownerPreview) return '';
   const names = publicGuestNames(rows);
   const showPreviewNames = names.length > 0 && names.length <= 5;
   const visibleLimit = 8;
-  const avatar = entry => `<span class="guest-avatar" aria-hidden="true"><span>${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
+  const avatarContents = entry => `<span aria-hidden="true">${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
     ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
-    : ''}</span>`;
+    : ''}`;
+  const avatar = entry => Number(entry.identityId) === Number(viewerIdentityId) && viewerIdentityId
+    ? `<a class="guest-avatar guest-avatar-edit" href="/add-photo?event=${encodeURIComponent(event.slug)}" aria-label="Change your photo">${avatarContents(entry)}<b aria-hidden="true">✎</b></a>`
+    : `<span class="guest-avatar" aria-hidden="true">${avatarContents(entry)}</span>`;
   const previewItems = names.slice(0, visibleLimit).map(entry => {
     return showPreviewNames
       ? `<li>${avatar(entry)}<span class="guest-avatar-label">${esc(entry.firstName)}</span></li>`
@@ -641,7 +644,7 @@ router.get('/e/:slug', async (req, res, next) => {
     let publicGuestRows = [];
     if (rsvpEnabled && (event.show_guest_list || ownerPreview)) {
       publicGuestRows = (await pool.query(
-        `SELECT r.id, r.first_name, r.guest_first_name, o.avatar_url
+        `SELECT r.id, r.account_id, r.first_name, r.guest_first_name, o.avatar_url
            FROM rsvps r LEFT JOIN organizers o ON o.id=r.account_id
           WHERE r.event_id=$1 AND r.status='confirmed'
           ORDER BY r.created_at ASC, r.id ASC`,
@@ -836,7 +839,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
       .replace(/{{SMS_REMINDER_OPTIN_HTML}}/g, rsvpEnabled ? renderSmsReminderOptin(event) : '')
       .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
-      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview }) : '')
+      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview, viewerIdentityId: req.sessionAccount?.id }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))

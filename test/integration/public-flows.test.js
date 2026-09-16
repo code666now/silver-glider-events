@@ -2378,6 +2378,19 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
   const pageHtml = await page.text();
   assert.match(pageHtml, /Add your photo/);
   assert.match(pageHtml, /Help friends recognize you\./);
+  assert.match(pageHtml, /← Back to Photo Opportunity Night/);
+  assert.match(pageHtml, /href="\/e\/photo-opportunity-night"/);
+
+  const unrelated = await createEvent({
+    slug: 'unrelated-photo-return',
+    title: 'Private Name Must Stay Private',
+    visibility: 'private',
+    event_date: '2030-09-21'
+  });
+  const unrelatedPage = await fetch(`${baseUrl}/add-photo?event=${unrelated.slug}`, { headers: { cookie: guestCookie } });
+  const unrelatedHtml = await unrelatedPage.text();
+  assert.doesNotMatch(unrelatedHtml, /Private Name Must Stay Private/);
+  assert.match(unrelatedHtml, /data-return-url="\/"/);
   const photoMe = await fetch(`${baseUrl}/api/me`, { headers: { cookie: guestCookie } });
   assert.equal((await photoMe.json()).scope, 'photo');
   const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: guestCookie }, redirect: 'manual' });
@@ -2426,6 +2439,56 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
     [secondEvent.id]
   );
   assert.equal(unverifiedRsvp.rows[0].account_id, null);
+});
+
+test('signed-in guests see RSVP events in Going and can edit only their own public avatar', async () => {
+  const guest = (await pool.query(
+    `INSERT INTO organizers (email, name, avatar_url)
+     VALUES ('going-guest@example.test','Going Guest','https://res.cloudinary.com/demo/image/upload/v1/going-guest.jpg')
+     RETURNING id`
+  )).rows[0];
+  const other = (await pool.query(
+    `INSERT INTO organizers (email, name)
+     VALUES ('other-guest@example.test','Other Guest') RETURNING id`
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'going-list-night',
+    title: 'Going List Night',
+    show_guest_list: true,
+    event_date: '2030-10-10'
+  });
+  await createRsvp(event.id, {
+    first_name: 'Going', last_name: 'Guest', email: 'going-guest@example.test', account_id: guest.id
+  });
+  const emailOnlyEvent = await createEvent({
+    slug: 'email-only-going-night', title: 'Email Only Going Night', event_date: '2030-10-11'
+  });
+  await createRsvp(emailOnlyEvent.id, {
+    first_name: 'Going', last_name: 'Guest', email: 'going-guest@example.test', account_id: null
+  });
+
+  const guestCookie = `sge_session=${signSession(guest.id)}`;
+  const goingResponse = await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: guestCookie } });
+  assert.equal(goingResponse.status, 200);
+  const going = await goingResponse.json();
+  assert.deepEqual(going.events.map(item => item.slug), ['going-list-night']);
+
+  const eventsPage = await fetch(`${baseUrl}/events`, { headers: { cookie: guestCookie } });
+  const eventsHtml = await eventsPage.text();
+  assert.match(eventsHtml, /data-view="going">Going/);
+  assert.match(eventsHtml, /data-view="hosting">Hosting/);
+
+  const signedInPage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: guestCookie } });
+  const signedInHtml = await signedInPage.text();
+  assert.match(signedInHtml, /aria-label="Change your photo"/);
+  assert.match(signedInHtml, new RegExp(`href="/add-photo\\?event=${event.slug}"`));
+
+  const signedOutHtml = await (await fetch(`${baseUrl}/e/${event.slug}`)).text();
+  assert.doesNotMatch(signedOutHtml, /aria-label="Change your photo"/);
+  const otherHtml = await (await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(other.id)}` }
+  })).text();
+  assert.doesNotMatch(otherHtml, /aria-label="Change your photo"/);
 });
 
 test('admin-only SMS test route normalizes one recipient and cannot accept custom copy', async () => {

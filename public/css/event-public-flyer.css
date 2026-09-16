@@ -756,6 +756,10 @@
   line-height: 1;
 }
 .guest-avatar img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover; }
+.guest-avatar-edit { cursor:pointer;text-decoration:none;transition:transform .16s ease,border-color .16s ease; }
+.guest-avatar-edit:hover { transform:translateY(-2px);border-color:var(--accent); }
+.guest-avatar-edit:focus-visible { outline:2px solid var(--accent);outline-offset:3px; }
+.guest-avatar-edit b { position:absolute;right:-3px;bottom:-3px;z-index:2;display:grid;place-items:center;width:20px;height:20px;border:2px solid #111;border-radius:50%;background:var(--accent);color:#071110;font:900 10px/1 sans-serif; }
 .guest-list-toggle {
   min-height: 44px;
   padding: 0 2px;

@@ -432,16 +432,13 @@ async function uploadAccountAvatar() {
     input.value = '';
     return;
   }
-  if (file.size > 5 * 1024 * 1024) {
-    status.textContent = 'That image is larger than 5 MB.';
-    input.value = '';
-    return;
-  }
-  const form = new FormData();
-  form.append('image', file);
   button.disabled = true;
-  status.textContent = 'Uploading…';
+  status.textContent = 'Optimizing your photo…';
   try {
+    const uploadFile = await window.SGImageOptimizer.optimizeAvatar(file);
+    const form = new FormData();
+    form.append('image', uploadFile);
+    status.textContent = 'Saving your photo…';
     const response = await fetch('/api/uploads/avatar', { method: 'POST', body: form });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Upload failed');

@@ -185,7 +185,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.97`. New events start with four essentials and continue in the live editor; the empty Flyer artwork area now supports a plus-led click, keyboard, and desktop drag-and-drop upload target. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.98`. Guest photos now accept and optimize images up to 20 MB, the Add Photo path returns to its verified RSVP event, My Events separates **Going** from **Hosting**, and signed-in guests can edit only their own public avatar. New events still start with four essentials and continue in the live editor; the empty Flyer artwork area supports a plus-led click, keyboard, and desktop drag-and-drop upload target. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.

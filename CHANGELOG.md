@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.98
+
+Released September 15, 2026. Built and deployed by Codex.
+
+### Added
+
+* **My Events** now opens on a guest-focused **Going** view while preserving the complete organizer workspace under **Hosting**.
+* Signed-in guests can select their own avatar on an event page to replace or remove their reusable RSVP photo. Other guests' avatars remain private and inert.
+
+### Improved
+
+* RSVP photos up to 20 MB are resized proportionally and optimized in the browser before the existing secure upload, with Cloudinary retaining the final avatar transformation.
+* The confirmation-email photo flow now keeps the event in context, offers an immediate way back, and returns automatically after a successful upload. Skipping also returns to the event.
+
+### Safety
+
+* Event-aware photo return details are shown only when the authenticated identity owns an RSVP for that event. Email-only matches and arbitrary event query strings do not expose event details or grant edit access.
+* Existing RSVP forms, confirmation behavior, Familiar Faces identity links, Host Pages, ticketing, SMS, and event data remain unchanged.
+
 ## 1.0.97
 
 Released September 15, 2026. Built and deployed by Codex.

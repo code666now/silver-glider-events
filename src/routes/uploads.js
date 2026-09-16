@@ -18,11 +18,29 @@ const upload = multer({
   }
 });
 
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    cb(null, /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype));
+  }
+});
+
 // Wrap multer so its errors (file too large, etc.) become clean JSON, not 500s
 function handleUpload(req, res, next) {
   upload.single('image')(req, res, err => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image is too large (max 5 MB)' });
+      return res.status(400).json({ error: 'That file could not be read as an image' });
+    }
+    next();
+  });
+}
+
+function handleAvatarUpload(req, res, next) {
+  avatarUpload.single('image')(req, res, err => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image is too large (max 20 MB)' });
       return res.status(400).json({ error: 'That file could not be read as an image' });
     }
     next();
@@ -77,9 +95,9 @@ router.post('/api/uploads/vibe-photo', requireOrganizer, handleUpload, async (re
 
 // Accepts a full account session or the photo-only grant from an RSVP
 // confirmation's "Add your photo" link — this is the one write that grant opens.
-router.post('/api/uploads/avatar', requirePhotoAccess, handleUpload, async (req, res) => {
+router.post('/api/uploads/avatar', requirePhotoAccess, handleAvatarUpload, async (req, res) => {
   if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
-  if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 5 MB)' });
+  if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 20 MB)' });
   try {
     const result = await uploadAccountAvatar(req.file.buffer);
     const { rows } = await pool.query(

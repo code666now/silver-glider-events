@@ -30,8 +30,9 @@ test('profile-photo changes are bound to the authenticated session', () => {
 
   // The avatar upload alone also accepts the photo-only grant from an RSVP
   // confirmation; every other upload still requires a full account session.
-  assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requirePhotoAccess, handleUpload/);
-  assert.equal((uploads.match(/requirePhotoAccess, handleUpload/g) || []).length, 1);
+  assert.match(uploads, /router\.post\('\/api\/uploads\/avatar', requirePhotoAccess, handleAvatarUpload/);
+  assert.equal((uploads.match(/requirePhotoAccess, handleAvatarUpload/g) || []).length, 1);
+  assert.match(uploads, /limits: \{ fileSize: 20 \* 1024 \* 1024 \}/);
   assert.match(uploads, /router\.post\('\/api\/uploads\/host-logo', requireOrganizer, handleUpload/);
   assert.match(uploads, /UPDATE organizers SET avatar_url=\$2[\s\S]*WHERE id=\$1/);
   assert.match(uploads, /\[req\.organizer\.id, result\.secure_url\]/);

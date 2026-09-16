@@ -72,9 +72,13 @@ test('Familiar Faces photo identity is verified, reusable, and never attached by
   assert.match(index, /app\.get\('\/add-photo', requirePhotoAccess/);
   assert.match(index, /app\.get\('\/dashboard', requireOrganizer/);
   assert.match(page, />Add your photo</);
-  assert.match(page, /Help friends recognize you\./);
+  assert.match(page, /Help friends recognize you\.\{\{EVENT_RETURN_NOTE\}\}/);
   assert.match(page, /Skip for now/);
+  assert.match(page, /Back\{\{BACK_LABEL\}\}/);
+  assert.match(page, /up to 20 MB · optimized automatically/);
   assert.match(client, /api\/uploads\/avatar/);
+  assert.match(client, /SGImageOptimizer\.optimizeAvatar/);
+  assert.match(client, /setTimeout\(\(\) => location\.assign\(returnUrl\), 2000\)/);
   assert.match(client, /scope === 'photo'/);
   assert.doesNotMatch(client, /userId|organizerId/);
   assert.match(publicRoutes, /intent: 'add_photo'/);

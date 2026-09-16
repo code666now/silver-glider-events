@@ -6,6 +6,7 @@ const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const { renderLegalPage } = require('./lib/legal-pages');
+const { esc } = require('./lib/public-html');
 const { inspectCriticalPublicAssets } = require('./lib/critical-assets');
 const { version: APP_VERSION } = require('../package.json');
 
@@ -78,7 +79,32 @@ app.get('/login', (req, res) => {
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
 app.get('/following', requireOrganizer, view('following.html'));
-app.get('/add-photo', requirePhotoAccess, view('add-photo.html'));
+app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
+  try {
+    const requestedSlug = String(req.query.event || '').trim();
+    let event = null;
+    if (/^[a-z0-9-]{1,180}$/.test(requestedSlug)) {
+      const { rows } = await pool.query(
+        `SELECT e.slug, e.title
+           FROM events e
+           JOIN rsvps r ON r.event_id=e.id
+          WHERE e.slug=$1 AND r.account_id=$2
+          ORDER BY r.id DESC LIMIT 1`,
+        [requestedSlug, req.organizer.id]
+      );
+      event = rows[0] || null;
+    }
+    const returnUrl = event ? `/e/${encodeURIComponent(event.slug)}` : (req.photoAccessOnly ? '/' : '/events?view=going');
+    const eventTitle = event ? String(event.title || 'your event') : '';
+    const template = fs.readFileSync(path.join(VIEWS, 'add-photo.html'), 'utf8');
+    res.type('html').send(template
+      .replace(/{{RETURN_URL}}/g, esc(returnUrl))
+      .replace(/{{EVENT_TITLE}}/g, esc(eventTitle))
+      .replace(/{{BACK_LABEL}}/g, event ? ` to ${esc(eventTitle)}` : ' to My Events')
+      .replace(/{{EVENT_RETURN_NOTE}}/g, event ? ` You’ll return to ${esc(eventTitle)} after saving.` : '')
+    );
+  } catch (err) { next(err); }
+});
 app.get('/events/new', requireOrganizer, async (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
   if (!invitationToken) {

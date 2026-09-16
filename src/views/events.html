@@ -70,6 +70,13 @@
     .events-load-error { padding:64px 24px;text-align:center;color:var(--sg-text-dim); }
     .events-load-error h2 { margin-bottom:8px;font-size:22px;color:var(--sg-text); }
     .events-load-error p { margin-bottom:22px;font-size:14px; }
+    .events-tabs { display:flex;gap:5px;width:min(360px,100%);margin:0 0 30px;padding:5px;border:1px solid var(--sg-border-soft);border-radius:999px;background:rgba(255,255,255,.025); }
+    .events-tab { flex:1;min-height:42px;padding:9px 18px;border:0;border-radius:999px;background:transparent;color:var(--sg-text-dim);font:800 13px var(--sg-font-body);cursor:pointer; }
+    .events-tab[aria-selected="true"] { background:rgba(28,197,190,.14);color:var(--sg-accent);box-shadow:inset 0 0 0 1px rgba(28,197,190,.22); }
+    .events-tab:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
+    #empty-action[hidden] { display:none !important; }
+    .going-card .sg-event-count strong { color:var(--sg-accent);font-size:15px; }
+    .going-card .sg-event-count span { font-size:11px; }
 
     /* Toast with an action button */
     .sg-toast .toast-action {
@@ -120,8 +127,13 @@
       <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
     </div>
 
+    <div class="events-tabs" role="tablist" aria-label="My events views">
+      <button class="events-tab" id="going-tab" type="button" role="tab" aria-controls="events-content" aria-selected="true" data-view="going">Going</button>
+      <button class="events-tab" id="hosting-tab" type="button" role="tab" aria-controls="events-content" aria-selected="false" data-view="hosting">Hosting</button>
+    </div>
+
     <section class="events-loading" id="events-loading" aria-label="Loading events">
-      <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
+      <p class="sg-label" id="loading-label" style="margin-bottom:14px">Upcoming</p>
       <div class="events-skeleton-grid" aria-hidden="true">
         <div class="events-skeleton-card">
           <span class="sg-skeleton events-skeleton-thumb"></span>
@@ -139,7 +151,7 @@
     <div id="events-content" aria-busy="true">
 
     <div id="upcoming-section" style="display:none">
-      <p class="sg-label" style="margin-bottom:14px">Upcoming</p>
+      <p class="sg-label" id="upcoming-label" style="margin-bottom:14px">Upcoming</p>
       <div class="events-grid" id="upcoming"></div>
     </div>
 
@@ -159,9 +171,9 @@
     </div>
 
     <div id="empty" class="sg-empty" style="display:none">
-      <h3>No events yet</h3>
-      <p>Create your first event in under a minute.</p>
-      <a class="sg-btn sg-btn-primary" href="/events/new">Create Event</a>
+      <h3 id="empty-title">No events yet</h3>
+      <p id="empty-copy">Events you RSVP to will appear here.</p>
+      <a class="sg-btn sg-btn-primary" id="empty-action" href="/events/new" hidden>Create Event</a>
     </div>
     </div>
   </div>
@@ -169,6 +181,8 @@
   <script src="/js/api.js"></script>
   <script>
     renderNav('events');
+    let activeView = new URLSearchParams(location.search).get('view') === 'hosting' ? 'hosting' : 'going';
+    const eventsLoadingMarkup = document.getElementById('events-loading').innerHTML;
 
     // Wrap a card in a swipe-to-archive row
     function swipeWrap(ev, inner) {
@@ -287,13 +301,13 @@
       if (!up.children.length) document.getElementById('upcoming-section').style.display = 'none';
       if (!pa.children.length) document.getElementById('past-section').style.display = 'none';
       else document.getElementById('past-label').textContent = `Past (${pa.children.length})`;
-      const archivedVisible = document.getElementById('archived-section').style.display !== 'none';
+      const archivedVisible = activeView === 'hosting' && document.getElementById('archived-section').style.display !== 'none';
       if (!up.children.length && !pa.children.length && !archivedVisible) {
         document.getElementById('empty').style.display = 'block';
       }
     }
 
-    function card(ev) {
+    function card(ev, mode = 'hosting') {
       const dateStr = new Date(ev.event_date).toLocaleDateString('en-US',
         { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
       const title = String(ev.title || 'Untitled event');
@@ -310,19 +324,21 @@
           ? '<span class="sg-badge">Secret Show</span>'
           : ev.visibility === 'private' ? '<span class="sg-badge">Private</span>' : ''
       ].filter(Boolean).join(' ');
+      const going = mode === 'going';
+      const hostName = String(ev.host_name || ev.host_person_name || 'Silver Glider host');
       return `
-        <a class="sg-event-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
+        <a class="sg-event-card${going ? ' going-card' : ''}" href="${going ? `/e/${encodeURIComponent(String(ev.slug))}` : `/events/${encodeURIComponent(String(ev.id))}/manage`}">
           ${coverUrl
             ? `<img class="sg-event-thumb${flyerMode ? ' flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt="">`
             : `<div class="sg-event-thumb placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
           <div class="sg-event-meta">
             <h3>${sgEscapeHtml(title)}</h3>
-            <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name)}</p>
+            <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name || '')}</p>
+            ${going ? `<p style="margin-top:6px">Hosted by ${sgEscapeHtml(hostName)}</p>` : ''}
             ${badges ? `<p style="margin-top:6px">${badges}</p>` : ''}
           </div>
           <div class="sg-event-count">
-            <strong>${rsvpCount}</strong>
-            <span>going${capacity ? ` / ${capacity}` : ''}</span>
+            ${going ? '<strong>Going</strong><span>View event</span>' : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
           </div>
         </a>`;
     }
@@ -362,16 +378,29 @@
     wireToggle('past-toggle', 'past');
     wireToggle('archived-toggle', 'archived');
 
+    function applyViewState() {
+      document.querySelectorAll('.events-tab').forEach(tab => tab.setAttribute('aria-selected', String(tab.dataset.view === activeView)));
+      document.getElementById('archived-section').style.display = 'none';
+      document.getElementById('empty-action').hidden = activeView !== 'hosting';
+      document.getElementById('empty-copy').textContent = activeView === 'hosting'
+        ? 'Create your first event in under a minute.'
+        : 'Events you RSVP to will appear here.';
+      history.replaceState(null, '', activeView === 'hosting' ? '/events?view=hosting' : '/events');
+    }
+
     async function load() {
       const loading = document.getElementById('events-loading');
       const content = document.getElementById('events-content');
+      applyViewState();
       loading.hidden = false;
+      loading.setAttribute('aria-label', 'Loading events');
+      loading.innerHTML = eventsLoadingMarkup;
       content.setAttribute('aria-busy', 'true');
       try {
-        const [{ events }, { events: archived }] = await Promise.all([
-          api('/api/events'),
-          api('/api/events?archived=1')
-        ]);
+        const [{ events }, archivedResult] = activeView === 'hosting'
+          ? await Promise.all([api('/api/events'), api('/api/events?archived=1')])
+          : [await api('/api/events/going'), { events: [] }];
+        const archived = archivedResult.events;
 
         const today = new Date(new Date().toDateString());
         const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
@@ -381,15 +410,15 @@
           (!events.length && !archived.length) ? 'block' : 'none';
 
         document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
-        document.getElementById('upcoming').innerHTML = upcoming.map(ev => swipeWrap(ev, card(ev))).join('');
+        document.getElementById('upcoming').innerHTML = upcoming.map(ev => activeView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
         document.getElementById('upcoming').classList.toggle('visible', upcoming.length > 0);
 
         document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
         document.getElementById('past-label').textContent = `Past (${past.length})`;
-        document.getElementById('past').innerHTML = past.map(ev => swipeWrap(ev, card(ev))).join('');
+        document.getElementById('past').innerHTML = past.map(ev => activeView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
         document.getElementById('past').classList.remove('visible');
 
-        document.getElementById('archived-section').style.display = archived.length ? 'block' : 'none';
+        document.getElementById('archived-section').style.display = activeView === 'hosting' && archived.length ? 'block' : 'none';
         document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
         document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
         document.getElementById('archived').classList.remove('visible');
@@ -402,6 +431,15 @@
         content.setAttribute('aria-busy', 'false');
       }
     }
+    document.querySelectorAll('.events-tab').forEach(tab => tab.addEventListener('click', () => {
+      if (tab.dataset.view === activeView) return;
+      activeView = tab.dataset.view;
+      document.getElementById('upcoming').innerHTML = '';
+      document.getElementById('past').innerHTML = '';
+      document.getElementById('archived').innerHTML = '';
+      document.getElementById('empty').style.display = 'none';
+      load();
+    }));
     load();
   </script>
 </body>

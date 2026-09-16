@@ -86,6 +86,7 @@ function publicGuestNames(rows = []) {
     if (attendee) names.push({
       firstName: attendee,
       isGuest: false,
+      identityId: row.account_id || null,
       avatarUrl,
       avatarEmoji: avatarUrl
         ? attendeeAvatar(`${row.id || ''}:${attendee}`)
@@ -94,6 +95,7 @@ function publicGuestNames(rows = []) {
     if (guest) names.push({
       firstName: guest,
       isGuest: true,
+      identityId: null,
       avatarUrl: null,
       avatarEmoji: attendeeAvatar(fallbackIndex++)
     });

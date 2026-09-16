@@ -13,10 +13,11 @@
   <div class="sg-shell add-photo-shell">
     <nav id="nav"></nav>
     <main class="add-photo-main">
-      <section class="add-photo-card" aria-labelledby="add-photo-title" aria-busy="true">
+      <section class="add-photo-card" aria-labelledby="add-photo-title" aria-busy="true" data-return-url="{{RETURN_URL}}" data-event-title="{{EVENT_TITLE}}">
+        <a class="add-photo-back" id="add-photo-back" href="{{RETURN_URL}}">← Back{{BACK_LABEL}}</a>
         <p class="add-photo-kicker">Your guest identity</p>
         <h1 id="add-photo-title">Add your photo</h1>
-        <p class="add-photo-subtitle">Help friends recognize you.</p>
+        <p class="add-photo-subtitle">Help friends recognize you.{{EVENT_RETURN_NOTE}}</p>
 
         <div class="add-photo-preview" aria-label="Photo preview">
           <span id="add-photo-fallback" aria-hidden="true">SG</span>
@@ -26,12 +27,21 @@
         <p class="add-photo-status" id="add-photo-status" role="status">Loading your photo…</p>
         <input id="add-photo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
         <button class="sg-btn sg-btn-primary add-photo-action" id="add-photo-button" type="button" disabled>Add photo</button>
-        <a class="add-photo-skip" id="add-photo-skip" href="/dashboard">Skip for now</a>
-        <p class="add-photo-note">JPG, PNG, WebP, or GIF · 5 MB max</p>
+        <button class="add-photo-remove" id="add-photo-remove" type="button" hidden>Remove photo</button>
+        <a class="add-photo-skip" id="add-photo-skip" href="{{RETURN_URL}}">Skip for now</a>
+        <p class="add-photo-note" id="add-photo-note">JPG, PNG, WebP, or GIF · up to 20 MB · optimized automatically</p>
+
+        <div class="add-photo-success" id="add-photo-success" hidden>
+          <h2 tabindex="-1">Photo added <span aria-hidden="true">✓</span></h2>
+          <p>Your photo will appear anywhere your guest identity is shown.</p>
+          <a class="sg-btn sg-btn-primary add-photo-action" id="add-photo-return" href="{{RETURN_URL}}">Back{{BACK_LABEL}}</a>
+          <span>Returning you automatically…</span>
+        </div>
       </section>
     </main>
   </div>
   <script src="/js/api.js"></script>
+  <script src="/js/image-optimizer.js"></script>
   <script src="/js/add-photo.js"></script>
 </body>
 </html>
