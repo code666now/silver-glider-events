@@ -26,6 +26,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /Music &amp; advanced settings/);
   assert.match(renderer, /name="owner_presentation_mode" value="standard"/);
   assert.match(renderer, /name="owner_presentation_mode" value="flyer"/);
+  assert.match(renderer, /class="owner-image-plus" aria-hidden="true">\+<\/b>/);
+  assert.match(renderer, /Drop it here or choose a file/);
   assert.match(renderer, /name="owner_admission" value="free_rsvp"/);
   assert.match(renderer, /name="owner_admission" value="external_tickets"/);
   assert.match(renderer, /id="owner-ticket-price"/);
@@ -38,6 +40,10 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /window\.location\.assign\(`\/events\/\$\{encodeURIComponent\(EVENT\.id\)\}\/manage\?created=1`/);
   assert.match(client, /new URLSearchParams\(window\.location\.search\)\.get\('edit'\)/);
   assert.match(client, /function previewImage\(/);
+  assert.match(client, /owner-image-empty-title/);
+  assert.match(client, /addEventListener\('dragover'/);
+  assert.match(client, /addEventListener\('drop'/);
+  assert.match(client, /uploadImage\(event\.dataTransfer\?\.files\?\.\[0\]\)/);
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
   assert.match(client, /function previewAdmission\(\)/);
@@ -129,7 +135,10 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
 
 test('appearance editing reuses protected uploads and rate-conscious photo search', () => {
   const client = read('public/js/event-owner-editor.js');
+  const styles = read('public/css/event-owner-editor.css');
   assert.match(client, /'\/api\/uploads\/flyer' : '\/api\/uploads\/cover'/);
+  assert.match(styles, /\.owner-image-card\.is-dragging/);
+  assert.match(styles, /\.owner-image-plus/);
   assert.match(client, /\/api\/photos\/search\?q=/);
   assert.match(client, /per_page=12/);
   assert.match(client, /halloween pumpkins costumes haunted spooky/);

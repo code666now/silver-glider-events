@@ -118,7 +118,11 @@ function renderOwnerEditor(event) {
 
             <div class="owner-image-card" id="owner-image-card" role="button" tabindex="0" aria-label="Upload a new event image">
               <img id="owner-image-preview" alt="Current event artwork">
-              <span id="owner-image-empty">No event image</span>
+              <span class="owner-image-empty" id="owner-image-empty">
+                <b class="owner-image-plus" aria-hidden="true">+</b>
+                <strong id="owner-image-empty-title">Add event image</strong>
+                <small>Drop it here or choose a file</small>
+              </span>
             </div>
             <input id="owner-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
             <div class="owner-image-actions">

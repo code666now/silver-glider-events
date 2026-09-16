@@ -478,6 +478,9 @@
     $('owner-image-card').setAttribute('aria-label', draft.presentationMode === 'flyer'
       ? 'Upload a new event flyer'
       : 'Upload a new event image');
+    $('owner-image-empty-title').textContent = draft.presentationMode === 'flyer'
+      ? 'Add your flyer'
+      : 'Add event image';
     $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
     document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
     document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
@@ -1113,9 +1116,29 @@
   }));
 
   $('owner-upload-image').addEventListener('click', () => $('owner-image-input').click());
-  $('owner-image-card').addEventListener('click', () => $('owner-image-input').click());
-  $('owner-image-card').addEventListener('keydown', event => {
+  const ownerImageCard = $('owner-image-card');
+  ownerImageCard.addEventListener('click', () => $('owner-image-input').click());
+  ownerImageCard.addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('owner-image-input').click(); }
+  });
+  ownerImageCard.addEventListener('dragenter', event => {
+    event.preventDefault();
+    ownerImageCard.classList.add('is-dragging');
+  });
+  ownerImageCard.addEventListener('dragover', event => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    ownerImageCard.classList.add('is-dragging');
+  });
+  ownerImageCard.addEventListener('dragleave', event => {
+    if (!event.relatedTarget || !ownerImageCard.contains(event.relatedTarget)) {
+      ownerImageCard.classList.remove('is-dragging');
+    }
+  });
+  ownerImageCard.addEventListener('drop', event => {
+    event.preventDefault();
+    ownerImageCard.classList.remove('is-dragging');
+    uploadImage(event.dataTransfer?.files?.[0]);
   });
   $('owner-image-input').addEventListener('change', () => uploadImage($('owner-image-input').files[0]));
   $('owner-remove-image').addEventListener('click', () => {
