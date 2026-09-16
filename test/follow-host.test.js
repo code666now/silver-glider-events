@@ -47,9 +47,14 @@ test('public Host Page offers an explicit accessible follow flow without replaci
   assert.match(view, /\/api\/auth\/guest-magic-link/);
   assert.match(view, /Use a different email/);
   assert.match(view, /intent: 'follow_host'/);
-  assert.match(view, /method: following \? 'DELETE' : 'POST'/);
+  assert.match(view, /id="follow-text-toggle" type="checkbox"/);
+  assert.match(view, /Email updates included/);
+  assert.match(view, /Reply STOP to opt out/);
+  assert.match(view, /method: 'DELETE'/);
+  assert.match(view, /\/follow\/texts/);
   assert.match(view, /event\.key === 'Escape'/);
-  assert.match(route, /Don't miss the next show\. Save this host to Following\./);
+  assert.match(route, /Email updates/);
+  assert.match(route, /Optional text updates/);
   assert.match(route, /: 'Follow'/);
   assert.match(route, /Following <span aria-hidden="true">✓<\/span>/);
   assert.match(view, /Upcoming Events/);
@@ -72,9 +77,41 @@ test('Following is a lightweight authenticated list in the shared navigation', (
   assert.match(routes, /e\.event_date >= CURRENT_DATE/);
 });
 
-test('legacy RSVP follower announcements remain separate from authenticated Host follows', () => {
+test('new-event updates combine legacy consent and explicit Host follows without changing RSVP', () => {
   const events = source('src/routes/events.js');
-  assert.match(events, /r\.organizer_optin = TRUE/);
-  assert.match(events, /follower_optouts/);
-  assert.doesNotMatch(events.slice(events.indexOf("router.get('/api/events/:id/followers'")), /host_follows/);
+  const announcements = source('src/lib/follow-announcement.js');
+  const migration = source('src/db/migrations/040_unified_follow_notifications.sql');
+  const follows = source('src/lib/host-follows.js');
+  assert.match(announcements, /r\.organizer_optin=TRUE/);
+  assert.match(announcements, /host_follows/);
+  assert.match(announcements, /follower_optouts/);
+  assert.match(announcements, /createFollowerAnnouncementBatch/);
+  assert.match(events, /includeTexts/);
+  assert.match(events, /SEND_FOLLOWER_UPDATE/);
+  assert.match(migration, /Existing rows are intentionally not backfilled/);
+  assert.match(migration, /email_opted_in_at TIMESTAMPTZ/);
+  assert.match(migration, /sms_opted_in_at TIMESTAMPTZ/);
+  assert.match(follows, /DELETE FROM follower_optouts/);
+  assert.match(follows, /INSERT INTO follower_optouts/);
+  assert.match(follows, /prepareFollowSmsConsent/);
+});
+
+test('Host settings expose one shareable Follow link, not a separate text-signup link', () => {
+  const view = source('src/views/settings-v2.html');
+  const browser = source('public/js/settings.js');
+  assert.match(view, /Share your Follow link/);
+  assert.match(browser, /\?follow=1/);
+  assert.match(browser, /navigator\.share/);
+  assert.doesNotMatch(`${view}\n${browser}`, /text-signup|text_signup|signup-for-text/i);
+});
+
+test('follower texts reuse paid batches and STOP disables both RSVP and Follow consent', () => {
+  const migration = source('src/db/migrations/040_unified_follow_notifications.sql');
+  const job = source('src/jobs/sms-notifications.js');
+  const webhook = source('src/routes/sms-notifications.js');
+  assert.match(migration, /follower_announcement/);
+  assert.match(migration, /host_follow_id BIGINT REFERENCES host_follows/);
+  assert.match(job, /batch\.kind === 'follower_announcement'/);
+  assert.match(job, /sms_opted_out_at=COALESCE/);
+  assert.match(webhook, /UPDATE host_follows SET sms_opted_out_at/);
 });

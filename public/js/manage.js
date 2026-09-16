@@ -843,38 +843,75 @@ $('sms-audience').addEventListener('click', () => {
 
 async function loadFollowers() {
   try {
-    const { count, announcedAt, announcedCount, canAnnounce } = await api(`/api/events/${eventId}/followers`);
+    const preview = await api(`/api/events/${eventId}/followers`);
+    const { count, emailCount, textCount, textCreditCost, textBalance, canIncludeTexts,
+      needsTextFunds, fingerprint, announcedAt, announcedCount, announcedTextCount, canAnnounce } = preview;
     const btn = $('announce');
-    if (announcedAt && announcedCount > 0) {
+    if (announcedAt) {
       btn.style.display = '';
       btn.disabled = true;
-      $('announce-title').textContent = `${announcedCount} ${announcedCount === 1 ? 'follower' : 'followers'} invited`;
-      $('announce-copy').textContent = 'Invitation sent. This action can only be used once.';
+      const total = announcedCount + Number(announcedTextCount || 0);
+      $('announce-title').textContent = `${total} ${total === 1 ? 'update' : 'updates'} sent`;
+      $('announce-copy').textContent = `${announcedCount} email${announcedCount === 1 ? '' : 's'} · ${Number(announcedTextCount || 0)} text${Number(announcedTextCount || 0) === 1 ? '' : 's'}. This action can only be used once.`;
       return;
     }
     if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
     btn.style.display = '';
     btn.disabled = false;
     btn.dataset.count = count;
-    $('announce-title').textContent = `Invite ${count} ${count === 1 ? 'follower' : 'followers'}`;
-    $('announce-copy').textContent = 'Send this event once to people following your host page.';
+    btn.dataset.emailCount = emailCount;
+    btn.dataset.textCount = textCount;
+    btn.dataset.textCreditCost = textCreditCost;
+    btn.dataset.textBalance = textBalance;
+    btn.dataset.includeTexts = String(canIncludeTexts);
+    btn.dataset.needsTextFunds = String(needsTextFunds);
+    btn.dataset.fingerprint = fingerprint;
+    if (emailCount === 0 && needsTextFunds) {
+      $('announce-title').textContent = `Add funds to update ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
+      $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} ${textCreditCost === 1 ? 'credit' : 'credits'} needed · ${textBalance} available.`;
+      return;
+    }
+    $('announce-title').textContent = `Update ${count} ${count === 1 ? 'follower' : 'followers'}`;
+    if (canIncludeTexts) {
+      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · ${textCount} text${textCount === 1 ? '' : 's'} · Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'}.`;
+    } else if (needsTextFunds) {
+      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} now · ${textCount} opted into texts (more texting credits needed).`;
+    } else {
+      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · No paid texts.`;
+    }
   } catch (_) {}
 }
 
 $('announce').addEventListener('click', async () => {
-  const count = $('announce').dataset.count || 'your';
-  if (!confirm(`Send this event to ${count} ${count === '1' ? 'follower' : 'followers'} who asked to hear about future events? This can only be done once.`)) return;
-  $('announce').disabled = true;
+  const button = $('announce');
+  const count = button.dataset.count || 'your';
+  const emailCount = Number(button.dataset.emailCount || 0);
+  const textCount = Number(button.dataset.textCount || 0);
+  const includeTexts = button.dataset.includeTexts === 'true';
+  const textCreditCost = Number(button.dataset.textCreditCost || 0);
+  if (emailCount === 0 && button.dataset.needsTextFunds === 'true') {
+    window.location.assign(`/settings/messaging?return=${encodeURIComponent(location.pathname)}`);
+    return;
+  }
+  const delivery = includeTexts
+    ? `${emailCount} email${emailCount === 1 ? '' : 's'} and ${textCount} text${textCount === 1 ? '' : 's'} (${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'})`
+    : `${emailCount} email${emailCount === 1 ? '' : 's'}`;
+  if (!confirm(`Send this event to ${count} ${count === '1' ? 'follower' : 'followers'} as ${delivery}? This can only be done once.`)) return;
+  button.disabled = true;
   $('announce-title').textContent = 'Sending…';
-  $('announce-copy').textContent = 'Emailing your followers.';
+  $('announce-copy').textContent = includeTexts ? 'Emailing and texting your followers.' : 'Emailing your followers.';
   try {
-    const { sent } = await api(`/api/events/${eventId}/announce`, { method: 'POST' });
-    toast(`${sent} ${sent === 1 ? 'follower' : 'followers'} invited`);
-    $('announce-title').textContent = `${sent} ${sent === 1 ? 'follower' : 'followers'} invited`;
+    const { sent, textsQueued } = await api(`/api/events/${eventId}/announce`, {
+      method: 'POST', body: {
+        confirm: 'SEND_FOLLOWER_UPDATE', includeTexts, fingerprint: button.dataset.fingerprint
+      }
+    });
+    toast(`Sent ${sent} email${sent === 1 ? '' : 's'}${textsQueued ? ` and queued ${textsQueued} text${textsQueued === 1 ? '' : 's'}` : ''}`);
+    $('announce-title').textContent = 'Follower update sent';
     $('announce-copy').textContent = 'Invitation sent. This action can only be used once.';
   } catch (err) {
     toast(err.message);
-    $('announce').disabled = false;
+    button.disabled = false;
     loadFollowers();
   }
 });

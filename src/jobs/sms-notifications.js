@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const sms = require('../lib/sms');
 const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
+const { FOLLOW_SMS_CONSENT_VERSION } = require('../lib/follow-consent');
 const { refundSendCredits, SmsCreditError } = require('../lib/sms-credit-ledger');
 const {
   createReminderBatch,
@@ -85,7 +86,7 @@ async function processSmsBatch(batchId) {
   if (!batch) return null;
   await pool.query("UPDATE sms_notification_batches SET status='processing' WHERE id=$1", [batchId]);
   const { rows: deliveries } = await pool.query(
-    `SELECT sr.id, sr.rsvp_id, sr.recipient, sr.status_token, sr.message_body
+    `SELECT sr.id, sr.rsvp_id, sr.host_follow_id, sr.recipient, sr.status_token, sr.message_body
        FROM sms_notification_recipients sr
       WHERE sr.batch_id=$1 AND sr.provider_message_sid IS NULL
         AND sr.status IN ('pending','failed') AND sr.attempt_count < $2
@@ -104,12 +105,20 @@ async function processSmsBatch(batchId) {
       [delivery.id, MAX_ATTEMPTS]
     )).rows[0];
     if (!claimed) continue;
-    const eligible = (await pool.query(
-      `SELECT 1 FROM rsvps WHERE id=$1 AND status='confirmed' AND sms_optin=TRUE
-        AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
-        AND sms_consent_version=$3 AND phone=$2`,
-      [delivery.rsvp_id, delivery.recipient, SMS_CONSENT_VERSION]
-    )).rows.length > 0;
+    const eligible = batch.kind === 'follower_announcement'
+      ? (await pool.query(
+        `SELECT 1 FROM host_follows
+          WHERE id=$1 AND host_organizer_id=$2 AND unsubscribed_at IS NULL
+            AND sms_opted_in_at IS NOT NULL AND sms_opted_out_at IS NULL
+            AND sms_consent_version=$4 AND sms_phone=$3`,
+        [delivery.host_follow_id, batch.organizer_id, delivery.recipient, FOLLOW_SMS_CONSENT_VERSION]
+      )).rows.length > 0
+      : (await pool.query(
+        `SELECT 1 FROM rsvps WHERE id=$1 AND status='confirmed' AND sms_optin=TRUE
+          AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
+          AND sms_consent_version=$3 AND phone=$2`,
+        [delivery.rsvp_id, delivery.recipient, SMS_CONSENT_VERSION]
+      )).rows.length > 0;
     if (!eligible) {
       await pool.query(
         `UPDATE sms_notification_recipients
@@ -140,11 +149,16 @@ async function processSmsBatch(batchId) {
     } catch (error) {
       const permanent = error.code === 'sms_rejected';
       if (Number(error.providerCode) === 21610) {
-        await pool.query(
-          `UPDATE rsvps SET sms_optin=FALSE,sms_opted_out_at=COALESCE(sms_opted_out_at,NOW())
-            WHERE phone=$1`,
-          [delivery.recipient]
-        );
+        await Promise.all([
+          pool.query(
+            `UPDATE rsvps SET sms_optin=FALSE,sms_opted_out_at=COALESCE(sms_opted_out_at,NOW())
+              WHERE phone=$1`, [delivery.recipient]
+          ),
+          pool.query(
+            `UPDATE host_follows SET sms_opted_out_at=COALESCE(sms_opted_out_at,NOW()),updated_at=NOW()
+              WHERE sms_phone=$1 AND sms_opted_in_at IS NOT NULL`, [delivery.recipient]
+          )
+        ]);
       }
       await pool.query(
         `UPDATE sms_notification_recipients

@@ -16,6 +16,11 @@ const LocationUtils = require('../../public/js/location-utils');
 const { queueEventNotificationBatch } = require('../jobs/event-notifications');
 const { queuePreviousGuestInvitationBatch } = require('../jobs/previous-guest-invitations');
 const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
+const { SmsCreditError } = require('../lib/sms-credit-ledger');
+const {
+  createFollowerAnnouncementBatch, makeFollowerAnnouncementPreview
+} = require('../lib/follow-announcement');
+const { queueSmsBatch } = require('../jobs/sms-notifications');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -1722,78 +1727,89 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
 router.get('/api/events/:id/followers', async (req, res, next) => {
   try {
     const { rows: ev } = await pool.query(
-      'SELECT announced_at, announced_count, visibility, status FROM events WHERE id=$1 AND organizer_id=$2',
+      `SELECT e.*,o.sms_credits,
+              COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label
+         FROM events e JOIN organizers o ON o.id=e.organizer_id
+        WHERE e.id=$1 AND e.organizer_id=$2`,
       [req.params.id, req.organizer.id]
     );
     if (!ev.length) return res.status(404).json({ error: 'Event not found' });
-
-    const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS count FROM (
-         SELECT LOWER(r.email) AS email
-           FROM rsvps r JOIN events e ON e.id = r.event_id
-          WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
-            AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
-            AND NOT EXISTS (
-              SELECT 1 FROM rsvps target_rsvp
-               WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
-                 AND LOWER(target_rsvp.email)=LOWER(r.email)
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM message_log ml
-               WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
-                 AND ml.message_type IN ('announcement','previous_guest_invite')
-                 AND ml.status IN ('pending','sent')
-            )
-          GROUP BY LOWER(r.email)
-       ) f`,
-      [req.organizer.id, req.params.id]
-    );
-    const didSendAnnouncement = ev[0].announced_at && ev[0].announced_count > 0;
+    const preview = await makeFollowerAnnouncementPreview(pool, ev[0]);
+    const didSendAnnouncement = Boolean(ev[0].announced_at);
     res.json({
-      count: rows[0].count,
+      count: preview.count,
+      emailCount: preview.emailCount,
+      textCount: preview.textCount,
+      textCreditCost: preview.creditCost,
+      textBalance: preview.balance,
+      canIncludeTexts: preview.canIncludeTexts,
+      needsTextFunds: preview.needsFunds,
+      fingerprint: preview.fingerprint,
       announcedAt: ev[0].announced_at,
       announcedCount: ev[0].announced_count,
-      canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' && !didSendAnnouncement
+      announcedTextCount: ev[0].announced_text_count,
+      canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' &&
+        !didSendAnnouncement && (preview.emailCount > 0 || preview.textCount > 0)
     });
   } catch (err) { next(err); }
 });
 
-// POST /api/events/:id/announce — email the organizer's opted-in followers (one-shot)
+// POST /api/events/:id/announce — host-approved email + optional paid SMS update (one-shot)
 router.post('/api/events/:id/announce', async (req, res, next) => {
+  const client = await pool.connect();
+  let event;
+  let preview;
+  let smsBatch = null;
   try {
-    const { rows: ev } = await pool.query(
-      'SELECT * FROM events WHERE id=$1 AND organizer_id=$2', [req.params.id, req.organizer.id]
+    if (req.body?.confirm !== 'SEND_FOLLOWER_UPDATE') {
+      return res.status(400).json({ error: 'Review and confirm the follower update before sending' });
+    }
+    await client.query('BEGIN');
+    const { rows: ev } = await client.query(
+      `SELECT e.*,o.sms_credits,
+              COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label
+         FROM events e JOIN organizers o ON o.id=e.organizer_id
+        WHERE e.id=$1 AND e.organizer_id=$2 FOR UPDATE OF e,o`,
+      [req.params.id, req.organizer.id]
     );
-    if (!ev.length) return res.status(404).json({ error: 'Event not found' });
-    const event = ev[0];
+    if (!ev.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    event = ev[0];
 
-    if (event.status !== 'published') return res.status(400).json({ error: 'Publish the event before announcing it' });
-    if (event.visibility !== 'public') return res.status(400).json({ error: 'Only public events can be announced to followers' });
-    if (event.announced_at && event.announced_count > 0) return res.status(409).json({ error: 'This event was already announced' });
+    if (event.status !== 'published') throw Object.assign(new Error('Publish the event before announcing it'), { statusCode: 400 });
+    if (event.visibility !== 'public') throw Object.assign(new Error('Only public events can be announced to followers'), { statusCode: 400 });
+    if (event.announced_at) throw Object.assign(new Error('This event was already announced'), { statusCode: 409 });
 
-    const { rows: recipients } = await pool.query(
-      `SELECT LOWER(r.email) AS email, MIN(r.first_name) AS first_name
-        FROM rsvps r JOIN events e ON e.id = r.event_id
-       WHERE e.organizer_id = $1 AND r.organizer_optin = TRUE AND r.status = 'confirmed'
-          AND LOWER(r.email) NOT IN (SELECT LOWER(email) FROM follower_optouts WHERE organizer_id = $1)
-          AND NOT EXISTS (
-            SELECT 1 FROM rsvps target_rsvp
-             WHERE target_rsvp.event_id=$2 AND target_rsvp.status='confirmed'
-               AND LOWER(target_rsvp.email)=LOWER(r.email)
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM message_log ml
-             WHERE ml.event_id=$2 AND LOWER(ml.recipient)=LOWER(r.email)
-               AND ml.message_type IN ('announcement','previous_guest_invite')
-               AND ml.status IN ('pending','sent')
-          )
-        GROUP BY LOWER(r.email)`,
-      [req.organizer.id, event.id]
+    preview = await makeFollowerAnnouncementPreview(client, event);
+    if (String(req.body.fingerprint || '') !== preview.fingerprint) {
+      throw Object.assign(new Error('The follower audience or text cost changed. Review the updated preview.'), { statusCode: 409 });
+    }
+    const includeTexts = req.body.includeTexts === true;
+    if (!preview.emailCount && !(includeTexts && preview.textCount)) {
+      throw Object.assign(new Error('No followers are eligible for this update'), { statusCode: 400 });
+    }
+    if (includeTexts) {
+      if (!preview.canIncludeTexts) {
+        const message = preview.needsFunds
+          ? `Add ${preview.creditCost - preview.balance} more texting credits before sending texts.`
+          : 'No followers are eligible for text updates.';
+        throw Object.assign(new Error(message), { statusCode: preview.needsFunds ? 402 : 400 });
+      }
+      const created = await createFollowerAnnouncementBatch(client, event, preview);
+      smsBatch = created.batch;
+    }
+    await client.query(
+      `UPDATE events SET announced_at=NOW(),announced_count=0,announced_text_count=$2 WHERE id=$1`,
+      [event.id, includeTexts ? preview.textCount : 0]
     );
+    await client.query('COMMIT');
+    if (smsBatch) queueSmsBatch(smsBatch.id);
 
     const organizerLabel = req.organizer.org_name || req.organizer.name || 'Silver Glider Events';
     let sent = 0;
-    for (const r of recipients) {
+    for (const r of preview._emails) {
       const unsubscribeUrl = `${process.env.APP_URL}/unsubscribe?token=${signOptout(req.organizer.id, r.email)}`;
       try {
         await sendEventAnnouncement({ to: r.email, event, organizerLabel, replyTo: req.organizer.email, unsubscribeUrl });
@@ -1812,9 +1828,17 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
       }
     }
 
-    await pool.query('UPDATE events SET announced_at=NOW(), announced_count=$2 WHERE id=$1', [event.id, sent]);
-    res.json({ sent, total: recipients.length });
-  } catch (err) { next(err); }
+    await pool.query('UPDATE events SET announced_count=$2 WHERE id=$1', [event.id, sent]);
+    res.json({ sent, total: preview.emailCount, textsQueued: smsBatch ? preview.textCount : 0 });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof SmsCreditError || err.statusCode) {
+      return res.status(err.status || err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // PUT /api/settings

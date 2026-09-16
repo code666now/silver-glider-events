@@ -1589,7 +1589,9 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
   assert.equal(signedInFollow.status, 200);
-  assert.deepEqual(await signedInFollow.json(), { following: true });
+  assert.deepEqual(await signedInFollow.json(), {
+    following: true, emailOn: true, textOn: false, smsAvailable: false, phoneLast4: null
+  });
   await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
     method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
@@ -1609,7 +1611,9 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   const unfollow = await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
     method: 'DELETE', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
-  assert.deepEqual(await unfollow.json(), { following: false });
+  assert.deepEqual(await unfollow.json(), {
+    following: false, emailOn: false, textOn: false, smsAvailable: false, phoneLast4: null
+  });
   await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
     method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
@@ -1630,13 +1634,13 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   )).rows[0];
   assert.equal(pending.intent, 'follow_host');
   assert.equal(pending.target_organizer_id, organizerId);
-  assert.equal(pending.return_path, '/h/test-host');
+  assert.equal(pending.return_path, '/h/test-host?followed=1');
   const followEmail = lastDevEmail('new-follower@example.test', 'magic_link');
   assert.notEqual(pending.token, tokenFromLink(followEmail.link), 'only a hash of the link token is stored');
 
   const verify = await followSignInLink(followEmail.link, { next: '/dashboard' });
   assert.equal(verify.status, 303);
-  assert.equal(verify.headers.get('location'), '/h/test-host', 'stored intent return must win over URL tampering');
+  assert.equal(verify.headers.get('location'), '/h/test-host?followed=1', 'stored intent return must win over URL tampering');
   const follower = (await pool.query(
     `SELECT id, org_name, public_slug FROM organizers WHERE email='new-follower@example.test'`
   )).rows[0];
@@ -1682,7 +1686,7 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     email: 'riley-remembered@example.test',
     intent: 'follow_host',
     target_organizer_id: secondHostId,
-    return_path: '/h/second-host'
+    return_path: '/h/second-host?followed=1'
   });
   const rememberedRequestCookie = responseCookie(rememberedFollowRequest, 'sge_sign_in');
   const rememberedCode = lastDevEmail('riley-remembered@example.test', 'magic_link').code;
@@ -1695,7 +1699,7 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     body: JSON.stringify({ code: rememberedCode })
   });
   assert.equal(rememberedVerified.status, 200);
-  assert.equal((await rememberedVerified.json()).redirect, '/h/second-host');
+  assert.equal((await rememberedVerified.json()).redirect, '/h/second-host?followed=1');
   const rememberedAccountCookie = responseCookie(rememberedVerified, 'sge_session');
   assert.ok(rememberedAccountCookie);
   const rememberedIdentity = (await pool.query(
@@ -1717,6 +1721,113 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     headers: { cookie: rememberedAccountCookie }
   });
   assert.match(await rememberedHostPage.text(), /data-following="true"/);
+});
+
+test('Follow includes email, offers optional paid texts, and sends one audited host update', async () => {
+  await pool.query('UPDATE organizers SET sms_credits=10 WHERE id=$1', [organizerId]);
+  const follower = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('follow-updates@example.test','Follow Updates') RETURNING id`
+  )).rows[0];
+  const followerCookie = `sge_session=${signSession(follower.id)}`;
+  const followed = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'POST', headers: { cookie: followerCookie }
+  });
+  assert.deepEqual(await followed.json(), {
+    following: true, emailOn: true, textOn: false, smsAvailable: true, phoneLast4: null
+  });
+  const textOptIn = await fetch(`${baseUrl}/api/hosts/test-host/follow/texts`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: followerCookie },
+    body: JSON.stringify({ phone: '(415) 555-0199' })
+  });
+  assert.deepEqual(await textOptIn.json(), {
+    following: true, emailOn: true, textOn: true, smsAvailable: true, phoneLast4: '0199'
+  });
+  const consent = (await pool.query(
+    `SELECT email_consent_version,sms_phone,sms_consent_version,sms_consent_text
+       FROM host_follows WHERE follower_organizer_id=$1 AND host_organizer_id=$2`,
+    [follower.id, organizerId]
+  )).rows[0];
+  assert.equal(consent.email_consent_version, 'host_follow_email_v1');
+  assert.equal(consent.sms_phone, '+14155550199');
+  assert.equal(consent.sms_consent_version, 'host_follow_sms_v1');
+  assert.match(consent.sms_consent_text, /Reply STOP to opt out/);
+
+  const event = await createEvent({ slug: 'follow-update-night', title: 'Follow Update Night' });
+  const hostCookie = `sge_session=${signSession(organizerId)}`;
+  const previewResponse = await fetch(`${baseUrl}/api/events/${event.id}/followers`, {
+    headers: { cookie: hostCookie }
+  });
+  const preview = await previewResponse.json();
+  assert.equal(previewResponse.status, 200);
+  assert.equal(preview.count, 1, 'one person receiving two channels is counted once');
+  assert.equal(preview.emailCount, 1);
+  assert.equal(preview.textCount, 1);
+  assert.equal(preview.canIncludeTexts, true);
+  assert.ok(preview.textCreditCost >= preview.textCount, 'the preview charges at least one segment per text');
+
+  const originalSendSms = sms.sendSms;
+  const sends = [];
+  sms.sendSms = async payload => {
+    sends.push(payload);
+    return { sid: `SM${'f'.repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+  try {
+    const send = await fetch(`${baseUrl}/api/events/${event.id}/announce`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: hostCookie },
+      body: JSON.stringify({
+        confirm: 'SEND_FOLLOWER_UPDATE', includeTexts: true, fingerprint: preview.fingerprint
+      })
+    });
+    const result = await send.json();
+    assert.equal(send.status, 200);
+    assert.deepEqual(result, { sent: 1, total: 1, textsQueued: 1 });
+    const batch = (await pool.query(
+      `SELECT * FROM sms_notification_batches
+        WHERE event_id=$1 AND kind='follower_announcement'`, [event.id]
+    )).rows[0];
+    await waitForSmsBatch(batch.id);
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0].to, '+14155550199');
+    assert.match(sends[0].body, /^Test Host: New event - Follow Update Night/);
+    assert.match(sends[0].body, /Reply STOP to opt out\.$/);
+    const delivery = (await pool.query(
+      'SELECT host_follow_id,rsvp_id FROM sms_notification_recipients WHERE batch_id=$1', [batch.id]
+    )).rows[0];
+    assert.ok(delivery.host_follow_id);
+    assert.equal(delivery.rsvp_id, null);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM message_log
+        WHERE event_id=$1 AND recipient='follow-updates@example.test'
+          AND message_type='announcement' AND status='sent'`, [event.id]
+    )).rows[0].count, 1);
+  } finally {
+    sms.sendSms = originalSendSms;
+  }
+
+  const stopped = await fetch(`${baseUrl}/api/webhooks/twilio/inbound`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ From: '+14155550199', Body: 'STOP' })
+  });
+  assert.equal(stopped.status, 200);
+  assert.ok((await pool.query(
+    'SELECT sms_opted_out_at FROM host_follows WHERE follower_organizer_id=$1 AND host_organizer_id=$2',
+    [follower.id, organizerId]
+  )).rows[0].sms_opted_out_at instanceof Date);
+
+  const unfollowed = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'DELETE', headers: { cookie: followerCookie }
+  });
+  assert.deepEqual(await unfollowed.json(), {
+    following: false, emailOn: false, textOn: false, smsAvailable: true, phoneLast4: '0199'
+  });
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM follower_optouts
+      WHERE organizer_id=$1 AND email='follow-updates@example.test'`, [organizerId]
+  )).rows[0].count, 1, 'unfollow also suppresses older RSVP-based host updates');
 });
 
 test('keeps ordinary Create Event magic-link destinations unchanged', async () => {

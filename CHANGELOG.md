@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.102
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Added
+
+* A Host Page now has one shareable **Follow** link. Following always includes new-event email updates; when that host owns texting credits, the same flow progressively offers a separate unchecked phone opt-in for text updates.
+* The Host Page keeps the relationship visible as **Following · Email on** with either **Texts on** or **Add texts**, so text consent is not a disappearing one-time prompt.
+* Public-event management now previews the exact eligible follower email audience, optional text audience, segment-based credit cost, and current balance before the host approves one standardized new-event update.
+
+### Safety
+
+* Email and SMS consent are stored separately with source, version, timestamp, and disclosure copy. Existing followers are not silently enrolled, phone numbers are normalized, and only currently consented followers can receive paid texts.
+* Follower texts reuse the existing credit ledger, audited batches, delivery records, and Twilio STOP handling. Unfollowing suppresses both Follow updates and older RSVP-based host marketing.
+* RSVP, Familiar Faces invitations, event-specific day-before reminders, pricing, ticketing, and existing automatic email re-invites are unchanged. There is no separate text-only signup link or bulk Familiar Faces text campaign.
+
 ## 1.0.101
 
 Released September 16, 2026. Built and deployed by Codex.

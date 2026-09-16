@@ -49,11 +49,16 @@ router.post('/api/webhooks/twilio/inbound', verifyTwilio, async (req, res, next)
       let from = null;
       try { from = normalizeE164(req.body.From); } catch (_) {}
       if (from) {
-        await pool.query(
-          `UPDATE rsvps SET sms_optin=FALSE,sms_opted_out_at=COALESCE(sms_opted_out_at,NOW())
-            WHERE phone=$1 AND sms_optin=TRUE`,
-          [from]
-        );
+        await Promise.all([
+          pool.query(
+            `UPDATE rsvps SET sms_optin=FALSE,sms_opted_out_at=COALESCE(sms_opted_out_at,NOW())
+              WHERE phone=$1 AND sms_optin=TRUE`, [from]
+          ),
+          pool.query(
+            `UPDATE host_follows SET sms_opted_out_at=COALESCE(sms_opted_out_at,NOW()),updated_at=NOW()
+              WHERE sms_phone=$1 AND sms_opted_in_at IS NOT NULL`, [from]
+          )
+        ]);
       }
     }
     res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');

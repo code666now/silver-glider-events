@@ -134,6 +134,15 @@ function populateHostFields(organizer) {
   if (organizer.public_slug) {
     settingsElement('host-summary-view').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
   }
+  const followShare = settingsElement('host-follow-share');
+  followShare.hidden = !organizer.public_slug;
+  if (organizer.public_slug) {
+    const followUrl = `${window.location.origin}/h/${encodeURIComponent(organizer.public_slug)}?follow=1`;
+    settingsElement('host-follow-share-url').value = followUrl;
+    settingsElement('host-follow-share-copy').textContent = Number(organizer.sms_credits || 0) > 0
+      ? 'Fans get email updates and can optionally add text updates.'
+      : 'Fans can follow for new-event emails.';
+  }
   renderHostMedia(organizer);
   savedHostSnapshot = JSON.stringify(hostFormValue());
   updateHostDirty();
@@ -505,6 +514,25 @@ settingsElement('logo-btn').addEventListener('click', () => settingsElement('log
 settingsElement('logo-input').addEventListener('change', () => uploadProfileImage('logo'));
 settingsElement('header-btn').addEventListener('click', () => settingsElement('header-input').click());
 settingsElement('header-input').addEventListener('change', () => uploadProfileImage('header'));
+
+settingsElement('host-follow-copy').addEventListener('click', async () => {
+  const url = settingsElement('host-follow-share-url').value;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    settingsElement('host-follow-share-status').textContent = 'Follow link copied.';
+  } catch (_) {
+    settingsElement('host-follow-share-url').select();
+    settingsElement('host-follow-share-status').textContent = 'Link selected. Copy it from the field.';
+  }
+});
+settingsElement('host-follow-native-share').addEventListener('click', async () => {
+  const url = settingsElement('host-follow-share-url').value;
+  if (!url) return;
+  if (!navigator.share) return settingsElement('host-follow-copy').click();
+  try { await navigator.share({ title: `Follow ${currentOrganizer.org_name || currentOrganizer.name || 'my events'}`, url }); }
+  catch (error) { if (error.name !== 'AbortError') settingsElement('host-follow-share-status').textContent = 'Sharing is unavailable. Copy the link instead.'; }
+});
 
 settingsElement('sms-credit-continue').addEventListener('click', startStripeCheckout);
 

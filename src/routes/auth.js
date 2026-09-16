@@ -98,7 +98,7 @@ async function signInIntent(body = {}) {
     if (!host) return null;
     targetOrganizerId = host.id;
     followHostName = host.org_name;
-    returnPath = `/h/${encodeURIComponent(host.public_slug)}`;
+    returnPath = `/h/${encodeURIComponent(host.public_slug)}?followed=1`;
   }
   return { intent, targetOrganizerId, returnPath, followHostName };
 }
@@ -460,13 +460,13 @@ router.get('/api/auth/me', requireOrganizer, (req, res) => {
   const {
     id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
     bio, website_url, instagram_handle, instagram_url, contact_email,
-    plan, is_admin, created_at, updated_at
+    plan, is_admin, sms_credits, created_at, updated_at
   } = req.organizer;
   res.json({
     organizer: {
       id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
       bio, website_url, instagram_handle, instagram_url, contact_email,
-      plan, is_admin, created_at, updated_at
+      plan, is_admin, sms_credits, created_at, updated_at
     }
   });
 });

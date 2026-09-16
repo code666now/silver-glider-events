@@ -1,16 +1,37 @@
 const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
-const { findPublicHost, followHost, unfollowHost } = require('../lib/host-follows');
+const {
+  findPublicHost, followHost, unfollowHost, followStatus, enableFollowSms
+} = require('../lib/host-follows');
 
 const router = express.Router();
 
+async function inFollowTransaction(work) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await work(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 router.post('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) => {
   try {
-    const host = await findPublicHost(pool, req.params.slug);
-    if (!host) return res.status(404).json({ error: 'Host Page not found' });
-    await followHost(pool, req.organizer.id, host.id);
-    res.json({ following: true });
+    const result = await inFollowTransaction(async client => {
+      const host = await findPublicHost(client, req.params.slug);
+      if (!host) return null;
+      await followHost(client, req.organizer.id, host.id);
+      return followStatus(client, req.organizer.id, host.id);
+    });
+    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    res.json(result);
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
@@ -19,11 +40,31 @@ router.post('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) 
 
 router.delete('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) => {
   try {
-    const host = await findPublicHost(pool, req.params.slug);
-    if (!host) return res.status(404).json({ error: 'Host Page not found' });
-    await unfollowHost(pool, req.organizer.id, host.id);
-    res.json({ following: false });
+    const result = await inFollowTransaction(async client => {
+      const host = await findPublicHost(client, req.params.slug);
+      if (!host) return null;
+      await unfollowHost(client, req.organizer.id, host.id);
+      return followStatus(client, req.organizer.id, host.id);
+    });
+    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    res.json(result);
   } catch (err) { next(err); }
+});
+
+router.patch('/api/hosts/:slug/follow/texts', requireOrganizer, async (req, res, next) => {
+  try {
+    const result = await inFollowTransaction(async client => {
+      const host = await findPublicHost(client, req.params.slug);
+      if (!host) return null;
+      await enableFollowSms(client, req.organizer.id, host.id, req.body?.phone);
+      return followStatus(client, req.organizer.id, host.id);
+    });
+    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode || err.status) return res.status(err.statusCode || err.status).json({ error: err.message });
+    next(err);
+  }
 });
 
 router.get('/api/following', requireOrganizer, async (req, res, next) => {

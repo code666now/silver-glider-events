@@ -5,7 +5,7 @@ const pool = require('../config/db');
 const { cleanInstagramHandle, cleanProfileUrl } = require('../lib/host-profile');
 const { formatTime } = require('../lib/mailer');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
-const { isFollowingHost } = require('../lib/host-follows');
+const { followStatus } = require('../lib/host-follows');
 
 const router = express.Router();
 const hostTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'host-public.html'), 'utf8');
@@ -70,7 +70,7 @@ function hostSocialLinks(host) {
 router.get('/h/:slug', async (req, res, next) => {
   try {
     const { rows: hosts } = await pool.query(
-      `SELECT id, org_name, public_slug, logo_url, header_image_url,
+      `SELECT id, org_name, public_slug, logo_url, header_image_url, sms_credits,
               bio, website_url, instagram_handle, instagram_url
          FROM organizers
         WHERE LOWER(public_slug)=LOWER($1) AND org_name IS NOT NULL`,
@@ -110,12 +110,15 @@ router.get('/h/:slug', async (req, res, next) => {
     const ownerNavHtml = isOwnHost
       ? '<a class="host-owner-dashboard" href="/dashboard" aria-label="Return to Dashboard">← Dashboard</a>'
       : '';
-    const following = !isOwnHost && session
-      ? await isFollowingHost(pool, session.id, host.id)
-      : false;
-    const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-following="${following ? 'true' : 'false'}">
-      <button class="host-follow-button${following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${following ? 'true' : 'false'}">${following ? 'Following <span aria-hidden="true">✓</span>' : 'Follow'}</button>
-      <p>Don't miss the next show. Save this host to Following.</p>
+    const follow = !isOwnHost && session
+      ? await followStatus(pool, session.id, host.id)
+      : { following: false, emailOn: false, textOn: false, smsAvailable: Number(host.sms_credits || 0) > 0 };
+    const followSummary = follow.following
+      ? `Following · Email ${follow.emailOn ? 'on' : 'off'}${follow.textOn || follow.smsAvailable ? ` · Texts ${follow.textOn ? 'on' : 'available'}` : ''}`
+      : `Email updates${follow.smsAvailable ? ' · Optional text updates' : ''}`;
+    const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-signed-in="${session ? 'true' : 'false'}" data-following="${follow.following ? 'true' : 'false'}" data-email-on="${follow.emailOn ? 'true' : 'false'}" data-text-on="${follow.textOn ? 'true' : 'false'}" data-sms-available="${follow.smsAvailable ? 'true' : 'false'}">
+      <button class="host-follow-button${follow.following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${follow.following ? 'true' : 'false'}">${follow.following ? 'Following <span aria-hidden="true">✓</span>' : 'Follow'}</button>
+      <p data-follow-summary>${esc(followSummary)}</p>
     </div>`;
 
     res.send(hostTemplate
