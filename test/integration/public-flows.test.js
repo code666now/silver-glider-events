@@ -398,6 +398,11 @@ test('keeps first-RSVP persistence without using its browser cookie as event-pag
     body: JSON.stringify({ full_name: 'Lucas Moon', email: 'lucas@example.test' })
   });
   assert.equal(firstRsvp.status, 201);
+  const firstRsvpResult = await firstRsvp.json();
+  assert.equal(firstRsvpResult.response, 'going');
+  assert.match(firstRsvpResult.rsvpToken, /^[a-f0-9]{32}$/);
+  assert.equal(firstRsvpResult.calendarUrl, `/r/${firstRsvpResult.rsvpToken}/calendar.ics`);
+  assert.match(firstRsvp.headers.get('cache-control') || '', /private, no-store/);
   const guestCookie = responseCookie(firstRsvp, 'sge_guest');
   assert.match(guestCookie, /^sge_guest=/);
   assert.doesNotMatch(firstRsvp.headers.get('set-cookie') || '', /sge_session=/);
@@ -412,6 +417,23 @@ test('keeps first-RSVP persistence without using its browser cookie as event-pag
   assert.equal(stored.account_id, null);
   assert.ok(stored.guest_session_id);
   assert.equal(stored.verified_at, null);
+
+  // The RSVP response supplies its event-scoped personal URL proof immediately,
+  // so the same confirmation can be reopened on a browser with no cookies.
+  const personalConfirmation = await fetch(
+    `${baseUrl}/e/${firstEvent.slug}?rsvp=${encodeURIComponent(firstRsvpResult.rsvpToken)}`
+  );
+  assert.match(personalConfirmation.headers.get('cache-control') || '', /private, no-store/);
+  assert.match(await personalConfirmation.text(),
+    new RegExp(`"returningGuest":\\{"firstName":"Lucas","source":"rsvp","response":"going","calendarUrl":"\\/r\\/${firstRsvpResult.rsvpToken}\\/calendar\\.ics"\\}`));
+
+  const changedFromOtherDevice = await fetch(`${baseUrl}/api/public/events/${firstEvent.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ response: 'not_going', rsvpToken: firstRsvpResult.rsvpToken })
+  });
+  assert.equal(changedFromOtherDevice.status, 200);
+  assert.equal((await changedFromOtherDevice.json()).response, 'not_going');
 
   const returningPage = await fetch(`${baseUrl}/e/${nextEvent.slug}`, { headers: { cookie: guestCookie } });
   assert.match(await returningPage.text(), /"returningGuest":null/);
@@ -524,7 +546,7 @@ test('personal Familiar Faces links are permanent, cross-device, and link a matc
 
   // The token, not a cookie, recognizes the same answer on another device.
   const otherDevice = await (await fetch(`${baseUrl}${personalLocation}`)).text();
-  assert.match(otherDevice, /"returningGuest":\{"firstName":"Maya","source":"invitation","response":"going"\}/);
+  assert.match(otherDevice, /"returningGuest":\{"firstName":"Maya","source":"invitation","response":"going","calendarUrl":"\/r\/[a-f0-9]+\/calendar\.ics"\}/);
   const changed = await fetch(`${baseUrl}/api/public/events/${target.slug}/returning-rsvp`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -3373,7 +3395,7 @@ test('a personal link from the guest’s own email shows their RSVP on that even
 
   const personalUrl = `${baseUrl}/e/${event.slug}?rsvp=personal-link-token`;
   const page = await (await fetch(personalUrl)).text();
-  assert.match(page, /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"going"\}/);
+  assert.match(page, /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"going","calendarUrl":"\/r\/personal-link-token\/calendar\.ics"\}/);
 
   const change = await fetch(`${baseUrl}/api/public/events/${event.slug}/returning-rsvp`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -3382,7 +3404,7 @@ test('a personal link from the guest’s own email shows their RSVP on that even
   assert.equal(change.status, 200);
   assert.equal((await pool.query(`SELECT status FROM rsvps WHERE manage_token='personal-link-token'`)).rows[0].status, 'cancelled');
   assert.match(await (await fetch(personalUrl)).text(),
-    /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"not_going"\}/);
+    /"returningGuest":\{"firstName":"Lucas","source":"rsvp","response":"not_going","calendarUrl":"\/r\/personal-link-token\/calendar\.ics"\}/);
 
   // The proof is per event: it doesn't recognize Lucas anywhere else.
   assert.match(await (await fetch(`${baseUrl}/e/${other.slug}`, { headers: { cookie: attendeeCookie } })).text(),
@@ -3420,7 +3442,7 @@ test('“already on the list” in a new browser can be managed there after an e
   const page = await (await fetch(`${baseUrl}/e/${event.slug}`, {
     headers: { cookie: responseCookie(verified, 'sge_session') }
   })).text();
-  assert.match(page, /"returningGuest":\{"firstName":"Robin","source":"account","response":"going"\}/);
+  assert.match(page, /"returningGuest":\{"firstName":"Robin","source":"account","response":"going","calendarUrl":"\/r\/[^"]+\/calendar\.ics"\}/);
 });
 
 test('a bookmarked /events/:id lands on the manage page, and Create your event opens the builder', async () => {

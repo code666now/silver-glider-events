@@ -330,9 +330,17 @@ function formatTime(t) {
 }
 
 function attendeeEventUrl(event, rsvp) {
-  return event.comments_enabled
-    ? `${process.env.APP_URL}/r/${rsvp.manage_token}/event`
-    : `${process.env.APP_URL}/e/${event.slug}`;
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  return `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/event`;
+}
+
+function confirmationStatusBlock() {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:12px">
+    <tr><td align="center" style="padding:20px 18px">
+      <p style="color:#f4f4f4;font-size:18px;font-weight:800;line-height:1.4;margin:0">✓ You’re going</p>
+      <p style="color:#8f8f8f;font-size:14px;line-height:1.5;margin:5px 0 0">Open your RSVP any time to view it or change your answer.</p>
+    </td></tr>
+  </table>`;
 }
 
 function criticalEventUrl(event, rsvp) {
@@ -368,15 +376,14 @@ function flyerSecondaryLinks(event, rsvp, { includeManage = true, includeHost = 
 
 function renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
   const theme = createEmailTheme(event.artwork_accent_color);
-  const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   return rsvpConfirmationLayout({
     event,
     theme,
-    sub: `${greeting} is confirmed.`,
-    bodyHtml: confirmationDetailsCard(event),
-    cta: event.comments_enabled ? 'View event & comments' : 'View event',
+    sub: rsvp.first_name ? `${rsvp.first_name}, your RSVP is saved.` : 'Your RSVP is saved.',
+    bodyHtml: confirmationStatusBlock(),
+    cta: 'View or change RSVP',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
+    secondaryHtml: `${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
   });
 }
 
@@ -487,15 +494,14 @@ function confirmationPhotoOpportunity(addPhotoUrl, theme) {
 function renderRsvpConfirmationEmail({ event, rsvp, addPhotoUrl }) {
   if (isFlyerEvent(event)) return renderFlyerRsvpConfirmationEmail({ event, rsvp, addPhotoUrl });
   const theme = createEmailTheme(event.artwork_accent_color);
-  const greeting = rsvp.first_name ? `${rsvp.first_name}, your spot` : 'Your spot';
   return rsvpConfirmationLayout({
     event,
     theme,
-    sub: `${greeting} is confirmed.`,
-    bodyHtml: confirmationDetailsCard(event),
-    cta: event.comments_enabled ? 'View event & comments' : 'View event',
+    sub: rsvp.first_name ? `${rsvp.first_name}, your RSVP is saved.` : 'Your RSVP is saved.',
+    bodyHtml: confirmationStatusBlock(),
+    cta: 'View or change RSVP',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${confirmationActionLinks(event, rsvp, theme)}${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
+    secondaryHtml: `${confirmationPhotoOpportunity(addPhotoUrl, theme)}${confirmationFooterNote(rsvp)}`
   });
 }
 

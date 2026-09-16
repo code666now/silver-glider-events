@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.100
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Added
+
+* A completed RSVP now opens an immediate confirmation dialog on desktop and a bottom sheet on mobile, without navigating away from the event. It shows the answer, event, host, date, time, location, personal calendar action, and an in-place answer editor.
+* Reopening a personal RSVP or Familiar Faces invitation link with an existing answer opens the same confirmation experience on any device. Closing it returns to a compact **View RSVP** status card.
+
+### Changed
+
+* RSVP confirmation emails are now a lightweight backup: event artwork and identity remain, while one **View or change RSVP** action returns to the personal on-page confirmation instead of duplicating all event controls in email.
+
+### Safety
+
+* Fresh RSVP responses expose only that newly created RSVP's existing opaque manage token. Personal event responses use private, no-store caching and do not change account, host, ticketing, SMS, or RSVP identity rules.
+
 ## 1.0.99
 
 Released September 15, 2026. Built and deployed by Codex.

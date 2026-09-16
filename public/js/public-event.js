@@ -6,7 +6,7 @@ const personalAccess = {
   inviteToken: eventUrlParams.get('invite') || '',
   rsvpToken: eventUrlParams.get('rsvp') || ''
 };
-const hasPersonalAccess = Boolean(personalAccess.inviteToken || personalAccess.rsvpToken);
+const hasPersonalAccess = () => Boolean(personalAccess.inviteToken || personalAccess.rsvpToken);
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
@@ -335,7 +335,7 @@ const RETURNING_COPY = {
     mark: '✓',
     title: 'You’re going',
     detail: 'You’re on the list.',
-    fresh: 'You’re on the list. Your confirmation and calendar invite are on the way.'
+    fresh: 'You’re on the list.'
   },
   not_going: {
     mark: '–',
@@ -376,6 +376,64 @@ function renderReturningState({ fresh = false } = {}) {
   $('returning-rsvp-detail').textContent = fresh ? copy.fresh : copy.detail;
 }
 
+// The same completion surface is used immediately after RSVP and whenever a
+// personal RSVP/invitation URL is reopened. It feels like a destination while
+// remaining on the event page, so there is no success-page network round trip.
+const confirmationDialog = $('rsvp-confirmation-dialog');
+let confirmationFresh = false;
+let confirmationEditing = false;
+let confirmationTrigger = null;
+
+function confirmationCalendarUrl() {
+  if (EVENT.returningGuest?.calendarUrl) return EVENT.returningGuest.calendarUrl;
+  if (personalAccess.rsvpToken) return `/r/${encodeURIComponent(personalAccess.rsvpToken)}/calendar.ics`;
+  return icsUrl;
+}
+
+function renderConfirmationDialog() {
+  if (!confirmationDialog || !EVENT.returningGuest?.response) return;
+  const response = EVENT.returningGuest.response;
+  const copy = RETURNING_COPY[response];
+  const status = $('rsvp-confirmation-status');
+  status.classList.toggle('is-not-going', response === 'not_going');
+  $('rsvp-confirmation-mark').textContent = copy.mark;
+  $('rsvp-confirmation-title').textContent = copy.title;
+  $('rsvp-confirmation-detail').textContent = confirmationFresh ? copy.fresh : copy.detail;
+  $('rsvp-confirmation-email-note').hidden = !confirmationFresh;
+  $('rsvp-confirmation-editor').hidden = !confirmationEditing;
+  const summaryActions = $('rsvp-confirmation-summary-actions');
+  summaryActions.hidden = confirmationEditing;
+  summaryActions.classList.toggle('is-single', response !== 'going');
+  const calendar = $('rsvp-confirmation-calendar');
+  calendar.href = confirmationCalendarUrl();
+  calendar.hidden = response !== 'going' || confirmationEditing;
+  setReturningSelection(response);
+}
+
+function openRsvpConfirmation({ fresh = false, editing = false, trigger = null } = {}) {
+  if (!confirmationDialog || !EVENT.returningGuest?.response) return;
+  confirmationFresh = fresh;
+  confirmationEditing = editing;
+  confirmationTrigger = trigger || document.activeElement;
+  renderConfirmationDialog();
+  if (!confirmationDialog.open) {
+    if (typeof confirmationDialog.showModal === 'function') confirmationDialog.showModal();
+    else confirmationDialog.setAttribute('open', '');
+  }
+  requestAnimationFrame(() => {
+    const focusTarget = confirmationEditing
+      ? confirmationDialog.querySelector('.confirmation-choice.is-selected') || confirmationDialog.querySelector('.confirmation-choice')
+      : $('rsvp-confirmation-title');
+    focusTarget?.focus({ preventScroll: true });
+  });
+}
+
+function closeRsvpConfirmation() {
+  if (!confirmationDialog?.open) return;
+  if (typeof confirmationDialog.close === 'function') confirmationDialog.close();
+  else confirmationDialog.removeAttribute('open');
+}
+
 if (EVENT.returningGuest) {
   $('returning-rsvp-name').textContent = EVENT.returningGuest.firstName;
   $('returning-rsvp-switch-name').textContent = EVENT.returningGuest.firstName;
@@ -386,14 +444,20 @@ if (EVENT.status === 'cancelled') show('cancelled-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.returningGuest) show('returning-rsvp-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.isFull) show('full-state');
 
+if (EVENT.returningGuest?.response && ['invitation', 'rsvp'].includes(EVENT.returningGuest.source)) {
+  requestAnimationFrame(() => openRsvpConfirmation());
+}
+
 async function answerReturningRsvp(response, { afterVerification = false } = {}) {
   if (response === EVENT.returningGuest.response) {
     returningEditing = false;
+    confirmationEditing = false;
     renderReturningState();
+    renderConfirmationDialog();
     return;
   }
   const buttons = Array.from(document.querySelectorAll('.returning-choice'));
-  const error = $('returning-rsvp-error');
+  const error = confirmationDialog?.open ? $('rsvp-confirmation-error') : $('returning-rsvp-error');
   buttons.forEach(button => { button.disabled = true; });
   error.style.display = 'none';
   try {
@@ -403,7 +467,7 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     });
     if (result.status === 409 && data.error === 'verification_required' && !afterVerification) {
       confirmItsYou({
-        container: $('returning-rsvp-verify'),
+        container: confirmationDialog?.open ? $('rsvp-confirmation-verify') : $('returning-rsvp-verify'),
         codeRequest: { remembered: true },
         title: data.message,
         onVerified: () => answerReturningRsvp(response, { afterVerification: true })
@@ -413,8 +477,11 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     if (!result.ok) throw new Error(data.message || data.error || 'Could not update your RSVP');
     EVENT.returningGuest.response = response;
     returningEditing = false;
+    confirmationEditing = false;
+    confirmationFresh = false;
     renderReturningState({ fresh: true });
-    $('returning-rsvp-change').focus({ preventScroll: true });
+    renderConfirmationDialog();
+    (confirmationDialog?.open ? $('rsvp-confirmation-change') : $('returning-rsvp-change'))?.focus({ preventScroll: true });
     if (response === 'going') await loadComments();
   } catch (errorValue) {
     error.textContent = errorValue.message;
@@ -429,9 +496,27 @@ document.querySelectorAll('.returning-choice').forEach(button => {
 });
 
 $('returning-rsvp-change')?.addEventListener('click', () => {
-  returningEditing = true;
-  renderReturningState();
-  document.querySelector('.returning-choice.is-selected')?.focus({ preventScroll: true });
+  openRsvpConfirmation({ trigger: $('returning-rsvp-change') });
+});
+
+$('rsvp-confirmation-change')?.addEventListener('click', () => {
+  confirmationEditing = true;
+  confirmationFresh = false;
+  renderConfirmationDialog();
+  confirmationDialog.querySelector('.confirmation-choice.is-selected')?.focus({ preventScroll: true });
+});
+
+[$('rsvp-confirmation-close'), $('rsvp-confirmation-back')].forEach(button => {
+  button?.addEventListener('click', closeRsvpConfirmation);
+});
+
+confirmationDialog?.addEventListener('close', () => {
+  confirmationEditing = false;
+  confirmationFresh = false;
+  renderConfirmationDialog();
+  const fallback = $('returning-rsvp-change');
+  const target = confirmationTrigger?.isConnected ? confirmationTrigger : fallback;
+  target?.focus({ preventScroll: true });
 });
 
 // "Not Lucas? RSVP as yourself" — forget this browser's remembered guest (a
@@ -439,7 +524,7 @@ $('returning-rsvp-change')?.addEventListener('click', () => {
 $('returning-rsvp-switch')?.addEventListener('click', async () => {
   const button = $('returning-rsvp-switch');
   button.disabled = true;
-  if (hasPersonalAccess) {
+  if (hasPersonalAccess()) {
     window.location.assign(`/e/${encodeURIComponent(EVENT.slug)}`);
     return;
   }
@@ -618,7 +703,7 @@ async function submitRsvp({ afterVerification = false } = {}) {
       return;
     }
     if (!res.ok) throw new Error(data.message || data.error || 'Something went wrong');
-    if (data.alreadyRsvpd) {
+    if (data.alreadyRsvpd && !data.rsvpToken) {
       // This browser didn't prove it owns the RSVP, so it isn't remembered.
       // Offer the emailed code to manage it here instead of a dead end.
       $('success-title').textContent = 'You’re already on the list.';
@@ -629,11 +714,25 @@ async function submitRsvp({ afterVerification = false } = {}) {
       $('success-manage').hidden = false;
       $('success-manage-button').hidden = false;
       $('success-verify').innerHTML = '';
-    } else if (EVENT.commentsEnabled) {
-      $('success-sub').textContent = 'Confirmation and calendar invite are on the way. You can join the comments below.';
-      await loadComments();
+      show('success-state');
+      return;
     }
-    show('success-state');
+
+    const firstName = $('full_name').value.trim().split(/\s+/)[0] || 'there';
+    personalAccess.rsvpToken = data.rsvpToken || personalAccess.rsvpToken;
+    EVENT.returningGuest = {
+      firstName,
+      source: 'rsvp',
+      response: data.response || 'going',
+      calendarUrl: data.calendarUrl || confirmationCalendarUrl()
+    };
+    $('returning-rsvp-name').textContent = firstName;
+    $('returning-rsvp-switch-name').textContent = firstName;
+    returningEditing = false;
+    renderReturningState({ fresh: !data.alreadyRsvpd });
+    show('returning-rsvp-state');
+    openRsvpConfirmation({ fresh: !data.alreadyRsvpd, trigger: btn });
+    if (EVENT.commentsEnabled && EVENT.returningGuest.response === 'going') await loadComments();
   } catch (err) {
     const el = $('rsvp-error');
     el.textContent = err.message;

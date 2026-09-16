@@ -54,7 +54,7 @@ test('answered returning guests see a status card, and code verification stays i
   for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
     const view = read(template);
     assert.match(view, /id="returning-rsvp-answer" hidden/);
-    assert.match(view, />Change my answer<\/button>/);
+    assert.match(view, />View RSVP<\/button>/);
     assert.match(view, /id="returning-rsvp-verify"/);
     assert.match(view, /\? RSVP as yourself<\/button>/);
     assert.doesNotMatch(view, /👋/);
@@ -67,6 +67,33 @@ test('answered returning guests see a status card, and code verification stays i
   assert.match(client, /\/api\/auth\/verify-code/);
   assert.match(client, /autocomplete="one-time-code"/);
   assert.match(client, /data\.confirmationResent/);
+});
+
+test('first and returning RSVPs share one responsive confirmation dialog', () => {
+  const routes = read('src/routes/public.js');
+  const client = read('public/js/public-event.js');
+  const styles = read('public/css/rsvp-confirmation.css');
+  for (const template of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = read(template);
+    assert.match(view, /\/css\/rsvp-confirmation\.css/);
+    assert.match(view, /\{\{RSVP_CONFIRMATION_DIALOG\}\}/);
+  }
+  assert.match(routes, /function renderRsvpConfirmationDialog/);
+  assert.match(routes, /id="rsvp-confirmation-dialog"/);
+  assert.match(routes, /Add to calendar/);
+  assert.match(routes, /Change my answer/);
+  assert.match(routes, /A backup copy is also being emailed to you\./);
+  assert.match(routes, /rsvpToken: rsvp\.manage_token/);
+  assert.match(routes, /calendarUrl: `\/r\/\$\{encodeURIComponent\(rsvp\.manage_token\)\}\/calendar\.ics`/);
+  assert.match(client, /function openRsvpConfirmation/);
+  assert.match(client, /confirmationDialog\.showModal\(\)/);
+  assert.match(client, /openRsvpConfirmation\(\{ fresh: !data\.alreadyRsvpd, trigger: btn \}\)/);
+  assert.match(client, /EVENT\.returningGuest\?\.response && \['invitation', 'rsvp'\]\.includes\(EVENT\.returningGuest\.source\)/);
+  assert.match(routes, /<dialog class="rsvp-confirmation-dialog"/);
+  assert.match(styles, /\.rsvp-confirmation-dialog::backdrop/);
+  assert.match(styles, /@media \(max-width:\s*640px\)/);
+  assert.match(styles, /margin:\s*auto 0 0/);
+  assert.match(styles, /max-height:\s*94dvh/);
 });
 
 test('both public presentations use the personalized one-tap RSVP state', () => {

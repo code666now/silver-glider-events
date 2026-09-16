@@ -1,0 +1,117 @@
+.rsvp-confirmation-dialog {
+  width:min(580px,calc(100vw - 32px));
+  max-width:580px;
+  max-height:min(880px,calc(100dvh - 32px));
+  margin:auto;
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:26px;
+  background:#101111;
+  color:var(--sg-text,#f4f4f4);
+  box-shadow:0 30px 100px rgba(0,0,0,.72);
+}
+.rsvp-confirmation-dialog::backdrop {
+  background:rgba(0,0,0,.76);
+  backdrop-filter:blur(10px);
+}
+.rsvp-confirmation-shell {
+  position:relative;
+  max-height:min(880px,calc(100dvh - 32px));
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding:42px 38px 30px;
+}
+.rsvp-confirmation-close {
+  position:absolute;
+  top:18px;
+  right:18px;
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:50%;
+  background:rgba(255,255,255,.04);
+  color:var(--sg-text-dim,#aaa);
+  font:400 25px/1 var(--sg-font-body,system-ui,sans-serif);
+  cursor:pointer;
+}
+.rsvp-confirmation-close:hover,
+.rsvp-confirmation-close:focus-visible { border-color:var(--sg-accent,#1cc5be);color:var(--sg-text,#fff); }
+.rsvp-confirmation-status { text-align:center; }
+.rsvp-confirmation-mark {
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  margin:0 auto 18px;
+  border-radius:50%;
+  background:var(--sg-accent,#1cc5be);
+  color:#071312;
+  font-size:29px;
+  font-weight:900;
+}
+.rsvp-confirmation-status.is-not-going .rsvp-confirmation-mark { background:rgba(255,255,255,.13);color:var(--sg-text,#fff); }
+.rsvp-confirmation-kicker { margin:0 0 8px;color:var(--sg-accent,#1cc5be);font-size:10px;font-weight:900;letter-spacing:.16em;text-transform:uppercase; }
+.rsvp-confirmation-status h2 { margin:0;font-size:clamp(30px,6vw,42px);letter-spacing:-.035em;line-height:1.08; }
+.rsvp-confirmation-status h2:focus { outline:none; }
+.rsvp-confirmation-detail { margin:10px 0 0;color:var(--sg-text-dim,#a6a6a6);font-size:15px;line-height:1.5; }
+.rsvp-confirmation-event {
+  margin:28px 0 20px;
+  padding:20px;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:18px;
+  background:rgba(255,255,255,.035);
+}
+.rsvp-confirmation-event h3 { margin:0;font-size:21px;line-height:1.25;letter-spacing:-.02em; }
+.rsvp-confirmation-host { margin:7px 0 18px;color:var(--sg-text-dim,#a6a6a6);font-size:13px; }
+.rsvp-confirmation-host strong { color:var(--sg-text,#f4f4f4); }
+.rsvp-confirmation-event dl { margin:0; }
+.rsvp-confirmation-event dl > div { display:grid;grid-template-columns:105px minmax(0,1fr);gap:16px;padding:12px 0;border-top:1px solid rgba(255,255,255,.08); }
+.rsvp-confirmation-event dt { color:var(--sg-text-faint,#777);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em; }
+.rsvp-confirmation-event dd { margin:0;color:var(--sg-text,#f4f4f4);font-size:14px;font-weight:700;line-height:1.45;text-align:right;overflow-wrap:anywhere; }
+.rsvp-confirmation-event dd span { display:block;margin-top:3px;color:var(--sg-text-dim,#a6a6a6);font-weight:500; }
+.rsvp-confirmation-summary-actions { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+.rsvp-confirmation-summary-actions[hidden],
+.rsvp-confirmation-summary-actions .sg-btn[hidden] { display:none; }
+.rsvp-confirmation-summary-actions.is-single { grid-template-columns:1fr; }
+.rsvp-confirmation-summary-actions .sg-btn { min-height:50px;display:flex;align-items:center;justify-content:center; }
+.rsvp-confirmation-editor { margin:18px 0 0;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(0,0,0,.2); }
+.rsvp-confirmation-editor[hidden] { display:none; }
+.rsvp-confirmation-editor > p:first-child { margin:0 0 13px;font-size:13px;font-weight:800; }
+.rsvp-confirmation-choices { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+.rsvp-confirmation-choices .returning-choice { min-height:48px; }
+.rsvp-confirmation-error { display:none;margin:12px 0 0;color:var(--sg-danger,#ff6464);font-size:13px;line-height:1.45; }
+.rsvp-confirmation-email-note { margin:18px 0 0;color:var(--sg-text-faint,#777);font-size:12px;line-height:1.5;text-align:center; }
+.rsvp-confirmation-back { width:100%;min-height:46px;margin:14px 0 0;border:0;background:transparent;color:var(--sg-text-dim,#aaa);font:700 13px var(--sg-font-body,system-ui,sans-serif);cursor:pointer; }
+.rsvp-confirmation-back:hover,.rsvp-confirmation-back:focus-visible { color:var(--sg-text,#fff); }
+
+@media (max-width:640px) {
+  .rsvp-confirmation-dialog {
+    width:100%;
+    max-width:none;
+    max-height:94dvh;
+    margin:auto 0 0;
+    border-right:0;
+    border-bottom:0;
+    border-left:0;
+    border-radius:26px 26px 0 0;
+  }
+  .rsvp-confirmation-shell { max-height:94dvh;padding:38px 20px calc(18px + env(safe-area-inset-bottom)); }
+  .rsvp-confirmation-close { top:14px;right:16px; }
+  .rsvp-confirmation-mark { width:54px;height:54px;margin-bottom:15px; }
+  .rsvp-confirmation-event { margin-top:23px;padding:17px; }
+  .rsvp-confirmation-event dl > div { grid-template-columns:1fr;gap:5px; }
+  .rsvp-confirmation-event dd { text-align:left; }
+  .rsvp-confirmation-summary-actions { grid-template-columns:1fr; }
+  .rsvp-confirmation-summary-actions .sg-btn { min-height:52px; }
+}
+
+@media (prefers-reduced-motion:no-preference) {
+  .rsvp-confirmation-dialog[open] { animation:rsvp-confirmation-in .2s ease-out; }
+  @keyframes rsvp-confirmation-in {
+    from { opacity:0;transform:translateY(14px) scale(.985); }
+    to { opacity:1;transform:translateY(0) scale(1); }
+  }
+}

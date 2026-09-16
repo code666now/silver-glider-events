@@ -398,14 +398,13 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
   assert.match(flyerHtml, /width="620"/);
   assert.match(flyerHtml, /b_auto,c_pad,h_560,w_620/);
   assert.match(flyerHtml, /height:auto/);
-  assert.match(flyerHtml, /Add to Calendar/);
-  assert.match(flyerHtml, /Open in Maps/);
-  assert.match(flyerHtml, /Manage RSVP/);
-  assert.match(flyerHtml, /class="sg-email-actions"/);
-  assert.match(flyerHtml, /View event &amp; comments/);
+  assert.match(flyerHtml, /✓ You’re going/);
+  assert.match(flyerHtml, /View or change RSVP/);
+  assert.match(flyerHtml, /\/r\/attendee-secret-token\/event/);
+  assert.doesNotMatch(flyerHtml, /Add to Calendar|Open in Maps|Manage RSVP|class="sg-email-actions"/);
   assert.match(flyerHtml, /Heat Wave Booking/);
   assert.match(flyerHtml, /Silver Glider Events/);
-  assert.ok(flyerHtml.indexOf('logo.png') > flyerHtml.indexOf('View event &amp; comments'));
+  assert.ok(flyerHtml.indexOf('logo.png') > flyerHtml.indexOf('View or change RSVP'));
 });
 
 test('existing reminder senders select the flyer-focused template and attendee calendar link', () => {

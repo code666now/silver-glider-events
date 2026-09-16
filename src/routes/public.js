@@ -408,6 +408,50 @@ function firstNameFrom(value) {
   return String(value || '').trim().split(/\s+/)[0].slice(0, 80) || 'there';
 }
 
+function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location }) {
+  const hostName = String(event.org_name || '').trim();
+  const locationName = String(location?.name || '').trim();
+  const locationAddress = String(location?.address || '').trim();
+  return `<dialog class="rsvp-confirmation-dialog" id="rsvp-confirmation-dialog" aria-labelledby="rsvp-confirmation-title">
+    <div class="rsvp-confirmation-shell">
+      <button class="rsvp-confirmation-close" id="rsvp-confirmation-close" type="button" aria-label="Back to event">×</button>
+      <div class="rsvp-confirmation-status" id="rsvp-confirmation-status">
+        <span class="rsvp-confirmation-mark" id="rsvp-confirmation-mark" aria-hidden="true">✓</span>
+        <p class="rsvp-confirmation-kicker">Your RSVP</p>
+        <h2 id="rsvp-confirmation-title" tabindex="-1">You’re going</h2>
+        <p class="rsvp-confirmation-detail" id="rsvp-confirmation-detail">You’re on the list.</p>
+      </div>
+
+      <section class="rsvp-confirmation-event" aria-label="Event details">
+        <h3>${esc(event.title)}</h3>
+        ${hostName ? `<p class="rsvp-confirmation-host">Presented by <strong>${esc(hostName)}</strong></p>` : ''}
+        <dl>
+          <div><dt>Date &amp; time</dt><dd>${esc(dateLabel)} · ${esc(timeLabel)}</dd></div>
+          <div><dt>Location</dt><dd>${esc(locationName)}${locationAddress ? `<span>${esc(locationAddress)}</span>` : ''}</dd></div>
+        </dl>
+      </section>
+
+      <div class="rsvp-confirmation-summary-actions" id="rsvp-confirmation-summary-actions">
+        <a class="sg-btn sg-btn-primary" id="rsvp-confirmation-calendar" href="#">Add to calendar</a>
+        <button class="sg-btn sg-btn-ghost" id="rsvp-confirmation-change" type="button">Change my answer</button>
+      </div>
+
+      <div class="rsvp-confirmation-editor" id="rsvp-confirmation-editor" hidden>
+        <p>Update your answer</p>
+        <div class="rsvp-confirmation-choices" role="group" aria-label="Change your RSVP">
+          <button class="returning-choice confirmation-choice" data-response="going" type="button" aria-pressed="false">I’m going</button>
+          <button class="returning-choice confirmation-choice" data-response="not_going" type="button" aria-pressed="false">I’m not going</button>
+        </div>
+        <p class="rsvp-confirmation-error" id="rsvp-confirmation-error" role="alert"></p>
+        <div id="rsvp-confirmation-verify"></div>
+      </div>
+
+      <p class="rsvp-confirmation-email-note" id="rsvp-confirmation-email-note" hidden>A backup copy is also being emailed to you.</p>
+      <button class="rsvp-confirmation-back" id="rsvp-confirmation-back" type="button">Back to event</button>
+    </div>
+  </dialog>`;
+}
+
 async function returningGuestContext(db, req, eventId, { invitationToken = '', rsvpToken = '' } = {}) {
   // A Familiar Faces URL is the durable event-scoped identity proof. Resolve
   // it on every request instead of converting it into a browser cookie.
@@ -594,7 +638,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ? null
       : recognizedGuest;
 
-    if (invitationToken || rsvpToken) {
+    if (invitationToken || rsvpToken || returningGuest) {
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Referrer-Policy', 'no-referrer');
     }
@@ -697,6 +741,8 @@ router.get('/e/:slug', async (req, res, next) => {
     const locationDisplay = LocationUtils.displayParts(event.venue_name, event.venue_address);
     const locationQuery = LocationUtils.locationQuery(event.venue_name, event.venue_address);
     const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(locationQuery)}`;
+    const dateLabel = fmtDate(event.event_date);
+    const timeLabel = formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '');
     const flyerVenueText = locationDisplay.address || (!event.venue_address ? venueSummary : '');
     const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(locationDisplay.name)}</strong>${flyerVenueText ? `<span>${esc(flyerVenueText)}</span>` : ''}<a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`;
     const detailParts = [];
@@ -753,12 +799,16 @@ router.get('/e/:slug', async (req, res, next) => {
         ? `<p class="flyer-design-credit">Design by ${esc(flyerDesignerName)}</p>`
         : '';
 
+    const returningCalendarUrl = returningGuest?.rsvp?.manage_token
+      ? `/r/${encodeURIComponent(returningGuest.rsvp.manage_token)}/calendar.ics`
+      : `/e/${encodeURIComponent(event.slug)}/calendar.ics`;
     const returningGuestJson = returningGuest ? {
       firstName: returningGuest.displayFirstName,
       source: returningGuest.source,
       response: returningGuest.rsvp?.status === 'confirmed'
         ? 'going'
-        : returningGuest.rsvp?.status === 'cancelled' ? 'not_going' : null
+        : returningGuest.rsvp?.status === 'cancelled' ? 'not_going' : null,
+      calendarUrl: returningCalendarUrl
     } : null;
     const eventJson = {
       slug: event.slug,
@@ -790,8 +840,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{HERO}}/g, heroHtml)
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
       .replace(/{{FLYER_DESIGN_CREDIT}}/g, flyerDesignCreditHtml)
-      .replace(/{{DATE_STR}}/g, esc(fmtDate(event.event_date)))
-      .replace(/{{TIME_STR}}/g, esc(formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '')))
+      .replace(/{{DATE_STR}}/g, esc(dateLabel))
+      .replace(/{{TIME_STR}}/g, esc(timeLabel))
       .replace(/{{VENUE_NAME}}/g, esc(locationDisplay.name))
       .replace(/{{VENUE_ADDRESS}}/g, esc(locationDisplay.address))
       .replace(/{{MAPS_URL}}/g, esc(mapsUrl))
@@ -802,6 +852,11 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
       .replace(/{{SMS_REMINDER_OPTIN_HTML}}/g, rsvpEnabled ? renderSmsReminderOptin(event) : '')
       .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
+      .replace(/{{RSVP_CONFIRMATION_DIALOG}}/g, renderRsvpConfirmationDialog(event, {
+        dateLabel,
+        timeLabel,
+        location: locationDisplay
+      }))
       .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview, viewerIdentityId: req.sessionAccount?.id }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
@@ -1056,7 +1111,17 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         return null;
       });
       if (confirmationResent) runInBackground(() => deliverClaimedConfirmation(event, existing[0], confirmationResent));
-      return res.json({ ok: true, alreadyRsvpd: true, confirmationResent: Boolean(confirmationResent) });
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.json({
+        ok: true,
+        alreadyRsvpd: true,
+        confirmationResent: Boolean(confirmationResent),
+        ...(ownsExisting ? {
+          response: 'going',
+          rsvpToken: existing[0].manage_token,
+          calendarUrl: `/r/${encodeURIComponent(existing[0].manage_token)}/calendar.ics`
+        } : {})
+      });
     }
 
     // Re-confirming a cancelled RSVP would overwrite its name, phone and text
@@ -1157,7 +1222,13 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     }
     if (guestSessionToRemember) setGuestSessionCookie(res, guestSessionToRemember.token);
     runInBackground(() => resendConfirmation(event, rsvp));
-    res.status(201).json({ ok: true });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(201).json({
+      ok: true,
+      response: 'going',
+      rsvpToken: rsvp.manage_token,
+      calendarUrl: `/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     next(err);

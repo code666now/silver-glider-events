@@ -36,12 +36,9 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
     'Presented by',
     '/h/the-night-archive',
     'Music vibe',
-    'Avery, your spot is confirmed.',
-    'class="sg-detail-label"',
-    'View event &amp; comments',
-    'Add to Calendar',
-    'Open in Maps',
-    'Manage RSVP',
+    'Avery, your RSVP is saved.',
+    '✓ You’re going',
+    'View or change RSVP',
     'A calendar invite is attached.',
     'logo.png',
     'Silver Glider Events',
@@ -55,7 +52,7 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.match(html, new RegExp(`background:${theme.accentColor};border-radius:12px`));
   assert.match(html, new RegExp(`color:${theme.accentTextColor};text-align:center`));
   assert.equal((html.match(new RegExp(theme.accentColor, 'g')) || []).length, 2);
-  assert.ok((html.match(new RegExp(`color:${theme.secondaryAccentColor}`, 'g')) || []).length >= 7);
+  assert.ok((html.match(new RegExp(`color:${theme.secondaryAccentColor}`, 'g')) || []).length >= 4);
   assert.doesNotMatch(html, /color:#1CC5BE/);
   assert.equal((html.match(/bgcolor="#080808"/g) || []).length, 2);
   assert.match(html, /<body style="background:#080808/);
@@ -65,22 +62,19 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.equal((html.match(/Midnight Listening Party<\/h1>/g) || []).length, 1);
   assert.doesNotMatch(html, /You(?:'|’)re on the list/);
   assert.equal(rsvpConfirmationSubject(event), 'RSVP confirmed for Midnight Listening Party');
-  for (const icon of ['music', 'calendar', 'map', 'manage']) {
-    assert.match(html, new RegExp(`/images/email/${icon}/${theme.secondaryAccentColor.slice(1)}\\.png`));
-  }
+  assert.match(html, new RegExp(`/images/email/music/${theme.secondaryAccentColor.slice(1)}\\.png`));
   assert.match(html, /Check out the music vibe for this event\./);
-  assert.match(html, /class="sg-email-actions"/);
-  assert.match(html, /border-left:1px solid #242424/);
+  assert.doesNotMatch(html, /class="sg-email-actions"|class="sg-detail-label"|Add to Calendar|Open in Maps|Manage RSVP/);
 });
 
-test('RSVP email preserves event information, management, and calendar messaging', () => {
+test('RSVP email sends guests back to the reusable confirmation and keeps calendar messaging', () => {
   const html = renderRsvpConfirmationEmail({ event, rsvp });
-  for (const value of ['Midnight Listening Party', 'Saturday, August 22, 2026', '8:30 PM', 'The Silver Room', 'Open in Maps']) {
-    assert.match(html, new RegExp(value));
-  }
+  assert.match(html, /Midnight Listening Party/);
   assert.match(html, /\/r\/private-manage-token\/event/);
-  assert.match(html, /\/r\/private-manage-token/);
+  assert.match(html, /View or change RSVP/);
+  assert.match(html, /Open your RSVP any time to view it or change your answer\./);
   assert.match(html, /We’ll send one reminder the day before\./);
+  assert.doesNotMatch(html, /Saturday, August 22, 2026|8:30 PM|The Silver Room|Open in Maps|Add to Calendar|Manage RSVP/);
 
   const fallbackHtml = renderRsvpConfirmationEmail({
     event: {
@@ -101,12 +95,9 @@ test('RSVP email preserves event information, management, and calendar messaging
   assert.doesNotMatch(fallbackHtml, />Presented by |Music vibe|<td class="sg-detail-label"|Open in Maps/);
   assert.match(fallbackHtml, /class="sg-event-title"/);
   assert.match(fallbackHtml, /height="52" bgcolor="#1CC5BE"/);
-  assert.ok((fallbackHtml.match(/color:#1CC5BE/g) || []).length >= 3);
-  for (const icon of ['calendar.png', 'manage.png']) {
-    assert.match(fallbackHtml, new RegExp(`/images/email/${icon.replace('.', '\\.')}`));
-  }
-  assert.match(fallbackHtml, /Add to Calendar/);
-  assert.match(fallbackHtml, /Manage RSVP/);
+  assert.ok((fallbackHtml.match(/color:#1CC5BE/g) || []).length >= 1);
+  assert.match(fallbackHtml, /View or change RSVP/);
+  assert.doesNotMatch(fallbackHtml, /\/images\/email\/(?:calendar|manage)\.png|Add to Calendar|Manage RSVP/);
 });
 
 test('RSVP confirmation remains responsive and dark', () => {
