@@ -495,6 +495,7 @@
       $('owner-upload-status').textContent = '';
     }
     renderPresentationControls();
+    previewPresentation();
     previewImage();
     previewTheme(draft.backgroundTheme);
     syncDirtyState();
@@ -532,8 +533,12 @@
   }
 
   function previewFlyerDesignCredit() {
-    if (draft.presentationMode !== 'flyer') return;
-    const poster = document.querySelector('.flyer-poster');
+    const existingCredit = document.querySelector('.flyer-design-credit');
+    if (draft.presentationMode !== 'flyer') {
+      if (existingCredit) existingCredit.hidden = true;
+      return;
+    }
+    const poster = document.querySelector('.flyer-poster, .col-media');
     if (!poster) return;
     const parsed = cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle);
     const designerName = String(draft.flyerDesignerName || '').trim();
@@ -557,6 +562,18 @@
     } else if (designerName) {
       credit.textContent = `Design by ${designerName}`;
     }
+  }
+
+  function previewPresentation() {
+    const flyer = draft.presentationMode === 'flyer';
+    document.body.classList.toggle('owner-preview-flyer', flyer);
+    document.body.classList.toggle('owner-preview-standard', !flyer);
+    const hero = $('hero');
+    if (hero) {
+      hero.classList.toggle('flyer-hero', flyer);
+      hero.classList.toggle('standard-hero', !flyer);
+    }
+    previewFlyerDesignCredit();
   }
 
   function updateAdaptiveSwatch(colors) {
@@ -630,9 +647,11 @@
     }
     updateOwnerImageCard(url);
     const credit = document.querySelector('.photo-credit');
-    if (credit && draft.presentationMode === 'standard') {
-      credit.hidden = !draft.coverCreditName;
-      if (draft.coverCreditName) credit.textContent = `Photo by ${draft.coverCreditName} on Unsplash`;
+    if (credit) {
+      credit.hidden = draft.presentationMode !== 'standard' || !draft.coverCreditName;
+      if (draft.presentationMode === 'standard' && draft.coverCreditName) {
+        credit.textContent = `Photo by ${draft.coverCreditName} on Unsplash`;
+      }
     }
     previewFlyerDesignCredit();
   }
@@ -799,6 +818,7 @@
     renderPresentationControls();
     renderAdmissionControls();
     setCoverFit(draft.coverFitMode);
+    previewPresentation();
     previewDetails();
     previewImage();
     previewTheme(draft.backgroundTheme);

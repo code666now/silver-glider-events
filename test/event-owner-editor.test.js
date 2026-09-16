@@ -47,6 +47,9 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
   assert.match(client, /function previewAdmission\(\)/);
+  assert.match(client, /function previewPresentation\(\)/);
+  assert.match(client, /classList\.toggle\('owner-preview-flyer', flyer\)/);
+  assert.match(client, /classList\.toggle\('owner-preview-standard', !flyer\)/);
   assert.match(client, /function setPresentationMode\(mode\)/);
   assert.match(client, /function reconcileEditorFields\(\)/);
   assert.match(client, /setInterval\(reconcileEditorFields, 200\)/);
@@ -77,6 +80,18 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /presentation_mode: draft\.presentationMode/);
   assert.match(client, /admission_type: draft\.admissionType/);
   assert.match(client, /clearPlaceMeta\(\);[\s\S]*renderOwnerLocation\(\);[\s\S]*previewDetails\(\);[\s\S]*syncDirtyState\(\)/);
+});
+
+test('presentation mode switches the live owner preview before save', () => {
+  const client = read('public/js/event-owner-editor.js');
+  const styles = read('public/css/event-owner-editor.css');
+
+  assert.match(client, /function setPresentationMode\(mode\)[\s\S]*previewPresentation\(\);[\s\S]*previewImage\(\)/);
+  assert.match(client, /hero\.classList\.toggle\('flyer-hero', flyer\)/);
+  assert.match(client, /hero\.classList\.toggle\('standard-hero', !flyer\)/);
+  assert.match(styles, /body\.owner-preview-flyer:not\(\.flyer-public-page\) \.layout \{[\s\S]*display: block;[\s\S]*max-width: 720px;/);
+  assert.match(styles, /body\.owner-preview-flyer:not\(\.flyer-public-page\) \.hero\.flyer-hero img \{[\s\S]*height: auto;[\s\S]*object-fit: contain;/);
+  assert.match(styles, /body\.flyer-public-page\.owner-preview-standard \.flyer-layout \{[\s\S]*grid-template-columns: minmax\(0, 5fr\) minmax\(0, 6fr\)/);
 });
 
 test('event descriptions preserve paragraph spacing in live previews and published pages', () => {
