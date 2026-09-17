@@ -5,7 +5,6 @@ const { normalizeE164 } = require('./sms');
 
 const REQUEST_COOKIE = 'sge_phone_auth';
 const CODE_LENGTH = 6;
-const MAX_CODE_ATTEMPTS = 5;
 const MAX_AGE_SECONDS = 20 * 60;
 
 class PhoneAuthError extends Error {
@@ -15,19 +14,6 @@ class PhoneAuthError extends Error {
     this.code = code;
     this.status = status;
   }
-}
-
-function normalizeCode(value) {
-  return String(value || '').replace(/\D/g, '').slice(0, CODE_LENGTH);
-}
-
-function newCode() {
-  return String(crypto.randomInt(0, 10 ** CODE_LENGTH)).padStart(CODE_LENGTH, '0');
-}
-
-function codeHash(requestHash, code) {
-  return crypto.createHmac('sha256', String(process.env.SESSION_SECRET || '').trim())
-    .update(`phone-auth-code:${requestHash}:${code}`).digest('hex');
 }
 
 function maskPhone(value) {
@@ -62,16 +48,14 @@ async function createPhoneChallenge(db, {
   const phoneE164 = normalizeE164(phone);
   const requestToken = crypto.randomBytes(32).toString('base64url');
   const requestHash = tokenHash(requestToken);
-  const code = purpose === 'sign_in' ? newCode() : null;
   const { rows } = await db.query(
     `INSERT INTO phone_auth_challenges
-       (phone_e164,organizer_id,purpose,request_hash,code_hash,provider_sid,return_path,expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + make_interval(mins => $8))
+       (phone_e164,organizer_id,purpose,request_hash,provider_sid,return_path,expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW() + make_interval(mins => $7))
      RETURNING id,phone_e164,organizer_id,purpose,provider_sid,return_path,expires_at`,
-    [phoneE164, organizerId, purpose, requestHash,
-      code ? codeHash(requestHash, code) : null, providerSid, returnPath || null, ttlMinutes]
+    [phoneE164, organizerId, purpose, requestHash, providerSid, returnPath || null, ttlMinutes]
   );
-  return { ...rows[0], requestToken, code };
+  return { ...rows[0], requestToken };
 }
 
 async function readPhoneChallenge(db, req, { forUpdate = false, includeExpired = false } = {}) {
@@ -79,7 +63,7 @@ async function readPhoneChallenge(db, req, { forUpdate = false, includeExpired =
   if (!requestToken || requestToken.length > 180) return null;
   const { rows } = await db.query(
     `SELECT id,phone_e164,organizer_id,purpose,provider_sid,return_path,
-            code_attempts,verified_at,used_at,expires_at
+            verified_at,used_at,expires_at
        FROM phone_auth_challenges
       WHERE request_hash=$1 AND used_at IS NULL
         ${includeExpired ? '' : 'AND expires_at > NOW()'}
@@ -88,46 +72,6 @@ async function readPhoneChallenge(db, req, { forUpdate = false, includeExpired =
     [tokenHash(requestToken)]
   );
   return rows[0] || null;
-}
-
-// Returning creators receive an ordinary Messaging Service code. It is tied
-// to the browser cookie and stored only as an HMAC, just like email codes.
-async function consumePhoneCode(client, req, submittedCode) {
-  const requestToken = readPhoneAuthRequest(req);
-  if (!requestToken || requestToken.length > 180) return { error: 'expired' };
-  const requestHash = tokenHash(requestToken);
-  const { rows } = await client.query(
-    `SELECT id,phone_e164,organizer_id,purpose,return_path,code_hash,code_attempts,expires_at
-       FROM phone_auth_challenges
-      WHERE request_hash=$1 AND purpose='sign_in' AND used_at IS NULL
-        AND expires_at > NOW() AND code_hash IS NOT NULL
-      ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-    [requestHash]
-  );
-  const challenge = rows[0];
-  if (!challenge) return { error: 'expired' };
-  if (challenge.code_attempts >= MAX_CODE_ATTEMPTS) return { error: 'locked' };
-
-  const code = normalizeCode(submittedCode);
-  const expected = Buffer.from(challenge.code_hash);
-  const actual = Buffer.from(codeHash(requestHash, code));
-  const matches = code.length === CODE_LENGTH && expected.length === actual.length &&
-    crypto.timingSafeEqual(expected, actual);
-  if (!matches) {
-    const attempts = challenge.code_attempts + 1;
-    await client.query('UPDATE phone_auth_challenges SET code_attempts=$2 WHERE id=$1', [challenge.id, attempts]);
-    return attempts >= MAX_CODE_ATTEMPTS
-      ? { error: 'locked' }
-      : { error: 'invalid', remaining: MAX_CODE_ATTEMPTS - attempts };
-  }
-
-  const consumed = await client.query(
-    `UPDATE phone_auth_challenges SET used_at=NOW()
-      WHERE id=$1 AND used_at IS NULL
-      RETURNING id,phone_e164,organizer_id,purpose,return_path`,
-    [challenge.id]
-  );
-  return consumed.rows.length ? { challenge: consumed.rows[0] } : { error: 'expired' };
 }
 
 async function markPhoneChallengeVerified(client, challengeId) {
@@ -232,18 +176,15 @@ async function invalidateOrganizerPhoneChallenges(db, organizerId) {
 module.exports = {
   CODE_LENGTH,
   MAX_AGE_SECONDS,
-  MAX_CODE_ATTEMPTS,
   REQUEST_COOKIE,
   PhoneAuthError,
   bindVerifiedPhone,
   cancelPhoneChallenge,
   clearPhoneAuthCookie,
-  consumePhoneCode,
   createPhoneChallenge,
   invalidateOrganizerPhoneChallenges,
   markPhoneChallengeVerified,
   maskPhone,
-  normalizeCode,
   readPhoneAuthRequest,
   readPhoneChallenge,
   setPhoneAuthCookie

@@ -11,6 +11,7 @@ const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf
 
 test('phone auth schema keeps account credentials separate from messaging consent', () => {
   const migration = read('src/db/migrations/041_phone_auth.sql');
+  const verifyOnlyMigration = read('src/db/migrations/042_verify_only_phone_auth.sql');
   assert.match(migration, /CREATE TABLE IF NOT EXISTS account_phone_credentials/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS phone_auth_challenges/);
   assert.match(migration, /account_phone_credentials_active_phone_uq[\s\S]*WHERE revoked_at IS NULL/);
@@ -18,6 +19,9 @@ test('phone auth schema keeps account credentials separate from messaging consen
   assert.match(migration, /purpose IN \('enroll', 'sign_in'\)/);
   assert.match(migration, /phone_e164 ~ '\^\\\+\[1-9\]\[0-9\]\{7,14\}\$'/);
   assert.doesNotMatch(migration, /ALTER TABLE (rsvps|host_follows)/);
+  assert.match(verifyOnlyMigration, /purpose='sign_in' AND provider_sid IS NULL AND used_at IS NULL/);
+  assert.match(verifyOnlyMigration, /purpose = 'sign_in' AND provider_sid IS NOT NULL[\s\S]*organizer_id IS NOT NULL/);
+  assert.doesNotMatch(verifyOnlyMigration, /ALTER TABLE (rsvps|host_follows)/);
 });
 
 test('a phone enrollment email challenge retains its exact phone challenge link', async () => {

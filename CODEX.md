@@ -22,7 +22,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - No Cloudinary credentials: cover/flyer/host uploads return 503.
 - No `UNSPLASH_ACCESS_KEY`: the free-photo search control is hidden.
 - `SESSION_SECRET` is required; use a long local-only value.
-- Creator phone onboarding additionally needs `TWILIO_VERIFY_SERVICE_SID`. Returning-phone codes need `TWILIO_AUTH_MESSAGING_SERVICE_SID` backed by a sender pool/number distinct from lifecycle SMS; without either dependency the UI must fail safely and retain **Use email instead**.
+- Creator phone onboarding and returning-phone sign-in need `TWILIO_VERIFY_SERVICE_SID`; Verify keeps authentication separate from lifecycle/marketing SMS, and the UI must fail safely while retaining **Use email instead** when it is unavailable.
 - Local uploads use `sg-events-dev/...`; production uses `sg-events/...`.
 
 ## Architecture
@@ -30,7 +30,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - CommonJS Node.js + Express 5, raw SQL via `pg`, server-rendered HTML, vanilla JavaScript/CSS.
 - No build step and no frontend framework.
 - `src/index.js` mounts routes, runs migrations, exposes `/health`, and starts reminder jobs.
-- `src/db/migrations/` contains ordered migrations, currently `001` through `041_phone_auth.sql`.
+- `src/db/migrations/` contains ordered migrations, currently `001` through `042_verify_only_phone_auth.sql`.
 - `src/routes/` contains auth, organizer event, public event, public host, upload, photo, and admin flows. Public host pages are isolated in `public-hosts.js`; guest event/RSVP flows remain in `public.js`.
 - `src/lib/` contains sessions, mailer, calendar, Cloudinary, Unsplash, CSV, escaping, and validation helpers.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.

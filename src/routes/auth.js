@@ -38,7 +38,6 @@ const {
   bindVerifiedPhone,
   cancelPhoneChallenge,
   clearPhoneAuthCookie,
-  consumePhoneCode,
   createPhoneChallenge,
   invalidateOrganizerPhoneChallenges,
   markPhoneChallengeVerified,
@@ -138,8 +137,7 @@ function waitForMinimum(startedAt, minimumMs = 650) {
 }
 
 function phoneStartProviderError(error) {
-  return error instanceof phoneVerification.PhoneVerificationError ||
-    (error instanceof sms.SmsDeliveryError && error.code !== 'invalid_recipient');
+  return error instanceof phoneVerification.PhoneVerificationError;
 }
 
 function limitPhoneEmailRequest(req, res, { email, phone }) {
@@ -241,9 +239,9 @@ router.post('/api/auth/guest-code', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Creator-only phone-first entry. A new phone is proven by Twilio Verify;
-// an already-bound phone receives our normal, lower-cost transactional SMS
-// code. The response deliberately does not reveal whether the phone exists.
+// Creator-only phone-first entry. Twilio Verify proves both new and returning
+// phones so authentication never shares a sender with lifecycle/marketing SMS.
+// The response deliberately does not reveal whether the phone exists.
 router.post('/api/auth/phone/start', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
   const startedAt = Date.now();
@@ -274,32 +272,15 @@ router.post('/api/auth/phone/start', async (req, res, next) => {
         LIMIT 1`,
       [phone]
     );
-    let challenge;
-    if (rows.length) {
-      challenge = await createPhoneChallenge(pool, {
-        phone,
-        purpose: 'sign_in',
-        organizerId: rows[0].organizer_id,
-        returnPath
-      });
-      try {
-        await sms.sendAuthSms({
-          to: phone,
-          body: `Your Silver Glider sign-in code is ${challenge.code}. It expires in 20 minutes. Don't share it.`
-        });
-      } catch (error) {
-        await pool.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [challenge.id]);
-        throw error;
-      }
-    } else {
-      const verification = await phoneVerification.startVerification(phone);
-      challenge = await createPhoneChallenge(pool, {
-        phone,
-        purpose: 'enroll',
-        providerSid: verification.verificationSid,
-        returnPath
-      });
-    }
+    const verification = await phoneVerification.startVerification(phone);
+    const returningOrganizerId = rows[0]?.organizer_id || null;
+    const challenge = await createPhoneChallenge(pool, {
+      phone,
+      purpose: returningOrganizerId ? 'sign_in' : 'enroll',
+      organizerId: returningOrganizerId,
+      providerSid: verification.verificationSid,
+      returnPath
+    });
 
     setPhoneAuthCookie(res, challenge.requestToken);
     res.setHeader('Cache-Control', 'private, no-store');
@@ -337,20 +318,26 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
       });
     }
 
+    const verification = await phoneVerification.checkVerification({
+      verificationSid: challenge.provider_sid,
+      code: req.body?.code
+    });
+    if (!verification.phone || verification.phone !== challenge.phone_e164) {
+      throw new PhoneAuthError('Phone verification could not be completed.', {
+        code: 'phone_verification_mismatch', status: 400
+      });
+    }
+
     if (challenge.purpose === 'sign_in') {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const result = await consumePhoneCode(client, req, req.body?.code);
-        if (result.error) {
-          await client.query('COMMIT');
-          const message = result.error === 'locked'
-            ? 'Too many incorrect codes. Request a new one.'
-            : (result.error === 'expired'
-              ? 'That code has expired. Request a new one.'
-              : 'That code isn’t right. Check the text and try again.');
-          res.setHeader('Cache-Control', 'private, no-store');
-          return res.status(400).json({ error: result.error, message, remaining: result.remaining });
+        const locked = await readPhoneChallenge(client, req, { forUpdate: true });
+        if (!locked || Number(locked.id) !== Number(challenge.id) || locked.purpose !== 'sign_in' ||
+            locked.provider_sid !== verification.verificationSid) {
+          throw new PhoneAuthError('Phone verification expired. Start again.', {
+            code: 'phone_verification_expired', status: 400
+          });
         }
         const { rows } = await client.query(
           `SELECT account.id,account.is_admin
@@ -358,7 +345,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
              JOIN account_phone_credentials credential ON credential.organizer_id=account.id
             WHERE account.id=$1 AND credential.phone_e164=$2 AND credential.revoked_at IS NULL
             FOR UPDATE OF credential`,
-          [result.challenge.organizer_id, result.challenge.phone_e164]
+          [locked.organizer_id, locked.phone_e164]
         );
         const account = rows[0];
         if (!account) {
@@ -367,6 +354,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           });
         }
         if (account.is_admin) {
+          await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
           await client.query('COMMIT');
           clearPhoneAuthCookie(res);
           res.setHeader('Cache-Control', 'private, no-store');
@@ -379,14 +367,15 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         await client.query(
           `UPDATE account_phone_credentials SET last_used_at=NOW(),updated_at=NOW()
             WHERE organizer_id=$1 AND phone_e164=$2 AND revoked_at IS NULL`,
-          [account.id, result.challenge.phone_e164]
+          [account.id, locked.phone_e164]
         );
+        await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
         await client.query('COMMIT');
         clearPhoneAuthCookie(res);
         clearPhotoAccessCookie(res);
         setSessionCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
-        return res.json({ ok: true, redirect: creatorNext(result.challenge.return_path) || '/events/new' });
+        return res.json({ ok: true, redirect: creatorNext(locked.return_path) || '/events/new' });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -395,20 +384,12 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
       }
     }
 
-    const verification = await phoneVerification.checkVerification({
-      verificationSid: challenge.provider_sid,
-      code: req.body?.code
-    });
-    if (!verification.phone || verification.phone !== challenge.phone_e164) {
-      throw new PhoneAuthError('Phone verification could not be completed.', {
-        code: 'phone_verification_mismatch', status: 400
-      });
-    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const locked = await readPhoneChallenge(client, req, { forUpdate: true });
-      if (!locked || Number(locked.id) !== Number(challenge.id) || locked.purpose !== 'enroll') {
+      if (!locked || Number(locked.id) !== Number(challenge.id) || locked.purpose !== 'enroll' ||
+          locked.provider_sid !== verification.verificationSid) {
         throw new PhoneAuthError('Phone verification expired. Start again.', {
           code: 'phone_verification_expired', status: 400
         });

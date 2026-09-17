@@ -12,8 +12,7 @@ const {
 const validEnv = {
   TWILIO_ACCOUNT_SID: `AC${'a'.repeat(32)}`,
   TWILIO_AUTH_TOKEN: 'test-auth-token',
-  TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}`,
-  TWILIO_AUTH_MESSAGING_SERVICE_SID: `MG${'d'.repeat(32)}`
+  TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}`
 };
 
 function fakeService({ result, error } = {}) {
@@ -87,11 +86,10 @@ test('server SMS transport attaches a provider status callback only when supplie
   assert.equal(Object.hasOwn(calls[0], 'from'), false);
 });
 
-test('account sign-in codes use the dedicated authentication Messaging Service', async () => {
-  const { service, calls } = fakeService();
-  await service.sendAuthSms({ to: '+14155551234', body: 'Your sign-in code is 123456' });
-  assert.equal(calls[0].messagingServiceSid, validEnv.TWILIO_AUTH_MESSAGING_SERVICE_SID);
-  assert.notEqual(calls[0].messagingServiceSid, validEnv.TWILIO_MESSAGING_SERVICE_SID);
+test('lifecycle SMS transport does not expose an authentication sender path', () => {
+  const { service } = fakeService();
+  assert.equal(service.sendAuthSms, undefined);
+  assert.equal(require('../src/lib/sms').sendAuthSms, undefined);
 });
 
 test('test sender always uses the approved fixed message', async () => {
@@ -119,19 +117,10 @@ test('missing credentials fail cleanly before a Twilio client is created', async
   assert.equal(created, false);
 });
 
-test('authentication SMS fails closed when its dedicated service is missing', async () => {
-  const service = createSmsService({
-    env: {
-      ...validEnv,
-      TWILIO_AUTH_MESSAGING_SERVICE_SID: ''
-    },
-    clientFactory: () => assert.fail('Twilio client must not be created')
-  });
-  await assert.rejects(service.sendAuthSms({ to: '+14155551234', body: 'Your sign-in code is 123456' }), error => {
-    assert.equal(error.code, 'auth_sms_not_configured');
-    assert.equal(error.status, 503);
-    return true;
-  });
+test('lifecycle SMS configuration remains independent from Verify', async () => {
+  const { service, calls } = fakeService();
+  await service.sendSms({ to: '+14155551234', body: 'Lifecycle message' });
+  assert.equal(calls[0].messagingServiceSid, validEnv.TWILIO_MESSAGING_SERVICE_SID);
 });
 
 test('Twilio errors are reduced to non-secret provider details', async () => {

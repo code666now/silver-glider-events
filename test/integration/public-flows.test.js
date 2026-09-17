@@ -3037,10 +3037,8 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
   resetRateLimits();
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
-  const originalSendAuthSms = sms.sendAuthSms;
   const verificationSid = `VE${'a'.repeat(32)}`;
   const phone = '+14155550188';
-  const sentSms = [];
   let providerStarts = 0;
   let providerChecks = 0;
   phoneVerification.startVerification = async recipient => {
@@ -3053,11 +3051,6 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.deepEqual(input, { verificationSid, code: '123456' });
     return { approved: true, verificationSid, phone, status: 'approved' };
   };
-  sms.sendAuthSms = async payload => {
-    sentSms.push(payload);
-    return { sid: `SM${'b'.repeat(32)}`, status: 'accepted', recipient: payload.to };
-  };
-
   try {
     const crossSite = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST',
@@ -3088,7 +3081,6 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     const phoneCookie = responseCookie(started, 'sge_phone_auth');
     assert.ok(phoneCookie);
     assert.equal(providerStarts, 1);
-    assert.equal(sentSms.length, 0, 'first proof uses Verify rather than the Messaging Service');
     assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM account_phone_credentials')).rows[0].count, 0);
 
     const otherBrowser = await fetch(`${baseUrl}/api/auth/phone/verify`, {
@@ -3166,26 +3158,35 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.equal(returningStart.status, 200);
     assert.deepEqual(await returningStart.clone().json(), firstStartBody,
       'the start response does not reveal whether a phone is already bound');
-    assert.equal(providerStarts, 1, 'a bound phone uses the ordinary Messaging Service');
-    assert.equal(sentSms.length, 1);
-    const returningCode = sentSms[0].body.match(/\b(\d{6})\b/)?.[1];
-    assert.match(returningCode, /^\d{6}$/);
+    assert.equal(providerStarts, 2, 'a bound phone stays inside Twilio Verify');
+    assert.equal((await pool.query(
+      `SELECT provider_sid FROM phone_auth_challenges
+        WHERE phone_e164=$1 AND purpose='sign_in' ORDER BY id DESC LIMIT 1`,
+      [phone]
+    )).rows[0].provider_sid, verificationSid);
     const returningCookie = responseCookie(returningStart, 'sge_phone_auth');
     const returningVerify = await fetch(`${baseUrl}/api/auth/phone/verify`, {
       method: 'POST', headers: { 'content-type': 'application/json', cookie: returningCookie },
-      body: JSON.stringify({ code: returningCode })
+      body: JSON.stringify({ code: '123456' })
     });
     assert.equal(returningVerify.status, 200);
     assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/events/new' });
+    assert.equal(providerChecks, 2);
     const returningSession = responseCookie(returningVerify, 'sge_session');
     assert.ok(returningSession);
+    const replay = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: returningCookie },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(replay.status, 400, 'a completed phone challenge cannot be replayed');
+    assert.equal(responseCookie(replay, 'sge_session'), '');
 
     const pendingStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phone, next: '/events/new' })
     });
     assert.equal(pendingStart.status, 200);
-    assert.equal(sentSms.length, 2);
+    assert.equal(providerStarts, 3);
     const logoutAll = await fetch(`${baseUrl}/api/auth/logout-all`, {
       method: 'POST', headers: { cookie: returningSession }
     });
@@ -3202,12 +3203,20 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
       body: JSON.stringify({ phone, next: '/events/new' })
     });
     assert.equal(reenrollStart.status, 200);
-    assert.equal(providerStarts, 2, 'a revoked phone must repeat Verify plus inbox proof');
-    assert.equal(sentSms.length, 2, 'a revoked phone cannot use the returning-login sender');
+    assert.equal(providerStarts, 4, 'a revoked phone must repeat Verify plus inbox proof');
+    const reenrollProof = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: {
+        'content-type': 'application/json',
+        cookie: responseCookie(reenrollStart, 'sge_phone_auth')
+      },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(reenrollProof.status, 200);
+    assert.equal((await reenrollProof.json()).needsEmail, true);
+    assert.equal(responseCookie(reenrollProof, 'sge_session'), '');
   } finally {
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
-    sms.sendAuthSms = originalSendAuthSms;
   }
 });
 
@@ -3216,16 +3225,10 @@ test('administrator identities remain email-only even if a phone was previously 
   await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
-  const originalSendAuthSms = sms.sendAuthSms;
   const verificationSid = `VE${'e'.repeat(32)}`;
   const phone = '+14155550191';
-  const sentSms = [];
   phoneVerification.startVerification = async () => ({ verificationSid, phone, status: 'pending' });
   phoneVerification.checkVerification = async () => ({ approved: true, verificationSid, phone, status: 'approved' });
-  sms.sendAuthSms = async payload => {
-    sentSms.push(payload);
-    return { sid: `SM${'f'.repeat(32)}`, status: 'accepted', recipient: payload.to };
-  };
 
   try {
     const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
@@ -3264,13 +3267,12 @@ test('administrator identities remain email-only even if a phone was previously 
       body: JSON.stringify({ phone, next: '/events/new' })
     });
     assert.equal(returningStart.status, 200);
-    const returningCode = sentSms[0].body.match(/\b(\d{6})\b/)?.[1];
     const returningAttempt = await fetch(`${baseUrl}/api/auth/phone/verify`, {
       method: 'POST', headers: {
         'content-type': 'application/json',
         cookie: responseCookie(returningStart, 'sge_phone_auth')
       },
-      body: JSON.stringify({ code: returningCode })
+      body: JSON.stringify({ code: '123456' })
     });
     assert.equal(returningAttempt.status, 403);
     assert.equal((await returningAttempt.json()).error, 'email_sign_in_required');
@@ -3278,7 +3280,6 @@ test('administrator identities remain email-only even if a phone was previously 
   } finally {
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
-    sms.sendAuthSms = originalSendAuthSms;
   }
 });
 
@@ -3310,18 +3311,11 @@ test('phone-code delivery failures do not reveal whether a phone is already boun
     [organizerId, boundPhone]
   );
   const originalStartVerification = phoneVerification.startVerification;
-  const originalSendAuthSms = sms.sendAuthSms;
   phoneVerification.startVerification = async () => {
     throw new phoneVerification.PhoneVerificationError('verify-specific failure', {
       code: 'phone_verification_rejected', status: 422
     });
   };
-  sms.sendAuthSms = async () => {
-    throw new sms.SmsDeliveryError('messaging-specific failure', {
-      code: 'sms_rejected', status: 422
-    });
-  };
-
   try {
     const responses = [];
     for (const phone of [boundPhone, newPhone]) {
@@ -3341,7 +3335,6 @@ test('phone-code delivery failures do not reveal whether a phone is already boun
     });
   } finally {
     phoneVerification.startVerification = originalStartVerification;
-    sms.sendAuthSms = originalSendAuthSms;
   }
 });
 

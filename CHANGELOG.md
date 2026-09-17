@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.105
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Added
+
+* **Create your event** now offers a mobile-first phone entry: Twilio Verify confirms the number, then a separate email code binds a new phone to the existing Silver Glider identity without passwords or duplicate accounts.
+* A verified returning creator can use the same phone flow to open a normal 30-day session; the existing email sign-in remains available throughout and continues to be the recovery path.
+
+### Safety
+
+* Phone-first entry is limited to the high-intent creator journey. RSVP, Follow Host, invitation, photo, ticketing, and public browsing flows retain their current lightweight behavior.
+* Authentication phones remain separate from RSVP and Follow text consent. Twilio Verify handles every authentication code, keeping login independent from lifecycle and marketing sender pools and their STOP state.
+* Phone challenges are browser-bound, expiring, one-use, rate-limited, and recheck the active credential before issuing a session. Administrators remain email-only, identity collisions never auto-merge, and **Sign out of all devices** revokes phone sign-in.
+
 ## 1.0.104
 
 Released September 16, 2026. Built and deployed by Codex.

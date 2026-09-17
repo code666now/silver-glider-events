@@ -51,14 +51,14 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 |---|---|---|
 | **Railway** | Hosting + database | Project: `silver-glider-events` (its own project + Postgres, separate from the ticketing app) |
 | **Resend** | Sending emails | The verified `events.silvergliderevents.com` subdomain sends Silver Glider transactional mail; critical event notices are one-way, while established photo/follower workflows retain their existing Reply-To behavior. |
-| **Twilio** | Creator phone proof + paid lifecycle SMS | `TWILIO_VERIFY_SERVICE_SID` proves a creator's phone once during first binding. Later phone sign-ins use `TWILIO_AUTH_MESSAGING_SERVICE_SID`, which must have a sender pool/number separate from lifecycle `TWILIO_MESSAGING_SERVICE_SID` so STOP cannot block login. Authentication phones are separate from RSVP/Follow SMS consent; STOP and reminder consent never grant account access. |
+| **Twilio** | Creator phone proof + paid lifecycle SMS | `TWILIO_VERIFY_SERVICE_SID` proves both first-time and returning creator phone sign-ins, keeping authentication outside lifecycle/marketing sender pools so STOP cannot block login. Authentication phones are separate from RSVP/Follow SMS consent; STOP and reminder consent never grant account access. |
 | **Stripe** | Host-owned SMS credit purchases | Dedicated SMS credentials and one-time Price IDs open Stripe-hosted Checkout. A verified webhook re-fetches and validates the completed Session before atomically crediting the host wallet. Test mode remains super-admin-only. |
 | **PayPal** | Historical SMS payment support | Existing PayPal purchase/refund records and rollback endpoints remain supported server-side, but PayPal and Venmo are no longer rendered in the current Settings checkout. |
 | **Cloudinary** | Storing cover photos, flyer uploads, host logos/headers, textures, and video effects | Cloud `dhvavjgnw`; production folders include `sg-events/covers`, `sg-events/flyers`, `sg-events/hosts`, `sg-events/hosts/headers`, `sg-events/textures`, and `sg-events/effects`; local uploads use the matching `sg-events-dev/...` folders |
 | **Unsplash** | Free photo search in the form | Photographer is auto-credited on the event page; searches use a bounded 30-minute in-memory cache to reduce repeat API calls |
 
 ## 5. Login & security (plain English)
-- Login has **no passwords**. Ordinary sign-in, RSVP identity, and Follow Host stay email-first. The high-intent **Create your event** journey is phone-first: an unbound number is proved once with Twilio Verify, then the mandatory email is proved with the existing browser-bound code before the phone can be attached to the shared identity. Phone proof alone never creates a user or session and identity collisions never auto-merge. A bound non-admin phone later receives a normal transactional SMS code through the dedicated auth sender and opens the same 30-day account session; admins remain email-only, **Use email instead** remains available throughout, and **Sign out of all devices** revokes the phone credential so email remains effective recovery.
+- Login has **no passwords**. Ordinary sign-in, RSVP identity, and Follow Host stay email-first. The high-intent **Create your event** journey is phone-first: Twilio Verify proves the phone, then an unbound number also requires the existing browser-bound email code before it can attach to the shared identity. Phone proof alone never creates a new user or session and identity collisions never auto-merge. Twilio Verify also proves bound non-admin phones before opening the same 30-day account session; admins remain email-only, **Use email instead** remains available throughout, and **Sign out of all devices** revokes the phone credential so email remains effective recovery.
 - Authentication phone credentials live in `account_phone_credentials`; RSVP and Follow Host phones remain separate messaging-consent records and must never be copied into or inferred as login credentials.
 - After the first login, a secure **30-day session** keeps you signed in on that browser; it auto-refreshes while you're active.
 - **Sign out** ends the session on that browser and forgets any remembered RSVP guest there. **Sign out of all devices** (Settings → Account) rejects every older session everywhere. Requesting too many sign-in emails, or guessing codes, is rate-limited; five wrong codes lock that request.
@@ -73,7 +73,7 @@ Silver Glider Events is a lightweight tool for creating beautiful event pages, c
 - **Entry point:** `src/index.js`
 - **Key folders:** `src/routes/` (auth, events, public event/RSVP flows, isolated public host pages, uploads, photos, Stripe and legacy PayPal webhooks, SMS credits, paid SMS notifications, admin), `src/lib/` (mailer, server-only Twilio SMS transport/lifecycle copy, Stripe SMS Checkout, legacy PayPal client, SMS credit ledger, session, shared public HTML, calendar/ics, unsplash, cloudinary, slug, csv), `src/jobs/reminders.js` (scheduled email reminders), `src/jobs/event-notifications.js` (critical email update/cancellation delivery and retry), `src/jobs/previous-guest-invitations.js` (reviewed past-guest email delivery and retry), `src/jobs/sms-notifications.js` (paid Twilio delivery/retry/audit), `src/views/` (HTML pages), `public/` (CSS + JS/assets).
 - **Database:** auto-migrations run on startup from `src/db/migrations/*.sql`. Core tables include organizers, magic_link_tokens, events, event_secret_codes, rsvps, event_comments, message_log, event_notification_batches, previous_guest_invitation_batches, sms_notification_batches, sms_notification_recipients, line_submissions, feedback_submissions, host_invitations, host_follows, event_photos, commerce_feature_interests, sms_credit_purchases, sms_credit_transactions, stripe_sms_webhook_events, and paypal_webhook_events.
-- **Current migrations:** `001` through `041_phone_auth.sql`.
+- **Current migrations:** `001` through `042_verify_only_phone_auth.sql`.
 - **Health check:** `GET /health` returns `{status:"ok", version:"...", sha:"..."}`.
 - **Release version:** `package.json` is the canonical semantic version, production commits receive matching annotated Git tags, and `CHANGELOG.md` records user-facing releases. `/health` returns both `version` and `sha` for deployment verification.
 
@@ -88,11 +88,8 @@ RESEND_FROM           – Silver Glider Events <notifications@events.silverglide
 TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_MESSAGING_SERVICE_SID
                       – server-only transactional and paid SMS delivery
 TWILIO_VERIFY_SERVICE_SID
-                      – Twilio Verify service (VA...) for first creator phone binding only;
+                      – Twilio Verify service (VA...) for first and returning creator phone proof;
                         configure a 6-digit token to match the UI
-TWILIO_AUTH_MESSAGING_SERVICE_SID
-                      – dedicated Messaging Service (MG...) for returning creator login codes;
-                        use a sender pool/number distinct from lifecycle SMS
 STRIPE_SMS_SECRET_KEY – dedicated Stripe secret for SMS-credit Checkout
 STRIPE_SMS_300_PRICE_ID / STRIPE_SMS_500_PRICE_ID / STRIPE_SMS_1000_PRICE_ID
                       – allowlisted one-time Stripe Prices for the three packs
@@ -192,15 +189,16 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release in production: `v1.0.103`. Host Follow sharing uses the native phone share sheet on touch devices and a consistent five-option desktop share menu. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release in production: `v1.0.105`. Creator phone entry uses Twilio Verify for both first-time and returning phone proof while email remains recovery. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
 - `.git-sha` is intentionally left modified after deployment so Railway receives the release SHA. Do not revert or include it blindly in a later commit.
-- Migrations currently run from `001_initial.sql` through `040_unified_follow_notifications.sql`.
+- Migrations currently run from `001_initial.sql` through `042_verify_only_phone_auth.sql`.
 
 ### Most recently completed
 
+- `v1.0.105` adds phone-first entry only to **Create your event**. Twilio Verify proves every creator phone code; a new phone also requires separate email proof before binding to the shared identity, while returning non-admin creators receive the normal 30-day session. Email recovery, RSVP, Follow Host, invitations, ticketing, and messaging consent remain separate and unchanged.
 - `v1.0.103` makes Host Follow sharing platform-appropriate and dependable: touch devices retain the native share sheet, while desktop gets an accessible Silver Glider menu for Email, Pinterest, Facebook, X, and Copy link using the same host-scoped Follow URL.
 
 - `v1.0.102` unifies Follow around one shareable host link: email updates are included, text updates appear as a separate unchecked option only when the host owns credits, and the host approves one fixed new-event update after reviewing exact email/text audience and SMS cost. Consent is independently audited by channel; existing followers are not backfilled; STOP and Unfollow suppress future delivery.
