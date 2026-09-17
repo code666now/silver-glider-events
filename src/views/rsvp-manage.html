@@ -6,33 +6,75 @@
   <title>Your RSVP — {{TITLE}}</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .rsvp-manage-shell { width:min(100% - 40px,440px);margin:0 auto;padding:10vh 0 64px; }
+    .rsvp-manage-brand { margin-bottom:26px; }
+    .rsvp-manage-heading { margin-bottom:6px;font-size:30px; }
+    .rsvp-manage-intro { margin-bottom:28px;color:var(--sg-text-dim);font-size:15px; }
+    .rsvp-manage-card { margin-bottom:24px; }
+    .rsvp-manage-card h2 { margin-bottom:14px;font-size:21px; }
+    .rsvp-manage-details { color:var(--sg-text-dim);font-size:14px;line-height:1.9; }
+    .rsvp-manage-actions { display:flex;gap:10px;margin-bottom:28px; }
+    .rsvp-manage-actions .sg-btn { flex:1; }
+    .rsvp-cancel-status { min-height:20px;margin:12px 0 0;color:var(--sg-text-dim);font-size:13px;line-height:1.5;text-align:center; }
+    .rsvp-cancel-status.is-error { color:var(--sg-danger); }
+    .rsvp-cancelled { display:none;padding-top:8vh;text-align:center; }
+    .rsvp-cancelled h1 { margin-bottom:10px;font-size:28px; }
+    .rsvp-cancelled p { margin-bottom:28px;color:var(--sg-text-dim);font-size:15px; }
+    @media(max-width:879px) {
+      .rsvp-manage-shell {
+        width:100%;
+        min-height:100vh;
+        min-height:100dvh;
+        padding:calc(42px + env(safe-area-inset-top)) 22px calc(40px + env(safe-area-inset-bottom));
+      }
+      .rsvp-manage-brand { margin-bottom:clamp(52px,11vh,88px);font-size:13px;letter-spacing:.14em; }
+      .rsvp-manage-heading { margin-bottom:9px;font-size:36px;line-height:1.04; }
+      .rsvp-manage-intro { margin-bottom:30px;font-size:17px;line-height:1.5; }
+      .rsvp-manage-card { min-height:180px;margin-bottom:22px;padding:24px;border-radius:22px; }
+      .rsvp-manage-card h2 { margin-bottom:16px;font-size:27px;line-height:1.15; }
+      .rsvp-manage-details { font-size:16px;line-height:1.9; }
+      .rsvp-manage-actions { display:grid;gap:12px;margin-bottom:30px; }
+      .rsvp-manage-actions .sg-btn,#cancel-btn,.rsvp-cancelled .sg-btn { width:100%;min-height:60px;border-radius:19px;font-size:16px; }
+      #cancel-btn { min-height:52px; }
+      .rsvp-cancel-status { margin-top:14px;font-size:14px; }
+      .rsvp-cancelled { padding-top:clamp(46px,10vh,90px); }
+      .rsvp-cancelled h1 { font-size:36px; }
+      .rsvp-cancelled p { font-size:17px;line-height:1.55; }
+    }
+    @media(max-width:879px) and (max-height:620px) {
+      .rsvp-manage-shell { padding-top:calc(24px + env(safe-area-inset-top)); }
+      .rsvp-manage-brand { margin-bottom:32px; }
+    }
+  </style>
 </head>
 <body>
-  <main style="max-width:440px;margin:0 auto;padding:10vh 24px 0">
-    <p class="sg-label" style="margin-bottom:26px">Silver Glider Events</p>
+  <main class="rsvp-manage-shell">
+    <p class="sg-label rsvp-manage-brand">Silver Glider Events</p>
 
     <div id="active">
-      <h1 style="font-size:30px;margin-bottom:6px">Hi {{FIRST_NAME}},</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:28px">here's your RSVP.</p>
+      <h1 class="rsvp-manage-heading">Hi {{FIRST_NAME}},</h1>
+      <p class="rsvp-manage-intro">here's your RSVP.</p>
 
-      <div class="sg-card" style="margin-bottom:24px">
-        <h2 style="font-size:21px;margin-bottom:14px">{{TITLE}}</h2>
-        <p style="font-size:14px;color:var(--sg-text-dim);line-height:1.9">
+      <div class="sg-card rsvp-manage-card">
+        <h2>{{TITLE}}</h2>
+        <p class="rsvp-manage-details">
           {{DATE_STR}}<br>{{TIME_STR}}<br>{{VENUE_NAME}}
         </p>
       </div>
 
-      <div style="display:flex;gap:10px;margin-bottom:28px">
-        <a class="sg-btn sg-btn-ghost" style="flex:1" href="{{EVENT_URL}}">{{EVENT_LINK_LABEL}}</a>
-        <a class="sg-btn sg-btn-ghost" style="flex:1" href="{{ICS_URL}}">Add to calendar</a>
+      <div class="rsvp-manage-actions">
+        <a class="sg-btn sg-btn-primary" href="{{EVENT_URL}}">{{EVENT_LINK_LABEL}}</a>
+        <a class="sg-btn sg-btn-ghost" href="{{ICS_URL}}">Add to calendar</a>
       </div>
 
-      <button class="sg-btn sg-btn-danger sg-btn-block" id="cancel-btn">Can't make it? Cancel RSVP</button>
+      <button class="sg-btn sg-btn-danger sg-btn-block" id="cancel-btn" type="button">Can't make it? Cancel RSVP</button>
+      <p class="rsvp-cancel-status" id="cancel-status" role="status" aria-live="polite"></p>
     </div>
 
-    <div id="cancelled" style="display:none;text-align:center;padding-top:8vh">
-      <h1 style="font-size:28px;margin-bottom:10px">RSVP cancelled</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:28px">Your spot has been released. Change of plans again? You can always RSVP once more from the event page.</p>
+    <div class="rsvp-cancelled" id="cancelled" role="status" aria-live="polite">
+      <h1 id="cancelled-title" tabindex="-1">RSVP cancelled</h1>
+      <p>Your spot has been released. Change of plans again? You can always RSVP once more from the event page.</p>
       <a class="sg-btn sg-btn-ghost" href="{{EVENT_URL}}">Back to event</a>
     </div>
   </main>
@@ -40,16 +82,35 @@
   <script>
     const rsvpStatus = '{{RSVP_STATUS}}';
     const eventStatus = '{{EVENT_STATUS}}';
-    if (rsvpStatus === 'cancelled') {
-      document.getElementById('active').style.display = 'none';
-      document.getElementById('cancelled').style.display = 'block';
+    const activeState = document.getElementById('active');
+    const cancelledState = document.getElementById('cancelled');
+    const cancelButton = document.getElementById('cancel-btn');
+    const cancelStatus = document.getElementById('cancel-status');
+
+    function showCancelled({ focus = false } = {}) {
+      activeState.hidden = true;
+      cancelledState.style.display = 'block';
+      if (focus) requestAnimationFrame(() => document.getElementById('cancelled-title').focus({ preventScroll: true }));
     }
-    document.getElementById('cancel-btn')?.addEventListener('click', async () => {
+
+    if (rsvpStatus === 'cancelled') showCancelled();
+
+    cancelButton?.addEventListener('click', async () => {
       if (!confirm('Cancel your RSVP?')) return;
-      const res = await fetch('/api/public/rsvps/{{TOKEN}}/cancel', { method: 'POST' });
-      if (res.ok) {
-        document.getElementById('active').style.display = 'none';
-        document.getElementById('cancelled').style.display = 'block';
+      cancelButton.disabled = true;
+      cancelButton.setAttribute('aria-busy', 'true');
+      cancelStatus.classList.remove('is-error');
+      cancelStatus.textContent = 'Cancelling your RSVP…';
+      try {
+        const res = await fetch('/api/public/rsvps/{{TOKEN}}/cancel', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Your RSVP could not be cancelled. Try again.');
+        showCancelled({ focus: true });
+      } catch (error) {
+        cancelStatus.textContent = error.message || 'Your RSVP could not be cancelled. Try again.';
+        cancelStatus.classList.add('is-error');
+        cancelButton.disabled = false;
+        cancelButton.removeAttribute('aria-busy');
       }
     });
   </script>

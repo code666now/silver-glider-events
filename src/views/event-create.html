@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="/css/event-owner-editor.css">
   <script src="/js/legal-footer.js" defer></script>
   <style>
+    .quick-create-mobile-top,
+    .quick-create-mobile-copy { display: none; }
     .quick-create-shell { width: min(720px,calc(100% - 32px)); margin: 0 auto; padding: 28px 0 100px; }
     .quick-create-card { margin-top: 48px; padding: clamp(24px,5vw,48px); border: 1px solid var(--sg-border-soft); border-radius: 28px; background: rgba(17,17,19,.9); box-shadow: var(--sg-shadow); }
     .quick-create-kicker { margin: 0 0 12px; color: var(--sg-accent); font-size: 11px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
@@ -21,59 +23,208 @@
     .quick-create-error { min-height: 22px; margin: 6px 0 12px; color: var(--sg-danger); font-size: 12px; line-height: 1.5; }
     .quick-create-submit { min-height: 56px; font-size: 15px; }
     .quick-create-footnote { margin: 12px 0 0; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; text-align: center; }
-    @media (max-width: 620px) {
-      .quick-create-shell { width: min(100% - 24px,720px); padding-top: 18px; }
-      .quick-create-card { margin-top: 28px; padding: 24px 18px; border-radius: 22px; }
-      .quick-create-row { grid-template-columns: 1fr; gap: 0; }
-      .quick-create-card h1 { font-size: 42px; }
-      .quick-create-submit { min-height: 54px; }
+    @media (max-width: 879px) {
+      body.quick-create-mobile-flow { overflow-x: hidden; }
+      body.quick-create-mobile-flow .sg-aurora,
+      body.quick-create-mobile-flow .sg-aurora-veil { opacity: .36; }
+      body.quick-create-mobile-flow .feedback-bubble { display: none; }
+      .quick-create-shell {
+        width: 100%;
+        min-height: 100vh;
+        min-height: 100dvh;
+        margin: 0;
+        padding: calc(74px + env(safe-area-inset-top)) 22px calc(126px + env(safe-area-inset-bottom));
+      }
+      .quick-create-shell > #nav { display: none; }
+      .quick-create-mobile-top {
+        position: fixed;
+        inset: 0 0 auto;
+        z-index: 45;
+        min-height: calc(74px + env(safe-area-inset-top));
+        display: grid;
+        grid-template-columns: 48px minmax(0,1fr) auto;
+        align-items: end;
+        gap: 10px;
+        padding: env(safe-area-inset-top) 18px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.09);
+        background: rgba(14,14,16,.96);
+        box-shadow: 0 12px 34px rgba(0,0,0,.24);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+      .quick-create-mobile-back {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--sg-accent);
+        cursor: pointer;
+      }
+      .quick-create-mobile-back:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
+      .quick-create-mobile-back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .quick-create-mobile-top strong { align-self: center; font: 700 19px/1.2 var(--sg-font-display); }
+      .quick-create-mobile-progress { align-self: center; color: var(--sg-text-dim); font-size: 13px; font-weight: 700; }
+      .quick-create-card {
+        margin: 0;
+        padding: 30px 0 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      .quick-create-desktop-intro { display: none; }
+      .quick-create-step[hidden] { display: none !important; }
+      .quick-create-mobile-copy { display: block; margin-bottom: 30px; }
+      .quick-create-mobile-copy .quick-create-kicker { margin-bottom: 9px; font-size: 13px; letter-spacing: .13em; }
+      .quick-create-mobile-copy h1 { margin: 0; font-size: clamp(34px,10vw,38px); line-height: 1.02; }
+      .quick-create-mobile-copy h1:focus { outline: none; }
+      .quick-create-mobile-copy p:last-child { margin: 10px 0 0; color: var(--sg-text-dim); font-size: 17px; line-height: 1.5; }
+      .quick-create-row { grid-template-columns: 1fr; gap: 24px; }
+      .quick-create-card .owner-field { gap: 10px; margin-bottom: 26px; }
+      .quick-create-card .owner-field > span,
+      .quick-create-card .owner-field-label,
+      .quick-create-card .owner-location-name-field > span { font-size: 14px; letter-spacing: .1em; }
+      .quick-create-card .owner-input {
+        min-height: 60px;
+        padding: 15px 17px;
+        border-radius: 17px;
+        font-size: 17px;
+      }
+      .quick-create-card .owner-location-search-mode,
+      .quick-create-card .owner-location-manual-actions { grid-template-columns: 1fr; gap: 10px; }
+      .quick-create-card .owner-location-mode-button {
+        min-height: 56px;
+        border-radius: 17px;
+        font-size: 13px;
+      }
+      .quick-create-card .owner-location-selection {
+        grid-template-columns: 48px minmax(0,1fr) auto;
+        gap: 13px;
+        min-height: 96px;
+        margin-top: 18px;
+        padding: 17px;
+        border-radius: 20px;
+      }
+      .quick-create-card .owner-location-icon { width: 48px; height: 48px; border-radius: 14px; }
+      .quick-create-card .owner-location-icon svg { width: 23px; height: 23px; }
+      .quick-create-card .owner-location-copy strong { font-size: 15px; }
+      .quick-create-card .owner-location-copy small { font-size: 12px; }
+      .quick-create-card .owner-location-change { min-width: 54px; min-height: 44px; font-size: 12px; }
+      .quick-create-error { min-height: 22px; margin: 8px 0 0; font-size: 13px; }
+      .quick-create-action-dock {
+        position: fixed;
+        inset: auto 0 0;
+        z-index: 46;
+        padding: 12px 22px calc(12px + env(safe-area-inset-bottom));
+        border-top: 1px solid rgba(255,255,255,.09);
+        background: rgba(14,14,16,.96);
+        box-shadow: 0 -16px 40px rgba(0,0,0,.32);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+      .quick-create-submit { min-height: 60px; border-radius: 19px; font-size: 17px; }
+      .quick-create-footnote { margin: 8px 0 0; font-size: 10px; }
+      .quick-create-footnote[hidden] { display: none; }
+    }
+    @media (max-width: 879px) and (max-height: 600px) {
+      .quick-create-shell {
+        padding-top: calc(58px + env(safe-area-inset-top));
+        padding-bottom: 96px;
+      }
+      .quick-create-mobile-top {
+        min-height: calc(58px + env(safe-area-inset-top));
+        padding: env(safe-area-inset-top) 18px 5px;
+      }
+      .quick-create-card { padding-top: 14px; }
+      .quick-create-mobile-copy { margin-bottom: 16px; }
+      .quick-create-mobile-copy .quick-create-kicker,
+      .quick-create-mobile-copy p:last-child { display: none; }
+      .quick-create-mobile-copy h1 { font-size: 28px; }
+      .quick-create-action-dock { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+      .quick-create-submit { min-height: 52px; }
     }
   </style>
 </head>
 <body>
+  <header class="quick-create-mobile-top" aria-label="Create event navigation">
+    <button class="quick-create-mobile-back" id="quick-create-mobile-back" type="button" aria-label="Back to My Events">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <strong>Create event</strong>
+    <span class="quick-create-mobile-progress" id="quick-create-mobile-progress" aria-live="polite">Step 1 of 3</span>
+  </header>
   <main class="quick-create-shell">
     <nav id="nav"></nav>
     <section class="quick-create-card" aria-labelledby="quick-create-title">
-      <p class="quick-create-kicker">New event</p>
-      <h1 id="quick-create-title">Start with the essentials.</h1>
-      <p class="quick-create-intro">Add the four things you already know. Then you’ll design the event on its real page before anyone else can see it.</p>
+      <div class="quick-create-desktop-intro">
+        <p class="quick-create-kicker">New event</p>
+        <h1 id="quick-create-title">Start with the essentials.</h1>
+        <p class="quick-create-intro">Add the four things you already know. Then you’ll design the event on its real page before anyone else can see it.</p>
+      </div>
 
       <form id="quick-create-form" novalidate>
-        <label class="owner-field"><span>Event title</span><input class="owner-input" id="create-title" maxlength="140" required placeholder="Vinyl Night at Make Out Room" autocomplete="off"></label>
-        <div class="quick-create-row">
-          <label class="owner-field"><span>Date</span><input class="owner-input" id="create-date" type="date" required></label>
-          <label class="owner-field"><span>Start time</span><input class="owner-input" id="create-start-time" type="time" required></label>
-        </div>
+        <section class="quick-create-step" data-create-step="title" aria-labelledby="quick-create-title-step">
+          <div class="quick-create-mobile-copy">
+            <p class="quick-create-kicker">Event basics</p>
+            <h1 id="quick-create-title-step" tabindex="-1">What’s your event called?</h1>
+            <p>Give guests a name they’ll recognize.</p>
+          </div>
+          <label class="owner-field"><span>Event title</span><input class="owner-input" id="create-title" maxlength="140" required placeholder="Vinyl Night at Make Out Room" autocomplete="off"></label>
+        </section>
 
-        <div class="owner-field owner-location-picker quick-create-location">
-          <label class="owner-field-label" for="create-location-search">Location</label>
-          <div class="owner-location-search-mode" id="create-location-search-mode">
-            <input class="owner-input" id="create-location-search" autocomplete="off" aria-required="true" aria-describedby="create-places-status" placeholder="Search venue or address">
-            <button class="owner-location-mode-button" id="create-location-manual-toggle" type="button">Enter manually</button>
+        <section class="quick-create-step" data-create-step="when" aria-labelledby="quick-create-when-step">
+          <div class="quick-create-mobile-copy">
+            <p class="quick-create-kicker">Date and time</p>
+            <h1 id="quick-create-when-step" tabindex="-1">When is it happening?</h1>
+            <p>Choose the date and when guests should arrive.</p>
           </div>
-          <div class="owner-location-manual-mode" id="create-location-manual-mode" hidden>
-            <label for="create-location-manual-address">Address</label>
-            <div class="owner-location-manual-actions">
-              <input class="owner-input" id="create-location-manual-address" autocomplete="street-address" placeholder="346 Corbett Ave, San Francisco">
-              <button class="owner-location-mode-button" id="create-location-search-toggle" type="button">Search instead</button>
+          <div class="quick-create-row">
+            <label class="owner-field"><span>Date</span><input class="owner-input" id="create-date" type="date" required></label>
+            <label class="owner-field"><span>Start time</span><input class="owner-input" id="create-start-time" type="time" required></label>
+          </div>
+        </section>
+
+        <section class="quick-create-step" data-create-step="where" aria-labelledby="quick-create-where-step">
+          <div class="quick-create-mobile-copy">
+            <p class="quick-create-kicker">Location</p>
+            <h1 id="quick-create-where-step" tabindex="-1">Where should guests go?</h1>
+            <p>Search for a venue or enter the address yourself.</p>
+          </div>
+          <div class="owner-field owner-location-picker quick-create-location">
+            <label class="owner-field-label" for="create-location-search">Location</label>
+            <div class="owner-location-search-mode" id="create-location-search-mode">
+              <input class="owner-input" id="create-location-search" autocomplete="off" aria-required="true" aria-describedby="create-places-status" placeholder="Search venue or address">
+              <button class="owner-location-mode-button" id="create-location-manual-toggle" type="button">Enter manually</button>
             </div>
+            <div class="owner-location-manual-mode" id="create-location-manual-mode" hidden>
+              <label for="create-location-manual-address">Address</label>
+              <div class="owner-location-manual-actions">
+                <input class="owner-input" id="create-location-manual-address" autocomplete="street-address" placeholder="346 Corbett Ave, San Francisco">
+                <button class="owner-location-mode-button" id="create-location-search-toggle" type="button">Search instead</button>
+              </div>
+            </div>
+            <small class="owner-places-status" id="create-places-status" role="status" aria-live="polite"></small>
+            <div class="owner-location-selection" id="create-location-selection" hidden>
+              <span class="owner-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+              <span class="owner-location-copy"><strong id="create-location-selection-name"></strong><small id="create-location-selection-address"></small></span>
+              <button class="owner-location-change" id="create-location-change" type="button">Change</button>
+            </div>
+            <label class="owner-location-name-field" id="create-location-name-field" for="create-location-name" hidden>
+              <span>Location name <small>Optional</small></span>
+              <input class="owner-input" id="create-location-name" maxlength="140" placeholder="Adrian’s place or Rooftop">
+              <small>Add a friendly name for this address, or leave it blank.</small>
+            </label>
           </div>
-          <small class="owner-places-status" id="create-places-status" role="status" aria-live="polite"></small>
-          <div class="owner-location-selection" id="create-location-selection" hidden>
-            <span class="owner-location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
-            <span class="owner-location-copy"><strong id="create-location-selection-name"></strong><small id="create-location-selection-address"></small></span>
-            <button class="owner-location-change" id="create-location-change" type="button">Change</button>
-          </div>
-          <label class="owner-location-name-field" id="create-location-name-field" for="create-location-name" hidden>
-            <span>Location name <small>Optional</small></span>
-            <input class="owner-input" id="create-location-name" maxlength="140" placeholder="Adrian’s place or Rooftop">
-            <small>Add a friendly name for this address, or leave it blank.</small>
-          </label>
-        </div>
+        </section>
 
         <p class="quick-create-error" id="quick-create-error" role="alert"></p>
-        <button class="sg-btn sg-btn-primary sg-btn-block quick-create-submit" id="quick-create-submit" type="submit">Continue to design</button>
-        <p class="quick-create-footnote">This creates a private draft. Nothing is shared until you publish.</p>
+        <div class="quick-create-action-dock">
+          <button class="sg-btn sg-btn-primary sg-btn-block quick-create-submit" id="quick-create-submit" type="submit">Continue to design</button>
+          <p class="quick-create-footnote" id="quick-create-footnote">This creates a private draft. Nothing is shared until you publish.</p>
+        </div>
       </form>
     </section>
   </main>

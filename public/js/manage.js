@@ -5,6 +5,31 @@ const $ = id => document.getElementById(id);
 let eventData = null;
 const LINE_NUMBER = '(844) 261-6758';
 const desktopManageLayout = window.matchMedia('(min-width: 1024px)');
+const mobileManageLayout = window.matchMedia('(max-width: 879px)');
+const mobileManageViews = {
+  overview: {
+    title: 'Overview',
+    subtitle: 'Artwork, status, and attendance at a glance.'
+  },
+  guests: {
+    title: 'Guests',
+    subtitle: 'See RSVPs, search people, and send invitations.'
+  },
+  promote: {
+    title: 'Promote',
+    subtitle: 'Share the event, download its QR code, or reach your audience.'
+  },
+  photos: {
+    title: 'Photos',
+    subtitle: 'Request, review, and manage photos shared by guests.'
+  },
+  more: {
+    title: 'More',
+    subtitle: 'Edit, duplicate, cancel, or permanently delete this event.'
+  }
+};
+let activeMobileManageView = 'home';
+let mobilePreviewMarker = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20,6 +45,121 @@ if (new URLSearchParams(location.search).get('created')) {
 
 function eventUrl() {
   return `${location.origin}/e/${eventData.slug}`;
+}
+
+function mobileManageReady() {
+  return Boolean(eventData) && !$('manage-shell').hasAttribute('data-loading');
+}
+
+function mobileManageViewAvailable(view) {
+  if (view === 'promote') {
+    return !$('line-card').hidden && $('line-card').style.display !== 'none';
+  }
+  if (view === 'photos') return !$('collect-photos-card').hidden;
+  return Boolean(mobileManageViews[view]);
+}
+
+function updateMobileManageSummaries() {
+  if (!eventData) return;
+  const status = $('status-badge').textContent || 'Event';
+  const rsvps = Number(eventData.rsvp_count) || 0;
+  $('manage-mobile-summary-overview').textContent = `${status} · ${rsvps} RSVP${rsvps === 1 ? '' : 's'}`;
+
+  const connected = Number(familiarFaceState?.totalCount);
+  const guestCount = Number.isFinite(connected) && connected > 0 ? connected : rsvps;
+  $('manage-mobile-summary-guests').textContent = guestCount
+    ? `${guestCount} ${guestCount === 1 ? 'person' : 'people'} connected`
+    : 'No RSVPs or invitations yet';
+  $('manage-mobile-summary-promote').textContent = eventData.visibility === 'private'
+    ? 'Share the private link or QR code'
+    : 'Share, QR code, followers, and The Line';
+
+  const photoCount = Number($('photo-count').textContent) || 0;
+  $('manage-mobile-summary-photos').textContent = photoCount
+    ? `${photoCount} photo${photoCount === 1 ? '' : 's'} received`
+    : 'Collect and review event photos';
+}
+
+function syncMobileManageAvailability() {
+  const ready = mobileManageReady();
+  document.querySelectorAll('[data-manage-mobile-open]').forEach(button => {
+    button.disabled = !ready || !mobileManageViewAvailable(button.dataset.manageMobileOpen);
+  });
+  $('manage-mobile-task-promote').hidden = Boolean(eventData) && !mobileManageViewAvailable('promote');
+  $('manage-mobile-task-photos').hidden = !eventData || !mobileManageViewAvailable('photos');
+  updateMobileManageSummaries();
+
+  if (mobileManageLayout.matches && activeMobileManageView !== 'home' && !mobileManageViewAvailable(activeMobileManageView)) {
+    setMobileManageView('home', { focus: false });
+  }
+}
+
+function setMobileManageView(requestedView, { focus = true } = {}) {
+  if (!mobileManageLayout.matches) return;
+  const view = requestedView === 'home' || mobileManageViewAvailable(requestedView) ? requestedView : 'home';
+  activeMobileManageView = view;
+  $('manage-shell').dataset.mobileView = view;
+  $('manage-mobile-hub').hidden = view !== 'home';
+  $('manage-mobile-screen-intro').hidden = view === 'home';
+  $('manage-mobile-nav-label').textContent = view === 'home' ? 'Manage event' : mobileManageViews[view].title;
+  $('manage-mobile-back').setAttribute('aria-label', view === 'home' ? 'Back to My Events' : 'Back to event management sections');
+
+  if (view !== 'home') {
+    $('manage-mobile-screen-title').textContent = mobileManageViews[view].title;
+    $('manage-mobile-screen-subtitle').textContent = mobileManageViews[view].subtitle;
+  }
+  if (view !== 'more') $('more-menu').removeAttribute('open');
+  syncFamiliarMobileChrome();
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  if (focus) {
+    window.requestAnimationFrame(() => {
+      (view === 'home' ? $('title') : $('manage-mobile-screen-intro')).focus({ preventScroll: true });
+    });
+  }
+}
+
+function syncMobileManageLayout() {
+  const viewLink = $('view-link');
+  if (mobileManageLayout.matches) {
+    $('manage-mobile-nav').hidden = false;
+    viewLink.textContent = 'Preview';
+    $('manage-mobile-preview-slot').append(viewLink);
+    $('title').setAttribute('tabindex', '-1');
+    setMobileManageView(activeMobileManageView, { focus: false });
+  } else {
+    $('manage-mobile-nav').hidden = true;
+    $('manage-mobile-hub').hidden = true;
+    $('manage-mobile-screen-intro').hidden = true;
+    $('manage-shell').dataset.mobileView = 'home';
+    activeMobileManageView = 'home';
+    viewLink.textContent = 'View page';
+    if (mobilePreviewMarker?.parentNode) mobilePreviewMarker.parentNode.insertBefore(viewLink, mobilePreviewMarker.nextSibling);
+    $('title').removeAttribute('tabindex');
+  }
+}
+
+function initializeMobileManage() {
+  const viewLink = $('view-link');
+  mobilePreviewMarker = document.createComment('mobile preview link location');
+  viewLink.before(mobilePreviewMarker);
+  document.querySelectorAll('[data-manage-mobile-open]').forEach(button => {
+    button.addEventListener('click', () => setMobileManageView(button.dataset.manageMobileOpen));
+  });
+  $('manage-mobile-back').addEventListener('click', () => {
+    if (activeMobileManageView !== 'home') setMobileManageView('home');
+    else window.location.assign('/events?view=hosting');
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
+      event.preventDefault();
+      setMobileManageView('home');
+    }
+  });
+  mobileManageLayout.addEventListener('change', syncMobileManageLayout);
+  syncMobileManageLayout();
+  syncMobileManageAvailability();
 }
 
 function renderNotificationStatus(notification) {
@@ -68,6 +208,7 @@ function setManageReady() {
     $(id).removeAttribute('tabindex');
   });
   $('more-menu').querySelector('summary').removeAttribute('aria-disabled');
+  syncMobileManageAvailability();
 }
 
 function showManageLoadError() {
@@ -154,6 +295,7 @@ async function loadEvent() {
     $('promotion-copy').textContent = 'Share your private event link or download its QR code.';
     $('line-feature').style.display = 'none';
   }
+  syncMobileManageAvailability();
 }
 
 function renderPhotos(photos) {
@@ -180,6 +322,7 @@ function renderPhotos(photos) {
       </div>
     </article>`;
   }).join('');
+  updateMobileManageSummaries();
 }
 
 async function loadPhotoCollection() {
@@ -280,6 +423,12 @@ function renderFamiliarFaces() {
   $('no-guests').hidden = familiarFaceState.faces.length > 0;
 }
 
+function syncFamiliarMobileChrome() {
+  const actionVisible = mobileManageLayout.matches && activeMobileManageView === 'guests'
+    && (!$('familiar-faces-selection').hidden || !$('familiar-people-bar').hidden);
+  document.body.classList.toggle('has-familiar-mobile-action', actionVisible);
+}
+
 function updateFamiliarSelection() {
   const count = familiarFaceSelection.size;
   $('familiar-selected-count').textContent = `${count} selected`;
@@ -291,6 +440,7 @@ function updateFamiliarSelection() {
   const allShownSelected = shown.length > 0 && shown.every(face => familiarFaceSelection.has(face.id));
   $('familiar-select-all').textContent = allShownSelected ? 'Clear shown' : 'Select all';
   renderFamiliarFaces();
+  syncFamiliarMobileChrome();
 }
 
 function startFamiliarSelection(initialFaceId = '') {
@@ -307,6 +457,7 @@ function stopFamiliarSelection() {
   $('familiar-faces-selection').hidden = true;
   $('familiar-faces-start').hidden = !(familiarFaceState.canStartInvitation && familiarFaceState.selectableCount > 0);
   renderFamiliarFaces();
+  syncFamiliarMobileChrome();
 }
 
 async function loadGuests(search = '') {
@@ -321,6 +472,7 @@ async function loadGuests(search = '') {
   $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
   renderFamiliarFaces();
   $('manage-guest-section').setAttribute('aria-busy', 'false');
+  updateMobileManageSummaries();
 }
 
 $('familiar-faces-grid').addEventListener('click', event => {
@@ -661,6 +813,7 @@ function renderPeopleBar() {
     $('familiar-people-secondary').textContent = 'Clear';
     $('familiar-people-send').textContent = `Invite ${people}`;
   }
+  syncFamiliarMobileChrome();
 }
 
 function renderPeopleAction() {
@@ -995,6 +1148,7 @@ async function initializeManagePage() {
   }
 }
 
+initializeMobileManage();
 initializeManagePage();
 
 window.setInterval(() => {

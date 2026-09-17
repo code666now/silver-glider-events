@@ -28,6 +28,41 @@
     .following-loading { grid-column:1/-1;padding:52px 24px;text-align:center;color:var(--sg-text-dim); }
     @media(max-width:720px) { .following-grid { grid-template-columns:1fr; } }
     @media(max-width:480px) { .following-card { padding:15px;gap:14px; }.following-art { width:70px;height:70px;border-radius:17px; } }
+    @media(max-width:879px) {
+      .following-shell .sg-page-sub { margin-bottom:28px; }
+      .following-grid { grid-template-columns:1fr;gap:16px; }
+      .following-card {
+        min-height:118px;
+        gap:16px;
+        padding:18px;
+        border-radius:var(--sg-mobile-card-radius);
+        background:rgba(17,17,17,.82);
+      }
+      .following-card:hover { transform:none; }
+      .following-card:active { border-color:rgba(28,197,190,.42); }
+      .following-card:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
+      .following-art {
+        width:78px;
+        height:78px;
+        border-radius:18px;
+        font-size:25px;
+      }
+      .following-copy h2 { font-size:22px;line-height:1.15; }
+      .following-count { margin-top:7px;font-size:14px;line-height:1.45; }
+      .following-link { margin-top:10px;font-size:13px;line-height:1.4; }
+      .following-skeleton-art { width:78px;height:78px;border-radius:18px; }
+      .following-skeleton-copy { gap:11px; }
+      .following-loading { padding:52px 20px;font-size:15px;line-height:1.6; }
+      .following-shell .sg-empty {
+        min-height:280px;
+        display:grid;
+        place-items:center;
+        padding:42px 22px;
+        border:1px dashed var(--sg-border);
+        border-radius:var(--sg-mobile-card-radius);
+        background:rgba(255,255,255,.012);
+      }
+    }
   </style>
 </head>
 <body>

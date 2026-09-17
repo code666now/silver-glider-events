@@ -346,6 +346,8 @@ test('minimal creation makes an owner-only draft without exposing guest actions'
   assert.equal(response.status, 201);
   const event = (await response.json()).event;
   assert.equal(event.status, 'draft');
+  assert.equal(event.visibility, 'public');
+  assert.match(event.slug, /^[a-f0-9]{16}$/);
 
   const anonymous = await fetch(`${baseUrl}/e/${event.slug}`);
   assert.equal(anonymous.status, 404);
@@ -368,6 +370,16 @@ test('minimal creation makes an owner-only draft without exposing guest actions'
   assert.match(ownerHtml, /"status":"draft"/);
   assert.match(ownerHtml, /"rsvpEnabled":false/);
   assert.doesNotMatch(ownerHtml, /data-open-rsvp/);
+
+  const makePrivate = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: ownerCookie },
+    body: JSON.stringify({ visibility: 'private' })
+  });
+  assert.equal(makePrivate.status, 200);
+  const privateDraft = (await makePrivate.json()).event;
+  assert.equal(privateDraft.visibility, 'private');
+  assert.equal(privateDraft.slug, event.slug);
 
   const wrongPublisher = await fetch(`${baseUrl}/api/events/${event.id}/publish`, {
     method: 'POST', headers: { cookie: `sge_session=${signSession(otherOrganizer.id)}` }
@@ -1356,6 +1368,17 @@ test('Flyer designer credits normalize, render only on Flyer pages, and survive 
   assert.equal(duplicateEvent.flyer_designer_name, 'New Poster Lab');
   assert.equal(duplicateEvent.flyer_designer_instagram_handle, 'new.artist');
   assert.equal(duplicateEvent.status, 'draft');
+  assert.match(duplicateEvent.slug, /^[a-f0-9]{16}$/);
+
+  const privateDuplicateResponse = await fetch(`${baseUrl}/api/events/${duplicateEvent.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    body: JSON.stringify({ visibility: 'private' })
+  });
+  assert.equal(privateDuplicateResponse.status, 200);
+  const privateDuplicate = (await privateDuplicateResponse.json()).event;
+  assert.equal(privateDuplicate.visibility, 'private');
+  assert.equal(privateDuplicate.slug, duplicateEvent.slug);
 });
 
 test('Commerce ticket events use Get Tickets, reject RSVP, and never duplicate the Commerce reference', async () => {

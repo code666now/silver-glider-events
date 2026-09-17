@@ -27,6 +27,49 @@ let savedHostSnapshot = '';
 let smsCreditState = null;
 let selectedCreditPack = null;
 let paymentBusy = false;
+const hostMobileFlowQuery = window.matchMedia('(max-width: 879px)');
+const hostProfileForm = settingsElement('host-profile-form');
+let hostMobileSection = '';
+
+function syncSettingsMobileStickyAction() {
+  const hostSaveVisible = requestedSettingsSection === 'host-page' && !settingsElement('host-form-actions')?.hidden;
+  const persistentAction = requestedSettingsSection === 'account' || requestedSettingsSection === 'messaging' || hostSaveVisible;
+  document.body.classList.toggle('has-mobile-sticky-action', hostMobileFlowQuery.matches && persistentAction);
+}
+
+function renderHostMobileSection({ focus = false } = {}) {
+  if (!hostProfileForm) return;
+  if (!hostMobileFlowQuery.matches || !hostMobileSection) hostProfileForm.removeAttribute('data-host-mobile-section');
+  else hostProfileForm.dataset.hostMobileSection = hostMobileSection;
+  syncSettingsMobileStickyAction();
+  if (!focus || !hostMobileFlowQuery.matches) return;
+  const scrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  if (hostMobileSection) {
+    const panel = hostProfileForm.querySelector(`[data-host-mobile-panel="${hostMobileSection}"]`);
+    panel?.scrollIntoView({ block: 'start', behavior: scrollBehavior });
+    panel?.querySelector('[data-host-mobile-back]')?.focus({ preventScroll: true });
+  } else {
+    hostProfileForm.scrollIntoView({ block: 'start', behavior: scrollBehavior });
+    hostProfileForm.querySelector('[data-host-mobile-open]')?.focus({ preventScroll: true });
+  }
+}
+
+hostProfileForm?.querySelectorAll('[data-host-mobile-open]').forEach(button => {
+  button.addEventListener('click', () => {
+    hostMobileSection = button.dataset.hostMobileOpen;
+    renderHostMobileSection({ focus: true });
+  });
+});
+hostProfileForm?.querySelectorAll('[data-host-mobile-back]').forEach(button => {
+  button.addEventListener('click', () => {
+    hostMobileSection = '';
+    renderHostMobileSection({ focus: true });
+  });
+});
+const handleHostMobileBreakpoint = () => renderHostMobileSection();
+if (hostMobileFlowQuery.addEventListener) hostMobileFlowQuery.addEventListener('change', handleHostMobileBreakpoint);
+else hostMobileFlowQuery.addListener(handleHostMobileBreakpoint);
+renderHostMobileSection();
 
 function settingsHostInitials(name) {
   return String(name || 'SG').trim().split(/\s+/).slice(0, 2)
@@ -117,6 +160,7 @@ function hostFormValue() {
 function updateHostDirty() {
   if (!currentOrganizer) return;
   settingsElement('host-form-actions').hidden = JSON.stringify(hostFormValue()) === savedHostSnapshot;
+  syncSettingsMobileStickyAction();
 }
 
 function populateHostFields(organizer) {

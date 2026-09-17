@@ -126,6 +126,71 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   .manage-shell.is-past-event .familiar-faces-selection-actions .sg-btn:last-child { grid-column:1/-1; }
 }
 
+@media (max-width:879px) {
+  body.has-familiar-mobile-action .sg-toast { bottom:calc(300px + env(safe-area-inset-bottom)); }
+  .manage-shell .familiar-faces { padding:0; }
+  .manage-shell .familiar-faces-head { align-items:stretch;flex-direction:column;gap:20px;margin-bottom:24px; }
+  .manage-shell .familiar-faces-head h2 { font-size:23px;line-height:1.25; }
+  .manage-shell .familiar-faces-head p:not(.sg-label) { margin-top:8px;font-size:15px;line-height:1.5; }
+  .manage-shell .familiar-faces-tools { width:100%;align-items:stretch;flex-direction:column;gap:12px; }
+  .manage-shell .familiar-faces-search { width:100%; }
+  .manage-shell .familiar-faces-search .sg-input,
+  .manage-shell .familiar-faces-tools .sg-btn { width:100%;min-height:58px;font-size:16px; }
+  .manage-shell .familiar-faces-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+  .manage-shell .familiar-face-card { min-height:178px;padding:18px 12px;border-radius:20px; }
+  .manage-shell .familiar-face-name { font-size:15px; }
+  .manage-shell .familiar-face-status { font-size:13px;line-height:1.4; }
+  .manage-shell .familiar-face-share { min-height:44px;display:inline-flex;align-items:center;padding:9px 14px;font-size:12px; }
+  .manage-shell .familiar-faces-empty { padding:46px 18px;font-size:15px;line-height:1.55; }
+  .manage-shell .familiar-faces-start { margin-top:22px;padding-top:22px; }
+  .manage-shell .familiar-faces-start .sg-btn { width:100%;min-height:58px; }
+  .manage-shell .familiar-faces-start p { font-size:13px; }
+  .manage-shell .familiar-people { margin-top:30px;padding-top:26px; }
+  .manage-shell .familiar-people-head { align-items:stretch;flex-direction:column;gap:16px; }
+  .manage-shell .familiar-people-intro { font-size:15px;line-height:1.5; }
+  .manage-shell .familiar-people-source .sg-input { width:100%;min-height:58px;font-size:16px; }
+  .manage-shell .familiar-people-more .sg-btn { width:100%;min-height:54px; }
+  .manage-shell .familiar-people-note { font-size:13px;line-height:1.5; }
+  .manage-shell .familiar-faces-selection {
+    bottom:calc(72px + env(safe-area-inset-bottom));z-index:55;align-items:stretch;flex-direction:column;gap:14px;
+    margin-top:22px;padding:16px;border-radius:22px;
+  }
+  .manage-shell .familiar-faces-selection-copy strong { font-size:15px; }
+  .manage-shell .familiar-faces-selection-copy span { margin-top:5px;font-size:12px;line-height:1.4; }
+  .manage-shell .familiar-faces-selection-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+  .manage-shell .familiar-faces-selection-actions .sg-btn { min-height:52px;padding:12px;font-size:14px; }
+  .manage-shell .familiar-faces-selection-actions .sg-btn:last-child { grid-column:1/-1; }
+  .manage-shell button.familiar-face-card:focus-visible,
+  .manage-shell .familiar-face-share:focus-visible,
+  .manage-shell .familiar-faces-selection .sg-btn:focus-visible,
+  .manage-shell .familiar-people-more .sg-btn:focus-visible {
+    outline:2px solid rgba(28,197,190,.72);outline-offset:3px;
+  }
+
+  .familiar-invite-dialog {
+    width:100%;max-width:none;max-height:94dvh;margin:auto 0 0;border-right:0;border-bottom:0;border-left:0;
+    border-radius:24px 24px 0 0;
+  }
+  .familiar-invite-dialog-form { max-height:94dvh; }
+  .familiar-invite-dialog-head { gap:16px;padding:22px 22px 18px; }
+  .familiar-invite-dialog h2 { font-size:30px;line-height:1.08; }
+  .familiar-invite-intro { font-size:14px;line-height:1.55; }
+  .familiar-invite-close { width:44px;height:44px;font-size:25px; }
+  .familiar-invite-dialog-body { padding:20px 22px; }
+  .familiar-target-list { gap:12px; }
+  .familiar-target-card { min-height:98px;gap:14px;padding:12px;border-radius:18px; }
+  .familiar-target-copy strong { font-size:16px; }
+  .familiar-target-copy span { font-size:13px; }
+  .familiar-target-count { font-size:12px; }
+  .familiar-invite-review-card { padding:16px;border-radius:18px; }
+  .familiar-invite-review h3 { font-size:20px; }
+  .familiar-invite-review p,.familiar-invite-notice { font-size:13px; }
+  .familiar-invite-dialog-foot {
+    gap:10px;padding:14px 22px calc(16px + env(safe-area-inset-bottom));
+  }
+  .familiar-invite-dialog-foot .sg-btn { min-width:0;min-height:56px;flex:1;padding:13px 12px;font-size:15px; }
+}
+
 @media (max-width:720px) {
   .familiar-faces-head { align-items:stretch;flex-direction:column; }
   .familiar-faces-tools { width:100%; }

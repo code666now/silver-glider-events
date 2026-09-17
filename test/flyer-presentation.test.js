@@ -134,19 +134,24 @@ test('event editor keeps the desktop columns and adds a phone-only task flow', (
   assert.match(html, /@media \(max-width: 879px\)[\s\S]*body\.event-mobile-flow-enabled/);
   assert.match(html, /id="event-mobile-flow" aria-label="Event setup"/);
   assert.match(html, /id="event-mobile-flow-error" role="alert" tabindex="-1" hidden/);
-  assert.equal((html.match(/data-mobile-flow-open=/g) || []).length, 6);
-  assert.match(html, /data-mobile-flow-open="design"/);
-  assert.match(html, /data-mobile-flow-open="basics"/);
-  assert.match(html, /data-mobile-flow-open="about"/);
-  assert.match(html, /data-mobile-flow-open="access"/);
-  assert.match(html, /data-mobile-flow-open="guests"/);
-  assert.match(html, /data-mobile-flow-open="reminders"/);
+  for (const view of ['basics', 'design', 'admission', 'visibility', 'capacity', 'description', 'vibe', 'guests', 'reminders']) {
+    assert.match(html, new RegExp(`data-mobile-flow-open="${view}"`));
+  }
+  assert.match(html, /data-mobile-flow-open="designer"/);
+  assert.match(html, /data-mobile-flow-open="effects"/);
+  assert.match(html, /id="event-mobile-flow-preview" type="button" disabled>Preview/);
+  assert.doesNotMatch(html, /event-mobile-flow-close/);
+  assert.match(html, /id="event-mobile-screen-title">Event details/);
+  assert.match(html, /font-size: clamp\(32px, 9vw, 36px\)/);
+  assert.match(html, /grid-template-columns: 1fr; gap: 18px/);
+  assert.match(html, /\.event-mobile-flow-done \{[\s\S]*min-height: 62px/);
   assert.match(html, /id="event-mobile-flow-done" type="button"/);
   assert.match(js, /matchMedia\('\(max-width: 879px\)'\)/);
   assert.match(js, /function openMobileFlowView\(/);
   assert.match(js, /function refreshMobileFlowHub\(/);
   assert.match(js, /function returnToMobileFlowHub\([\s\S]*event-mobile-flow-title[\s\S]*focus\(\{ preventScroll: true \}\)/);
-  assert.match(js, /event-mobile-flow-close'[\s\S]*mobileFlowHasChanges\(\)[\s\S]*Discard your unsaved changes/);
+  assert.match(js, /function leaveMobileEventEditor\(\)[\s\S]*mobileFlowHasChanges\(\)[\s\S]*Discard your unsaved changes/);
+  assert.match(js, /event-mobile-flow-preview'[\s\S]*window\.open\(`/);
   assert.match(js, /addEventListener\('invalid',[\s\S]*mobileFlowPanelForElement/);
   assert.match(js, /function showError\(msg\)[\s\S]*mobileError\.focus\(\{ preventScroll: true \}\)/);
   assert.match(html, /@media \(max-width: 640px\)/);
@@ -209,15 +214,19 @@ test('desktop keeps venue, admission, and event settings in order while mobile g
   }
   assert.match(form, /id="admission-settings-title">Admission/);
   assert.match(form, /id="audience-settings-title">Event settings/);
-  assert.match(form, /id="more-details"[^>]+data-mobile-flow-panel="about"/);
-  assert.match(form, /id="admission-settings"[^>]+data-mobile-flow-panel="access"/);
+  assert.match(form, /id="description"[\s\S]*data-mobile-flow-panel="description"|data-mobile-flow-panel="description"[\s\S]*id="description"/);
+  assert.match(form, /data-mobile-flow-panel="vibe"[\s\S]*id="event_vibe_label"/);
+  assert.match(form, /id="admission-settings"[^>]+data-mobile-flow-panel="admission"/);
+  assert.match(form, /data-mobile-flow-panel="capacity"[\s\S]*id="capacity"/);
+  assert.match(form, /data-mobile-flow-panel="visibility"[\s\S]*id="vis-public"/);
   assert.match(form, /id="guest-experience-settings"[^>]+data-mobile-flow-panel="guests"/);
   assert.match(form, /id="automatic-text-settings"[^>]+data-mobile-flow-panel="reminders"/);
-  assert.match(form, /id="private-settings"[^>]+data-mobile-flow-panel="access"/);
+  assert.match(form, /id="private-settings"[^>]+data-mobile-flow-panel="visibility"/);
   assert.doesNotMatch(form, /Tickets and visibility/);
   assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your Host Page and may appear in Silver Glider discovery/);
   assert.match(form, /id="vis-public"[\s\S]*<circle cx="12" cy="12" r="9"\/>[\s\S]*<path d="M3 12h18"\/>/);
   assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your Host Page and discovery/);
+  assert.match(form, /id="vis-secret"[\s\S]*Secret Show[\s\S]*six-character code/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Show guest list[\s\S]*Show attendee first names and avatars on the event page/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Allow \+1s[\s\S]*Let each RSVP bring one guest/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Enable comments[\s\S]*Confirmed attendees can join the conversation/);
@@ -231,7 +240,11 @@ test('desktop keeps venue, admission, and event settings in order while mobile g
   assert.ok(form.indexOf('id="guest-experience-settings"') < form.indexOf('id="private-settings"'));
   assert.match(js, /vis-public'\)\.setAttribute\('aria-pressed'/);
   assert.match(js, /vis-private'\)\.setAttribute\('aria-pressed'/);
+  assert.match(js, /vis-secret'\)\.setAttribute\('aria-pressed'/);
   assert.match(js, /secretShowWasDisabled[\s\S]*setSecretShow\(false\)/);
+  assert.match(js, /nextMode === 'public' \|\| \(mobileFlowMedia\.matches && nextMode === 'private'\)/);
+  assert.match(js, /setVisibility\('secret'\)/);
+  assert.match(js, /You’re on the list[\s\S]*account email when ticketing is available/);
   assert.match(js, /show_guest_list: \$\('show_guest_list'\)\.checked/);
   assert.doesNotMatch(form, /<details[^>]+id="admission-settings"/);
   assert.doesNotMatch(form, /<details[^>]+id="audience-settings"/);

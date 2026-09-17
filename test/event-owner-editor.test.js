@@ -30,6 +30,12 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /Drop it here or choose a file/);
   assert.match(renderer, /name="owner_admission" value="free_rsvp"/);
   assert.match(renderer, /name="owner_admission" value="external_tickets"/);
+  assert.match(renderer, /<fieldset class="owner-choice-field owner-admission-field">[\s\S]*<legend>Admission<\/legend>/);
+  assert.match(renderer, /<fieldset class="owner-choice-field owner-visibility-field">[\s\S]*<legend>Visibility<\/legend>/);
+  assert.match(renderer, /id="owner-commerce-interest"[^>]*hidden/);
+  assert.match(renderer, /id="owner-commerce-interest-toggle"[\s\S]*Join the waitlist/);
+  assert.match(renderer, /id="owner-commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"/);
+  assert.doesNotMatch(renderer, /id="owner-commerce-interest-(?:email|name)"/i);
   assert.match(renderer, /id="owner-ticket-price"/);
   assert.match(renderer, /owner-flyer-default[\s\S]*Match Photo/);
   assert.doesNotMatch(renderer, /id="owner-end-time"/);
@@ -47,6 +53,8 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function previewTheme\(theme\)/);
   assert.match(client, /function previewDetails\(\)/);
   assert.match(client, /function previewAdmission\(\)/);
+  assert.match(client, /function focusCommerceInterestConfirmation\(\)/);
+  assert.match(client, /renderCommerceInterest\(\);[\s\S]*focusCommerceInterestConfirmation\(\)/);
   assert.match(client, /function previewPresentation\(\)/);
   assert.match(client, /classList\.toggle\('owner-preview-flyer', flyer\)/);
   assert.match(client, /classList\.toggle\('owner-preview-standard', !flyer\)/);
@@ -79,7 +87,19 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /google_place_id: draft\.googlePlaceId \|\| null/);
   assert.match(client, /presentation_mode: draft\.presentationMode/);
   assert.match(client, /admission_type: draft\.admissionType/);
+  assert.match(client, /request\('\/api\/commerce\/config'\)/);
+  assert.match(client, /request\('\/api\/commerce\/interest'/);
+  assert.match(client, /body: \{ interested: nextInterested \}/);
+  assert.match(client, /We’ll contact you at your account email when ticketing is available/);
   assert.match(client, /clearPlaceMeta\(\);[\s\S]*renderOwnerLocation\(\);[\s\S]*previewDetails\(\);[\s\S]*syncDirtyState\(\)/);
+});
+
+test('mobile owner choices keep their fieldset names and transient messages clear the persistent action', () => {
+  const css = read('public/css/event-owner-editor.css');
+
+  assert.match(css, /\.owner-choice-field legend \{[\s\S]*position: absolute;[\s\S]*clip: rect\(0,0,0,0\);/);
+  assert.doesNotMatch(css, /\.owner-choice-field legend \{\s*display:\s*none/);
+  assert.match(css, /body\.owner-editor-open \.owner-editor-toast \{ bottom: calc\(112px \+ env\(safe-area-inset-bottom\)\); \}/);
 });
 
 test('presentation mode switches the live owner preview before save', () => {
@@ -174,6 +194,21 @@ test('mobile owner inputs prevent Safari focus zoom without disabling page zoom'
     assert.ok(viewport, `${templatePath} should define a viewport`);
     assert.doesNotMatch(viewport[1], /\b(?:maximum-scale|user-scalable)\s*=/i);
   }
+});
+
+test('quick create becomes a focused three-step phone flow without duplicating submission', () => {
+  const template = read('src/views/event-create.html');
+  const client = read('public/js/event-create.js');
+
+  assert.equal((template.match(/id="quick-create-submit"/g) || []).length, 1);
+  assert.equal((template.match(/data-create-step=/g) || []).length, 3);
+  assert.match(template, /@media \(max-width: 879px\)/);
+  assert.match(template, /class="quick-create-mobile-back"/);
+  assert.match(template, /class="quick-create-action-dock"/);
+  assert.match(client, /window\.matchMedia\('\(max-width: 879px\)'\)/);
+  assert.match(client, /mobileStep \+= 1/);
+  assert.match(client, /mobileStep -= 1/);
+  assert.match(client, /if \(!validateLocation\(\)\) return/);
 });
 
 test('appearance editing reuses protected uploads and rate-conscious photo search', () => {

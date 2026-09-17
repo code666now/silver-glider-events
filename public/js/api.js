@@ -171,6 +171,9 @@ function toast(msg) {
     el.className = 'sg-toast';
     document.body.appendChild(el);
   }
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  el.setAttribute('aria-atomic', 'true');
   el.textContent = msg;
   requestAnimationFrame(() => el.classList.add('show'));
   clearTimeout(_toastTimer);

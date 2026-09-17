@@ -14,11 +14,15 @@
   const LocationUtils = window.SGLocation;
   const mobileEditorMedia = window.matchMedia('(max-width: 879px)');
   const mobileViews = {
-    appearance: { title: 'Appearance', panel: 'appearance' },
-    details: { title: 'Event details', panel: 'details' },
-    access: { title: 'RSVP & access', panel: 'settings', section: 'access' },
-    guests: { title: 'Guest experience', panel: 'settings', section: 'guests' },
-    more: { title: 'More tools', panel: 'settings', section: 'more' }
+    appearance: { title: 'Appearance', helper: 'Choose a page style and artwork that feels like your event.', panel: 'appearance' },
+    designer: { title: 'Designer credit', helper: 'Give the artist behind your flyer an optional shoutout.', panel: 'appearance', appearanceSection: 'designer', parent: 'appearance' },
+    effects: { title: 'Effects', helper: 'Choose the atmosphere guests see around your event.', panel: 'appearance', appearanceSection: 'effects', parent: 'appearance' },
+    details: { title: 'Event details', helper: 'Keep the essentials clear so guests know where and when to arrive.', panel: 'details' },
+    admission: { title: 'Admission', helper: 'Choose how guests reserve a spot or get tickets.', panel: 'settings', section: 'admission' },
+    visibility: { title: 'Visibility', helper: 'Decide who can discover and open this event.', panel: 'settings', section: 'visibility' },
+    capacity: { title: 'Capacity', helper: 'Set a guest limit, or leave it unlimited.', panel: 'settings', section: 'capacity', optional: true },
+    guests: { title: 'Guest experience', helper: 'Choose how guests can participate after they RSVP.', panel: 'settings', section: 'guests', optional: true },
+    more: { title: 'Links & advanced', helper: 'Open guest management, music, and the full event editor.', panel: 'settings', section: 'more' }
   };
   const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'];
   const effectKeys = ['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
@@ -105,15 +109,20 @@
     ticketUrl: source.ticketUrl || '',
     coverCreditName: source.coverCreditName || '',
     coverCreditLink: source.coverCreditLink || '',
-    artworkAccentColor: source.artworkAccentColor || ''
+    artworkAccentColor: source.artworkAccentColor || '',
+    secretShowEnabled: source.secretShowEnabled === true,
+    smsReminderEnabled: source.smsReminderEnabled === true,
+    secretCode: String(source.secretCode || '').toUpperCase(),
+    secretCodeConfirm: String(source.secretCodeConfirm || '').toUpperCase()
   });
   let saved = normalized(EVENT);
   let draft = clone(saved);
   let activeTab = 'appearance';
   let activeMobileView = 'hub';
   let mobileReturnFocus = null;
+  let mobileNestedReturnFocus = null;
   let mobileGuidedFlow = false;
-  const mobileDraftSequence = ['appearance', 'details', 'access', 'guests'];
+  const mobileDraftSequence = ['appearance', 'details', 'admission', 'visibility', 'capacity', 'guests'];
   let lastFocus = null;
   let toastTimer;
   let photoPage = 1;
@@ -128,6 +137,9 @@
   let placesInitPromise;
   let locationKind = null;
   let manualLocationMode = false;
+  let commerceConfigLoaded = false;
+  let commerceEnabled = false;
+  let commerceInterested = false;
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -164,6 +176,25 @@
     toastTimer = setTimeout(() => toastNode.classList.remove('is-visible'), 2800);
   }
 
+  function renderCommerceInterest() {
+    const panel = $('owner-commerce-interest');
+    const button = $('owner-commerce-interest-toggle');
+    if (!panel || !button) return;
+    panel.hidden = !commerceConfigLoaded || commerceEnabled || Boolean(saved.commerceEventId);
+    panel.classList.toggle('is-confirmed', commerceInterested);
+    button.setAttribute('aria-pressed', String(commerceInterested));
+    button.textContent = commerceInterested ? 'Leave waitlist' : 'Join the waitlist';
+    $('owner-commerce-interest-copy').innerHTML = commerceInterested
+      ? '<span class="owner-commerce-interest-check" aria-hidden="true">✓</span><strong>You’re on the list</strong><span>We’ll contact you at your account email when ticketing is available.</span>'
+      : '<strong>Sell with Silver Glider is coming soon.</strong><span>Join the waitlist using your account email.</span>';
+  }
+
+  function focusCommerceInterestConfirmation() {
+    const confirmation = $('owner-commerce-interest-copy');
+    if (!confirmation || !commerceInterested) return;
+    confirmation.focus({ preventScroll: true });
+  }
+
   function sensitiveChanges() {
     return ['eventDate', 'startTime', 'venueName', 'venueAddress']
       .some(key => String(draft[key] ?? '') !== String(saved[key] ?? ''));
@@ -198,14 +229,21 @@
       external_tickets: 'External tickets',
       silver_glider_tickets: 'Silver Glider tickets'
     };
-    const visibilityLabel = draft.visibility === 'private' ? 'Private link' : 'Public';
-    const capacityLabel = draft.capacity ? ` · ${draft.capacity} spots` : '';
-    $('owner-mobile-summary-access').textContent = `${admissionLabels[draft.admissionType] || 'Free RSVP'} · ${visibilityLabel}${capacityLabel}`;
+    $('owner-mobile-summary-admission').textContent = admissionLabels[draft.admissionType] || 'Free RSVP';
+    $('owner-mobile-summary-visibility').textContent = draft.secretShowEnabled
+      ? 'Secret Show · Code required'
+      : (draft.visibility === 'private' ? 'Private link only' : 'Public');
+    $('owner-mobile-summary-capacity').textContent = draft.capacity ? `${draft.capacity} guests` : 'Unlimited';
 
     const enabledGuestOptions = [draft.showGuestList, draft.allowGuests, draft.commentsEnabled].filter(Boolean).length;
     $('owner-mobile-summary-guests').textContent = enabledGuestOptions
       ? `${enabledGuestOptions} of 3 options on`
       : 'All optional settings off';
+    $('owner-mobile-summary-designer').textContent = draft.flyerDesignerName || draft.flyerDesignerInstagramHandle
+      ? 'Credit added'
+      : 'Add an optional flyer credit';
+    const selectedTheme = document.querySelector(`[data-owner-theme="${draft.backgroundTheme}"] span:last-child`);
+    $('owner-mobile-summary-effects').textContent = selectedTheme?.textContent || 'Choose the page atmosphere';
   }
 
   function setMobileViewStatus(message = '') {
@@ -218,7 +256,7 @@
     const section = control.closest('[data-owner-mobile-section]');
     if (section) return section.dataset.ownerMobileSection;
     const panel = control.closest('[data-owner-panel]')?.dataset.ownerPanel;
-    return panel === 'settings' ? 'access' : (panel || 'details');
+    return panel === 'settings' ? 'admission' : (panel || 'details');
   }
 
   function showEditorValidation(message, view, control, { report = false } = {}) {
@@ -251,7 +289,9 @@
 
   function editorFieldsDifferFromDraft() {
     const capacity = $('owner-capacity').value ? Number($('owner-capacity').value) : null;
-    const visibility = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    const visibilityChoice = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    const visibility = visibilityChoice === 'secret' ? 'private' : visibilityChoice;
+    const secretShowEnabled = mobileEditorMedia.matches ? visibilityChoice === 'secret' : draft.secretShowEnabled;
     return $('owner-title').value.trim() !== draft.title ||
       $('owner-description').value.trim() !== draft.description ||
       $('owner-date').value !== draft.eventDate ||
@@ -259,6 +299,9 @@
       $('owner-category').value !== draft.category ||
       capacity !== draft.capacity ||
       visibility !== draft.visibility ||
+      secretShowEnabled !== draft.secretShowEnabled ||
+      cleanSecretCode($('owner-secret-code').value) !== (draft.secretCode || '') ||
+      cleanSecretCode($('owner-secret-code-confirm').value) !== (draft.secretCodeConfirm || '') ||
       $('owner-show-guests').checked !== draft.showGuestList ||
       $('owner-allow-guests').checked !== draft.allowGuests ||
       $('owner-comments').checked !== draft.commentsEnabled ||
@@ -540,7 +583,9 @@
     }
     $('owner-remove-image').disabled = !url || draft.presentationMode === 'flyer';
     const showFlyerCredit = draft.presentationMode === 'flyer' && Boolean(url);
-    $('owner-flyer-credit-fields').hidden = !showFlyerCredit;
+    $('owner-mobile-designer-row').hidden = !showFlyerCredit;
+    if (!mobileEditorMedia.matches) $('owner-flyer-credit-fields').hidden = !showFlyerCredit;
+    else if (activeMobileView === 'designer') $('owner-flyer-credit-fields').hidden = !showFlyerCredit;
     if (!showFlyerCredit) setOwnerFlyerDesignerError('');
   }
 
@@ -562,6 +607,21 @@
     document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
     document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
     document.querySelector('[data-owner-theme="adaptive"]').hidden = draft.presentationMode === 'flyer';
+    $('owner-mobile-designer-row').hidden = !(draft.presentationMode === 'flyer' && draft.flyerImageUrl);
+  }
+
+  function syncMobileAppearanceSections(viewName = activeMobileView) {
+    const designer = $('owner-flyer-credit-fields');
+    const effects = $('owner-theme-picker');
+    if (!mobileEditorMedia.matches) {
+      designer.hidden = !(draft.presentationMode === 'flyer' && draft.flyerImageUrl);
+      effects.hidden = false;
+      editor.removeAttribute('data-mobile-view');
+      return;
+    }
+    editor.dataset.mobileView = viewName;
+    designer.hidden = viewName !== 'designer' || !(draft.presentationMode === 'flyer' && draft.flyerImageUrl);
+    effects.hidden = viewName !== 'effects';
   }
 
   function setPresentationMode(mode) {
@@ -586,6 +646,46 @@
     $('owner-ticket-fields').hidden = !external;
     $('owner-ticket-price').required = external;
     previewAdmission();
+  }
+
+  function cleanSecretCode(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  }
+
+  function renderVisibilityControls() {
+    const selectedValue = mobileEditorMedia.matches && draft.secretShowEnabled ? 'secret' : draft.visibility;
+    document.querySelectorAll('input[name="owner_visibility"]').forEach(input => {
+      input.checked = input.value === selectedValue;
+      input.disabled = !mobileEditorMedia.matches && (input.value === 'secret' || (input.value === 'public' && draft.secretShowEnabled));
+    });
+    $('owner-secret-note').hidden = !draft.secretShowEnabled;
+    const secretFields = $('owner-secret-fields');
+    const showSecretFields = mobileEditorMedia.matches && draft.secretShowEnabled;
+    secretFields.hidden = !showSecretFields;
+    const hasNewCode = Boolean($('owner-secret-code').value || $('owner-secret-code-confirm').value);
+    const codeRequired = showSecretFields && (!saved.secretShowEnabled || hasNewCode);
+    $('owner-secret-code').required = codeRequired;
+    $('owner-secret-code-confirm').required = codeRequired;
+    $('owner-secret-help').textContent = saved.secretShowEnabled
+      ? 'A code is already set. Leave both fields blank to keep it, or enter a new code twice.'
+      : 'Choose a six-character code. Guests will need it to open the event.';
+  }
+
+  function setVisibilityMode(value) {
+    if (value === 'secret') {
+      draft.visibility = 'private';
+      draft.secretShowEnabled = true;
+    } else {
+      draft.visibility = value === 'private' ? 'private' : 'public';
+      draft.secretShowEnabled = false;
+      draft.secretCode = '';
+      draft.secretCodeConfirm = '';
+      $('owner-secret-code').value = '';
+      $('owner-secret-code-confirm').value = '';
+      $('owner-secret-code-confirm').setCustomValidity('');
+    }
+    renderVisibilityControls();
+    syncDirtyState();
   }
 
   function setOwnerFlyerDesignerError(message) {
@@ -879,7 +979,6 @@
     populateOwnerLocation();
     $('owner-category').value = draft.category;
     $('owner-capacity').value = draft.capacity == null ? '' : draft.capacity;
-    document.querySelectorAll('input[name="owner_visibility"]').forEach(input => { input.checked = input.value === draft.visibility; });
     $('owner-show-guests').checked = draft.showGuestList;
     $('owner-allow-guests').checked = draft.allowGuests;
     $('owner-comments').checked = draft.commentsEnabled;
@@ -888,12 +987,13 @@
     $('owner-flyer-designer-name').value = draft.flyerDesignerName;
     const flyerInstagram = cleanInstagramHandleInput(draft.flyerDesignerInstagramHandle).value;
     $('owner-flyer-designer-instagram').value = flyerInstagram ? `@${flyerInstagram}` : '';
+    $('owner-secret-code').value = draft.secretCode || '';
+    $('owner-secret-code-confirm').value = draft.secretCodeConfirm || '';
     setOwnerFlyerDesignerError('');
-    $('owner-secret-note').hidden = !draft.secretShowEnabled;
-    const publicChoice = document.querySelector('input[name="owner_visibility"][value="public"]');
-    publicChoice.disabled = draft.secretShowEnabled;
     renderPresentationControls();
     renderAdmissionControls();
+    renderVisibilityControls();
+    syncMobileAppearanceSections();
     setCoverFit(draft.coverFitMode);
     previewPresentation();
     previewDetails();
@@ -929,19 +1029,21 @@
     activeMobileView = mobileViews[name] ? name : 'appearance';
     activeTab = view.panel;
     $('owner-mobile-hub').hidden = true;
-    $('owner-mobile-subnav').hidden = false;
+    $('owner-mobile-screen-head').hidden = false;
     $('owner-mobile-view-title').textContent = view.title;
+    $('owner-mobile-view-helper').textContent = view.helper || '';
     const guidedIndex = mobileDraftSequence.indexOf(activeMobileView);
-    const previousGuidedView = guidedIndex > 0 ? mobileViews[mobileDraftSequence[guidedIndex - 1]] : null;
-    $('owner-mobile-back').setAttribute('aria-label', previousGuidedView && mobileGuidedFlow
-      ? `Back to ${previousGuidedView.title}`
-      : 'Back to event settings');
+    const previousView = mobileGuidedFlow && guidedIndex > 0
+      ? mobileViews[mobileDraftSequence[guidedIndex - 1]]
+      : (view.parent ? mobileViews[view.parent] : null);
+    $('owner-mobile-nav-back').setAttribute('aria-label', previousView ? `Back to ${previousView.title}` : 'Back to event setup');
     $('owner-mobile-view-eyebrow').textContent = mobileGuidedFlow && guidedIndex >= 0
-      ? `Step ${guidedIndex + 1} of ${mobileDraftSequence.length}${activeMobileView === 'guests' ? ' · Optional' : ''}`
+      ? `Step ${guidedIndex + 1} of ${mobileDraftSequence.length}${view.optional ? ' · Optional' : ''}`
       : 'Edit event';
     $('owner-mobile-done').textContent = mobileGuidedFlow
-      ? (guidedIndex === mobileDraftSequence.length - 1 ? 'Review' : 'Next')
+      ? (guidedIndex === mobileDraftSequence.length - 1 ? 'Review event' : 'Next')
       : 'Done';
+    $('owner-mobile-action').hidden = false;
     editor.classList.add('is-mobile-subview');
     document.querySelectorAll('[data-owner-tab]').forEach(button => {
       const active = button.dataset.ownerTab === activeTab;
@@ -954,6 +1056,8 @@
     document.querySelectorAll('[data-owner-mobile-section]').forEach(section => {
       section.hidden = activeTab === 'settings' && section.dataset.ownerMobileSection !== view.section;
     });
+    if (activeMobileView === 'visibility') renderVisibilityControls();
+    syncMobileAppearanceSections(activeMobileView);
     document.querySelector('.owner-editor-scroll').scrollTop = 0;
     if (activeTab === 'details') initVenueAutocomplete();
     if (focus) setTimeout(() => $('owner-mobile-view-title').focus({ preventScroll: true }), 0);
@@ -965,15 +1069,19 @@
     activeMobileView = 'hub';
     closePhotoBrowser();
     setMobileViewStatus('');
+    renderVisibilityControls();
     updateMobileSummaries();
     $('owner-mobile-hub').hidden = false;
-    $('owner-mobile-subnav').hidden = true;
+    $('owner-mobile-screen-head').hidden = true;
+    $('owner-mobile-action').hidden = true;
+    $('owner-mobile-nav-back').setAttribute('aria-label', 'Close event editor');
     editor.classList.remove('is-mobile-subview');
+    editor.dataset.mobileView = 'hub';
     document.querySelectorAll('[data-owner-panel]').forEach(panel => { panel.hidden = true; });
     document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
     document.querySelector('.owner-editor-scroll').scrollTop = 0;
     if (!focus) return;
-    const target = mobileReturnFocus instanceof HTMLElement && mobileReturnFocus.isConnected
+    const target = mobileReturnFocus instanceof HTMLElement && mobileReturnFocus.isConnected && mobileReturnFocus.closest('#owner-mobile-hub')
       ? mobileReturnFocus
       : $('owner-mobile-hub-title');
     setTimeout(() => target.focus({ preventScroll: true }), 0);
@@ -982,13 +1090,16 @@
   function activateTab(name, { focus = false } = {}) {
     activeTab = ['appearance', 'details', 'settings'].includes(name) ? name : 'appearance';
     if (mobileEditorMedia.matches) {
-      openMobileView(activeTab === 'settings' ? 'access' : activeTab, { focus });
+      openMobileView(activeTab === 'settings' ? 'admission' : activeTab, { focus });
       return;
     }
     $('owner-mobile-hub').hidden = true;
-    $('owner-mobile-subnav').hidden = true;
+    $('owner-mobile-screen-head').hidden = true;
+    $('owner-mobile-action').hidden = true;
     editor.classList.remove('is-mobile-subview');
+    editor.removeAttribute('data-mobile-view');
     document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
+    syncMobileAppearanceSections();
     renderActivePanel({ focus });
   }
 
@@ -1036,6 +1147,7 @@
     if (mobileEditorMedia.matches) {
       showMobileHub({ focus: false });
       mobileReturnFocus = null;
+      mobileNestedReturnFocus = null;
     }
     (lastFocus instanceof HTMLElement ? lastFocus : trigger).focus({ preventScroll: true });
   }
@@ -1043,6 +1155,12 @@
   function openPhotoBrowser() {
     $('owner-photo-browser').hidden = false;
     $('owner-panel-appearance').classList.add('is-photo-browser');
+    if (mobileEditorMedia.matches) {
+      $('owner-mobile-view-title').textContent = 'Free photos';
+      $('owner-mobile-view-helper').textContent = 'Choose an image, then return to finish the appearance.';
+      $('owner-mobile-action').hidden = true;
+      $('owner-mobile-nav-back').setAttribute('aria-label', 'Back to Appearance');
+    }
     $('owner-photo-query').focus();
     if (!photosReady) {
       renderPhotoCategories();
@@ -1053,6 +1171,12 @@
   function closePhotoBrowser() {
     $('owner-photo-browser').hidden = true;
     $('owner-panel-appearance').classList.remove('is-photo-browser');
+    if (mobileEditorMedia.matches && activeMobileView !== 'hub') {
+      const view = mobileViews[activeMobileView] || mobileViews.appearance;
+      $('owner-mobile-view-title').textContent = view.title;
+      $('owner-mobile-view-helper').textContent = view.helper || '';
+      $('owner-mobile-action').hidden = false;
+    }
   }
 
   function renderPhotoCategories() {
@@ -1170,7 +1294,15 @@
     draft.startTime = $('owner-start-time').value;
     draft.category = $('owner-category').value;
     draft.capacity = $('owner-capacity').value ? Number($('owner-capacity').value) : null;
-    draft.visibility = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    const visibilityChoice = document.querySelector('input[name="owner_visibility"]:checked')?.value || saved.visibility;
+    if (mobileEditorMedia.matches) {
+      draft.secretShowEnabled = visibilityChoice === 'secret';
+      draft.visibility = visibilityChoice === 'public' ? 'public' : 'private';
+    } else {
+      draft.visibility = visibilityChoice === 'private' ? 'private' : 'public';
+    }
+    draft.secretCode = cleanSecretCode($('owner-secret-code').value);
+    draft.secretCodeConfirm = cleanSecretCode($('owner-secret-code-confirm').value);
     draft.showGuestList = $('owner-show-guests').checked;
     draft.allowGuests = $('owner-allow-guests').checked;
     draft.commentsEnabled = $('owner-comments').checked;
@@ -1187,6 +1319,7 @@
     previewDetails();
     previewGuestSettings();
     renderAdmissionControls();
+    renderVisibilityControls();
     syncDirtyState();
   }
 
@@ -1206,6 +1339,8 @@
       category: draft.category || null,
       capacity: draft.capacity,
       visibility: draft.visibility,
+      secret_show_enabled: draft.secretShowEnabled,
+      sms_reminder_enabled: draft.secretShowEnabled ? false : draft.smsReminderEnabled,
       show_guest_list: draft.showGuestList,
       allow_guests: draft.allowGuests,
       comments_enabled: draft.commentsEnabled,
@@ -1217,6 +1352,10 @@
       background_theme: draft.backgroundTheme,
       artwork_accent_color: draft.artworkAccentColor || null
     };
+    if (draft.secretShowEnabled && draft.secretCode) {
+      body.secret_code = draft.secretCode;
+      body.secret_code_confirm = draft.secretCodeConfirm;
+    }
     if (draft.presentationMode === 'flyer') Object.assign(body, {
       flyer_image_url: draft.flyerImageUrl || null,
       flyer_designer_name: draft.flyerDesignerName || null,
@@ -1236,19 +1375,50 @@
   $('owner-editor-cancel').addEventListener('click', () => closeEditor({ confirmDiscard: false }));
   document.querySelectorAll('[data-owner-mobile-view]').forEach(button => {
     button.addEventListener('click', () => {
-      mobileGuidedFlow = false;
-      openMobileView(button.dataset.ownerMobileView, { returnFocus: button });
+      const targetView = button.dataset.ownerMobileView;
+      if (mobileViews[targetView]?.parent) {
+        mobileNestedReturnFocus = button;
+        openMobileView(targetView);
+      } else {
+        mobileGuidedFlow = false;
+        openMobileView(targetView, { returnFocus: button });
+      }
     });
   });
-  $('owner-mobile-back').addEventListener('click', () => {
+  function navigateMobileBack() {
+    if (editor.classList.contains('is-peeking')) {
+      resetPreviewPeek();
+      const view = mobileViews[activeMobileView];
+      $('owner-mobile-nav-back').setAttribute('aria-label', view ? 'Back to event setup' : 'Close event editor');
+      return;
+    }
     reconcileEditorFields();
+    if (!$('owner-photo-browser').hidden) {
+      closePhotoBrowser();
+      const view = mobileViews[activeMobileView] || mobileViews.appearance;
+      $('owner-mobile-view-title').textContent = view.title;
+      $('owner-mobile-view-helper').textContent = view.helper || '';
+      $('owner-mobile-action').hidden = false;
+      $('owner-mobile-nav-back').setAttribute('aria-label', 'Back to event setup');
+      return;
+    }
     const currentIndex = mobileDraftSequence.indexOf(activeMobileView);
     if (mobileGuidedFlow && currentIndex > 0) {
       openMobileView(mobileDraftSequence[currentIndex - 1]);
       return;
     }
-    showMobileHub();
-  });
+    const parentView = mobileViews[activeMobileView]?.parent;
+    if (parentView) {
+      const returnTarget = mobileNestedReturnFocus;
+      mobileNestedReturnFocus = null;
+      openMobileView(parentView, { focus: false });
+      if (returnTarget instanceof HTMLElement) setTimeout(() => returnTarget.focus({ preventScroll: true }), 0);
+      return;
+    }
+    if (activeMobileView !== 'hub') showMobileHub();
+    else closeEditor();
+  }
+  $('owner-mobile-nav-back').addEventListener('click', navigateMobileBack);
   $('owner-mobile-done').addEventListener('click', () => {
     reconcileEditorFields();
     const currentIndex = mobileDraftSequence.indexOf(activeMobileView);
@@ -1256,7 +1426,14 @@
       openMobileView(mobileDraftSequence[currentIndex + 1]);
       return;
     }
-    showMobileHub();
+    const parentView = mobileViews[activeMobileView]?.parent;
+    if (parentView) {
+      const returnTarget = mobileNestedReturnFocus;
+      mobileNestedReturnFocus = null;
+      openMobileView(parentView, { focus: false });
+      if (returnTarget instanceof HTMLElement) setTimeout(() => returnTarget.focus({ preventScroll: true }), 0);
+    }
+    else showMobileHub();
   });
   $('owner-editor-peek').addEventListener('click', () => {
     const peeking = editor.classList.toggle('is-peeking');
@@ -1264,6 +1441,7 @@
     document.body.classList.toggle('owner-editor-peeking', peeking);
     $('owner-editor-peek').textContent = peeking ? 'Continue editing' : 'Preview';
     $('owner-editor-peek').setAttribute('aria-expanded', String(!peeking));
+    if (mobileEditorMedia.matches) $('owner-mobile-nav-back').setAttribute('aria-label', peeking ? 'Return to editing' : (activeMobileView === 'hub' ? 'Close event editor' : 'Back to event setup'));
   });
 
   document.querySelectorAll('[data-owner-tab]').forEach((button, index, buttons) => {
@@ -1329,6 +1507,22 @@
     renderAdmissionControls();
     syncDirtyState();
   }));
+  document.querySelectorAll('input[name="owner_visibility"]').forEach(input => input.addEventListener('change', () => {
+    if (mobileEditorMedia.matches) setVisibilityMode(input.value);
+  }));
+  ['owner-secret-code', 'owner-secret-code-confirm'].forEach(id => {
+    $(id).addEventListener('input', event => {
+      const clean = cleanSecretCode(event.currentTarget.value);
+      if (event.currentTarget.value !== clean) event.currentTarget.value = clean;
+      draft.secretCode = cleanSecretCode($('owner-secret-code').value);
+      draft.secretCodeConfirm = cleanSecretCode($('owner-secret-code-confirm').value);
+      $('owner-secret-code-confirm').setCustomValidity(
+        draft.secretCodeConfirm && draft.secretCode !== draft.secretCodeConfirm ? 'The two secret codes must match.' : ''
+      );
+      renderVisibilityControls();
+      syncDirtyState();
+    });
+  });
 
   $('owner-upload-image').addEventListener('click', () => $('owner-image-input').click());
   const ownerImageCard = $('owner-image-card');
@@ -1381,6 +1575,36 @@
   });
   $('owner-photo-more').addEventListener('click', () => loadPhotos(photoQuery, { category: photoCategory, page: photoPage + 1, append: true }));
 
+  request('/api/commerce/config')
+    .then(({ enabled, interest }) => {
+      commerceEnabled = enabled === true;
+      commerceConfigLoaded = true;
+      commerceInterested = interest?.interested === true;
+      renderCommerceInterest();
+    })
+    .catch(() => {});
+
+  $('owner-commerce-interest-toggle')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const nextInterested = !commerceInterested;
+    button.disabled = true;
+    button.textContent = nextInterested ? 'Adding…' : 'Removing…';
+    try {
+      const { interest } = await request('/api/commerce/interest', {
+        method: 'POST',
+        body: { interested: nextInterested }
+      });
+      commerceInterested = interest?.interested === true;
+      renderCommerceInterest();
+      focusCommerceInterestConfirmation();
+    } catch (error) {
+      showToast(error.message || 'The waitlist could not be updated.');
+      renderCommerceInterest();
+    } finally {
+      button.disabled = false;
+    }
+  });
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
     readInputs();
@@ -1389,7 +1613,7 @@
     if (draft.presentationMode === 'flyer') {
       const flyerInstagram = validateOwnerFlyerDesignerHandle({ normalize: true });
       if (flyerInstagram.error) {
-        showEditorValidation(flyerInstagram.error, 'appearance', $('owner-flyer-designer-instagram'));
+        showEditorValidation(flyerInstagram.error, 'designer', $('owner-flyer-designer-instagram'));
         return;
       }
       if (!draft.flyerImageUrl) {
@@ -1398,7 +1622,12 @@
       }
     }
     if (draft.admissionType === 'external_tickets' && (!Number.isFinite(draft.ticketPrice) || draft.ticketPrice <= 0)) {
-      showEditorValidation('Add the external ticket price before saving.', 'access', $('owner-ticket-price'), { report: true });
+      showEditorValidation('Add the external ticket price before saving.', 'admission', $('owner-ticket-price'), { report: true });
+      return;
+    }
+    if (draft.secretShowEnabled && draft.secretCode !== draft.secretCodeConfirm) {
+      $('owner-secret-code-confirm').setCustomValidity('The two secret codes must match.');
+      showEditorValidation('Enter the same secret code twice.', 'visibility', $('owner-secret-code-confirm'), { report: true });
       return;
     }
     if (!draft.title) {
@@ -1485,11 +1714,8 @@
       return;
     }
     if (event.key !== 'Escape') return;
-    if (!$('owner-photo-browser').hidden) closePhotoBrowser();
-    else if (mobileEditorMedia.matches && activeMobileView !== 'hub') {
-      reconcileEditorFields();
-      showMobileHub();
-    }
+    if (mobileEditorMedia.matches) navigateMobileBack();
+    else if (!$('owner-photo-browser').hidden) closePhotoBrowser();
     else closeEditor();
   });
   window.addEventListener('beforeunload', event => {
@@ -1509,9 +1735,13 @@
     activeMobileView = 'hub';
     mobileGuidedFlow = false;
     $('owner-mobile-hub').hidden = true;
-    $('owner-mobile-subnav').hidden = true;
+    $('owner-mobile-screen-head').hidden = true;
+    $('owner-mobile-action').hidden = true;
     editor.classList.remove('is-mobile-subview');
+    editor.removeAttribute('data-mobile-view');
     document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
+    renderVisibilityControls();
+    syncMobileAppearanceSections();
     renderActivePanel({ focus: editorIsOpen });
   }
 
@@ -1527,7 +1757,7 @@
   const savedMessage = sessionStorage.getItem('sge-owner-editor-saved');
   populate();
   if (mobileEditorMedia.matches) {
-    if (requestedTab) openMobileView(initialTab === 'settings' ? 'access' : initialTab, { focus: false });
+    if (requestedTab) openMobileView(initialTab === 'settings' ? 'admission' : initialTab, { focus: false });
     else showMobileHub({ focus: false });
   } else {
     activateTab(initialTab);

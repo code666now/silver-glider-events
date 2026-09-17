@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.108
+
+Released September 17, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Phone-sized organizer surfaces now behave like a focused mobile app instead of a compressed desktop workspace. Quick Create uses three essential steps; Create/Edit, the live owner editor, event management, Settings, My Events, Following, Add Photo, and RSVP management use consistent full-screen hierarchy, large stacked choices, safe-area-aware actions, and thumb-friendly spacing.
+* Admission, Visibility, and Capacity are separate decisions on phones. Visibility presents Public, Private link only, and Secret Show as peer choices; Secret Show clearly explains that it is private and protected by a six-character code while retaining the existing privacy and automatic-text restrictions.
+* Appearance keeps flyer upload, designer credit, and effects in focused tasks. Event-management and host-page settings use summary hubs that open one area at a time, and small keyboard-open viewports retain usable form space and a reachable primary action.
+* **Sell with Silver Glider** now offers the authenticated one-tap **Join the waitlist** action in both event editors. Success is confirmed in place with the host's account email, and a quiet leave action reverses the existing idempotent Commerce-interest record without making the event draft dirty.
+* New drafts now receive an unguessable link from the start, so switching a draft to Private or Secret Show never leaves it with a readable public-style URL; directly published public events keep readable links.
+
+### Accessibility and compatibility
+
+* RSVP name and email labels are explicitly associated with their fields, mobile Feedback controls no longer cover settings or event-management actions, Admission and Visibility choices keep accessible group names, ticket-waitlist confirmations preserve keyboard focus, and toast notifications remain announced and clear of persistent actions.
+* The mobile presentation remains scoped below 880px. Desktop keeps the established editor rail, multi-column workspaces, management layout, data flow, permissions, and backend behavior.
+
 ## 1.0.107
 
 Released September 16, 2026. Built and deployed by Codex.

@@ -57,6 +57,7 @@ function ownerEventData(event) {
     allowGuests: event.allow_guests === true,
     commentsEnabled: event.comments_enabled === true,
     secretShowEnabled: event.secret_show_enabled === true,
+    smsReminderEnabled: event.sms_reminder_enabled === true,
     backgroundTheme: event.background_theme || 'midnight',
     coverImageUrl: event.cover_image_url || '',
     flyerImageUrl: event.flyer_image_url || '',
@@ -85,7 +86,10 @@ function renderOwnerEditor(event) {
 
     <aside class="owner-editor" id="owner-editor" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="owner-editor-title">
       <header class="owner-editor-head">
-        <div>
+        <button class="owner-mobile-nav-back" id="owner-mobile-nav-back" type="button" aria-label="Close event editor">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div class="owner-editor-title-block">
           <p>Host tools</p>
           <h2 id="owner-editor-title">Edit event</h2>
         </div>
@@ -103,15 +107,10 @@ function renderOwnerEditor(event) {
           <button type="button" role="tab" id="owner-tab-settings" aria-controls="owner-panel-settings" aria-selected="false" tabindex="-1" data-owner-tab="settings">Guest settings</button>
         </div>
 
-        <div class="owner-mobile-subnav" id="owner-mobile-subnav" hidden>
-          <button class="owner-mobile-back" id="owner-mobile-back" type="button" aria-label="Back to event settings">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <div>
-            <span id="owner-mobile-view-eyebrow">Edit event</span>
-            <strong id="owner-mobile-view-title" tabindex="-1"></strong>
-          </div>
-          <button class="owner-mobile-done" id="owner-mobile-done" type="button">Done</button>
+        <div class="owner-mobile-screen-head" id="owner-mobile-screen-head" hidden>
+          <p id="owner-mobile-view-eyebrow">Edit event</p>
+          <h3 id="owner-mobile-view-title" tabindex="-1"></h3>
+          <span id="owner-mobile-view-helper"></span>
         </div>
         <p class="owner-mobile-view-status" id="owner-mobile-view-status" role="alert" hidden></p>
 
@@ -133,9 +132,19 @@ function renderOwnerEditor(event) {
                 <span class="owner-mobile-hub-copy"><strong>Event details</strong><small id="owner-mobile-summary-details"></small></span>
                 <span class="owner-mobile-hub-arrow" aria-hidden="true">›</span>
               </button>
-              <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="access" aria-controls="owner-panel-settings">
+              <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="admission" aria-controls="owner-panel-settings">
                 <span class="owner-mobile-hub-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v4a3 3 0 0 0 0 6v4H5v-4a3 3 0 0 0 0-6Z"/><path d="M13 8v8"/></svg></span>
-                <span class="owner-mobile-hub-copy"><strong>RSVP &amp; access</strong><small id="owner-mobile-summary-access"></small></span>
+                <span class="owner-mobile-hub-copy"><strong>Admission</strong><small id="owner-mobile-summary-admission"></small></span>
+                <span class="owner-mobile-hub-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="visibility" aria-controls="owner-panel-settings">
+                <span class="owner-mobile-hub-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></span>
+                <span class="owner-mobile-hub-copy"><strong>Visibility</strong><small id="owner-mobile-summary-visibility"></small></span>
+                <span class="owner-mobile-hub-arrow" aria-hidden="true">›</span>
+              </button>
+              <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="capacity" aria-controls="owner-panel-settings">
+                <span class="owner-mobile-hub-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3"/><circle cx="17" cy="10" r="2"/><path d="M2.5 19c.5-3.4 2.3-5.2 5.5-5.2s5 1.8 5.5 5.2M14 15c3.8-.7 6 .7 6.5 4"/></svg></span>
+                <span class="owner-mobile-hub-copy"><strong>Capacity</strong><small id="owner-mobile-summary-capacity"></small></span>
                 <span class="owner-mobile-hub-arrow" aria-hidden="true">›</span>
               </button>
               <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="guests" aria-controls="owner-panel-settings">
@@ -145,7 +154,7 @@ function renderOwnerEditor(event) {
               </button>
               <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="more" aria-controls="owner-panel-settings">
                 <span class="owner-mobile-hub-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></span>
-                <span class="owner-mobile-hub-copy"><strong>More tools</strong><small id="owner-mobile-summary-more">Manage guests, music, and advanced settings</small></span>
+                <span class="owner-mobile-hub-copy"><strong>Links &amp; advanced</strong><small id="owner-mobile-summary-more">Manage guests, music, and advanced settings</small></span>
                 <span class="owner-mobile-hub-arrow" aria-hidden="true">›</span>
               </button>
             </div>
@@ -179,7 +188,16 @@ function renderOwnerEditor(event) {
             </div>
             <p class="owner-inline-status" id="owner-upload-status" role="status"></p>
 
-            <section class="owner-flyer-credit-fields" id="owner-flyer-credit-fields" aria-labelledby="owner-flyer-credit-title" hidden>
+            <div class="owner-mobile-appearance-tasks">
+              <button class="owner-mobile-task-row" id="owner-mobile-designer-row" type="button" data-owner-mobile-view="designer">
+                <span><strong>Designer credit</strong><small id="owner-mobile-summary-designer">Add an optional flyer credit</small></span><i aria-hidden="true">›</i>
+              </button>
+              <button class="owner-mobile-task-row" type="button" data-owner-mobile-view="effects">
+                <span><strong>Effects</strong><small id="owner-mobile-summary-effects">Choose the page atmosphere</small></span><i aria-hidden="true">›</i>
+              </button>
+            </div>
+
+            <section class="owner-flyer-credit-fields" id="owner-flyer-credit-fields" data-owner-mobile-appearance-section="designer" aria-labelledby="owner-flyer-credit-title" hidden>
               <div class="owner-flyer-credit-heading">
                 <h4 id="owner-flyer-credit-title">Who designed this flyer?</h4>
                 <p>Give them a shoutout.</p>
@@ -213,7 +231,7 @@ function renderOwnerEditor(event) {
               <p class="owner-photo-credit-note">Photos via Unsplash. Photographer credit appears on the event page.</p>
             </div>
 
-            <div class="owner-theme-picker" id="owner-theme-picker">
+            <div class="owner-theme-picker" id="owner-theme-picker" data-owner-mobile-appearance-section="effects">
               <div class="owner-theme-group owner-gradient-group">
                 <h4>Gradients</h4>
                 <div class="owner-theme-grid">${themeButtons('gradient')}</div>
@@ -273,23 +291,40 @@ function renderOwnerEditor(event) {
 
           <section class="owner-editor-panel" id="owner-panel-settings" role="tabpanel" aria-labelledby="owner-tab-settings" data-owner-panel="settings" hidden>
             <div class="owner-section-intro"><h3>Guest settings</h3><p>Control who can find the event and how guests participate.</p></div>
-            <div class="owner-settings-group" data-owner-mobile-section="access">
+            <div class="owner-settings-group" data-owner-mobile-section="admission">
               <fieldset class="owner-choice-field owner-admission-field">
                 <legend>Admission</legend>
                 <label class="owner-choice"><input type="radio" name="owner_admission" value="free_rsvp"><span><strong>Free RSVP</strong><small>Collect guest names and confirmations here.</small></span></label>
                 <label class="owner-choice"><input type="radio" name="owner_admission" value="external_tickets"><span><strong>External tickets</strong><small>Send guests to another ticket link or sell at the door.</small></span></label>
                 <label class="owner-choice"><input type="radio" name="owner_admission" value="silver_glider_tickets"${event.commerce_event_id ? '' : ' disabled'}><span><strong>Sell with Silver Glider</strong><small>${event.commerce_event_id ? 'Connected to Silver Glider Commerce.' : 'Coming soon'}</small></span></label>
               </fieldset>
+              <div class="owner-commerce-interest" id="owner-commerce-interest" hidden>
+              <div class="owner-commerce-interest-copy" id="owner-commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
+                  <strong>Sell with Silver Glider is coming soon.</strong>
+                  <span>Join the waitlist using your account email.</span>
+                </div>
+                <button class="owner-action-button owner-commerce-interest-toggle" id="owner-commerce-interest-toggle" type="button" aria-pressed="false">Join the waitlist</button>
+              </div>
               <div class="owner-admission-fields" id="owner-ticket-fields" hidden>
                 <label class="owner-field"><span>Ticket price</span><input class="owner-input" id="owner-ticket-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="15"></label>
                 <label class="owner-field"><span>Ticket link <small>Optional</small></span><input class="owner-input" id="owner-ticket-url" type="url" inputmode="url" placeholder="At the door, or paste https://..."></label>
               </div>
-              <fieldset class="owner-choice-field">
+            </div>
+            <div class="owner-settings-group" data-owner-mobile-section="visibility">
+              <fieldset class="owner-choice-field owner-visibility-field">
                 <legend>Visibility</legend>
                 <label class="owner-choice"><input type="radio" name="owner_visibility" value="public"><span><strong>Public</strong><small>Visible on your Host Page and shareable.</small></span></label>
                 <label class="owner-choice"><input type="radio" name="owner_visibility" value="private"><span><strong>Private link only</strong><small>Hidden from discovery. Anyone with the link can view it.</small></span></label>
+                <label class="owner-choice owner-mobile-secret-choice"><input type="radio" name="owner_visibility" value="secret"><span><strong>Secret Show</strong><small>Private, with a six-character code guests enter to view.</small></span></label>
               </fieldset>
               <p class="owner-secret-note" id="owner-secret-note" hidden>Secret Show is on. Disable it in Advanced settings before making this event public.</p>
+              <div class="owner-secret-fields" id="owner-secret-fields" hidden>
+                <p id="owner-secret-help">Choose a six-character code. Guests will need it to open the event.</p>
+                <label class="owner-field"><span>Secret code</span><input class="owner-input" id="owner-secret-code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="ABC123"></label>
+                <label class="owner-field"><span>Confirm code</span><input class="owner-input" id="owner-secret-code-confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="ABC123"></label>
+              </div>
+            </div>
+            <div class="owner-settings-group" data-owner-mobile-section="capacity">
               <label class="owner-field"><span>Capacity <small>Optional</small></span><input class="owner-input" id="owner-capacity" type="number" min="1" inputmode="numeric" placeholder="Unlimited"></label>
             </div>
             <div class="owner-settings-group" data-owner-mobile-section="guests">
@@ -310,6 +345,10 @@ function renderOwnerEditor(event) {
           </section>
         </div>
 
+        <div class="owner-mobile-action" id="owner-mobile-action" hidden>
+          <button class="owner-mobile-done" id="owner-mobile-done" type="button">Done</button>
+        </div>
+
         <footer class="owner-editor-foot">
           <p id="owner-save-status" role="status">${event.status === 'draft' ? 'Ready to publish' : 'No unsaved changes'}</p>
           <div>
@@ -319,7 +358,7 @@ function renderOwnerEditor(event) {
         </footer>
       </form>
     </aside>
-    <div class="owner-editor-toast" id="owner-editor-toast" role="status" aria-live="polite"></div>
+    <div class="owner-editor-toast" id="owner-editor-toast" role="status" aria-live="polite" aria-atomic="true"></div>
     <script id="owner-event-data" type="application/json">${data}</script>
   </div>`;
 }

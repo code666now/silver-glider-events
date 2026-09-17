@@ -38,11 +38,38 @@
       letter-spacing:.18em;
       text-transform:uppercase;
     }
-    @media (max-width: 480px) {
-      main { padding-top:8vh !important; }
-      .auth-heading { font-size:32px; }
-      .auth-code-row { display:grid !important; grid-template-columns:1fr !important; gap:12px !important; }
-      .auth-code-row .sg-btn { min-height:52px; width:100%; }
+    @media (max-width: 879px) {
+      body { min-height:100vh;min-height:100dvh; }
+      main {
+        width:100%;
+        max-width:none !important;
+        min-height:100vh;
+        min-height:100dvh;
+        padding:calc(42px + env(safe-area-inset-top)) 22px calc(34px + env(safe-area-inset-bottom)) !important;
+      }
+      main > .sg-label { margin-bottom:clamp(54px,12vh,96px) !important;font-size:13px;letter-spacing:.15em; }
+      .auth-progress { margin-bottom:12px;font-size:13px;letter-spacing:.15em; }
+      .auth-heading { margin-bottom:12px;font-size:clamp(34px,10vw,38px);line-height:1.04; }
+      .auth-copy { max-width:520px;margin-bottom:32px;font-size:17px;line-height:1.5; }
+      .auth-error { margin-bottom:20px;font-size:15px;line-height:1.45; }
+      .sg-field { margin-bottom:22px; }
+      .sg-field label { margin-bottom:10px;font-size:14px;letter-spacing:.08em; }
+      .sg-input { min-height:60px;padding:15px 17px;border-radius:17px;font-size:16px; }
+      .sg-btn { min-height:60px;border-radius:19px;font-size:17px; }
+      .auth-secondary { min-height:48px;margin-top:12px;font-size:15px; }
+      .auth-code-input { font-size:24px; }
+      .auth-code-row { display:grid !important;grid-template-columns:1fr !important;gap:12px !important; }
+      .auth-code-row .sg-btn { width:100%; }
+      .sg-code-actions { display:grid;gap:4px; }
+      .sg-code-link { min-height:44px;font-size:14px;text-align:left; }
+      #returning-guest { padding:22px !important;border-radius:22px !important; }
+      #returning-title { font-size:28px !important; }
+      #returning-email { font-size:16px !important; }
+      #code-expiry { font-size:14px !important;line-height:1.5; }
+    }
+    @media (max-width:879px) and (max-height:620px) {
+      main { padding-top:calc(22px + env(safe-area-inset-top)) !important; }
+      main > .sg-label { margin-bottom:30px !important; }
     }
   </style>
 </head>
@@ -101,7 +128,7 @@
     <div id="form-state">
       <h1 class="auth-heading">Sign in</h1>
       <p class="auth-copy" style="margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
-      <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
+      <p id="error" role="alert" aria-live="assertive" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
       <div id="returning-guest" hidden style="padding:22px;border:1px solid var(--sg-border);border-radius:18px;background:rgba(255,255,255,.035);margin-bottom:18px">
         <p class="sg-label" style="margin-bottom:8px">Welcome back</p>
         <h2 id="returning-title" style="font-size:24px;margin-bottom:8px"></h2>

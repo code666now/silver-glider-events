@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
-const { makePublicSlug, makePrivateSlug } = require('../lib/slug');
+const { makeEventSlug } = require('../lib/slug');
 const { cleanHostName, cleanInstagramHandle, ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
 const { rsvpsToCsv } = require('../lib/csv');
 const { sendEventAnnouncement } = require('../lib/mailer');
@@ -424,7 +424,7 @@ router.post('/api/events', async (req, res, next) => {
     }
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const slug = out.visibility === 'private' ? makePrivateSlug() : makePublicSlug(out.title);
+      const slug = makeEventSlug(out);
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -701,7 +701,7 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
     const e = src[0];
 
     for (let attempt = 0; attempt < 3; attempt++) {
-      const slug = e.visibility === 'private' ? makePrivateSlug() : makePublicSlug(e.title);
+      const slug = makeEventSlug({ title: e.title, status: 'draft', visibility: e.visibility });
       try {
         const { rows } = await pool.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, cover_fit_mode, presentation_mode, flyer_image_url,

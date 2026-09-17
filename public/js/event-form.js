@@ -21,13 +21,32 @@ let artworkAccentPromise = Promise.resolve(null);
 const mobileFlowMedia = window.matchMedia('(max-width: 879px)');
 const mobileFlowTitles = {
   design: 'Appearance',
+  designer: 'Designer credit',
+  effects: 'Effects',
   basics: 'Event details',
-  about: 'Description & vibe',
-  access: 'RSVP & access',
+  description: 'Description',
+  vibe: 'Event vibe',
+  admission: 'Admission',
+  visibility: 'Visibility',
+  capacity: 'Capacity',
   guests: 'Guest experience',
   reminders: 'Reminders'
 };
-const mobileCreateSequence = ['basics', 'design', 'access'];
+const mobileFlowSubtitles = {
+  design: 'Customize how your event looks to guests.',
+  designer: 'Give the person who made your flyer a visible credit.',
+  effects: 'Choose the atmosphere behind your event page.',
+  basics: 'Start with the basics. You can always edit these later.',
+  description: 'Tell guests what makes this event worth showing up for.',
+  vibe: 'Add up to three artists, photos, and music links.',
+  admission: 'Choose how guests can join your event.',
+  visibility: 'Choose who can find and open your event.',
+  capacity: 'Set a category and an optional guest limit.',
+  guests: 'Choose how guests can participate on the event page.',
+  reminders: 'Decide whether confirmed guests receive a day-before text.'
+};
+const mobileFlowParentViews = { designer: 'design', effects: 'design' };
+const mobileCreateSequence = ['basics', 'design', 'admission', 'visibility'];
 let mobileFlowView = 'hub';
 let mobileFlowLastTrigger = null;
 let mobileMoreDetailsWasOpen = null;
@@ -123,6 +142,7 @@ function finishEditLoading() {
   $('event-form').setAttribute('aria-busy', 'false');
   $('publish-btn').disabled = false;
   refreshMobileFlowHub();
+  updateMobilePreviewAvailability();
   resetMobileFlowBaseline();
 }
 
@@ -333,7 +353,9 @@ function setPresentationMode(mode) {
     : 'Put your uploaded flyer first and keep the page focused.';
   $('standard-media').hidden = !standard;
   $('flyer-media').hidden = standard;
+  $('event-mobile-designer-row').hidden = standard || !$('flyer_image_url').value;
   refreshActiveArtworkAccent();
+  refreshMobileFlowHub();
 }
 
 $('presentation-standard').addEventListener('change', () => setPresentationMode('standard'));
@@ -361,11 +383,18 @@ function renderCommerceInterest() {
   const panel = $('commerce-interest');
   const button = $('commerce-interest-toggle');
   panel.hidden = !commerceConfigLoaded || commerceEnabled || Boolean(commerceEventId);
+  panel.classList.toggle('is-confirmed', commerceInterested);
   button.setAttribute('aria-pressed', String(commerceInterested));
-  button.textContent = commerceInterested ? 'Remove me' : 'Notify me';
+  button.textContent = commerceInterested ? 'Leave waitlist' : 'Join the waitlist';
   $('commerce-interest-copy').innerHTML = commerceInterested
-    ? '<strong>You’re on the list.</strong><span>We’ll email you when Silver Glider Tickets is ready.</span>'
-    : '<strong>Want to know when Silver Glider Tickets launches?</strong><span>We’ll send you one email when it’s ready.</span>';
+    ? '<span class="commerce-interest-check" aria-hidden="true">✓</span><strong>You’re on the list</strong><span>We’ll contact you at your account email when ticketing is available.</span>'
+    : '<strong>Sell with Silver Glider is coming soon.</strong><span>Join the waitlist using your account email.</span>';
+}
+
+function focusCommerceInterestConfirmation() {
+  const confirmation = $('commerce-interest-copy');
+  if (!confirmation || !commerceInterested) return;
+  confirmation.focus({ preventScroll: true });
 }
 
 const commerceConfigReady = api('/api/commerce/config')
@@ -391,6 +420,7 @@ $('commerce-interest-toggle').addEventListener('click', async event => {
     });
     commerceInterested = interest.interested === true;
     renderCommerceInterest();
+    focusCommerceInterestConfirmation();
     toast(commerceInterested ? 'You’re on the ticketing list' : 'Ticketing notification removed');
   } catch (error) {
     renderCommerceInterest();
@@ -414,23 +444,41 @@ document.querySelectorAll('[data-picker-target]').forEach(button => {
   });
 });
 
-function setVisibility(v) {
-  const secretShowWasDisabled = v === 'public' && $('secret_show_enabled').checked;
+function renderVisibilityState() {
+  const secret = visibility === 'private' && $('secret_show_enabled').checked;
+  const mobileSecretChoice = mobileFlowMedia.matches && secret;
+  $('vis-public').classList.toggle('on', visibility === 'public');
+  $('vis-private').classList.toggle('on', visibility === 'private' && !mobileSecretChoice);
+  $('vis-secret').classList.toggle('on', mobileSecretChoice);
+  $('vis-public').setAttribute('aria-pressed', String(visibility === 'public'));
+  $('vis-private').setAttribute('aria-pressed', String(visibility === 'private' && !mobileSecretChoice));
+  $('vis-secret').setAttribute('aria-pressed', String(mobileSecretChoice));
+  $('private-settings').classList.toggle('show', visibility === 'private');
+  $('private-settings').classList.toggle('secret-enabled', secret);
+}
+
+function setVisibility(mode) {
+  const nextMode = mode === 'secret' ? 'secret' : (mode === 'private' ? 'private' : 'public');
+  // On phones, Private and Secret Show are peer choices, so moving from Secret
+  // to Private intentionally removes the code. Desktop keeps the established
+  // nested Secret Show switch inside Private; reselecting Private there must
+  // not silently turn an existing Secret Show off.
+  const secretShowWasDisabled = $('secret_show_enabled').checked
+    && (nextMode === 'public' || (mobileFlowMedia.matches && nextMode === 'private'));
   if (secretShowWasDisabled) setSecretShow(false);
-  visibility = v;
-  $('vis-public').classList.toggle('on', v === 'public');
-  $('vis-private').classList.toggle('on', v === 'private');
-  $('vis-public').setAttribute('aria-pressed', String(v === 'public'));
-  $('vis-private').setAttribute('aria-pressed', String(v === 'private'));
-  $('private-settings').classList.toggle('show', v === 'private');
-  if (secretShowWasDisabled) toast('Secret Show Mode was turned off for this public event');
+  visibility = nextMode === 'public' ? 'public' : 'private';
+  if (nextMode === 'secret') setSecretShow(true);
+  renderVisibilityState();
+  if (secretShowWasDisabled && nextMode === 'public') toast('Secret Show Mode was turned off for this public event');
+  refreshMobileFlowHub();
   return true;
 }
 $('vis-public').addEventListener('click', () => setVisibility('public'));
 $('vis-private').addEventListener('click', () => setVisibility('private'));
+$('vis-secret').addEventListener('click', () => setVisibility('secret'));
 
 function setSecretShow(enabled, { focus = false } = {}) {
-  if (enabled) setVisibility('private');
+  if (enabled) visibility = 'private';
   $('secret_show_enabled').checked = enabled;
   $('sms_reminder_enabled').disabled = enabled;
   if (enabled) $('sms_reminder_enabled').checked = false;
@@ -445,6 +493,8 @@ function setSecretShow(enabled, { focus = false } = {}) {
     $('secret_code').value = '';
     $('secret_code_confirm').value = '';
   }
+  renderVisibilityState();
+  refreshMobileFlowHub();
   if (focus) window.setTimeout(() => $('secret_code').focus(), 0);
 }
 
@@ -470,6 +520,9 @@ function setAdmission(v, { force = false } = {}) {
   $('admission-free').classList.toggle('on', admissionType === 'free_rsvp');
   $('admission-commerce').classList.toggle('on', admissionType === 'silver_glider_tickets');
   $('admission-paid').classList.toggle('on', admissionType === 'external_tickets');
+  $('admission-free').setAttribute('aria-pressed', String(admissionType === 'free_rsvp'));
+  $('admission-commerce').setAttribute('aria-pressed', String(admissionType === 'silver_glider_tickets'));
+  $('admission-paid').setAttribute('aria-pressed', String(admissionType === 'external_tickets'));
   $('ticket-fields').classList.toggle('show', admissionType === 'external_tickets');
   $('commerce-admission-note').classList.toggle('show', admissionType === 'silver_glider_tickets');
   $('commerce-admission-note').textContent = commerceEventId
@@ -503,6 +556,7 @@ function setTheme(key) {
     s.setAttribute('aria-pressed', String(selected));
   });
   $('theme-selected-name').textContent = `Selected: ${THEME_LABELS[key] || key}`;
+  refreshMobileFlowHub();
 }
 THEMES.forEach(key => {
   const sw = document.createElement('button');
@@ -914,7 +968,9 @@ function setFlyer(url) {
     $('btn-clear-flyer').style.display = 'none';
   }
   $('flyer-credit-fields').hidden = !url;
+  $('event-mobile-designer-row').hidden = !url || presentationMode !== 'flyer';
   if (!url) setFlyerDesignerError('');
+  refreshMobileFlowHub();
 }
 
 function uploadFlyer(file) {
@@ -1149,11 +1205,13 @@ function refreshMobileFlowHub() {
   if (!$('event-mobile-flow')) return;
   const designImage = presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
   $('event-mobile-summary-design').textContent = `${presentationMode === 'flyer' ? 'Flyer' : 'Standard'} · ${designImage ? 'Image added' : 'No image'}`;
+  $('event-mobile-summary-designer').textContent = $('flyer-designer-name').value.trim() || $('flyer-designer-instagram').value.trim() || 'Add who designed this flyer';
+  $('event-mobile-summary-effects').textContent = THEME_LABELS[$('background_theme').value] || 'Midnight';
 
   const basics = [formatMobileFlowDate($('event_date').value), formatMobileFlowTime($('start_time').value)].filter(Boolean);
   const locationName = $('venue_name').value || $('location_search').value.trim();
   if (locationName) basics.push(locationName);
-  $('event-mobile-summary-basics').textContent = basics.length ? basics.join(' · ') : 'Title, date, time, and location';
+  $('event-mobile-summary-basics').textContent = basics.length ? basics.join(' · ') : ($('title').value.trim() || 'Title, date, time, and location');
 
   const artistFields = [
     ['event_vibe_label', 'event_vibe_url', 'event_vibe_image_url'],
@@ -1162,14 +1220,22 @@ function refreshMobileFlowHub() {
   ];
   const artistCount = artistFields.filter(ids => ids.some(id => String($(id).value || '').trim())).length;
   const hasDescription = Boolean($('description').value.trim());
-  $('event-mobile-summary-about').textContent = artistCount
-    ? `${artistCount} ${artistCount === 1 ? 'artist' : 'artists'}${hasDescription ? ' · Description added' : ''}`
-    : (hasDescription ? 'Description added' : 'Optional · Not added');
+  $('event-mobile-summary-description').textContent = hasDescription ? 'Description added' : 'Optional · Not added';
+  $('event-mobile-summary-vibe').textContent = artistCount
+    ? `${artistCount} ${artistCount === 1 ? 'artist' : 'artists'}`
+    : 'Optional · No artists';
 
   const admissionLabel = admissionType === 'external_tickets'
     ? 'External tickets'
     : (admissionType === 'silver_glider_tickets' ? 'Silver Glider tickets' : 'Free RSVP');
-  $('event-mobile-summary-access').textContent = `${admissionLabel} · ${visibility === 'private' ? 'Private link' : 'Public'}`;
+  $('event-mobile-summary-admission').textContent = admissionLabel;
+  $('event-mobile-summary-visibility').textContent = $('secret_show_enabled').checked
+    ? 'Secret Show'
+    : (visibility === 'private' ? 'Private link only' : 'Public');
+  const capacitySummary = $('capacity').value ? `${$('capacity').value} guests` : 'Unlimited';
+  $('event-mobile-summary-capacity').textContent = $('category').value
+    ? `${$('category').value} · ${capacitySummary}`
+    : capacitySummary;
   $('event-mobile-summary-guests').textContent = [
     `Guest list ${$('show_guest_list').checked ? 'on' : 'off'}`,
     `+1s ${$('allow_guests').checked ? 'on' : 'off'}`,
@@ -1215,21 +1281,21 @@ function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
   if (trigger) mobileFlowLastTrigger = trigger;
   $('event-form').dataset.mobileView = nextView;
   $('event-mobile-flow-hub').hidden = nextView !== 'hub';
-  $('event-mobile-flow-back').hidden = nextView === 'hub';
-  $('event-mobile-flow-title').textContent = nextView === 'hub'
-    ? (editId ? 'Edit your event' : 'Finish your event')
-    : mobileFlowTitles[nextView];
+  $('event-mobile-screen-intro').hidden = nextView === 'hub';
+  $('event-mobile-flow-title').textContent = editId ? 'Edit event' : 'Create event';
+  if (nextView !== 'hub') {
+    $('event-mobile-screen-kicker').textContent = editId ? 'Edit event' : 'Create event';
+    $('event-mobile-screen-title').textContent = mobileFlowTitles[nextView];
+    $('event-mobile-screen-subtitle').textContent = mobileFlowSubtitles[nextView];
+  }
   const createStep = !editId ? mobileCreateSequence.indexOf(nextView) : -1;
-  $('event-mobile-flow-kicker').textContent = createStep >= 0
-    ? `Step ${createStep + 1} of ${mobileCreateSequence.length}`
-    : 'Event setup';
   const previousCreateView = createStep > 0 ? mobileFlowTitles[mobileCreateSequence[createStep - 1]] : null;
   $('event-mobile-flow-back').setAttribute('aria-label', previousCreateView
     ? `Back to ${previousCreateView}`
-    : 'Back to event setup');
+    : (nextView === 'hub' ? 'Leave event editor' : `Back from ${mobileFlowTitles[nextView]}`));
   $('event-mobile-flow-done').textContent = createStep === mobileCreateSequence.length - 1 ? 'Review event' : 'Done';
 
-  if (nextView === 'about') {
+  if (nextView === 'description' || nextView === 'vibe') {
     if (mobileMoreDetailsWasOpen == null) mobileMoreDetailsWasOpen = $('more-details').open;
     $('more-details').open = true;
   }
@@ -1237,13 +1303,16 @@ function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
   refreshMobileFlowHub();
   window.scrollTo({ top: 0, behavior: 'auto' });
   if (focus) {
-    $('event-mobile-flow-title').setAttribute('tabindex', '-1');
-    requestAnimationFrame(() => $('event-mobile-flow-title').focus({ preventScroll: true }));
+    const heading = nextView === 'hub' ? $('event-mobile-flow-title') : $('event-mobile-screen-title');
+    heading.setAttribute('tabindex', '-1');
+    requestAnimationFrame(() => heading.focus({ preventScroll: true }));
   }
 }
 
 function returnToMobileFlowHub({ focus = true } = {}) {
-  const returnFocus = mobileFlowLastTrigger;
+  const previousView = mobileFlowParentViews[mobileFlowView] || mobileFlowView;
+  const hubTrigger = document.querySelector(`#event-mobile-flow-hub [data-mobile-flow-open="${previousView}"]`);
+  const returnFocus = hubTrigger || mobileFlowLastTrigger;
   openMobileFlowView('hub', { focus: false });
   if (!focus) return;
   const target = returnFocus instanceof HTMLElement && returnFocus.isConnected
@@ -1256,11 +1325,27 @@ function revealMobileFlowError(message) {
   if (!mobileFlowMedia.matches) return;
   const text = String(message || '').toLowerCase();
   let panel = mobileFlowView === 'hub' ? 'basics' : mobileFlowView;
-  if (/flyer|image|instagram/.test(text)) panel = 'design';
+  if (/instagram|designer/.test(text)) panel = 'designer';
+  else if (/flyer|image/.test(text)) panel = 'design';
   else if (/location|address|title|date|time/.test(text)) panel = 'basics';
-  else if (/ticket|secret|access code|visibility|capacity/.test(text)) panel = 'access';
+  else if (/ticket|admission|price/.test(text)) panel = 'admission';
+  else if (/secret|access code|visibility/.test(text)) panel = 'visibility';
+  else if (/capacity|category/.test(text)) panel = 'capacity';
   else if (/reminder|texting/.test(text)) panel = 'reminders';
   openMobileFlowView(panel, { focus: false });
+}
+
+function updateMobilePreviewAvailability() {
+  const preview = $('event-mobile-flow-preview');
+  if (!preview) return;
+  const available = Boolean(savedEventDetails?.slug);
+  preview.disabled = !available;
+  preview.setAttribute('aria-label', available ? 'Preview event in a new tab' : 'Preview is available after the event is saved');
+}
+
+function leaveMobileEventEditor() {
+  if (mobileFlowHasChanges() && !window.confirm('Discard your unsaved changes?')) return;
+  window.location.href = editId ? `/events/${encodeURIComponent(editId)}/manage` : '/events';
 }
 
 function syncMobileFlowMode() {
@@ -1268,14 +1353,16 @@ function syncMobileFlowMode() {
   if (mobileFlowMedia.matches) {
     document.body.classList.add('event-mobile-flow-enabled');
     if (!$('event-form').dataset.mobileView) mobileFlowView = editId ? 'hub' : 'basics';
-    $('event-mobile-flow-close').href = editId ? `/events/${encodeURIComponent(editId)}/manage` : '/events';
+    renderVisibilityState();
+    updateMobilePreviewAvailability();
     openMobileFlowView(mobileFlowView, { focus: false });
     return;
   }
   document.body.classList.remove('event-mobile-flow-enabled');
   $('event-form').removeAttribute('data-mobile-view');
   $('event-mobile-flow-hub').hidden = false;
-  $('event-mobile-flow-back').hidden = true;
+  $('event-mobile-screen-intro').hidden = true;
+  renderVisibilityState();
   clearMobileFlowError();
   if (mobileMoreDetailsWasOpen != null) {
     $('more-details').open = mobileMoreDetailsWasOpen;
@@ -1289,6 +1376,8 @@ function initMobileEventFlow() {
     button.addEventListener('click', () => openMobileFlowView(button.dataset.mobileFlowOpen, { trigger: button }));
   });
   $('event-mobile-flow-back').addEventListener('click', () => {
+    if (mobileFlowView === 'hub') return leaveMobileEventEditor();
+    if (mobileFlowParentViews[mobileFlowView]) return openMobileFlowView(mobileFlowParentViews[mobileFlowView]);
     if (!editId) {
       const index = mobileCreateSequence.indexOf(mobileFlowView);
       if (index > 0) return openMobileFlowView(mobileCreateSequence[index - 1]);
@@ -1296,6 +1385,7 @@ function initMobileEventFlow() {
     returnToMobileFlowHub();
   });
   $('event-mobile-flow-done').addEventListener('click', () => {
+    if (mobileFlowParentViews[mobileFlowView]) return openMobileFlowView(mobileFlowParentViews[mobileFlowView]);
     if (!editId) {
       const index = mobileCreateSequence.indexOf(mobileFlowView);
       if (index >= 0 && index < mobileCreateSequence.length - 1) return openMobileFlowView(mobileCreateSequence[index + 1]);
@@ -1316,9 +1406,9 @@ function initMobileEventFlow() {
     if (event.target.closest('button, input, label, select, textarea')) clearMobileFlowError();
     setTimeout(refreshMobileFlowHub, 0);
   });
-  $('event-mobile-flow-close').addEventListener('click', event => {
-    if (!mobileFlowMedia.matches || !mobileFlowHasChanges()) return;
-    if (!window.confirm('Discard your unsaved changes?')) event.preventDefault();
+  $('event-mobile-flow-preview').addEventListener('click', () => {
+    if (!savedEventDetails?.slug) return;
+    window.open(`/e/${encodeURIComponent(savedEventDetails.slug)}`, '_blank', 'noopener');
   });
   $('event-form').addEventListener('invalid', event => {
     if (!mobileFlowMedia.matches) return;

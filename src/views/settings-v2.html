@@ -144,7 +144,13 @@
               <p class="upload-status" id="host-follow-share-status" role="status" aria-live="polite"></p>
             </section>
             <form id="host-profile-form">
-              <section class="host-form-group" aria-labelledby="host-basics-title">
+              <nav class="host-mobile-flow" aria-label="Host page setup">
+                <button class="host-mobile-flow-row" type="button" data-host-mobile-open="basics"><span><strong>Basics</strong><small>Public name, page address, and introduction</small></span><span aria-hidden="true">›</span></button>
+                <button class="host-mobile-flow-row" type="button" data-host-mobile-open="links"><span><strong>Links</strong><small>Instagram and website</small></span><span aria-hidden="true">›</span></button>
+                <button class="host-mobile-flow-row" type="button" data-host-mobile-open="images"><span><strong>Images</strong><small>Header image and host logo</small></span><span aria-hidden="true">›</span></button>
+              </nav>
+              <section class="host-form-group" data-host-mobile-panel="basics" aria-labelledby="host-basics-title">
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
                 <div class="host-form-group-head"><h3 id="host-basics-title">Basics</h3><p>Your public name, page address, and short introduction.</p></div>
                 <div class="host-fields">
                   <div class="host-field"><label for="org_name">Public host name</label><input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking"></div>
@@ -156,14 +162,16 @@
                   <div class="host-field"><label for="bio">Bio or tagline</label><textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea></div>
                 </div>
               </section>
-              <section class="host-form-group" aria-labelledby="host-links-title">
+              <section class="host-form-group" data-host-mobile-panel="links" aria-labelledby="host-links-title">
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
                 <div class="host-form-group-head"><h3 id="host-links-title">Links</h3><p>Help guests find your work elsewhere.</p></div>
                 <div class="host-fields two-up">
                   <div class="host-field"><label for="instagram_handle">Instagram</label><input class="sg-input" id="instagram_handle" maxlength="500" placeholder="@silverglidertix" autocomplete="off"></div>
                   <div class="host-field"><label for="website_url">Website</label><input class="sg-input" id="website_url" type="url" maxlength="500" placeholder="https://heatwavebooking.com"></div>
                 </div>
               </section>
-              <section class="host-form-group" aria-labelledby="host-images-title">
+              <section class="host-form-group" data-host-mobile-panel="images" aria-labelledby="host-images-title">
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
                 <div class="host-form-group-head"><h3 id="host-images-title">Images</h3><p>Use a wide header and a compact logo for a polished public page.</p></div>
                 <div class="host-images">
                   <div class="host-image-row" id="host-header-field">

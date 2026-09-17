@@ -156,6 +156,7 @@ test('settings use linkable responsive sections and separate account from host-p
   assert.match(styles, /grid-template-columns:210px minmax\(0,780px\)/);
   assert.match(styles, /@media\(max-width:1023px\)/);
   assert.match(styles, /body\[data-settings-route="index"\] \.settings-mobile-index/);
+  assert.match(styles, /body\[data-settings-route\] \.feedback-bubble \{ display:none !important; \}/);
   assert.match(styles, /\.settings-content \{ min-width:0;max-width:780px/);
   assert.match(settings, /id="account-form"/);
   assert.match(settings, /id="account-save-btn" disabled>Save changes</);

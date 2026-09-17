@@ -30,4 +30,13 @@ function makePrivateSlug() {
   return crypto.randomBytes(8).toString('hex');
 }
 
-module.exports = { makePublicSlug, makePrivateSlug, slugify };
+// A draft can still become Private or Secret Show before it is published, and
+// event slugs are intentionally immutable. Give every draft an unguessable
+// slug up front while preserving the public visibility default in event data.
+function makeEventSlug({ title, status, visibility }) {
+  return status === 'draft' || visibility === 'private'
+    ? makePrivateSlug()
+    : makePublicSlug(title);
+}
+
+module.exports = { makeEventSlug, makePublicSlug, makePrivateSlug, slugify };

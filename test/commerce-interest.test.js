@@ -21,15 +21,28 @@ test('ticketing launch interest is explicit, reversible, and separate from other
 test('event editor offers a one-click launch notification without another identity form', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
+  const apiClient = read('public/js/api.js');
   assert.match(html, /id="commerce-interest"[^>]*hidden/);
-  assert.match(html, /id="commerce-interest-toggle"[\s\S]*Notify me/);
-  assert.match(html, /Want to know when Silver Glider Tickets launches/);
-  assert.match(html, /We’ll send you one email when it’s ready/);
+  assert.match(html, /id="commerce-interest-toggle"[\s\S]*Join the waitlist/);
+  assert.match(html, /<fieldset class="admission-options">[\s\S]*<legend class="event-choice-legend">Admission type<\/legend>/);
+  assert.match(html, /<fieldset class="sg-field visibility-settings"[^>]*>[\s\S]*<legend class="desktop-visibility-label">Visibility<\/legend>/);
+  assert.match(html, /\.event-choice-legend \{[\s\S]*clip:rect\(0,0,0,0\)/);
+  assert.match(html, /#event-form \.desktop-visibility-label \{[\s\S]*clip: rect\(0,0,0,0\)/);
+  assert.doesNotMatch(html, /#event-form \.desktop-visibility-label,[\s\S]*display: none !important/);
+  assert.match(html, /Sell with Silver Glider is coming soon/);
+  assert.match(html, /Join the waitlist using your account email/);
+  assert.match(html, /id="commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"/);
+  assert.match(html, /body\.event-mobile-flow-enabled \.sg-toast \{ bottom: calc\(100px \+ env\(safe-area-inset-bottom\)\); \}/);
   assert.doesNotMatch(html, /id="commerce-interest-(?:email|name)"/i);
   assert.match(js, /api\('\/api\/commerce\/interest'/);
   assert.match(js, /body: \{ interested: nextInterested \}/);
-  assert.match(js, /We’ll email you when Silver Glider Tickets is ready/);
-  assert.match(js, /commerceInterested \? 'Remove me' : 'Notify me'/);
+  assert.match(js, /function focusCommerceInterestConfirmation\(\)/);
+  assert.match(js, /renderCommerceInterest\(\);[\s\S]*focusCommerceInterestConfirmation\(\)/);
+  assert.match(js, /We’ll contact you at your account email when ticketing is available/);
+  assert.match(js, /commerceInterested \? 'Leave waitlist' : 'Join the waitlist'/);
+  assert.match(apiClient, /el\.setAttribute\('role', 'status'\)/);
+  assert.match(apiClient, /el\.setAttribute\('aria-live', 'polite'\)/);
+  assert.match(apiClient, /el\.setAttribute\('aria-atomic', 'true'\)/);
 });
 
 test('admin launch workflow is previewable, feature-gated, and retry-safe', () => {

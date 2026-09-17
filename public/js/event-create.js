@@ -5,6 +5,13 @@
 
   const $ = id => document.getElementById(id);
   const LocationUtils = window.SGLocation;
+  const mobileFlowQuery = window.matchMedia('(max-width: 879px)');
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const mobileSteps = Array.from(form.querySelectorAll('[data-create-step]'));
+  const mobileBack = $('quick-create-mobile-back');
+  const mobileProgress = $('quick-create-mobile-progress');
+  const submitButton = $('quick-create-submit');
+  const footnote = $('quick-create-footnote');
   const location = {
     venueName: '', venueAddress: '', venueCity: '', venueState: '',
     venueLatitude: null, venueLongitude: null, googlePlaceId: '', kind: null
@@ -12,12 +19,50 @@
   let manualMode = false;
   let applyingPlace = false;
   let placesLoader;
+  let mobileStep = 0;
 
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   $('create-date').min = localToday;
 
   function setStatus(message) { $('create-places-status').textContent = message || ''; }
+  function mobileFlowEnabled() { return mobileFlowQuery.matches; }
+  function submitLabel() {
+    return mobileFlowEnabled() && mobileStep < mobileSteps.length - 1 ? 'Continue' : 'Continue to design';
+  }
+  function renderMobileFlow({ focus = false } = {}) {
+    const enabled = mobileFlowEnabled();
+    document.body.classList.toggle('quick-create-mobile-flow', enabled);
+    mobileSteps.forEach((step, index) => { step.hidden = enabled && index !== mobileStep; });
+    if (mobileProgress) mobileProgress.textContent = `Step ${mobileStep + 1} of ${mobileSteps.length}`;
+    if (mobileBack) mobileBack.setAttribute('aria-label', mobileStep > 0 ? 'Back to previous step' : 'Back to My Events');
+    if (footnote) footnote.hidden = enabled && mobileStep < mobileSteps.length - 1;
+    if (!submitButton.disabled) submitButton.textContent = submitLabel();
+    if (enabled && focus) {
+      const heading = mobileSteps[mobileStep]?.querySelector('h1');
+      heading?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: reducedMotionQuery.matches ? 'auto' : 'smooth' });
+    }
+  }
+  function reportField(input) {
+    if (input.checkValidity()) return true;
+    input.reportValidity();
+    input.focus();
+    return false;
+  }
+  function validateLocation() {
+    const error = $('quick-create-error');
+    if ((location.venueName || location.venueAddress) && (!manualMode || location.venueAddress)) return true;
+    error.textContent = manualMode ? 'Add an address for this location.' : 'Choose a venue or address, or enter the location manually.';
+    (manualMode ? $('create-location-manual-address') : $('create-location-search')).focus();
+    return false;
+  }
+  function validateMobileStep(index) {
+    $('quick-create-error').textContent = '';
+    if (index === 0) return reportField($('create-title'));
+    if (index === 1) return reportField($('create-date')) && reportField($('create-start-time'));
+    return validateLocation();
+  }
   function clearPlaceMeta() {
     location.venueCity = '';
     location.venueState = '';
@@ -130,17 +175,32 @@
     input.select();
   });
 
+  mobileBack?.addEventListener('click', () => {
+    if (mobileStep > 0) {
+      mobileStep -= 1;
+      renderMobileFlow({ focus: true });
+      return;
+    }
+    window.location.assign('/events');
+  });
+
+  const handleMobileBreakpoint = () => renderMobileFlow();
+  if (mobileFlowQuery.addEventListener) mobileFlowQuery.addEventListener('change', handleMobileBreakpoint);
+  else mobileFlowQuery.addListener(handleMobileBreakpoint);
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const error = $('quick-create-error');
     error.textContent = '';
-    if (!form.reportValidity()) return;
-    if ((!location.venueName && !location.venueAddress) || (manualMode && !location.venueAddress)) {
-      error.textContent = manualMode ? 'Add an address for this location.' : 'Choose a venue or address, or enter the location manually.';
-      (manualMode ? $('create-location-manual-address') : $('create-location-search')).focus();
+    if (mobileFlowEnabled() && mobileStep < mobileSteps.length - 1) {
+      if (!validateMobileStep(mobileStep)) return;
+      mobileStep += 1;
+      renderMobileFlow({ focus: true });
       return;
     }
-    const button = $('quick-create-submit');
+    if (!form.reportValidity()) return;
+    if (!validateLocation()) return;
+    const button = submitButton;
     button.disabled = true;
     button.textContent = 'Creating your draft…';
     try {
@@ -168,9 +228,10 @@
     } catch (requestError) {
       error.textContent = requestError.message || 'The draft could not be created.';
       button.disabled = false;
-      button.textContent = 'Continue to design';
+      button.textContent = submitLabel();
     }
   });
 
+  renderMobileFlow();
   initPlaces();
 })();

@@ -280,14 +280,151 @@
       .dashboard-social-footer { margin-top: 54px; }
       .dashboard-desktop-only { display: flex; }
     }
+    @media (min-width: 880px) and (max-width: 1023px) {
+      .dashboard-empty {
+        min-height: 380px;
+        display: grid;
+        place-items: center;
+        padding: 40px;
+        border: 1px dashed rgba(28,197,190,.24);
+        border-radius: 24px;
+        background: linear-gradient(145deg, rgba(28,197,190,.045), rgba(255,255,255,.012));
+        color: var(--sg-text);
+        text-align: center;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease, transform .15s ease;
+      }
+      .dashboard-empty:hover { border-color:rgba(28,197,190,.5);background:linear-gradient(145deg,rgba(28,197,190,.075),rgba(255,255,255,.018));transform:translateY(-1px); }
+      .dashboard-empty:focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px; }
+      .dashboard-empty-mark {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 20px;
+        border: 1px solid rgba(28,197,190,.28);
+        border-radius: 18px;
+        background: rgba(28,197,190,.08);
+        color: var(--sg-accent);
+        font-family: var(--sg-font-display);
+        font-size: 28px;
+      }
+      .dashboard-empty h3 { margin-bottom: 9px; font-size: 26px; }
+      .dashboard-empty p { max-width: 360px; color: var(--sg-text-dim); font-size: 14px; line-height: 1.6; }
+    }
     @media (max-width: 520px) {
       .next-details { padding: 18px; }
       .next-details h2 { font-size: 24px; }
       .dashboard-actions { grid-template-columns: 1fr; }
     }
+    @media (max-width: 879px) {
+      .dashboard-header {
+        margin-bottom: 28px;
+      }
+      .dashboard-header .sg-page-title {
+        overflow-wrap: anywhere;
+      }
+      .dashboard-header .sg-page-sub {
+        margin-bottom: 0;
+      }
+      .dashboard-layout {
+        display: grid;
+        gap: 26px;
+      }
+      .next-card,
+      .dashboard-skeleton {
+        border-radius: var(--sg-mobile-card-radius);
+        box-shadow: 0 12px 34px rgba(0,0,0,.26);
+      }
+      .next-card:hover { transform:none; }
+      .next-visual,
+      .dashboard-skeleton-visual {
+        aspect-ratio: 16 / 9;
+      }
+      .next-details {
+        grid-template-columns: minmax(0,1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 20px;
+      }
+      .next-details h2 {
+        margin-bottom: 7px;
+        font-size: 25px;
+      }
+      .next-details p {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .next-count strong {
+        font-size: 32px;
+      }
+      .next-count span {
+        font-size: 11px;
+        line-height: 1.25;
+      }
+      .dashboard-sidebar {
+        min-width: 0;
+      }
+      .dashboard-stats {
+        margin: 0 0 16px;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      .dashboard-actions {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .dashboard-actions .sg-btn:not(.sg-mobile-sticky-action) {
+        min-height: 56px;
+      }
+      .dashboard-empty {
+        min-height: 320px;
+        display: grid;
+        place-items: center;
+        padding: 34px 22px;
+        border: 1px dashed rgba(28,197,190,.28);
+        border-radius: var(--sg-mobile-card-radius);
+        background: linear-gradient(145deg, rgba(28,197,190,.055), rgba(255,255,255,.014));
+        color: var(--sg-text);
+        text-align: center;
+      }
+      .dashboard-empty:focus-visible {
+        outline: 2px solid var(--sg-accent);
+        outline-offset: 4px;
+      }
+      .dashboard-empty-mark {
+        width: 60px;
+        height: 60px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 20px;
+        border: 1px solid rgba(28,197,190,.32);
+        border-radius: 20px;
+        background: rgba(28,197,190,.09);
+        color: var(--sg-accent);
+        font-family: var(--sg-font-display);
+        font-size: 31px;
+      }
+      .dashboard-empty h3 {
+        margin-bottom: 10px;
+        font-size: 27px;
+      }
+      .dashboard-empty p {
+        max-width: 390px;
+        color: var(--sg-text-dim);
+        font-size: 15px;
+        line-height: 1.65;
+      }
+      .dashboard-skeleton-details {
+        padding: 20px;
+      }
+      .dashboard-social-footer {
+        margin-top: 44px;
+      }
+    }
   </style>
 </head>
-<body>
+<body class="has-mobile-sticky-action">
   <div class="sg-shell dashboard-shell">
     <nav id="nav"></nav>
     <header class="dashboard-header">
@@ -331,7 +468,7 @@
         <p class="dashboard-stats" id="dashboard-stats"></p>
 
         <div class="dashboard-actions">
-          <a class="sg-btn sg-btn-primary sg-btn-block" href="/events/new">Create Event</a>
+          <a class="sg-btn sg-btn-primary sg-btn-block sg-mobile-sticky-action" href="/events/new">Create Event</a>
           <a class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
         </div>
       </aside>
@@ -355,6 +492,27 @@
   <script src="/js/api.js"></script>
   <script>
     renderNav('dashboard');
+    const dashboardMobileLayout = window.matchMedia('(max-width: 879px)');
+
+    function syncDashboardEmptyCardAction() {
+      document.querySelectorAll('.dashboard-empty').forEach(card => {
+        if (!card.dataset.desktopAriaLabel) {
+          card.dataset.desktopAriaLabel = card.getAttribute('aria-label') || 'Create an event';
+        }
+        if (dashboardMobileLayout.matches) {
+          if (document.activeElement === card) document.querySelector('.sg-mobile-sticky-action')?.focus();
+          card.removeAttribute('href');
+          card.removeAttribute('aria-label');
+        } else {
+          card.setAttribute('href', '/events/new');
+          card.setAttribute('aria-label', card.dataset.desktopAriaLabel);
+        }
+      });
+    }
+
+    if (dashboardMobileLayout.addEventListener) dashboardMobileLayout.addEventListener('change', syncDashboardEmptyCardAction);
+    else dashboardMobileLayout.addListener(syncDashboardEmptyCardAction);
+
     (async () => {
       const container = document.getElementById('next-event');
       const statGrid = document.querySelector('.dashboard-stat-grid');
@@ -380,6 +538,7 @@
           document.getElementById('dashboard-stats').textContent =
             `${events.length} total event${events.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
           container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create your first event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Your next event starts here.</h3><p>Create a polished event page, then manage every RSVP from one place.</p></div></a>';
+          syncDashboardEmptyCardAction();
           finishLoading();
           return;
         }
@@ -417,6 +576,7 @@
         document.getElementById('rsvp-count').textContent = '0';
         document.getElementById('event-count').textContent = '0';
         container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create an event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Create your next event.</h3><p>Your dashboard data could not be loaded, but event creation is still available.</p></div></a>';
+        syncDashboardEmptyCardAction();
         finishLoading();
       }
     })();

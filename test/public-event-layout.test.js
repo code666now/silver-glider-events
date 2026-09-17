@@ -154,6 +154,8 @@ test('RSVP keeps essential identity fields visible and progressively discloses o
     const form = view.slice(view.indexOf('<form id="rsvp-form">'), view.indexOf('</form>'));
     const options = form.slice(form.indexOf('<details class="rsvp-options">'), form.indexOf('</details>'));
 
+    assert.match(form, /<label for="full_name">Full name<\/label>/);
+    assert.match(form, /<label for="email">Email<\/label>/);
     assert.ok(form.indexOf('id="full_name"') < form.indexOf('id="email"'));
     assert.ok(form.indexOf('id="email"') < form.indexOf('<details class="rsvp-options">'));
     assert.ok(form.indexOf('id="wants_reminders"') < form.indexOf('<details class="rsvp-options">'));
