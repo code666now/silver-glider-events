@@ -148,6 +148,34 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
   }
 });
 
+test('mobile owner inputs prevent Safari focus zoom without disabling page zoom', () => {
+  const styles = read('public/css/event-owner-editor.css');
+  const quickCreate = read('src/views/event-create.html');
+  const ownerRenderer = read('src/lib/event-owner-editor.js');
+  const touchRule = styles.match(/@media \(max-width: 879px\), \(hover: none\) and \(pointer: coarse\) \{([\s\S]*?)\n\}/);
+
+  assert.ok(touchRule, 'touch-first owner input styles should exist');
+  const inputRule = touchRule[1].match(/\.owner-input \{([^}]*)\}/);
+  assert.ok(inputRule, 'touch-first owner input rule should exist');
+  const fontSize = inputRule[1].match(/font-size:\s*([\d.]+)px/);
+  assert.ok(fontSize && Number(fontSize[1]) >= 16, 'touch inputs must stay at least 16px');
+  assert.match(styles, /\.owner-input \{[\s\S]*?min-width: 0;/);
+  assert.match(quickCreate, /event-owner-editor\.css/);
+  assert.match(quickCreate, /class="owner-input"/);
+  assert.match(ownerRenderer, /class="owner-input"/);
+
+  for (const templatePath of [
+    'src/views/event-create.html',
+    'src/views/event-public.html',
+    'src/views/event-public-flyer.html'
+  ]) {
+    const template = read(templatePath);
+    const viewport = template.match(/<meta name="viewport" content="([^"]+)">/i);
+    assert.ok(viewport, `${templatePath} should define a viewport`);
+    assert.doesNotMatch(viewport[1], /\b(?:maximum-scale|user-scalable)\s*=/i);
+  }
+});
+
 test('appearance editing reuses protected uploads and rate-conscious photo search', () => {
   const client = read('public/js/event-owner-editor.js');
   const styles = read('public/css/event-owner-editor.css');

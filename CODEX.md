@@ -105,7 +105,7 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 273 tests, including 56 HTTP/PostgreSQL integration tests. The integration suite waits for tracked background confirmation and invitation delivery before each database reset; any new fire-and-forget work must expose the same settlement boundary. Emails are never sent locally; integration tests read links and codes from `mailer.devOutbox`. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 274 tests, including 56 HTTP/PostgreSQL integration tests. The integration suite waits for tracked background confirmation and invitation delivery before each database reset; any new fire-and-forget work must expose the same settlement boundary. Emails are never sent locally; integration tests read links and codes from `mailer.devOutbox`. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 

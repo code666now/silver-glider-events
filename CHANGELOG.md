@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.106
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Fixed
+
+* Create Event and the mobile live editor now render touch-focused inputs at 16px, preventing iPhone Safari from magnifying the page and clipping the form or primary action.
+* Native date and time controls can shrink cleanly within their responsive grid without creating horizontal overflow.
+
+### Accessibility and safety
+
+* Pinch-to-zoom remains available; the fix does not use `maximum-scale` or `user-scalable` restrictions. Desktop input sizing and the existing four-field creation journey remain unchanged.
+* This presentation-only release does not change authentication, events or guest data, RSVP, Follow Host, invitations, emails, reminders, ticketing, or messaging.
+
 ## 1.0.105
 
 Released September 16, 2026. Built and deployed by Codex.
