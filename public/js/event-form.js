@@ -18,6 +18,37 @@ const ArtworkColor = window.SGArtworkColor;
 const LocationUtils = window.SGLocation;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
+const mobileFlowMedia = window.matchMedia('(max-width: 879px)');
+const mobileFlowTitles = {
+  design: 'Appearance',
+  basics: 'Event details',
+  about: 'Description & vibe',
+  access: 'RSVP & access',
+  guests: 'Guest experience',
+  reminders: 'Reminders'
+};
+const mobileCreateSequence = ['basics', 'design', 'access'];
+let mobileFlowView = 'hub';
+let mobileFlowLastTrigger = null;
+let mobileMoreDetailsWasOpen = null;
+let mobileFlowDirty = false;
+let mobileFlowBaseline = null;
+
+function mobileFlowStateSignature() {
+  const fields = Array.from($('event-form').elements)
+    .filter(field => field.id)
+    .map(field => [field.id, field.type === 'checkbox' || field.type === 'radio' ? field.checked : field.value]);
+  return JSON.stringify({ fields, visibility, admissionType, presentationMode, coverFitMode, commerceEventId });
+}
+
+function resetMobileFlowBaseline() {
+  mobileFlowBaseline = mobileFlowStateSignature();
+  mobileFlowDirty = false;
+}
+
+function mobileFlowHasChanges() {
+  return mobileFlowDirty || (mobileFlowBaseline !== null && mobileFlowBaseline !== mobileFlowStateSignature());
+}
 
 function cleanInstagramHandleInput(value) {
   let raw = String(value ?? '').trim();
@@ -91,6 +122,8 @@ function finishEditLoading() {
   $('event-form').inert = false;
   $('event-form').setAttribute('aria-busy', 'false');
   $('publish-btn').disabled = false;
+  refreshMobileFlowHub();
+  resetMobileFlowBaseline();
 }
 
 function showEditLoadError() {
@@ -1097,7 +1130,222 @@ function pickPhoto(photo) {
   api('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
 }
 
+function formatMobileFlowDate(value) {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatMobileFlowTime(value) {
+  if (!value) return '';
+  const [hourValue, minute = '00'] = String(value).split(':');
+  const hour = Number(hourValue);
+  if (!Number.isFinite(hour)) return value;
+  return `${hour % 12 || 12}:${minute} ${hour >= 12 ? 'PM' : 'AM'}`;
+}
+
+function refreshMobileFlowHub() {
+  if (!$('event-mobile-flow')) return;
+  const designImage = presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
+  $('event-mobile-summary-design').textContent = `${presentationMode === 'flyer' ? 'Flyer' : 'Standard'} · ${designImage ? 'Image added' : 'No image'}`;
+
+  const basics = [formatMobileFlowDate($('event_date').value), formatMobileFlowTime($('start_time').value)].filter(Boolean);
+  const locationName = $('venue_name').value || $('location_search').value.trim();
+  if (locationName) basics.push(locationName);
+  $('event-mobile-summary-basics').textContent = basics.length ? basics.join(' · ') : 'Title, date, time, and location';
+
+  const artistFields = [
+    ['event_vibe_label', 'event_vibe_url', 'event_vibe_image_url'],
+    ['event_vibe_label_2', 'event_vibe_url_2', 'event_vibe_image_url_2'],
+    ['event_vibe_label_3', 'event_vibe_url_3', 'event_vibe_image_url_3']
+  ];
+  const artistCount = artistFields.filter(ids => ids.some(id => String($(id).value || '').trim())).length;
+  const hasDescription = Boolean($('description').value.trim());
+  $('event-mobile-summary-about').textContent = artistCount
+    ? `${artistCount} ${artistCount === 1 ? 'artist' : 'artists'}${hasDescription ? ' · Description added' : ''}`
+    : (hasDescription ? 'Description added' : 'Optional · Not added');
+
+  const admissionLabel = admissionType === 'external_tickets'
+    ? 'External tickets'
+    : (admissionType === 'silver_glider_tickets' ? 'Silver Glider tickets' : 'Free RSVP');
+  $('event-mobile-summary-access').textContent = `${admissionLabel} · ${visibility === 'private' ? 'Private link' : 'Public'}`;
+  $('event-mobile-summary-guests').textContent = [
+    `Guest list ${$('show_guest_list').checked ? 'on' : 'off'}`,
+    `+1s ${$('allow_guests').checked ? 'on' : 'off'}`,
+    `Comments ${$('comments_enabled').checked ? 'on' : 'off'}`
+  ].join(' · ');
+  $('event-mobile-summary-reminders').textContent = $('secret_show_enabled').checked
+    ? 'Unavailable for Secret Shows'
+    : `Day-before text ${$('sms_reminder_enabled').checked ? 'on' : 'off'}`;
+}
+
+function mobileFlowPanelForElement(element) {
+  return element?.closest?.('[data-mobile-flow-panel]')?.dataset.mobileFlowPanel || null;
+}
+
+function validateRequiredFields() {
+  const firstInvalid = $('event-form').querySelector(':invalid');
+  if (!firstInvalid) return true;
+  if (mobileFlowMedia.matches) {
+    const panel = mobileFlowPanelForElement(firstInvalid) || 'basics';
+    openMobileFlowView(panel, { focus: false });
+    const mobileError = $('event-mobile-flow-error');
+    mobileError.textContent = firstInvalid.validationMessage || 'Complete the required fields to continue.';
+    mobileError.hidden = false;
+  }
+  requestAnimationFrame(() => {
+    firstInvalid.focus({ preventScroll: true });
+    firstInvalid.reportValidity();
+  });
+  return false;
+}
+
+function clearMobileFlowError() {
+  const error = $('event-mobile-flow-error');
+  if (!error) return;
+  error.textContent = '';
+  error.hidden = true;
+}
+
+function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
+  if (!mobileFlowMedia.matches || !$('event-mobile-flow')) return;
+  const nextView = view === 'hub' || mobileFlowTitles[view] ? view : 'hub';
+  mobileFlowView = nextView;
+  if (trigger) mobileFlowLastTrigger = trigger;
+  $('event-form').dataset.mobileView = nextView;
+  $('event-mobile-flow-hub').hidden = nextView !== 'hub';
+  $('event-mobile-flow-back').hidden = nextView === 'hub';
+  $('event-mobile-flow-title').textContent = nextView === 'hub'
+    ? (editId ? 'Edit your event' : 'Finish your event')
+    : mobileFlowTitles[nextView];
+  const createStep = !editId ? mobileCreateSequence.indexOf(nextView) : -1;
+  $('event-mobile-flow-kicker').textContent = createStep >= 0
+    ? `Step ${createStep + 1} of ${mobileCreateSequence.length}`
+    : 'Event setup';
+  const previousCreateView = createStep > 0 ? mobileFlowTitles[mobileCreateSequence[createStep - 1]] : null;
+  $('event-mobile-flow-back').setAttribute('aria-label', previousCreateView
+    ? `Back to ${previousCreateView}`
+    : 'Back to event setup');
+  $('event-mobile-flow-done').textContent = createStep === mobileCreateSequence.length - 1 ? 'Review event' : 'Done';
+
+  if (nextView === 'about') {
+    if (mobileMoreDetailsWasOpen == null) mobileMoreDetailsWasOpen = $('more-details').open;
+    $('more-details').open = true;
+  }
+  clearMobileFlowError();
+  refreshMobileFlowHub();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  if (focus) {
+    $('event-mobile-flow-title').setAttribute('tabindex', '-1');
+    requestAnimationFrame(() => $('event-mobile-flow-title').focus({ preventScroll: true }));
+  }
+}
+
+function returnToMobileFlowHub({ focus = true } = {}) {
+  const returnFocus = mobileFlowLastTrigger;
+  openMobileFlowView('hub', { focus: false });
+  if (!focus) return;
+  const target = returnFocus instanceof HTMLElement && returnFocus.isConnected
+    ? returnFocus
+    : $('event-mobile-flow-title');
+  requestAnimationFrame(() => target.focus({ preventScroll: true }));
+}
+
+function revealMobileFlowError(message) {
+  if (!mobileFlowMedia.matches) return;
+  const text = String(message || '').toLowerCase();
+  let panel = mobileFlowView === 'hub' ? 'basics' : mobileFlowView;
+  if (/flyer|image|instagram/.test(text)) panel = 'design';
+  else if (/location|address|title|date|time/.test(text)) panel = 'basics';
+  else if (/ticket|secret|access code|visibility|capacity/.test(text)) panel = 'access';
+  else if (/reminder|texting/.test(text)) panel = 'reminders';
+  openMobileFlowView(panel, { focus: false });
+}
+
+function syncMobileFlowMode() {
+  if (!$('event-mobile-flow')) return;
+  if (mobileFlowMedia.matches) {
+    document.body.classList.add('event-mobile-flow-enabled');
+    if (!$('event-form').dataset.mobileView) mobileFlowView = editId ? 'hub' : 'basics';
+    $('event-mobile-flow-close').href = editId ? `/events/${encodeURIComponent(editId)}/manage` : '/events';
+    openMobileFlowView(mobileFlowView, { focus: false });
+    return;
+  }
+  document.body.classList.remove('event-mobile-flow-enabled');
+  $('event-form').removeAttribute('data-mobile-view');
+  $('event-mobile-flow-hub').hidden = false;
+  $('event-mobile-flow-back').hidden = true;
+  clearMobileFlowError();
+  if (mobileMoreDetailsWasOpen != null) {
+    $('more-details').open = mobileMoreDetailsWasOpen;
+    mobileMoreDetailsWasOpen = null;
+  }
+}
+
+function initMobileEventFlow() {
+  if (!$('event-mobile-flow')) return;
+  document.querySelectorAll('[data-mobile-flow-open]').forEach(button => {
+    button.addEventListener('click', () => openMobileFlowView(button.dataset.mobileFlowOpen, { trigger: button }));
+  });
+  $('event-mobile-flow-back').addEventListener('click', () => {
+    if (!editId) {
+      const index = mobileCreateSequence.indexOf(mobileFlowView);
+      if (index > 0) return openMobileFlowView(mobileCreateSequence[index - 1]);
+    }
+    returnToMobileFlowHub();
+  });
+  $('event-mobile-flow-done').addEventListener('click', () => {
+    if (!editId) {
+      const index = mobileCreateSequence.indexOf(mobileFlowView);
+      if (index >= 0 && index < mobileCreateSequence.length - 1) return openMobileFlowView(mobileCreateSequence[index + 1]);
+    }
+    returnToMobileFlowHub();
+  });
+  $('event-form').addEventListener('input', () => {
+    mobileFlowDirty = true;
+    clearMobileFlowError();
+    refreshMobileFlowHub();
+  });
+  $('event-form').addEventListener('change', () => {
+    mobileFlowDirty = true;
+    clearMobileFlowError();
+    refreshMobileFlowHub();
+  });
+  $('event-form').addEventListener('click', event => {
+    if (event.target.closest('button, input, label, select, textarea')) clearMobileFlowError();
+    setTimeout(refreshMobileFlowHub, 0);
+  });
+  $('event-mobile-flow-close').addEventListener('click', event => {
+    if (!mobileFlowMedia.matches || !mobileFlowHasChanges()) return;
+    if (!window.confirm('Discard your unsaved changes?')) event.preventDefault();
+  });
+  $('event-form').addEventListener('invalid', event => {
+    if (!mobileFlowMedia.matches) return;
+    const panel = mobileFlowPanelForElement(event.target);
+    if (panel && panel !== mobileFlowView) openMobileFlowView(panel, { focus: false });
+  }, true);
+  if (typeof mobileFlowMedia.addEventListener === 'function') mobileFlowMedia.addEventListener('change', syncMobileFlowMode);
+  else mobileFlowMedia.addListener(syncMobileFlowMode);
+  syncMobileFlowMode();
+  if (!editId) {
+    resetMobileFlowBaseline();
+    Promise.allSettled([organizerProfileReady, commerceConfigReady]).then(() => {
+      if (!mobileFlowDirty) resetMobileFlowBaseline();
+    });
+  }
+}
+
 function showError(msg) {
+  if (mobileFlowMedia.matches && $('event-mobile-flow-error')) {
+    revealMobileFlowError(msg);
+    const mobileError = $('event-mobile-flow-error');
+    mobileError.textContent = msg;
+    mobileError.hidden = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    requestAnimationFrame(() => mobileError.focus({ preventScroll: true }));
+    return;
+  }
   const el = $('error');
   el.textContent = msg;
   el.style.display = 'block';
@@ -1237,6 +1485,7 @@ if (editId) {
 
 $('event-form').addEventListener('submit', async e => {
   e.preventDefault();
+  if (!validateRequiredFields()) return;
   const btn = $('publish-btn');
   btn.disabled = true;
   btn.textContent = editId ? 'Saving…' : 'Publishing…';
@@ -1277,3 +1526,5 @@ $('event-form').addEventListener('submit', async e => {
     btn.textContent = editId ? 'Save Changes' : 'Publish Event';
   }
 });
+
+initMobileEventFlow();

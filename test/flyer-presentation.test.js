@@ -112,7 +112,7 @@ test('Flyer designer credit is progressively disclosed, validated inline, and sa
   assert.match(events, /e\.flyer_designer_name \|\| null, e\.flyer_designer_instagram_handle \|\| null/);
 });
 
-test('event editor expands into two columns on desktop without changing the mobile flow', () => {
+test('event editor keeps the desktop columns and adds a phone-only task flow', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
   const mainStyles = read('public/css/main.css');
@@ -131,6 +131,24 @@ test('event editor expands into two columns on desktop without changing the mobi
   assert.match(html, /\.event-editor-intro \.secret-shortcut > div\s*\{[\s\S]*display: flex/);
   assert.match(html, /grid-template-columns: minmax\(360px, \.9fr\) minmax\(480px, 1\.1fr\)/);
   assert.match(html, /@media \(min-width: 1200px\) and \(min-height: 900px\)[\s\S]*position: sticky/);
+  assert.match(html, /@media \(max-width: 879px\)[\s\S]*body\.event-mobile-flow-enabled/);
+  assert.match(html, /id="event-mobile-flow" aria-label="Event setup"/);
+  assert.match(html, /id="event-mobile-flow-error" role="alert" tabindex="-1" hidden/);
+  assert.equal((html.match(/data-mobile-flow-open=/g) || []).length, 6);
+  assert.match(html, /data-mobile-flow-open="design"/);
+  assert.match(html, /data-mobile-flow-open="basics"/);
+  assert.match(html, /data-mobile-flow-open="about"/);
+  assert.match(html, /data-mobile-flow-open="access"/);
+  assert.match(html, /data-mobile-flow-open="guests"/);
+  assert.match(html, /data-mobile-flow-open="reminders"/);
+  assert.match(html, /id="event-mobile-flow-done" type="button"/);
+  assert.match(js, /matchMedia\('\(max-width: 879px\)'\)/);
+  assert.match(js, /function openMobileFlowView\(/);
+  assert.match(js, /function refreshMobileFlowHub\(/);
+  assert.match(js, /function returnToMobileFlowHub\([\s\S]*event-mobile-flow-title[\s\S]*focus\(\{ preventScroll: true \}\)/);
+  assert.match(js, /event-mobile-flow-close'[\s\S]*mobileFlowHasChanges\(\)[\s\S]*Discard your unsaved changes/);
+  assert.match(js, /addEventListener\('invalid',[\s\S]*mobileFlowPanelForElement/);
+  assert.match(js, /function showError\(msg\)[\s\S]*mobileError\.focus\(\{ preventScroll: true \}\)/);
   assert.match(html, /@media \(max-width: 640px\)/);
   assert.match(html, /class="event-edit-skeleton" id="event-edit-skeleton" aria-label="Loading event editor"/);
   assert.match(html, /event-edit-loading #event-form \{ display:none; \}/);
@@ -149,10 +167,12 @@ test('advanced event editor keeps one ordinary submit control at the end of the 
   const form = html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>'));
 
   assert.equal((form.match(/id="publish-btn"/g) || []).length, 1);
+  assert.match(form, /<form id="event-form" aria-busy="false" novalidate>/);
   assert.match(form, /class="sg-btn sg-btn-primary sg-btn-block event-editor-submit" type="submit" id="publish-btn">Publish Event<\/button>/);
   assert.match(html, /\.event-editor-submit \{ min-height: 52px;/);
   assert.match(js, /function publishLocationState\(\)[\s\S]*manualLocationMode && !venueAddress/);
   assert.match(js, /function collect\(\)[\s\S]*const locationState = publishLocationState\(\)[\s\S]*if \(!locationState\.valid\) throw new Error\(locationState\.error\)/);
+  assert.match(js, /function validateRequiredFields\(\)[\s\S]*querySelector\(':invalid'\)[\s\S]*openMobileFlowView\(panel, \{ focus: false \}\)[\s\S]*reportValidity\(\)/);
   assert.doesNotMatch(html, /publish-dock|publish-helper|publish-end-anchor/);
   assert.doesNotMatch(js, /updatePublishReadiness|updatePublishDockEndState|schedulePublishDockEndState/);
 });
@@ -169,11 +189,11 @@ test('event editor gives editable fields a restrained hover and focus halo', () 
   assert.match(html, /box-shadow: 0 0 0 4px rgba\(28,197,190,\.11\), 0 0 24px rgba\(28,197,190,\.09\)/);
 });
 
-test('event editor keeps venue, admission, and event settings visible while progressively disclosing optional content', () => {
+test('desktop keeps venue, admission, and event settings in order while mobile groups them into focused tasks', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
   const form = html.slice(html.indexOf('<form id="event-form"'), html.indexOf('</form>'));
-  const moreStart = form.indexOf('<details class="event-editor-disclosure" id="more-details">');
+  const moreStart = form.indexOf('id="more-details"');
   const admissionStart = form.indexOf('<section class="event-editor-open-section" id="admission-settings"');
   const audienceStart = form.indexOf('<section class="event-editor-open-section" id="audience-settings"');
 
@@ -189,6 +209,11 @@ test('event editor keeps venue, admission, and event settings visible while prog
   }
   assert.match(form, /id="admission-settings-title">Admission/);
   assert.match(form, /id="audience-settings-title">Event settings/);
+  assert.match(form, /id="more-details"[^>]+data-mobile-flow-panel="about"/);
+  assert.match(form, /id="admission-settings"[^>]+data-mobile-flow-panel="access"/);
+  assert.match(form, /id="guest-experience-settings"[^>]+data-mobile-flow-panel="guests"/);
+  assert.match(form, /id="automatic-text-settings"[^>]+data-mobile-flow-panel="reminders"/);
+  assert.match(form, /id="private-settings"[^>]+data-mobile-flow-panel="access"/);
   assert.doesNotMatch(form, /Tickets and visibility/);
   assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your Host Page and may appear in Silver Glider discovery/);
   assert.match(form, /id="vis-public"[\s\S]*<circle cx="12" cy="12" r="9"\/>[\s\S]*<path d="M3 12h18"\/>/);

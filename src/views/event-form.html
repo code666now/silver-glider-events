@@ -46,6 +46,9 @@
     .event-editor-section-heading,
     .event-editor-group-heading { display: none; }
     .event-editor-submit { min-height: 52px; margin-top: 28px !important; }
+    .event-mobile-flow,
+    .event-mobile-flow-actions { display: none; }
+    .event-mobile-panel-title { display: none; }
     .page-style-segmented {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1011,6 +1014,226 @@
       .picker-photo { border-radius: 16px; }
       .image-modal-foot { padding: 14px 16px 18px; }
     }
+    @media (max-width: 879px) {
+      body.event-mobile-flow-enabled {
+        min-height: 100dvh;
+        background: #0d0d0f;
+      }
+      body.event-mobile-flow-enabled .event-editor-shell {
+        width: 100%;
+        max-width: none;
+        min-height: 100dvh;
+        padding: 0;
+      }
+      body.event-mobile-flow-enabled .event-editor-shell > .sg-nav,
+      body.event-mobile-flow-enabled .event-editor-intro,
+      body.event-mobile-flow-enabled .sg-global-footer,
+      body.event-mobile-flow-enabled .feedback-bubble { display: none !important; }
+      body.event-mobile-flow-enabled #event-form {
+        min-height: 100dvh;
+        padding-top: calc(74px + env(safe-area-inset-top));
+        padding-bottom: calc(96px + env(safe-area-inset-bottom));
+      }
+      body.event-mobile-flow-enabled .event-mobile-flow {
+        display: block;
+        background: #0d0d0f;
+      }
+      .event-mobile-flow-head {
+        position: fixed;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 35;
+        height: calc(74px + env(safe-area-inset-top));
+        display: grid;
+        grid-template-columns: 42px minmax(0,1fr) 42px;
+        align-items: center;
+        gap: 10px;
+        padding: env(safe-area-inset-top) 14px 0;
+        border-bottom: 1px solid var(--sg-border-soft);
+        background: rgba(15,15,18,.98);
+      }
+      .event-mobile-flow-heading { min-width: 0; text-align: center; }
+      .event-mobile-flow-heading span {
+        display: block;
+        margin-bottom: 3px;
+        color: var(--sg-accent);
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+      .event-mobile-flow-heading h1 {
+        overflow: hidden;
+        margin: 0;
+        color: var(--sg-text);
+        font-size: 18px;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .event-mobile-flow-back,
+      .event-mobile-flow-close {
+        width: 42px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--sg-border);
+        border-radius: 50%;
+        background: rgba(255,255,255,.025);
+        color: var(--sg-text-dim);
+        font: 700 19px/1 var(--sg-font-body);
+        text-decoration: none;
+      }
+      .event-mobile-flow-back[hidden] { visibility: hidden; display: inline-flex; }
+      .event-mobile-flow-back:focus-visible,
+      .event-mobile-flow-close:focus-visible,
+      .event-mobile-flow-row:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
+      .event-mobile-flow-hub {
+        display: grid;
+        gap: 10px;
+        padding: 22px 16px 18px;
+      }
+      .event-mobile-flow-hub[hidden] { display: none; }
+      .event-mobile-flow-error {
+        margin: 0;
+        padding: 11px 16px;
+        border-bottom: 1px solid rgba(231,76,60,.22);
+        background: rgba(231,76,60,.08);
+        color: #ffb8af;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .event-mobile-flow-error[hidden] { display: none; }
+      .event-mobile-flow-intro { margin: 0 2px 8px; }
+      .event-mobile-flow-intro h2 { margin: 0 0 6px; font-size: 25px; line-height: 1.1; }
+      .event-mobile-flow-intro p { margin: 0; color: var(--sg-text-dim); font-size: 13px; line-height: 1.5; }
+      .event-mobile-flow-row {
+        width: 100%;
+        min-height: 72px;
+        display: grid;
+        grid-template-columns: 38px minmax(0,1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--sg-border-soft);
+        border-radius: 16px;
+        background: rgba(255,255,255,.025);
+        color: var(--sg-text);
+        text-align: left;
+      }
+      .event-mobile-flow-row-icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        background: rgba(28,197,190,.09);
+        color: var(--sg-accent);
+        font-size: 17px;
+      }
+      .event-mobile-flow-row-copy { min-width: 0; display: grid; gap: 4px; }
+      .event-mobile-flow-row-copy strong { font-size: 14px; line-height: 1.25; }
+      .event-mobile-flow-row-copy small {
+        overflow: hidden;
+        color: var(--sg-text-faint);
+        font-size: 11px;
+        line-height: 1.35;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .event-mobile-flow-row-arrow { color: var(--sg-text-faint); font-size: 20px; }
+      body.event-mobile-flow-enabled .event-editor-grid { display: block; }
+      body.event-mobile-flow-enabled .event-editor-design,
+      body.event-mobile-flow-enabled .event-editor-details {
+        width: 100%;
+        padding: 22px 16px 28px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      #event-form[data-mobile-view="hub"] .event-editor-design { display: none; }
+      #event-form[data-mobile-view="hub"] .event-editor-details {
+        display: block;
+        padding: 0 16px 120px;
+      }
+      #event-form[data-mobile-view="hub"] .event-editor-details > *:not(#publish-btn) { display: none !important; }
+      #event-form[data-mobile-view="hub"] #publish-btn {
+        position: fixed;
+        right: 16px;
+        bottom: max(14px,env(safe-area-inset-bottom));
+        left: 16px;
+        z-index: 36;
+        width: auto;
+        min-height: 56px;
+        margin: 0 !important;
+        box-shadow: 0 14px 38px rgba(0,0,0,.42);
+      }
+      #event-form[data-mobile-view="design"] .event-editor-design { display: block; }
+      #event-form[data-mobile-view="design"] .event-editor-details { display: none; }
+      #event-form[data-mobile-view="basics"] .event-editor-design,
+      #event-form[data-mobile-view="about"] .event-editor-design,
+      #event-form[data-mobile-view="access"] .event-editor-design,
+      #event-form[data-mobile-view="guests"] .event-editor-design,
+      #event-form[data-mobile-view="reminders"] .event-editor-design { display: none; }
+      #event-form[data-mobile-view="basics"] .event-editor-details,
+      #event-form[data-mobile-view="about"] .event-editor-details,
+      #event-form[data-mobile-view="access"] .event-editor-details,
+      #event-form[data-mobile-view="guests"] .event-editor-details,
+      #event-form[data-mobile-view="reminders"] .event-editor-details { display: block; }
+      #event-form[data-mobile-view]:not([data-mobile-view="hub"]) .event-editor-details > * { display: none !important; }
+      #event-form[data-mobile-view="basics"] .event-editor-details > [data-mobile-flow-panel="basics"],
+      #event-form[data-mobile-view="about"] .event-editor-details > [data-mobile-flow-panel="about"],
+      #event-form[data-mobile-view="access"] .event-editor-details > [data-mobile-flow-panel="access"],
+      #event-form[data-mobile-view="guests"] [data-mobile-flow-panel="guests"],
+      #event-form[data-mobile-view="reminders"] [data-mobile-flow-panel="reminders"] { display: block !important; }
+      #event-form[data-mobile-view="access"] #audience-settings,
+      #event-form[data-mobile-view="guests"] #audience-settings,
+      #event-form[data-mobile-view="reminders"] #audience-settings { display: block !important; }
+      #event-form[data-mobile-view="access"] #admission-settings { display: block !important; }
+      #event-form[data-mobile-view="access"] #audience-settings .event-editor-disclosure-body > *:not([data-mobile-flow-panel="access"]),
+      #event-form[data-mobile-view="guests"] #audience-settings .event-editor-disclosure-body > *:not([data-mobile-flow-panel="guests"]),
+      #event-form[data-mobile-view="reminders"] #audience-settings .event-editor-disclosure-body > *:not([data-mobile-flow-panel="reminders"]) { display: none !important; }
+      #event-form[data-mobile-view="about"] #more-details > summary,
+      #event-form[data-mobile-view="access"] #audience-settings > .event-editor-open-section-heading,
+      #event-form[data-mobile-view="guests"] #audience-settings > .event-editor-open-section-heading,
+      #event-form[data-mobile-view="reminders"] #audience-settings > .event-editor-open-section-heading { display: none; }
+      #event-form[data-mobile-view="about"] #more-details,
+      #event-form[data-mobile-view="access"] #admission-settings,
+      #event-form[data-mobile-view="access"] #audience-settings,
+      #event-form[data-mobile-view="guests"] #audience-settings,
+      #event-form[data-mobile-view="reminders"] #audience-settings {
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+      }
+      #event-form[data-mobile-view="about"] #more-details .event-editor-disclosure-body,
+      #event-form[data-mobile-view="access"] .event-editor-disclosure-body,
+      #event-form[data-mobile-view="guests"] .event-editor-disclosure-body,
+      #event-form[data-mobile-view="reminders"] .event-editor-disclosure-body { padding: 0; border: 0; }
+      #event-form[data-mobile-view="about"] #more-details .event-editor-disclosure-body > .sg-field:first-child { margin-top: 0; }
+      #event-form[data-mobile-view]:not([data-mobile-view="hub"]) #publish-btn { display: none !important; }
+      .event-mobile-flow-actions {
+        position: fixed;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 36;
+        display: none;
+        padding: 10px 16px max(12px,env(safe-area-inset-bottom));
+        border-top: 1px solid var(--sg-border-soft);
+        background: rgba(15,15,18,.98);
+      }
+      #event-form:not([data-mobile-view="hub"]) .event-mobile-flow-actions { display: block; }
+      .event-mobile-flow-done { width: 100%; min-height: 52px; }
+      #event-form .sg-input,
+      #event-form .sg-select,
+      #event-form .sg-textarea { font-size: 16px; }
+      body.event-mobile-flow-enabled #event-form #cover-actions { padding-bottom: 0; }
+    }
     @media (max-width: 360px) {
       .location-search-mode,
       .location-manual-actions { grid-template-columns: 1fr; }
@@ -1052,9 +1275,56 @@
       </div>
     </section>
 
-    <form id="event-form" aria-busy="false">
+    <form id="event-form" aria-busy="false" novalidate>
+      <section class="event-mobile-flow" id="event-mobile-flow" aria-label="Event setup">
+        <header class="event-mobile-flow-head">
+          <button class="event-mobile-flow-back" id="event-mobile-flow-back" type="button" aria-label="Back to event setup" hidden>‹</button>
+          <div class="event-mobile-flow-heading">
+            <span id="event-mobile-flow-kicker">Event setup</span>
+            <h1 id="event-mobile-flow-title">Finish your event</h1>
+          </div>
+          <a class="event-mobile-flow-close" id="event-mobile-flow-close" href="/events" aria-label="Close event setup">×</a>
+        </header>
+        <p class="event-mobile-flow-error" id="event-mobile-flow-error" role="alert" tabindex="-1" hidden></p>
+        <div class="event-mobile-flow-hub" id="event-mobile-flow-hub">
+          <div class="event-mobile-flow-intro">
+            <h2>Make it feel like yours.</h2>
+            <p>Choose any section. Your changes stay private until you save.</p>
+          </div>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="design">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">✦</span>
+            <span class="event-mobile-flow-row-copy"><strong>Appearance</strong><small id="event-mobile-summary-design">Standard · No image</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="basics">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">◷</span>
+            <span class="event-mobile-flow-row-copy"><strong>Event details</strong><small id="event-mobile-summary-basics">Title, date, time, and location</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="about">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">♫</span>
+            <span class="event-mobile-flow-row-copy"><strong>Description &amp; vibe</strong><small id="event-mobile-summary-about">Optional · Not added</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="access">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">◎</span>
+            <span class="event-mobile-flow-row-copy"><strong>RSVP &amp; access</strong><small id="event-mobile-summary-access">Free RSVP · Public</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="guests">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">♙</span>
+            <span class="event-mobile-flow-row-copy"><strong>Guest experience</strong><small id="event-mobile-summary-guests">Guest list off · +1s off</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="reminders">
+            <span class="event-mobile-flow-row-icon" aria-hidden="true">◉</span>
+            <span class="event-mobile-flow-row-copy"><strong>Reminders</strong><small id="event-mobile-summary-reminders">Day-before text off</small></span>
+            <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
+          </button>
+        </div>
+      </section>
       <div class="event-editor-grid">
-      <div class="event-editor-design" aria-label="Page design">
+      <div class="event-editor-design" aria-label="Page design" data-mobile-flow-panel="design">
       <header class="event-editor-section-heading">
         <p class="sg-label">Page design</p>
         <h2>Make it unmistakably yours.</h2>
@@ -1148,6 +1418,8 @@
         <h2>Tell people what’s happening.</h2>
       </header>
 
+      <section class="event-mobile-panel-block" data-mobile-flow-panel="basics" aria-labelledby="event-mobile-basics-title">
+      <h2 class="event-mobile-panel-title" id="event-mobile-basics-title">Event details</h2>
       <p class="event-editor-group-heading event-editor-group-heading-first">Essentials</p>
 
       <div class="sg-field">
@@ -1206,8 +1478,9 @@
       <input type="hidden" id="venue_latitude">
       <input type="hidden" id="venue_longitude">
       <input type="hidden" id="google_place_id">
+      </section>
 
-      <details class="event-editor-disclosure" id="more-details">
+      <details class="event-editor-disclosure" id="more-details" data-mobile-flow-panel="about">
         <summary><span>Add more details<small>Host, description, and music</small></span></summary>
         <div class="event-editor-disclosure-body">
           <div class="sg-field">
@@ -1299,7 +1572,7 @@
         </div>
       </details>
 
-      <section class="event-editor-open-section" id="admission-settings" aria-labelledby="admission-settings-title">
+      <section class="event-editor-open-section" id="admission-settings" aria-labelledby="admission-settings-title" data-mobile-flow-panel="access">
         <header class="event-editor-open-section-heading">
           <span id="admission-settings-title">Admission</span>
           <small>Choose how guests get into this event.</small>
@@ -1336,6 +1609,7 @@
           <small>Set category, capacity, and who can find this event.</small>
         </header>
         <div class="event-editor-disclosure-body">
+          <div class="event-mobile-panel-block" data-mobile-flow-panel="access">
           <div class="row2">
             <div class="sg-field">
               <label for="category">Category</label>
@@ -1368,21 +1642,22 @@
               </button>
             </div>
           </div>
+          </div>
 
-          <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title">
+          <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title" data-mobile-flow-panel="guests">
             <div class="settings-group-heading"><strong id="guest-experience-title">Guest experience</strong></div>
             <label class="experience-option"><input type="checkbox" id="show_guest_list" role="switch"><span class="experience-copy"><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span><span class="experience-switch" aria-hidden="true"></span></label>
             <label class="experience-option"><input type="checkbox" id="allow_guests" role="switch"><span class="experience-copy"><strong>Allow +1s</strong>Let each RSVP bring one guest.</span><span class="experience-switch" aria-hidden="true"></span></label>
             <label class="experience-option"><input type="checkbox" id="comments_enabled" role="switch"><span class="experience-copy"><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span><span class="experience-switch" aria-hidden="true"></span></label>
           </section>
 
-          <section class="guest-experience-settings" id="automatic-text-settings" aria-labelledby="automatic-text-title">
+          <section class="guest-experience-settings" id="automatic-text-settings" aria-labelledby="automatic-text-title" data-mobile-flow-panel="reminders">
             <div class="settings-group-heading"><strong id="automatic-text-title">Automatic texts</strong></div>
             <label class="experience-option"><input type="checkbox" id="sms_reminder_enabled" role="switch"><span class="experience-copy"><strong>Day-before reminder</strong>Text confirmed guests who choose to receive a reminder the day before this event.</span><span class="experience-switch" aria-hidden="true"></span></label>
             <p class="secret-code-help" id="sms-reminder-help">Uses your texting balance. The cost depends on how many guests opt in.</p>
           </section>
 
-          <section class="private-settings" id="private-settings" aria-labelledby="private-options-title">
+          <section class="private-settings" id="private-settings" aria-labelledby="private-options-title" data-mobile-flow-panel="access">
             <div class="settings-group-heading"><strong id="private-options-title">Private event options</strong></div>
             <label class="experience-option secret-option"><input type="checkbox" id="secret_show_enabled" role="switch"><span class="experience-copy"><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span><span class="experience-switch" aria-hidden="true"></span></label>
             <div class="secret-code-fields" id="secret-code-fields">
@@ -1396,6 +1671,9 @@
 
       <button class="sg-btn sg-btn-primary sg-btn-block event-editor-submit" type="submit" id="publish-btn">Publish Event</button>
       </div>
+      </div>
+      <div class="event-mobile-flow-actions" id="event-mobile-flow-actions">
+        <button class="sg-btn sg-btn-primary event-mobile-flow-done" id="event-mobile-flow-done" type="button">Done</button>
       </div>
     </form>
   </div>

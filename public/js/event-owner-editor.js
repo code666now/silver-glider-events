@@ -12,6 +12,14 @@
   const saveStatus = $('owner-save-status');
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
+  const mobileEditorMedia = window.matchMedia('(max-width: 879px)');
+  const mobileViews = {
+    appearance: { title: 'Appearance', panel: 'appearance' },
+    details: { title: 'Event details', panel: 'details' },
+    access: { title: 'RSVP & access', panel: 'settings', section: 'access' },
+    guests: { title: 'Guest experience', panel: 'settings', section: 'guests' },
+    more: { title: 'More tools', panel: 'settings', section: 'more' }
+  };
   const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'];
   const effectKeys = ['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
   const videoEffects = {
@@ -102,6 +110,10 @@
   let saved = normalized(EVENT);
   let draft = clone(saved);
   let activeTab = 'appearance';
+  let activeMobileView = 'hub';
+  let mobileReturnFocus = null;
+  let mobileGuidedFlow = false;
+  const mobileDraftSequence = ['appearance', 'details', 'access', 'guests'];
   let lastFocus = null;
   let toastTimer;
   let photoPage = 1;
@@ -157,6 +169,70 @@
       .some(key => String(draft[key] ?? '') !== String(saved[key] ?? ''));
   }
 
+  function compactDate(value) {
+    if (!value) return '';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  function updateMobileSummaries() {
+    const appearance = $('owner-mobile-summary-appearance');
+    if (!appearance) return;
+    const flyer = draft.presentationMode === 'flyer';
+    const hasArtwork = Boolean(flyer ? draft.flyerImageUrl : draft.coverImageUrl);
+    appearance.textContent = `${flyer ? 'Flyer' : 'Standard'} · ${hasArtwork ? 'Image added' : 'No image yet'}`;
+
+    const missingDetails = [];
+    if (!draft.title) missingDetails.push('title');
+    if (!draft.eventDate) missingDetails.push('date');
+    if (!draft.startTime) missingDetails.push('time');
+    if (!draft.venueName && !draft.venueAddress) missingDetails.push('location');
+    const locationParts = LocationUtils.displayParts(draft.venueName, draft.venueAddress);
+    $('owner-mobile-summary-details').textContent = missingDetails.length
+      ? `Add ${missingDetails.join(', ')}`
+      : `${compactDate(draft.eventDate)} · ${locationParts.name}`;
+
+    const admissionLabels = {
+      free_rsvp: 'Free RSVP',
+      external_tickets: 'External tickets',
+      silver_glider_tickets: 'Silver Glider tickets'
+    };
+    const visibilityLabel = draft.visibility === 'private' ? 'Private link' : 'Public';
+    const capacityLabel = draft.capacity ? ` · ${draft.capacity} spots` : '';
+    $('owner-mobile-summary-access').textContent = `${admissionLabels[draft.admissionType] || 'Free RSVP'} · ${visibilityLabel}${capacityLabel}`;
+
+    const enabledGuestOptions = [draft.showGuestList, draft.allowGuests, draft.commentsEnabled].filter(Boolean).length;
+    $('owner-mobile-summary-guests').textContent = enabledGuestOptions
+      ? `${enabledGuestOptions} of 3 options on`
+      : 'All optional settings off';
+  }
+
+  function setMobileViewStatus(message = '') {
+    const status = $('owner-mobile-view-status');
+    status.textContent = message;
+    status.hidden = !message;
+  }
+
+  function mobileViewForControl(control) {
+    const section = control.closest('[data-owner-mobile-section]');
+    if (section) return section.dataset.ownerMobileSection;
+    const panel = control.closest('[data-owner-panel]')?.dataset.ownerPanel;
+    return panel === 'settings' ? 'access' : (panel || 'details');
+  }
+
+  function showEditorValidation(message, view, control, { report = false } = {}) {
+    if (mobileEditorMedia.matches) openMobileView(view, { focus: false });
+    else activateTab(mobileViews[view]?.panel || view);
+    saveStatus.textContent = message;
+    setMobileViewStatus(message);
+    if (!(control instanceof HTMLElement)) return;
+    setTimeout(() => {
+      control.focus({ preventScroll: false });
+      if (report && typeof control.reportValidity === 'function') control.reportValidity();
+    }, 0);
+  }
+
   function syncDirtyState() {
     const dirty = isDirty();
     saveButton.disabled = !dirty && !isDraftEvent();
@@ -170,6 +246,7 @@
     warning.textContent = needsWarning
       ? `${saved.rsvpCount} ${saved.rsvpCount === 1 ? 'person has' : 'people have'} RSVP’d. This change may affect their plans.`
       : '';
+    updateMobileSummaries();
   }
 
   function editorFieldsDifferFromDraft() {
@@ -827,8 +904,7 @@
     syncDirtyState();
   }
 
-  function activateTab(name, { focus = false } = {}) {
-    activeTab = ['appearance', 'details', 'settings'].includes(name) ? name : 'appearance';
+  function renderActivePanel({ focus = false } = {}) {
     document.querySelectorAll('[data-owner-tab]').forEach(button => {
       const active = button.dataset.ownerTab === activeTab;
       button.setAttribute('aria-selected', String(active));
@@ -840,16 +916,105 @@
     if (activeTab === 'details') initVenueAutocomplete();
   }
 
+  function openMobileView(name, { focus = true, returnFocus = null } = {}) {
+    const view = mobileViews[name] || mobileViews.appearance;
+    if (!mobileEditorMedia.matches) {
+      activeTab = view.panel;
+      renderActivePanel({ focus });
+      return;
+    }
+    if (returnFocus) mobileReturnFocus = returnFocus;
+    if (name !== 'appearance') closePhotoBrowser();
+    setMobileViewStatus('');
+    activeMobileView = mobileViews[name] ? name : 'appearance';
+    activeTab = view.panel;
+    $('owner-mobile-hub').hidden = true;
+    $('owner-mobile-subnav').hidden = false;
+    $('owner-mobile-view-title').textContent = view.title;
+    const guidedIndex = mobileDraftSequence.indexOf(activeMobileView);
+    const previousGuidedView = guidedIndex > 0 ? mobileViews[mobileDraftSequence[guidedIndex - 1]] : null;
+    $('owner-mobile-back').setAttribute('aria-label', previousGuidedView && mobileGuidedFlow
+      ? `Back to ${previousGuidedView.title}`
+      : 'Back to event settings');
+    $('owner-mobile-view-eyebrow').textContent = mobileGuidedFlow && guidedIndex >= 0
+      ? `Step ${guidedIndex + 1} of ${mobileDraftSequence.length}${activeMobileView === 'guests' ? ' · Optional' : ''}`
+      : 'Edit event';
+    $('owner-mobile-done').textContent = mobileGuidedFlow
+      ? (guidedIndex === mobileDraftSequence.length - 1 ? 'Review' : 'Next')
+      : 'Done';
+    editor.classList.add('is-mobile-subview');
+    document.querySelectorAll('[data-owner-tab]').forEach(button => {
+      const active = button.dataset.ownerTab === activeTab;
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    document.querySelectorAll('[data-owner-panel]').forEach(panel => {
+      panel.hidden = panel.dataset.ownerPanel !== activeTab;
+    });
+    document.querySelectorAll('[data-owner-mobile-section]').forEach(section => {
+      section.hidden = activeTab === 'settings' && section.dataset.ownerMobileSection !== view.section;
+    });
+    document.querySelector('.owner-editor-scroll').scrollTop = 0;
+    if (activeTab === 'details') initVenueAutocomplete();
+    if (focus) setTimeout(() => $('owner-mobile-view-title').focus({ preventScroll: true }), 0);
+  }
+
+  function showMobileHub({ focus = true } = {}) {
+    if (!mobileEditorMedia.matches) return;
+    mobileGuidedFlow = false;
+    activeMobileView = 'hub';
+    closePhotoBrowser();
+    setMobileViewStatus('');
+    updateMobileSummaries();
+    $('owner-mobile-hub').hidden = false;
+    $('owner-mobile-subnav').hidden = true;
+    editor.classList.remove('is-mobile-subview');
+    document.querySelectorAll('[data-owner-panel]').forEach(panel => { panel.hidden = true; });
+    document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
+    document.querySelector('.owner-editor-scroll').scrollTop = 0;
+    if (!focus) return;
+    const target = mobileReturnFocus instanceof HTMLElement && mobileReturnFocus.isConnected
+      ? mobileReturnFocus
+      : $('owner-mobile-hub-title');
+    setTimeout(() => target.focus({ preventScroll: true }), 0);
+  }
+
+  function activateTab(name, { focus = false } = {}) {
+    activeTab = ['appearance', 'details', 'settings'].includes(name) ? name : 'appearance';
+    if (mobileEditorMedia.matches) {
+      openMobileView(activeTab === 'settings' ? 'access' : activeTab, { focus });
+      return;
+    }
+    $('owner-mobile-hub').hidden = true;
+    $('owner-mobile-subnav').hidden = true;
+    editor.classList.remove('is-mobile-subview');
+    document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
+    renderActivePanel({ focus });
+  }
+
+  function resetPreviewPeek() {
+    editor.classList.remove('is-peeking');
+    editor.setAttribute('aria-modal', 'true');
+    document.body.classList.remove('owner-editor-peeking');
+    $('owner-editor-peek').textContent = 'Preview';
+    $('owner-editor-peek').setAttribute('aria-expanded', 'true');
+  }
+
   function openEditor() {
     lastFocus = document.activeElement;
     editor.classList.add('is-open');
-    editor.classList.remove('is-peeking');
+    resetPreviewPeek();
     editor.setAttribute('aria-hidden', 'false');
     trigger.setAttribute('aria-expanded', 'true');
     document.body.classList.add('owner-editor-open');
     document.body.classList.remove('owner-editor-peeking');
     startEditorFieldSync();
-    setTimeout(() => document.querySelector(`[data-owner-tab="${activeTab}"]`)?.focus(), 0);
+    if (mobileEditorMedia.matches) {
+      if (activeMobileView === 'hub') showMobileHub();
+      else openMobileView(activeMobileView);
+    } else {
+      setTimeout(() => document.querySelector(`[data-owner-tab="${activeTab}"]`)?.focus(), 0);
+    }
   }
 
   function restoreSavedPreview() {
@@ -863,10 +1028,15 @@
     if (confirmDiscard && isDirty() && !window.confirm('Discard your unsaved event changes?')) return;
     if (isDirty()) restoreSavedPreview();
     stopEditorFieldSync();
-    editor.classList.remove('is-open', 'is-peeking');
+    editor.classList.remove('is-open');
+    resetPreviewPeek();
     editor.setAttribute('aria-hidden', 'true');
     trigger.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('owner-editor-open', 'owner-editor-peeking');
+    if (mobileEditorMedia.matches) {
+      showMobileHub({ focus: false });
+      mobileReturnFocus = null;
+    }
     (lastFocus instanceof HTMLElement ? lastFocus : trigger).focus({ preventScroll: true });
   }
 
@@ -1064,8 +1234,33 @@
   trigger.addEventListener('click', openEditor);
   $('owner-editor-close').addEventListener('click', () => closeEditor());
   $('owner-editor-cancel').addEventListener('click', () => closeEditor({ confirmDiscard: false }));
+  document.querySelectorAll('[data-owner-mobile-view]').forEach(button => {
+    button.addEventListener('click', () => {
+      mobileGuidedFlow = false;
+      openMobileView(button.dataset.ownerMobileView, { returnFocus: button });
+    });
+  });
+  $('owner-mobile-back').addEventListener('click', () => {
+    reconcileEditorFields();
+    const currentIndex = mobileDraftSequence.indexOf(activeMobileView);
+    if (mobileGuidedFlow && currentIndex > 0) {
+      openMobileView(mobileDraftSequence[currentIndex - 1]);
+      return;
+    }
+    showMobileHub();
+  });
+  $('owner-mobile-done').addEventListener('click', () => {
+    reconcileEditorFields();
+    const currentIndex = mobileDraftSequence.indexOf(activeMobileView);
+    if (mobileGuidedFlow && currentIndex >= 0 && currentIndex < mobileDraftSequence.length - 1) {
+      openMobileView(mobileDraftSequence[currentIndex + 1]);
+      return;
+    }
+    showMobileHub();
+  });
   $('owner-editor-peek').addEventListener('click', () => {
     const peeking = editor.classList.toggle('is-peeking');
+    editor.setAttribute('aria-modal', String(!peeking));
     document.body.classList.toggle('owner-editor-peeking', peeking);
     $('owner-editor-peek').textContent = peeking ? 'Continue editing' : 'Preview';
     $('owner-editor-peek').setAttribute('aria-expanded', String(!peeking));
@@ -1189,35 +1384,40 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
     readInputs();
+    setMobileViewStatus('');
     const publishing = isDraftEvent();
     if (draft.presentationMode === 'flyer') {
       const flyerInstagram = validateOwnerFlyerDesignerHandle({ normalize: true });
       if (flyerInstagram.error) {
-        activateTab('appearance');
-        $('owner-flyer-designer-instagram').focus();
-        saveStatus.textContent = flyerInstagram.error;
+        showEditorValidation(flyerInstagram.error, 'appearance', $('owner-flyer-designer-instagram'));
         return;
       }
       if (!draft.flyerImageUrl) {
-        activateTab('appearance');
-        saveStatus.textContent = 'Upload a flyer before saving the Flyer layout.';
-        $('owner-upload-image').focus();
+        showEditorValidation('Upload a flyer before saving the Flyer layout.', 'appearance', $('owner-upload-image'));
         return;
       }
     }
     if (draft.admissionType === 'external_tickets' && (!Number.isFinite(draft.ticketPrice) || draft.ticketPrice <= 0)) {
-      activateTab('settings');
-      saveStatus.textContent = 'Add the external ticket price before saving.';
-      $('owner-ticket-price').focus();
+      showEditorValidation('Add the external ticket price before saving.', 'access', $('owner-ticket-price'), { report: true });
       return;
     }
-    if (!draft.title || !draft.eventDate || !draft.startTime || (!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
-      activateTab('details');
-      if ((!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
-        setPlacesStatus(manualLocationMode ? 'Add an address for this location.' : 'Choose a venue or address, or enter the location manually.');
-        (manualLocationMode ? $('owner-location-manual-address') : $('owner-location-search')).focus();
-      }
-      saveStatus.textContent = 'Add the title, date, time, and location before saving.';
+    if (!draft.title) {
+      showEditorValidation('Add an event title before saving.', 'details', $('owner-title'));
+      return;
+    }
+    const invalidControl = Array.from(form.elements).find(control => control.willValidate && !control.validity.valid);
+    if (invalidControl) {
+      const message = invalidControl.validationMessage || 'Check this field before saving.';
+      showEditorValidation(message, mobileViewForControl(invalidControl), invalidControl, { report: true });
+      return;
+    }
+    if ((!draft.venueName && !draft.venueAddress) || (manualLocationMode && !draft.venueAddress)) {
+      const locationMessage = manualLocationMode
+        ? 'Add an address for this location.'
+        : 'Choose a venue or address, or enter the location manually.';
+      const locationControl = manualLocationMode ? $('owner-location-manual-address') : $('owner-location-search');
+      setPlacesStatus(locationMessage);
+      showEditorValidation(locationMessage, 'details', locationControl);
       return;
     }
     saveButton.disabled = true;
@@ -1265,8 +1465,31 @@
   });
 
   document.addEventListener('keydown', event => {
-    if (event.key !== 'Escape' || !editor.classList.contains('is-open')) return;
+    if (!editor.classList.contains('is-open')) return;
+    if (event.key === 'Tab' && mobileEditorMedia.matches && !editor.classList.contains('is-peeking')) {
+      const focusable = Array.from(editor.querySelectorAll('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'))
+        .filter(node => !node.closest('[hidden]') && node.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !editor.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !editor.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    if (event.key !== 'Escape') return;
     if (!$('owner-photo-browser').hidden) closePhotoBrowser();
+    else if (mobileEditorMedia.matches && activeMobileView !== 'hub') {
+      reconcileEditorFields();
+      showMobileHub();
+    }
     else closeEditor();
   });
   window.addEventListener('beforeunload', event => {
@@ -1276,15 +1499,47 @@
     event.returnValue = '';
   });
 
+  function syncResponsiveEditorMode() {
+    const editorIsOpen = editor.classList.contains('is-open');
+    resetPreviewPeek();
+    if (mobileEditorMedia.matches) {
+      showMobileHub({ focus: editorIsOpen });
+      return;
+    }
+    activeMobileView = 'hub';
+    mobileGuidedFlow = false;
+    $('owner-mobile-hub').hidden = true;
+    $('owner-mobile-subnav').hidden = true;
+    editor.classList.remove('is-mobile-subview');
+    document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
+    renderActivePanel({ focus: editorIsOpen });
+  }
+
+  if (typeof mobileEditorMedia.addEventListener === 'function') {
+    mobileEditorMedia.addEventListener('change', syncResponsiveEditorMode);
+  } else if (typeof mobileEditorMedia.addListener === 'function') {
+    mobileEditorMedia.addListener(syncResponsiveEditorMode);
+  }
+
   const requestedTab = new URLSearchParams(window.location.search).get('edit');
   const initialTab = ['appearance', 'details', 'settings'].includes(requestedTab) ? requestedTab : 'appearance';
+  const reopenRequested = sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug;
+  const savedMessage = sessionStorage.getItem('sge-owner-editor-saved');
   populate();
-  activateTab(initialTab);
-  if (requestedTab || sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug) {
+  if (mobileEditorMedia.matches) {
+    if (requestedTab) openMobileView(initialTab === 'settings' ? 'access' : initialTab, { focus: false });
+    else showMobileHub({ focus: false });
+  } else {
+    activateTab(initialTab);
+  }
+  if (requestedTab || reopenRequested) {
     sessionStorage.removeItem('sge-owner-editor-reopen');
+    if (mobileEditorMedia.matches && reopenRequested && (!requestedTab || requestedTab === 'appearance') && !savedMessage && isDraftEvent()) {
+      mobileGuidedFlow = true;
+      openMobileView('appearance', { focus: false });
+    }
     openEditor();
-    const message = sessionStorage.getItem('sge-owner-editor-saved');
     sessionStorage.removeItem('sge-owner-editor-saved');
-    if (message) setTimeout(() => showToast(message), 180);
+    if (savedMessage) setTimeout(() => showToast(savedMessage), 180);
   }
 })();

@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.107
+
+Released September 16, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Create and Edit Event now use a phone-first task flow instead of compressing the complete desktop workspace into one long screen. Hosts move through focused Basics, Appearance, RSVP & access, Guest experience, Description & vibe, and Reminders views, with live summaries in a compact event hub.
+* The published-page owner editor uses the same mobile pattern: quick-create drafts receive a short guided sequence, while returning hosts can jump directly between focused editing tasks and preview the public event before saving.
+* Mobile validation opens the task containing the problem, focuses the existing field or alert, and keeps the original single submit control and server validation. Fixed headers, safe-area-aware actions, and keyboard-height handling keep navigation reachable on small screens.
+
+### Compatibility and safety
+
+* The redesign is scoped below the existing 880px breakpoint. Desktop retains its two-column create/edit workspace and 420px live-editor rail; tablet and guest-facing event layouts are unchanged.
+* No event fields, permissions, RSVP behavior, authentication, email, reminder, ticketing, or messaging logic changed. Existing controls are reorganized on mobile rather than duplicated, and unsaved edits still require confirmation before closing.
+
 ## 1.0.106
 
 Released September 16, 2026. Built and deployed by Codex.
