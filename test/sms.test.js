@@ -12,7 +12,8 @@ const {
 const validEnv = {
   TWILIO_ACCOUNT_SID: `AC${'a'.repeat(32)}`,
   TWILIO_AUTH_TOKEN: 'test-auth-token',
-  TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}`
+  TWILIO_MESSAGING_SERVICE_SID: `MG${'b'.repeat(32)}`,
+  TWILIO_AUTH_MESSAGING_SERVICE_SID: `MG${'d'.repeat(32)}`
 };
 
 function fakeService({ result, error } = {}) {
@@ -86,6 +87,13 @@ test('server SMS transport attaches a provider status callback only when supplie
   assert.equal(Object.hasOwn(calls[0], 'from'), false);
 });
 
+test('account sign-in codes use the dedicated authentication Messaging Service', async () => {
+  const { service, calls } = fakeService();
+  await service.sendAuthSms({ to: '+14155551234', body: 'Your sign-in code is 123456' });
+  assert.equal(calls[0].messagingServiceSid, validEnv.TWILIO_AUTH_MESSAGING_SERVICE_SID);
+  assert.notEqual(calls[0].messagingServiceSid, validEnv.TWILIO_MESSAGING_SERVICE_SID);
+});
+
 test('test sender always uses the approved fixed message', async () => {
   const { service, calls } = fakeService();
   await service.sendTestSms('+14155551234');
@@ -109,6 +117,21 @@ test('missing credentials fail cleanly before a Twilio client is created', async
     return true;
   });
   assert.equal(created, false);
+});
+
+test('authentication SMS fails closed when its dedicated service is missing', async () => {
+  const service = createSmsService({
+    env: {
+      ...validEnv,
+      TWILIO_AUTH_MESSAGING_SERVICE_SID: ''
+    },
+    clientFactory: () => assert.fail('Twilio client must not be created')
+  });
+  await assert.rejects(service.sendAuthSms({ to: '+14155551234', body: 'Your sign-in code is 123456' }), error => {
+    assert.equal(error.code, 'auth_sms_not_configured');
+    assert.equal(error.status, 503);
+    return true;
+  });
 });
 
 test('Twilio errors are reduced to non-secret provider details', async () => {
@@ -161,6 +184,6 @@ test('admin test endpoint is protected, confirmed, fixed-message only, and rate 
   assert.doesNotMatch(route, /req\.body\?\.(?:body|message)/);
   for (const file of publicFiles) {
     const source = fs.readFileSync(file, 'utf8');
-    assert.doesNotMatch(source, /TWILIO_(?:ACCOUNT_SID|AUTH_TOKEN|MESSAGING_SERVICE_SID)/);
+    assert.doesNotMatch(source, /TWILIO_(?:ACCOUNT_SID|AUTH_TOKEN|(?:AUTH_)?MESSAGING_SERVICE_SID)/);
   }
 });

@@ -22,6 +22,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - No Cloudinary credentials: cover/flyer/host uploads return 503.
 - No `UNSPLASH_ACCESS_KEY`: the free-photo search control is hidden.
 - `SESSION_SECRET` is required; use a long local-only value.
+- Creator phone onboarding additionally needs `TWILIO_VERIFY_SERVICE_SID`. Returning-phone codes need `TWILIO_AUTH_MESSAGING_SERVICE_SID` backed by a sender pool/number distinct from lifecycle SMS; without either dependency the UI must fail safely and retain **Use email instead**.
 - Local uploads use `sg-events-dev/...`; production uses `sg-events/...`.
 
 ## Architecture
@@ -29,7 +30,7 @@ Never point local development, tests, or one-off scripts at Railway Postgres.
 - CommonJS Node.js + Express 5, raw SQL via `pg`, server-rendered HTML, vanilla JavaScript/CSS.
 - No build step and no frontend framework.
 - `src/index.js` mounts routes, runs migrations, exposes `/health`, and starts reminder jobs.
-- `src/db/migrations/` contains ordered migrations, currently `001` through `035_familiar_faces.sql`.
+- `src/db/migrations/` contains ordered migrations, currently `001` through `041_phone_auth.sql`.
 - `src/routes/` contains auth, organizer event, public event, public host, upload, photo, and admin flows. Public host pages are isolated in `public-hosts.js`; guest event/RSVP flows remain in `public.js`.
 - `src/lib/` contains sessions, mailer, calendar, Cloudinary, Unsplash, CSV, escaping, and validation helpers.
 - `src/jobs/reminders.js` sends idempotent day-before/day-of reminders.
@@ -104,7 +105,7 @@ Keep Standard and Flyer behavior isolated.
 
 ## Test expectations
 
-`npm test` currently runs 244 tests: 195 focused unit/source-contract tests and 49 HTTP/PostgreSQL integration tests. The integration suite waits for background confirmation emails (`settleBackgroundWork`) before each database reset; start any new fire-and-forget work with `runInBackground` in `src/routes/public.js` so it stays covered. Emails are never sent locally; integration tests read links and codes from `mailer.devOutbox`. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
+`npm test` currently runs 273 tests, including 56 HTTP/PostgreSQL integration tests. The integration suite waits for tracked background confirmation and invitation delivery before each database reset; any new fire-and-forget work must expose the same settlement boundary. Emails are never sent locally; integration tests read links and codes from `mailer.devOutbox`. Create the dedicated local database once with `createdb sge_test`; integration tests reject any database URL that does not end in `sge_test`. Before deploying, run `npm run check` plus `git diff --check`.
 
 `npm run check:static` validates JavaScript syntax, local imports/assets, public-template placeholders, and unused browser event-data fields. `npm run test:unit` and `npm run test:integration` can be run separately while debugging.
 

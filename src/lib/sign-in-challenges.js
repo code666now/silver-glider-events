@@ -32,6 +32,7 @@ async function createSignInChallenge(db, {
   email,
   intent = 'sign_in',
   targetOrganizerId = null,
+  phoneAuthChallengeId = null,
   returnPath = null,
   ttlMinutes = 15,
   withCode = true
@@ -42,15 +43,17 @@ async function createSignInChallenge(db, {
   const requestToken = withCode ? crypto.randomBytes(24).toString('base64url') : null;
   await db.query(
     `INSERT INTO magic_link_tokens
-       (token, email, expires_at, intent, target_organizer_id, return_path, code_hash, request_hash)
-     VALUES ($1,$2,NOW() + make_interval(mins => $3),$4,$5,$6,$7,$8)`,
-    [hashedToken, email, ttlMinutes, intent, targetOrganizerId, returnPath || null,
-     code ? codeHash(hashedToken, code) : null, requestToken ? tokenHash(requestToken) : null]
+       (token, email, expires_at, intent, target_organizer_id, phone_auth_challenge_id,
+        return_path, code_hash, request_hash)
+     VALUES ($1,$2,NOW() + make_interval(mins => $3),$4,$5,$6,$7,$8,$9)`,
+    [hashedToken, email, ttlMinutes, intent, targetOrganizerId, phoneAuthChallengeId,
+     returnPath || null, code ? codeHash(hashedToken, code) : null,
+     requestToken ? tokenHash(requestToken) : null]
   );
-  return { token, code, requestToken };
+  return { token, code, requestToken, phoneAuthChallengeId };
 }
 
-const PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path';
+const PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path, phone_auth_challenge_id';
 
 // Read-only: GET requests (and the email scanners that make them) must never
 // use up a link.

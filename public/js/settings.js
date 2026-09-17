@@ -649,7 +649,7 @@ document.querySelectorAll('.settings-logout').forEach(button => {
 });
 
 document.getElementById('logout-all-btn')?.addEventListener('click', async event => {
-  if (!confirm('Sign out of Silver Glider on every device, including this one?')) return;
+  if (!confirm('Sign out on every device and remove phone sign-in? You can verify your phone again next time.')) return;
   const button = event.currentTarget;
   button.disabled = true;
   button.textContent = 'Signing out…';

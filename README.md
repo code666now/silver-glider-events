@@ -39,7 +39,7 @@ Never use the Railway production database for development or tests.
 
 ## Current product
 
-- Passwordless shared identity authentication with 30-day sliding sessions
+- Passwordless shared identity authentication with 30-day sessions; creator onboarding is phone-first, binds a first phone only after separate phone and email proof, and keeps email as recovery
 - Organizer dashboard, archive/restore, duplicate, cancel, CSV export, and a visual Familiar Faces experience with reviewed invitations from an old event to another upcoming event
 - Mobile-first organizer flows with expanded desktop Home, My Events, Settings, create/edit, and event-management workspaces
 - Standard events with uploaded/Unsplash covers, gradients, and texture/video effects
@@ -78,7 +78,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, scheduled email jobs
-src/db/migrations/           numbered SQL migrations (currently 001–038)
+src/db/migrations/           numbered SQL migrations (currently 001–041)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
@@ -91,7 +91,7 @@ test/                        focused Node test suite
 
 ## Key mechanics
 
-- **Authentication:** one-time 15-minute magic-link token becomes a signed, httpOnly 30-day session cookie. The existing `organizers` row is the shared email identity; follower-only identities do not receive Host Page fields. RSVP remains a separate guest flow.
+- **Authentication:** the existing `organizers` row remains the shared email identity and the signed, httpOnly session remains valid for 30 days. When someone enters through **Create your event**, a new phone is verified once with Twilio Verify and then bound only after a separate browser-bound email code proves the existing email identity. Later creator logins use a normal transactional SMS code through a dedicated authentication Messaging Service and sender; it must not reuse the lifecycle sender that receives STOP. Email remains available as recovery, administrators stay email-only, and **Sign out of all devices** also revokes phone sign-in. Public RSVP, Follow Host, photo-only links, and invitation tokens keep their existing lightweight scopes, and RSVP/follow phone consent is never treated as an authentication credential.
 - **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
 - **Familiar Faces and invitations:** event management presents verified photos or stable playful emoji fallbacks, names, and only `RSVP’d`/`Invited` states. The same no-photo guest keeps the same server-derived emoji across events and refreshes. From an old event, a host can select confirmed primary RSVPs, choose an owned upcoming event, review, and send one artwork-led invite. The upcoming event progressively reveals **Invite Familiar Faces** only when a past published event has eligible people. Named +1s, host opt-outs, existing target attendees, and already-invited recipients are excluded server-side; delivery is queued, retryable, one-way, and recipient-deduplicated per destination event. The separate `organizer_optin` field remains limited to broader host announcements, and SMS continues to require its own event-specific consent.
 - **Guest photos:** one-time RSVP-confirmation links can authenticate a guest directly into `/add-photo`; uploads reuse the existing account avatar so the image can appear across verified RSVPs. A saved photo suppresses future photo prompts, and no separate photo-request SMS is sent.
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 14, 2026, the suite contains 244 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, exact pricing, all-or-nothing atomic credit reservation, one-tap attendee access, deduplication, Twilio delivery callbacks and STOP handling, Familiar Faces identity/privacy, source-first invitation filtering and delivery, Event Vibe photos and three-artist rendering/duplication, one-time Add Photo authentication, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 16, 2026, the suite contains 273 tests. Focused and HTTP/PostgreSQL integration coverage includes authentication, dual-proof creator phone binding, recovery revocation, admin email-only boundaries, delivery-branch privacy, and collision safety; RSVP privacy and event-specific SMS consent; automatic day-before fulfillment, exact pricing, all-or-nothing atomic credit reservation, one-tap attendee access, deduplication, Twilio delivery callbacks and STOP handling, Familiar Faces identity/privacy, source-first invitation filtering and delivery, Event Vibe photos and three-artist rendering/duplication, one-time Add Photo authentication, admin-only Twilio proof transport, Stripe Checkout pack allowlisting, signature verification and duplicate-safe ledger fulfillment, legacy PayPal refund boundaries, protected Settings destinations and isolated account/profile saves, Settings browser-script compilation and responsive layout, event management, admission modes, Commerce launch interest, unified locations, owner-side editing, Flyer credits, authenticated RSVP photos, historical RSVP linking, attendee-preview states, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

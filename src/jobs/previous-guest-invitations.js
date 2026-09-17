@@ -6,6 +6,7 @@ const { createGuestInvitation } = require('../lib/guest-invitations');
 
 const MAX_ATTEMPTS = 3;
 let running = false;
+const backgroundBatches = new Set();
 
 async function finalizeBatch(batchId) {
   const { rows } = await pool.query(
@@ -108,11 +109,22 @@ async function processPreviousGuestInvitationBatch(batchId) {
 
 function queuePreviousGuestInvitationBatch(batchId) {
   if (!batchId) return;
-  setImmediate(() => {
-    processPreviousGuestInvitationBatch(batchId).catch(error => {
+  const work = new Promise(resolve => setImmediate(resolve))
+    .then(() => processPreviousGuestInvitationBatch(batchId))
+    .catch(error => {
       console.error(`[previous-guest-invitations] batch ${batchId} failed:`, error.message);
     });
-  });
+  backgroundBatches.add(work);
+  work.then(
+    () => backgroundBatches.delete(work),
+    () => backgroundBatches.delete(work)
+  );
+}
+
+async function settlePreviousGuestInvitationWork() {
+  while (backgroundBatches.size) {
+    await Promise.allSettled([...backgroundBatches]);
+  }
 }
 
 async function runPreviousGuestInvitationPass() {
@@ -150,5 +162,6 @@ module.exports = {
   processPreviousGuestInvitationBatch,
   queuePreviousGuestInvitationBatch,
   runPreviousGuestInvitationPass,
+  settlePreviousGuestInvitationWork,
   startPreviousGuestInvitationCron
 };

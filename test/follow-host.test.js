@@ -27,7 +27,7 @@ test('follow intent is stored server-side and verification completes it transact
   assert.match(auth, /findPublicHost\(pool, body\.host_slug\)/);
   assert.match(auth, /await signInIntent\(req\.body\)/);
   assert.match(challenges, /intent, target_organizer_id, return_path/);
-  assert.match(challenges, /PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path'/);
+  assert.match(challenges, /PENDING_COLUMNS = 'email, intent, target_organizer_id, return_path, phone_auth_challenge_id'/);
   assert.match(challenges, /RETURNING \$\{PENDING_COLUMNS\}/);
   assert.match(auth, /await client\.query\('BEGIN'\)/);
   assert.match(auth, /await followHost\(client, organizer\.id, pending\.target_organizer_id\)/);

@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { sendMagicLink, sendVerificationCode } = require('../lib/mailer');
+const { sendMagicLink, sendVerificationCode, sendAccountVerificationCode } = require('../lib/mailer');
 const { setSessionCookie, clearSessionCookie } = require('../lib/session');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requirePhotoAccess = require('../middleware/requirePhotoAccess');
@@ -30,6 +30,22 @@ const {
 } = require('../lib/sign-in-challenges');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { esc } = require('../lib/public-html');
+const sms = require('../lib/sms');
+const phoneVerification = require('../lib/phone-verification');
+const {
+  CODE_LENGTH: PHONE_CODE_LENGTH,
+  PhoneAuthError,
+  bindVerifiedPhone,
+  cancelPhoneChallenge,
+  clearPhoneAuthCookie,
+  consumePhoneCode,
+  createPhoneChallenge,
+  invalidateOrganizerPhoneChallenges,
+  markPhoneChallengeVerified,
+  maskPhone,
+  readPhoneChallenge,
+  setPhoneAuthCookie
+} = require('../lib/phone-auth');
 
 const router = express.Router();
 
@@ -38,6 +54,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function safeNext(value) {
   const next = String(value || '').trim();
   return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+}
+
+// Phone-first auth is intentionally reserved for the high-intent creator
+// journey. Guest RSVP, Follow Host, photo links, and ordinary account login
+// keep their existing email-first boundaries.
+function creatorNext(value) {
+  const next = safeNext(value);
+  return next === '/events/new' || next.startsWith('/events/new?') ? next : '';
 }
 
 // In-memory limits (single instance, reset on deploy — fine at this scale).
@@ -53,9 +77,31 @@ const codeAttemptLimiter = createRateLimiter({
   windowMs: RL_WINDOW_MS,
   rules: [{ name: 'ip', max: 30, key: ({ ip }) => ip }]
 });
+const phoneRequestLimiter = createRateLimiter({
+  windowMs: RL_WINDOW_MS,
+  rules: [
+    { name: 'phone', max: 4, key: ({ phone }) => phone },
+    { name: 'ip', max: 12, key: ({ ip }) => ip }
+  ]
+});
+const phoneCodeAttemptLimiter = createRateLimiter({
+  windowMs: RL_WINDOW_MS,
+  rules: [{ name: 'ip', max: 30, key: ({ ip }) => ip }]
+});
+const phoneEmailLimiter = createRateLimiter({
+  windowMs: RL_WINDOW_MS,
+  rules: [
+    { name: 'phone-email', max: 4, key: ({ email }) => email },
+    { name: 'phone', max: 5, key: ({ phone }) => phone },
+    { name: 'ip', max: 20, key: ({ ip }) => ip }
+  ]
+});
 setInterval(() => {
   emailRequestLimiter.prune();
   codeAttemptLimiter.prune();
+  phoneRequestLimiter.prune();
+  phoneCodeAttemptLimiter.prune();
+  phoneEmailLimiter.prune();
 }, RL_WINDOW_MS).unref();
 
 function limitEmailRequest(req, res, email) {
@@ -72,6 +118,39 @@ async function logEmail(email) {
      VALUES ($1, 'magic_link', 'email', 'sent', NOW())`,
     [email]
   );
+}
+
+function phoneError(res, error) {
+  const safe = error instanceof PhoneAuthError ||
+    error instanceof phoneVerification.PhoneVerificationError ||
+    error instanceof sms.SmsDeliveryError;
+  if (!safe) return false;
+  res.status(error.status || 400).json({
+    error: error.code || 'phone_auth_error',
+    message: error.message || 'Phone sign-in could not be completed'
+  });
+  return true;
+}
+
+function waitForMinimum(startedAt, minimumMs = 650) {
+  const remaining = minimumMs - (Date.now() - startedAt);
+  return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve();
+}
+
+function phoneStartProviderError(error) {
+  return error instanceof phoneVerification.PhoneVerificationError ||
+    (error instanceof sms.SmsDeliveryError && error.code !== 'invalid_recipient');
+}
+
+function limitPhoneEmailRequest(req, res, { email, phone }) {
+  const result = phoneEmailLimiter.consume({ email, phone, ip: clientIp(req) });
+  if (result.allowed) return true;
+  res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+  res.status(429).json({
+    error: 'too_many_phone_email_requests',
+    message: 'Too many requests. Wait a few minutes and try again.'
+  });
+  return false;
 }
 
 // Emails one link + code and remembers, in this browser only, which request
@@ -162,6 +241,251 @@ router.post('/api/auth/guest-code', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Creator-only phone-first entry. A new phone is proven by Twilio Verify;
+// an already-bound phone receives our normal, lower-cost transactional SMS
+// code. The response deliberately does not reveal whether the phone exists.
+router.post('/api/auth/phone/start', async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+  const startedAt = Date.now();
+  let phone;
+  try {
+    const returnPath = creatorNext(req.body?.next);
+    if (!returnPath) {
+      return res.status(400).json({
+        error: 'creator_phone_auth_only',
+        message: 'Phone sign-in is available when creating an event.'
+      });
+    }
+    phone = sms.normalizeE164(req.body?.phone);
+    const rate = phoneRequestLimiter.consume({ phone, ip: clientIp(req) });
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+      return res.status(429).json({
+        error: 'too_many_phone_requests',
+        message: 'Too many requests. Wait a few minutes and try again.'
+      });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT credential.organizer_id
+         FROM account_phone_credentials credential
+         JOIN organizers account ON account.id=credential.organizer_id
+        WHERE credential.phone_e164=$1 AND credential.revoked_at IS NULL
+        LIMIT 1`,
+      [phone]
+    );
+    let challenge;
+    if (rows.length) {
+      challenge = await createPhoneChallenge(pool, {
+        phone,
+        purpose: 'sign_in',
+        organizerId: rows[0].organizer_id,
+        returnPath
+      });
+      try {
+        await sms.sendAuthSms({
+          to: phone,
+          body: `Your Silver Glider sign-in code is ${challenge.code}. It expires in 20 minutes. Don't share it.`
+        });
+      } catch (error) {
+        await pool.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [challenge.id]);
+        throw error;
+      }
+    } else {
+      const verification = await phoneVerification.startVerification(phone);
+      challenge = await createPhoneChallenge(pool, {
+        phone,
+        purpose: 'enroll',
+        providerSid: verification.verificationSid,
+        returnPath
+      });
+    }
+
+    setPhoneAuthCookie(res, challenge.requestToken);
+    res.setHeader('Cache-Control', 'private, no-store');
+    await waitForMinimum(startedAt);
+    res.json({ ok: true, codeLength: PHONE_CODE_LENGTH });
+  } catch (error) {
+    if (phoneStartProviderError(error)) {
+      await waitForMinimum(startedAt);
+      return res.status(503).json({
+        error: 'phone_code_unavailable',
+        message: 'We couldn’t send a code. Try again or use email.'
+      });
+    }
+    if (!phoneError(res, error)) next(error);
+  }
+});
+
+router.post('/api/auth/phone/verify', async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+  const rate = phoneCodeAttemptLimiter.consume({ ip: clientIp(req) });
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+    return res.status(429).json({
+      error: 'too_many_attempts',
+      message: 'Too many attempts. Wait a few minutes and try again.'
+    });
+  }
+
+  let challenge;
+  try {
+    challenge = await readPhoneChallenge(pool, req);
+    if (!challenge) {
+      throw new PhoneAuthError('That code has expired. Request a new one.', {
+        code: 'phone_verification_expired', status: 400
+      });
+    }
+
+    if (challenge.purpose === 'sign_in') {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await consumePhoneCode(client, req, req.body?.code);
+        if (result.error) {
+          await client.query('COMMIT');
+          const message = result.error === 'locked'
+            ? 'Too many incorrect codes. Request a new one.'
+            : (result.error === 'expired'
+              ? 'That code has expired. Request a new one.'
+              : 'That code isn’t right. Check the text and try again.');
+          res.setHeader('Cache-Control', 'private, no-store');
+          return res.status(400).json({ error: result.error, message, remaining: result.remaining });
+        }
+        const { rows } = await client.query(
+          `SELECT account.id,account.is_admin
+             FROM organizers account
+             JOIN account_phone_credentials credential ON credential.organizer_id=account.id
+            WHERE account.id=$1 AND credential.phone_e164=$2 AND credential.revoked_at IS NULL
+            FOR UPDATE OF credential`,
+          [result.challenge.organizer_id, result.challenge.phone_e164]
+        );
+        const account = rows[0];
+        if (!account) {
+          throw new PhoneAuthError('This phone sign-in is no longer available. Use email instead.', {
+            code: 'phone_credential_unavailable', status: 400
+          });
+        }
+        if (account.is_admin) {
+          await client.query('COMMIT');
+          clearPhoneAuthCookie(res);
+          res.setHeader('Cache-Control', 'private, no-store');
+          return res.status(403).json({
+            error: 'email_sign_in_required',
+            message: 'For account security, sign in with email.'
+          });
+        }
+        await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [account.id]);
+        await client.query(
+          `UPDATE account_phone_credentials SET last_used_at=NOW(),updated_at=NOW()
+            WHERE organizer_id=$1 AND phone_e164=$2 AND revoked_at IS NULL`,
+          [account.id, result.challenge.phone_e164]
+        );
+        await client.query('COMMIT');
+        clearPhoneAuthCookie(res);
+        clearPhotoAccessCookie(res);
+        setSessionCookie(res, account.id);
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.json({ ok: true, redirect: creatorNext(result.challenge.return_path) || '/events/new' });
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    const verification = await phoneVerification.checkVerification({
+      verificationSid: challenge.provider_sid,
+      code: req.body?.code
+    });
+    if (!verification.phone || verification.phone !== challenge.phone_e164) {
+      throw new PhoneAuthError('Phone verification could not be completed.', {
+        code: 'phone_verification_mismatch', status: 400
+      });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await readPhoneChallenge(client, req, { forUpdate: true });
+      if (!locked || Number(locked.id) !== Number(challenge.id) || locked.purpose !== 'enroll') {
+        throw new PhoneAuthError('Phone verification expired. Start again.', {
+          code: 'phone_verification_expired', status: 400
+        });
+      }
+      const verified = await markPhoneChallengeVerified(client, locked.id);
+      if (!verified) {
+        throw new PhoneAuthError('Phone verification expired. Start again.', {
+          code: 'phone_verification_expired', status: 400
+        });
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, needsEmail: true, maskedPhone: maskPhone(challenge.phone_e164) });
+  } catch (error) {
+    if (!phoneError(res, error)) next(error);
+  }
+});
+
+// A verified phone alone never claims an email identity. The inbox code is
+// mandatory on first binding, including when that email already has RSVPs,
+// events, credits, or administrative access.
+router.post('/api/auth/phone/email', async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
+    const challenge = await readPhoneChallenge(pool, req);
+    if (!challenge || challenge.purpose !== 'enroll' || !challenge.verified_at) {
+      throw new PhoneAuthError('Verify your phone before adding your email.', {
+        code: 'phone_verification_required', status: 400
+      });
+    }
+    if (!limitPhoneEmailRequest(req, res, { email, phone: challenge.phone_e164 })) return;
+    const { rows: extendedRows } = await pool.query(
+      `UPDATE phone_auth_challenges
+          SET expires_at=GREATEST(expires_at,NOW() + INTERVAL '20 minutes')
+        WHERE id=$1 AND purpose='enroll' AND verified_at IS NOT NULL
+          AND used_at IS NULL AND expires_at > NOW()
+        RETURNING id`,
+      [challenge.id]
+    );
+    if (!extendedRows.length) {
+      throw new PhoneAuthError('Phone verification expired. Start again.', {
+        code: 'phone_verification_expired', status: 400
+      });
+    }
+    const { code, requestToken } = await createSignInChallenge(pool, {
+      email,
+      intent: 'bind_phone',
+      returnPath: creatorNext(challenge.return_path) || '/events/new',
+      phoneAuthChallengeId: challenge.id
+    });
+    await sendAccountVerificationCode({ to: email, code });
+    await logEmail(email);
+    setSignInRequestCookie(res, requestToken);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
+  } catch (error) {
+    if (!phoneError(res, error)) next(error);
+  }
+});
+
+router.post('/api/auth/phone/cancel', async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    await cancelPhoneChallenge(pool, req);
+    clearPhoneAuthCookie(res);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
 function displayNameParts(value, email) {
   const name = String(value || '').trim().replace(/\s+/g, ' ');
   const fallback = String(email || '').split('@')[0] || 'there';
@@ -235,6 +559,23 @@ async function completeChallenge(client, req, pending, { globalizeTypedGuestCode
     )).rows[0];
   }
 
+  if (pending.intent === 'bind_phone') {
+    if (!pending.phone_auth_challenge_id) {
+      throw new PhoneAuthError('Phone verification expired. Start again.', {
+        code: 'phone_verification_expired', status: 400
+      });
+    }
+    if (organizer.is_admin) {
+      throw new PhoneAuthError('For account security, administrators must sign in with email.', {
+        code: 'email_sign_in_required', status: 403
+      });
+    }
+    await bindVerifiedPhone(client, {
+      challengeId: pending.phone_auth_challenge_id,
+      organizerId: organizer.id
+    });
+  }
+
   // Reaching this point proves control of the email. Historical email-only
   // RSVPs may now safely use this account's current avatar.
   await linkVerifiedRsvps(client, organizer.id, email);
@@ -256,6 +597,7 @@ async function completeChallenge(client, req, pending, { globalizeTypedGuestCode
     redirect: safeNext(pending.return_path) || null,
     afterCommit: res => {
       clearPhotoAccessCookie(res);
+      if (pending.intent === 'bind_phone') clearPhoneAuthCookie(res);
       setSessionCookie(res, organizer.id);
     }
   };
@@ -371,7 +713,7 @@ router.post('/auth/verify', async (req, res, next) => {
     res.redirect(303, outcome.redirect || legacyNext || fallback);
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    next(err);
+    if (!phoneError(res, err)) next(err);
   } finally {
     client.release();
   }
@@ -419,7 +761,7 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    next(err);
+    if (!phoneError(res, err)) next(err);
   } finally {
     client.release();
   }
@@ -431,10 +773,12 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
 router.post('/api/auth/logout', async (req, res, next) => {
   try {
     await revokeGuestSession(pool, req);
+    await cancelPhoneChallenge(pool, req);
     clearSessionCookie(res);
     clearGuestSessionCookie(res);
     clearPhotoAccessCookie(res);
     clearSignInRequestCookie(res);
+    clearPhoneAuthCookie(res);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -442,18 +786,35 @@ router.post('/api/auth/logout', async (req, res, next) => {
 // Rejects every account cookie issued before now, on every device, and ends
 // every remembered-guest browser and unused sign-in link for this email.
 router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => {
+  const client = await pool.connect();
   try {
-    await pool.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
-    await revokeIdentityGuestSessions(pool, req.organizer.id);
-    await pool.query(
+    await client.query('BEGIN');
+    await client.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
+    await revokeIdentityGuestSessions(client, req.organizer.id);
+    await client.query(
       'UPDATE magic_link_tokens SET used_at=NOW() WHERE LOWER(email)=LOWER($1) AND used_at IS NULL',
       [req.organizer.email]
     );
+    await invalidateOrganizerPhoneChallenges(client, req.organizer.id);
+    await client.query(
+      `UPDATE account_phone_credentials
+          SET revoked_at=COALESCE(revoked_at,NOW()),updated_at=NOW()
+        WHERE organizer_id=$1 AND revoked_at IS NULL`,
+      [req.organizer.id]
+    );
+    await client.query('COMMIT');
     clearSessionCookie(res);
     clearGuestSessionCookie(res);
     clearPhotoAccessCookie(res);
+    clearSignInRequestCookie(res);
+    clearPhoneAuthCookie(res);
     res.json({ ok: true });
-  } catch (err) { next(err); }
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 router.get('/api/auth/me', requireOrganizer, (req, res) => {
@@ -542,6 +903,9 @@ router.patch('/api/me/profile', requireOrganizer, async (req, res, next) => {
 router.resetRateLimitsForTests = () => {
   emailRequestLimiter.reset();
   codeAttemptLimiter.reset();
+  phoneRequestLimiter.reset();
+  phoneCodeAttemptLimiter.reset();
+  phoneEmailLimiter.reset();
 };
 
 module.exports = router;

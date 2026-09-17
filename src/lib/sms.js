@@ -57,6 +57,19 @@ function readConfig(env) {
   return { accountSid, authToken, messagingServiceSid };
 }
 
+function readAuthConfig(env) {
+  const accountSid = String(env.TWILIO_ACCOUNT_SID || '').trim();
+  const authToken = String(env.TWILIO_AUTH_TOKEN || '').trim();
+  const messagingServiceSid = String(env.TWILIO_AUTH_MESSAGING_SERVICE_SID || '').trim();
+  if (!/^AC[0-9a-f]{32}$/i.test(accountSid) || !authToken || !/^MG[0-9a-f]{32}$/i.test(messagingServiceSid)) {
+    throw new SmsDeliveryError('Authentication SMS sending is not configured', {
+      code: 'auth_sms_not_configured',
+      status: 503
+    });
+  }
+  return { accountSid, authToken, messagingServiceSid };
+}
+
 function providerError(error) {
   const providerStatus = Number.isInteger(Number(error?.status)) ? Number(error.status) : null;
   const numericProviderCode = Number(error?.code);
@@ -92,7 +105,7 @@ function createSmsService({
 } = {}) {
   let client = null;
 
-  async function sendSms({ to, body, statusCallback }) {
+  async function sendWithConfig({ to, body, statusCallback }, configReader) {
     const recipient = normalizeE164(to);
     const messageBody = String(body || '').trim();
     if (!messageBody || messageBody.length > 1600) {
@@ -102,7 +115,7 @@ function createSmsService({
       });
     }
 
-    const config = readConfig(env);
+    const config = configReader(env);
     try {
       if (!client) client = clientFactory(config.accountSid, config.authToken);
       const payload = {
@@ -130,8 +143,18 @@ function createSmsService({
     }
   }
 
+
+  function sendSms(input) {
+    return sendWithConfig(input, readConfig);
+  }
+
+  function sendAuthSms(input) {
+    return sendWithConfig(input, readAuthConfig);
+  }
+
   return {
     sendSms,
+    sendAuthSms,
     sendTestSms: to => sendSms({ to, body: TEST_SMS_BODY })
   };
 }
@@ -143,6 +166,7 @@ module.exports = {
   SmsDeliveryError,
   normalizeE164,
   createSmsService,
+  sendAuthSms: input => smsService.sendAuthSms(input),
   sendSms: input => smsService.sendSms(input),
   sendTestSms: to => smsService.sendTestSms(to)
 };

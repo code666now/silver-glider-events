@@ -499,6 +499,29 @@ async function sendVerificationCode({ to, code }) {
   });
 }
 
+// Code-only proof used while adding a verified phone to the existing Silver
+// Glider identity. Keeping this in the requesting browser makes the two-step
+// phone + inbox proof explicit and avoids silently binding credentials from a
+// forwarded or cross-device link.
+async function sendAccountVerificationCode({ to, code }) {
+  if (!resend) {
+    console.log(`[mailer:dev] ACCOUNT VERIFICATION CODE for ${to}: ${code}`);
+    recordDevEmail({ to, kind: 'account_verification_code', code });
+    return { dev: true };
+  }
+  return send({
+    to,
+    subject: `Confirm your Silver Glider email: ${code}`,
+    html: layout({
+      kicker: 'Finish setting up',
+      headline: 'Confirm your email',
+      sub: 'Enter this code where you started creating your event. It expires in 15 minutes.',
+      bodyHtml: signInCodeBlock(code),
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
+    })
+  });
+}
+
 function confirmationPhotoOpportunity(addPhotoUrl, theme) {
   const url = safeHttpUrl(addPhotoUrl);
   if (!url) return '';
@@ -748,7 +771,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 }
 
 module.exports = {
-  devOutbox, sendVerificationCode,
+  devOutbox, sendVerificationCode, sendAccountVerificationCode,
   sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,

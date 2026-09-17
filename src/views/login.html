@@ -6,6 +6,45 @@
   <title>Sign in — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .auth-heading { font-size:34px; margin-bottom:10px; }
+    .auth-copy { color:var(--sg-text-dim); font-size:15px; line-height:1.7; margin-bottom:28px; }
+    .auth-error { display:none; color:var(--sg-danger); font-size:14px; margin-bottom:18px; }
+    .auth-secondary {
+      display:block;
+      width:100%;
+      min-height:44px;
+      margin-top:10px;
+      border:0;
+      background:transparent;
+      color:var(--sg-text-dim);
+      font:700 13px var(--sg-font-body);
+      text-decoration:underline;
+      text-underline-offset:4px;
+      cursor:pointer;
+    }
+    .auth-secondary:hover { color:var(--sg-text); }
+    .auth-code-input {
+      text-align:center;
+      font-size:24px;
+      letter-spacing:.32em;
+      font-variant-numeric:tabular-nums;
+    }
+    .auth-progress {
+      margin-bottom:18px;
+      color:var(--sg-accent);
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.18em;
+      text-transform:uppercase;
+    }
+    @media (max-width: 480px) {
+      main { padding-top:8vh !important; }
+      .auth-heading { font-size:32px; }
+      .auth-code-row { display:grid !important; grid-template-columns:1fr !important; gap:12px !important; }
+      .auth-code-row .sg-btn { min-height:52px; width:100%; }
+    }
+  </style>
 </head>
 <body>
   <div class="sg-aurora" aria-hidden="true"></div>
@@ -13,9 +52,55 @@
   <main style="max-width:400px;margin:0 auto;padding:12vh 24px 0">
     <p class="sg-label" style="margin-bottom:28px">Silver Glider Events</p>
 
+    <div id="phone-state" hidden>
+      <p class="auth-progress">Create your event</p>
+      <h1 class="auth-heading">Start with your phone</h1>
+      <p class="auth-copy">We’ll text you a 6-digit code. You only need to verify this number once.</p>
+      <p class="auth-error" id="phone-error" role="alert"></p>
+      <form id="phone-form">
+        <div class="sg-field">
+          <label for="phone">Mobile number</label>
+          <input class="sg-input" type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel" required placeholder="+1 415 555 0123">
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="phone-submit">Text me a code</button>
+      </form>
+      <button class="auth-secondary use-email-instead" type="button">Use email instead</button>
+    </div>
+
+    <div id="phone-code-state" hidden>
+      <p class="auth-progress">Verify your phone</p>
+      <h1 class="auth-heading">Enter your code</h1>
+      <p class="auth-copy">We sent a 6-digit code to <strong id="sent-phone" style="color:var(--sg-text)"></strong>.</p>
+      <p class="auth-error" id="phone-code-error" role="alert"></p>
+      <form id="phone-code-form" novalidate>
+        <div class="sg-field">
+          <label for="phone-code">Text message code</label>
+          <input class="sg-input auth-code-input" id="phone-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit text message code" placeholder="000000">
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="phone-code-submit">Verify phone</button>
+      </form>
+      <button class="auth-secondary" type="button" id="resend-phone-code" disabled>Send a new code</button>
+      <button class="auth-secondary use-email-instead" type="button">Use email instead</button>
+    </div>
+
+    <div id="phone-email-state" hidden>
+      <p class="auth-progress">One last detail</p>
+      <h1 class="auth-heading">Add your email</h1>
+      <p class="auth-copy">Use it to sign in on your computer and recover your account. We’ll verify it before connecting it to your phone.</p>
+      <p class="auth-error" id="phone-email-error" role="alert"></p>
+      <form id="phone-email-form">
+        <div class="sg-field">
+          <label for="phone-email">Email</label>
+          <input class="sg-input" type="email" id="phone-email" name="email" autocomplete="email" required placeholder="you@example.com">
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="phone-email-submit">Continue</button>
+      </form>
+      <button class="auth-secondary use-email-instead" type="button">Use email instead</button>
+    </div>
+
     <div id="form-state">
-      <h1 style="font-size:34px;margin-bottom:10px">Sign in</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
+      <h1 class="auth-heading">Sign in</h1>
+      <p class="auth-copy" style="margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
       <p id="error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
       <div id="returning-guest" hidden style="padding:22px;border:1px solid var(--sg-border);border-radius:18px;background:rgba(255,255,255,.035);margin-bottom:18px">
         <p class="sg-label" style="margin-bottom:8px">Welcome back</p>
@@ -27,7 +112,7 @@
       <form id="login-form">
         <div class="sg-field">
           <label for="email">Email</label>
-          <input class="sg-input" type="email" id="email" name="email" autocomplete="email" required autofocus placeholder="you@example.com">
+          <input class="sg-input" type="email" id="email" name="email" autocomplete="email" required placeholder="you@example.com">
         </div>
         <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="submit-btn">Continue</button>
       </form>
@@ -35,19 +120,20 @@
 
     <!-- Luma-style: finish right here with the emailed code, or tap the link
          in the email on any device. The code only works in this browser. -->
-    <div id="sent-state" style="display:none">
-      <h1 style="font-size:34px;margin-bottom:10px">Check your email</h1>
-      <p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7;margin-bottom:22px">Enter the 6-digit code we sent to <strong id="sent-email" style="color:var(--sg-text)"></strong>, or tap the link in that email.</p>
-      <form id="code-form" class="sg-code-row" novalidate>
+    <div id="sent-state" hidden>
+      <h1 class="auth-heading" id="sent-heading">Check your email</h1>
+      <p class="auth-copy" id="sent-copy" style="margin-bottom:22px"><span id="sent-prefix">Enter the 6-digit code we sent to </span><strong id="sent-email" style="color:var(--sg-text)"></strong><span id="sent-suffix">, or tap the link in that email.</span></p>
+      <form id="code-form" class="sg-code-row auth-code-row" novalidate>
         <input class="sg-input sg-code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" placeholder="000000">
         <button class="sg-btn sg-btn-primary" type="submit" id="code-submit">Sign in</button>
       </form>
       <p class="sg-code-error" id="code-error" role="alert"></p>
       <div class="sg-code-actions" style="margin-top:22px">
         <button class="sg-code-link" type="button" id="resend-code" disabled>Send a new code</button>
-        <a class="sg-code-link" href="/login">Use a different email</a>
+        <button class="sg-code-link" type="button" id="different-code-email">Use a different email</button>
+        <button class="sg-code-link" type="button" id="restart-phone" hidden>Use a different phone</button>
       </div>
-      <p style="color:var(--sg-text-faint);font-size:13px;margin-top:18px">The code and link expire in 15 minutes.</p>
+      <p id="code-expiry" style="color:var(--sg-text-faint);font-size:13px;margin-top:18px">The code and link expire in 15 minutes.</p>
     </div>
   </main>
 
@@ -55,18 +141,89 @@
     const params = new URLSearchParams(location.search);
     const requestedNext = params.get('next') || '';
     const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
+    const creatorPhoneFlow = next === '/events/new' || next.startsWith('/events/new?');
     let returningGuest = null;
     let lastRequest = null;
+    let phoneNumber = '';
+    let emailBindingMode = false;
+    const stateIds = ['phone-state', 'phone-code-state', 'phone-email-state', 'form-state', 'sent-state'];
     const form = document.getElementById('login-form');
     const returningPanel = document.getElementById('returning-guest');
     const codeInput = document.getElementById('code');
     const codeSubmit = document.getElementById('code-submit');
     const codeError = document.getElementById('code-error');
     const resendButton = document.getElementById('resend-code');
+    const phoneInput = document.getElementById('phone');
+    const phoneCodeInput = document.getElementById('phone-code');
+    const phoneCodeSubmit = document.getElementById('phone-code-submit');
+    const phoneResendButton = document.getElementById('resend-phone-code');
+
+    function showState(activeId) {
+      stateIds.forEach(id => {
+        document.getElementById(id).hidden = id !== activeId;
+      });
+    }
+
+    function showError(id, message) {
+      const element = document.getElementById(id);
+      element.textContent = message || '';
+      element.style.display = message ? 'block' : 'none';
+    }
+
+    function apiError(data, fallback = 'Something went wrong. Try again.') {
+      return data?.message || data?.error || fallback;
+    }
+
+    async function postJson(url, body) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(apiError(data));
+      return data;
+    }
+
+    function renderReturningGuest() {
+      if (!returningGuest) {
+        returningPanel.hidden = true;
+        form.hidden = false;
+        return;
+      }
+      const guest = returningGuest;
+      document.getElementById('returning-title').textContent = `Continue as ${guest.firstName}`;
+      document.getElementById('returning-email').textContent = guest.maskedEmail;
+      returningPanel.hidden = false;
+      form.hidden = true;
+    }
+
+    function showEmailLogin() {
+      if (creatorPhoneFlow) fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
+      emailBindingMode = false;
+      lastRequest = null;
+      showCodeError('');
+      showError('error', '');
+      showState('form-state');
+      renderReturningGuest();
+      const focusTarget = returningGuest ? document.getElementById('continue-guest') : document.getElementById('email');
+      setTimeout(() => focusTarget.focus(), 0);
+    }
+
+    if (creatorPhoneFlow) {
+      showState('phone-state');
+      setTimeout(() => phoneInput.focus(), 0);
+    } else {
+      showState('form-state');
+      setTimeout(() => document.getElementById('email').focus(), 0);
+    }
+
     if (params.get('error') === 'expired') {
-      const err = document.getElementById('error');
-      err.textContent = 'That link expired or was already used. Request a new one.';
-      err.style.display = 'block';
+      if (creatorPhoneFlow) {
+        showError('phone-error', 'That link expired or was already used. Request a new sign-in code.');
+      } else {
+        showError('error', 'That link expired or was already used. Request a new one.');
+      }
     }
 
     function showCodeError(message) {
@@ -74,26 +231,31 @@
       codeError.style.display = message ? 'block' : 'none';
     }
 
-    function enableResendSoon() {
-      resendButton.disabled = true;
-      setTimeout(() => { resendButton.disabled = false; }, 30000);
+    function enableResendSoon(button = resendButton) {
+      button.disabled = true;
+      setTimeout(() => { button.disabled = false; }, 30000);
     }
 
-    async function showSent(emailLabel) {
-      document.getElementById('form-state').style.display = 'none';
+    function showSent(emailLabel, bindingPhone = false) {
+      emailBindingMode = bindingPhone;
+      showState('sent-state');
       document.getElementById('sent-email').textContent = emailLabel;
-      document.getElementById('sent-state').style.display = 'block';
+      document.getElementById('sent-heading').textContent = bindingPhone ? 'Verify your email' : 'Check your email';
+      document.getElementById('sent-prefix').textContent = 'Enter the 6-digit code we sent to ';
+      document.getElementById('sent-suffix').textContent = bindingPhone ? '.' : ', or tap the link in that email.';
+      document.getElementById('code-expiry').textContent = bindingPhone
+        ? 'The code expires in 15 minutes.'
+        : 'The code and link expire in 15 minutes.';
+      document.getElementById('restart-phone').hidden = !bindingPhone;
+      codeSubmit.textContent = bindingPhone ? 'Finish' : 'Sign in';
+      codeSubmit.disabled = false;
+      codeInput.value = '';
       codeInput.focus();
       enableResendSoon();
     }
 
     async function requestSignIn(url, body) {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Something went wrong. Try again.');
+      await postJson(url, body);
       lastRequest = { url, body };
     }
 
@@ -112,13 +274,13 @@
           body: JSON.stringify({ code })
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message || 'That code didn’t work.');
+        if (!response.ok) throw new Error(apiError(data, 'That code didn’t work.'));
         location.href = data.redirect || next || '/dashboard';
       } catch (error) {
         showCodeError(error.message);
         codeInput.select();
         codeSubmit.disabled = false;
-        codeSubmit.textContent = 'Sign in';
+        codeSubmit.textContent = emailBindingMode ? 'Finish' : 'Sign in';
       } finally {
         verifying = false;
       }
@@ -148,21 +310,136 @@
       }
     });
 
+    document.getElementById('different-code-email').addEventListener('click', () => {
+      codeInput.value = '';
+      showCodeError('');
+      if (emailBindingMode) {
+        showState('phone-email-state');
+        setTimeout(() => document.getElementById('phone-email').focus(), 0);
+      } else {
+        showEmailLogin();
+      }
+    });
+
+    document.getElementById('restart-phone').addEventListener('click', async () => {
+      await fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
+      phoneNumber = '';
+      phoneInput.value = '';
+      phoneCodeInput.value = '';
+      document.getElementById('phone-email').value = '';
+      emailBindingMode = false;
+      lastRequest = null;
+      showCodeError('');
+      showState('phone-state');
+      setTimeout(() => phoneInput.focus(), 0);
+    });
+
+    document.querySelectorAll('.use-email-instead').forEach(button => {
+      button.addEventListener('click', showEmailLogin);
+    });
+
+    document.getElementById('phone-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('phone-submit');
+      phoneNumber = phoneInput.value.trim();
+      if (!phoneNumber) return;
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      showError('phone-error', '');
+      try {
+        await postJson('/api/auth/phone/start', { phone: phoneNumber, next });
+        document.getElementById('sent-phone').textContent = phoneNumber;
+        phoneCodeInput.value = '';
+        showState('phone-code-state');
+        phoneCodeInput.focus();
+        enableResendSoon(phoneResendButton);
+      } catch (error) {
+        showError('phone-error', error.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Text me a code';
+      }
+    });
+
+    let verifyingPhone = false;
+    async function verifyPhoneCode() {
+      const code = phoneCodeInput.value.replace(/\D/g, '');
+      if (verifyingPhone || code.length !== 6) return;
+      verifyingPhone = true;
+      phoneCodeSubmit.disabled = true;
+      phoneCodeSubmit.textContent = 'Checking…';
+      showError('phone-code-error', '');
+      try {
+        const data = await postJson('/api/auth/phone/verify', { code });
+        if (data.redirect) {
+          location.href = data.redirect;
+          return;
+        }
+        if (!data.needsEmail) throw new Error('We couldn’t finish signing you in. Try again.');
+        showState('phone-email-state');
+        setTimeout(() => document.getElementById('phone-email').focus(), 0);
+      } catch (error) {
+        showError('phone-code-error', error.message);
+        phoneCodeInput.select();
+      } finally {
+        verifyingPhone = false;
+        phoneCodeSubmit.disabled = false;
+        phoneCodeSubmit.textContent = 'Verify phone';
+      }
+    }
+
+    phoneCodeInput.addEventListener('input', () => {
+      phoneCodeInput.value = phoneCodeInput.value.replace(/\D/g, '').slice(0, 6);
+      if (phoneCodeInput.value.length === 6) verifyPhoneCode();
+    });
+    document.getElementById('phone-code-form').addEventListener('submit', event => {
+      event.preventDefault();
+      verifyPhoneCode();
+    });
+    phoneResendButton.addEventListener('click', async () => {
+      phoneResendButton.disabled = true;
+      showError('phone-code-error', '');
+      try {
+        await postJson('/api/auth/phone/start', { phone: phoneNumber, next });
+        phoneCodeInput.value = '';
+        phoneCodeInput.focus();
+        enableResendSoon(phoneResendButton);
+      } catch (error) {
+        showError('phone-code-error', error.message);
+        phoneResendButton.disabled = false;
+      }
+    });
+
+    document.getElementById('phone-email-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('phone-email-submit');
+      const email = document.getElementById('phone-email').value.trim();
+      button.disabled = true;
+      button.textContent = 'Sending…';
+      showError('phone-email-error', '');
+      try {
+        await requestSignIn('/api/auth/phone/email', { email });
+        button.disabled = false;
+        button.textContent = 'Continue';
+        showSent(email, true);
+      } catch (error) {
+        showError('phone-email-error', error.message);
+        button.disabled = false;
+        button.textContent = 'Continue';
+      }
+    });
+
     fetch('/api/public/guest-session', { headers: { Accept: 'application/json' } })
       .then(response => response.ok ? response.json() : null)
       .then(guest => {
         if (!guest?.recognized) return;
         returningGuest = guest;
-        document.getElementById('returning-title').textContent = `Continue as ${guest.firstName}`;
-        document.getElementById('returning-email').textContent = guest.maskedEmail;
-        returningPanel.hidden = false;
-        form.hidden = true;
+        if (!creatorPhoneFlow || !document.getElementById('form-state').hidden) renderReturningGuest();
       }).catch(() => {});
     document.getElementById('different-email').addEventListener('click', async () => {
       await fetch('/api/public/guest-session/forget', { method: 'POST' }).catch(() => {});
       returningGuest = null;
-      returningPanel.hidden = true;
-      form.hidden = false;
+      renderReturningGuest();
       document.getElementById('email').focus();
     });
     document.getElementById('continue-guest').addEventListener('click', async () => {

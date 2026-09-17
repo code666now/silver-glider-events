@@ -26,9 +26,11 @@ const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
 const sms = require('../../src/lib/sms');
+const phoneVerification = require('../../src/lib/phone-verification');
 const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
 const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
+const { settlePreviousGuestInvitationWork } = require('../../src/jobs/previous-guest-invitations');
 const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
@@ -76,7 +78,7 @@ function resetRateLimits() {
 }
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE stripe_sms_webhook_events, paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -187,11 +189,13 @@ test.before(async () => {
 // it finish so it can't deadlock with the TRUNCATE.
 test.beforeEach(async () => {
   await publicRoutes.settleBackgroundWork();
+  await settlePreviousGuestInvitationWork();
   await resetDatabase();
 });
 
 test.after(async () => {
   await publicRoutes.settleBackgroundWork();
+  await settlePreviousGuestInvitationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
 });
@@ -3028,6 +3032,372 @@ test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempo
 // ---------------------------------------------------------------------------
 // Sign-in hardening and returning guests (v1.0.85)
 // ---------------------------------------------------------------------------
+
+test('creator phone onboarding requires phone and inbox proof, then remembers the verified phone', async () => {
+  resetRateLimits();
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalCheckVerification = phoneVerification.checkVerification;
+  const originalSendAuthSms = sms.sendAuthSms;
+  const verificationSid = `VE${'a'.repeat(32)}`;
+  const phone = '+14155550188';
+  const sentSms = [];
+  let providerStarts = 0;
+  let providerChecks = 0;
+  phoneVerification.startVerification = async recipient => {
+    providerStarts += 1;
+    assert.equal(recipient, phone);
+    return { verificationSid, phone: recipient, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async input => {
+    providerChecks += 1;
+    assert.deepEqual(input, { verificationSid, code: '123456' });
+    return { approved: true, verificationSid, phone, status: 'approved' };
+  };
+  sms.sendAuthSms = async payload => {
+    sentSms.push(payload);
+    return { sid: `SM${'b'.repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+
+  try {
+    const crossSite = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://evil.example',
+        'sec-fetch-site': 'cross-site'
+      },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    assert.equal(crossSite.status, 403, 'another site cannot trigger verification texts');
+    assert.equal(providerStarts, 0);
+
+    const outOfScope = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/dashboard' })
+    });
+    assert.equal(outOfScope.status, 400, 'phone-first auth is creator-only');
+    assert.equal(providerStarts, 0);
+
+    const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '(415) 555-0188', next: '/events/new' })
+    });
+    assert.equal(started.status, 200);
+    const firstStartBody = await started.json();
+    assert.deepEqual(firstStartBody, { ok: true, codeLength: 6 });
+    const phoneCookie = responseCookie(started, 'sge_phone_auth');
+    assert.ok(phoneCookie);
+    assert.equal(providerStarts, 1);
+    assert.equal(sentSms.length, 0, 'first proof uses Verify rather than the Messaging Service');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM account_phone_credentials')).rows[0].count, 0);
+
+    const otherBrowser = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(otherBrowser.status, 400, 'the phone proof is bound to the requesting browser');
+
+    const phoneProof = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(phoneProof.status, 200);
+    assert.deepEqual(await phoneProof.json(), {
+      ok: true, needsEmail: true, maskedPhone: '•••• 0188'
+    });
+    assert.equal(providerChecks, 1);
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM account_phone_credentials')).rows[0].count, 0,
+      'phone possession alone never claims an identity');
+    assert.equal(responseCookie(phoneProof, 'sge_session'), '');
+
+    await pool.query(
+      `UPDATE phone_auth_challenges SET expires_at=NOW() + INTERVAL '5 seconds'
+        WHERE phone_e164=$1 AND purpose='enroll' AND used_at IS NULL`,
+      [phone]
+    );
+
+    const emailStep = await fetch(`${baseUrl}/api/auth/phone/email`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ email: 'host@example.test' })
+    });
+    assert.equal(emailStep.status, 200);
+    const emailCookie = responseCookie(emailStep, 'sge_sign_in');
+    assert.ok(emailCookie);
+    const emailMessage = lastDevEmail('host@example.test', 'account_verification_code');
+    assert.match(emailMessage.code, /^\d{6}$/);
+    const extendedExpiry = (await pool.query(
+      `SELECT EXTRACT(EPOCH FROM (expires_at - NOW())) AS seconds
+         FROM phone_auth_challenges WHERE phone_e164=$1 AND purpose='enroll' AND used_at IS NULL`,
+      [phone]
+    )).rows[0];
+    assert.ok(Number(extendedExpiry.seconds) > 19 * 60,
+      'starting inbox proof preserves the full email-code verification window');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM account_phone_credentials')).rows[0].count, 0,
+      'requesting an email code still does not bind the phone');
+
+    const noBrowserCookie = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: emailMessage.code })
+    });
+    assert.equal(noBrowserCookie.status, 400);
+
+    const completed = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: emailCookie },
+      body: JSON.stringify({ code: emailMessage.code })
+    });
+    assert.equal(completed.status, 200);
+    assert.equal((await completed.json()).redirect, '/events/new');
+    const sessionCookie = responseCookie(completed, 'sge_session');
+    assert.ok(sessionCookie);
+    assert.equal((await fetch(`${baseUrl}/events/new`, { headers: { cookie: sessionCookie } })).status, 200);
+    const credential = (await pool.query(
+      'SELECT organizer_id,phone_e164 FROM account_phone_credentials WHERE revoked_at IS NULL'
+    )).rows[0];
+    assert.deepEqual({ organizerId: credential.organizer_id, phone: credential.phone_e164 }, {
+      organizerId, phone
+    });
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM host_follows')).rows[0].count, 0,
+      'an authentication phone never creates follow or text consent');
+
+    const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    assert.equal(returningStart.status, 200);
+    assert.deepEqual(await returningStart.clone().json(), firstStartBody,
+      'the start response does not reveal whether a phone is already bound');
+    assert.equal(providerStarts, 1, 'a bound phone uses the ordinary Messaging Service');
+    assert.equal(sentSms.length, 1);
+    const returningCode = sentSms[0].body.match(/\b(\d{6})\b/)?.[1];
+    assert.match(returningCode, /^\d{6}$/);
+    const returningCookie = responseCookie(returningStart, 'sge_phone_auth');
+    const returningVerify = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: returningCookie },
+      body: JSON.stringify({ code: returningCode })
+    });
+    assert.equal(returningVerify.status, 200);
+    assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/events/new' });
+    const returningSession = responseCookie(returningVerify, 'sge_session');
+    assert.ok(returningSession);
+
+    const pendingStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    assert.equal(pendingStart.status, 200);
+    assert.equal(sentSms.length, 2);
+    const logoutAll = await fetch(`${baseUrl}/api/auth/logout-all`, {
+      method: 'POST', headers: { cookie: returningSession }
+    });
+    assert.equal(logoutAll.status, 200);
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE phone_e164=$1 AND revoked_at IS NULL', [phone]
+    )).rows[0].count, 0, 'account recovery revokes phone sign-in');
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM phone_auth_challenges WHERE phone_e164=$1 AND used_at IS NULL', [phone]
+    )).rows[0].count, 0, 'account recovery invalidates pending phone codes');
+
+    const reenrollStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    assert.equal(reenrollStart.status, 200);
+    assert.equal(providerStarts, 2, 'a revoked phone must repeat Verify plus inbox proof');
+    assert.equal(sentSms.length, 2, 'a revoked phone cannot use the returning-login sender');
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+    phoneVerification.checkVerification = originalCheckVerification;
+    sms.sendAuthSms = originalSendAuthSms;
+  }
+});
+
+test('administrator identities remain email-only even if a phone was previously bound', async () => {
+  resetRateLimits();
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalCheckVerification = phoneVerification.checkVerification;
+  const originalSendAuthSms = sms.sendAuthSms;
+  const verificationSid = `VE${'e'.repeat(32)}`;
+  const phone = '+14155550191';
+  const sentSms = [];
+  phoneVerification.startVerification = async () => ({ verificationSid, phone, status: 'pending' });
+  phoneVerification.checkVerification = async () => ({ approved: true, verificationSid, phone, status: 'approved' });
+  sms.sendAuthSms = async payload => {
+    sentSms.push(payload);
+    return { sid: `SM${'f'.repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+
+  try {
+    const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    const phoneCookie = responseCookie(started, 'sge_phone_auth');
+    await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ code: '123456' })
+    });
+    const emailStep = await fetch(`${baseUrl}/api/auth/phone/email`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ email: 'host@example.test' })
+    });
+    const emailCookie = responseCookie(emailStep, 'sge_sign_in');
+    const emailCode = lastDevEmail('host@example.test', 'account_verification_code').code;
+    const bindAttempt = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: emailCookie },
+      body: JSON.stringify({ code: emailCode })
+    });
+    assert.equal(bindAttempt.status, 403);
+    assert.equal((await bindAttempt.json()).error, 'email_sign_in_required');
+    assert.equal(responseCookie(bindAttempt, 'sge_session'), '');
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE organizer_id=$1 AND revoked_at IS NULL', [organizerId]
+    )).rows[0].count, 0);
+
+    await pool.query(
+      `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+       VALUES ($1,$2,NOW())`,
+      [organizerId, phone]
+    );
+    const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    assert.equal(returningStart.status, 200);
+    const returningCode = sentSms[0].body.match(/\b(\d{6})\b/)?.[1];
+    const returningAttempt = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: {
+        'content-type': 'application/json',
+        cookie: responseCookie(returningStart, 'sge_phone_auth')
+      },
+      body: JSON.stringify({ code: returningCode })
+    });
+    assert.equal(returningAttempt.status, 403);
+    assert.equal((await returningAttempt.json()).error, 'email_sign_in_required');
+    assert.equal(responseCookie(returningAttempt, 'sge_session'), '');
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+    phoneVerification.checkVerification = originalCheckVerification;
+    sms.sendAuthSms = originalSendAuthSms;
+  }
+});
+
+test('unverified phone requests cannot exhaust another person’s email sign-in limit', async () => {
+  resetRateLimits();
+  const email = 'rate-limit-victim@example.test';
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const response = await fetch(`${baseUrl}/api/auth/phone/email`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, 'phone_verification_required');
+  }
+  const normalLogin = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next: '/dashboard' })
+  });
+  assert.equal(normalLogin.status, 200, 'the shared email limiter remains untouched');
+});
+
+test('phone-code delivery failures do not reveal whether a phone is already bound', async () => {
+  resetRateLimits();
+  const boundPhone = '+14155550192';
+  const newPhone = '+14155550193';
+  await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW())`,
+    [organizerId, boundPhone]
+  );
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalSendAuthSms = sms.sendAuthSms;
+  phoneVerification.startVerification = async () => {
+    throw new phoneVerification.PhoneVerificationError('verify-specific failure', {
+      code: 'phone_verification_rejected', status: 422
+    });
+  };
+  sms.sendAuthSms = async () => {
+    throw new sms.SmsDeliveryError('messaging-specific failure', {
+      code: 'sms_rejected', status: 422
+    });
+  };
+
+  try {
+    const responses = [];
+    for (const phone of [boundPhone, newPhone]) {
+      const response = await fetch(`${baseUrl}/api/auth/phone/start`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ phone, next: '/events/new' })
+      });
+      responses.push({ status: response.status, body: await response.json() });
+    }
+    assert.deepEqual(responses[0], responses[1]);
+    assert.deepEqual(responses[0], {
+      status: 503,
+      body: {
+        error: 'phone_code_unavailable',
+        message: 'We couldn’t send a code. Try again or use email.'
+      }
+    });
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+    sms.sendAuthSms = originalSendAuthSms;
+  }
+});
+
+test('phone enrollment collisions never merge identities or create a session', async () => {
+  resetRateLimits();
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalCheckVerification = phoneVerification.checkVerification;
+  const verificationSid = `VE${'c'.repeat(32)}`;
+  const phone = '+14155550189';
+  phoneVerification.startVerification = async () => ({ verificationSid, phone, status: 'pending' });
+  phoneVerification.checkVerification = async () => ({ approved: true, verificationSid, phone, status: 'approved' });
+
+  try {
+    const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, next: '/events/new' })
+    });
+    const phoneCookie = responseCookie(started, 'sge_phone_auth');
+    const verified = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ code: '654321' })
+    });
+    assert.equal(verified.status, 200);
+
+    const competing = (await pool.query(
+      `INSERT INTO organizers (email,name) VALUES ('phone-owner@example.test','Phone Owner') RETURNING id`
+    )).rows[0];
+    await pool.query(
+      `INSERT INTO account_phone_credentials (organizer_id,phone_e164) VALUES ($1,$2)`,
+      [competing.id, phone]
+    );
+
+    const email = 'must-not-merge@example.test';
+    const emailStep = await fetch(`${baseUrl}/api/auth/phone/email`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
+      body: JSON.stringify({ email })
+    });
+    const emailCookie = responseCookie(emailStep, 'sge_sign_in');
+    const code = lastDevEmail(email, 'account_verification_code').code;
+    const completion = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: emailCookie },
+      body: JSON.stringify({ code })
+    });
+    assert.equal(completion.status, 409);
+    assert.equal((await completion.json()).error, 'phone_identity_conflict');
+    assert.equal(responseCookie(completion, 'sge_session'), '');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM organizers WHERE email=$1', [email])).rows[0].count, 0,
+      'the rolled-back bind does not leave a duplicate identity');
+    assert.equal((await pool.query(
+      'SELECT organizer_id FROM account_phone_credentials WHERE phone_e164=$1 AND revoked_at IS NULL', [phone]
+    )).rows[0].organizer_id, competing.id);
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+    phoneVerification.checkVerification = originalCheckVerification;
+  }
+});
 
 test('email scanners cannot use up a sign-in link, and signed-in people are not sent to "expired"', async () => {
   resetRateLimits();
