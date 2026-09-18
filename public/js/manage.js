@@ -889,6 +889,7 @@ function renderPeopleBar() {
   const count = peopleSelection.size;
   $('familiar-people-bar').hidden = count === 0;
   if (!count) peopleConfirming = false;
+  $('familiar-people-bar').classList.toggle('is-confirming', peopleConfirming);
   const people = `${count} ${count === 1 ? 'person' : 'people'}`;
   if (peopleConfirming) {
     $('familiar-people-count').textContent = `Invite ${people} to ${eventData.title}?`;
