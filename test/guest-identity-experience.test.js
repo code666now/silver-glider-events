@@ -45,12 +45,40 @@ test('My Events opens on Going unless a host has nothing upcoming there, and pre
   assert.doesNotMatch(routes, /LOWER\(r\.email\).*api\/events\/going/s);
   assert.match(page, /data-view="going">Going</);
   assert.match(page, /data-view="hosting">Hosting</);
-  assert.match(page, /let activeView = requestedView === 'hosting' \|\| rememberedView === 'hosting' \? 'hosting' : 'going'/);
+  assert.match(page, /const validRequestedView = normalizeView\(requestedView\)/);
+  assert.match(page, /let activeView = resolveInitialView\(requestedView, rememberedView\)/);
+  assert.match(page, /const chooseInitialView = validRequestedView \|\| validRememberedView \? Promise\.resolve\(\)/);
+  assert.match(page, /const hasUpcoming = list => \(list \|\| \[\]\)\.some\(e => isUpcomingEventDate\(e\.event_date\)\)/);
+  assert.match(page, /const upcoming = events\.filter\(e => isUpcomingEventDate\(e\.event_date\)\)\.reverse\(\)/);
+  assert.match(page, /const past = events\.filter\(e => !isUpcomingEventDate\(e\.event_date\)\)/);
+  assert.match(page, /const requestedLoadView = activeView/);
+  assert.match(page, /const requestId = \+\+loadRequestId/);
+  assert.match(page, /if \(requestId !== loadRequestId \|\| requestedLoadView !== activeView\) return/);
+  assert.match(page, /if \(!userSelectedView\) load\(\)/);
+  assert.ok(page.indexOf('userSelectedView = true;') < page.indexOf("if (tab.dataset.view === activeView) return;"));
+  assert.ok(page.indexOf('localStorage.setItem(VIEW_KEY, tab.dataset.view)') < page.indexOf("if (tab.dataset.view === activeView) return;"));
   assert.match(page, /if \(!hasUpcoming\(going\.events\) && \(hosting\.events \|\| \[\]\)\.length\) activeView = 'hosting'/);
-  assert.match(page, /localStorage\.setItem\(VIEW_KEY, activeView\)/);
+  assert.match(page, /localStorage\.setItem\(VIEW_KEY, tab\.dataset\.view\)/);
   assert.match(page, /api\('\/api\/events\/going'\)/);
   assert.match(page, /api\('\/api\/events\?archived=1'\)/);
   assert.match(page, /Events you RSVP to will appear here/);
+});
+
+test('phone feedback returns focus to the menu while desktop feedback returns to its visible launcher', () => {
+  const api = read('public/js/api.js');
+  const footer = read('public/js/legal-footer.js');
+  const styles = read('public/css/main.css');
+  const manage = read('public/js/manage.js');
+
+  assert.match(api, /document\.querySelector\('\.sg-legal-feedback'\)/);
+  assert.match(api, /candidate\.getClientRects\(\)\.length/);
+  assert.match(api, /style\.display !== 'none' && style\.visibility !== 'hidden'/);
+  assert.doesNotMatch(api, /bubble\.offsetParent/);
+  assert.match(footer, /class="sg-legal-feedback" type="button">Send feedback/);
+  assert.match(footer, /document\.getElementById\('feedback-bubble'\)\?\.click\(\)/);
+  assert.match(styles, /body\.sg-app-page:not\(\.quick-create-mobile-flow\):not\(\.event-mobile-flow-enabled\):not\(\.manage-mobile-custom-nav\) \.sg-global-footer \{ display: none; \}/);
+  assert.match(styles, /body\.sg-app-page\.manage-mobile-custom-nav \.sg-legal-feedback/);
+  assert.match(manage, /document\.body\.classList\.toggle\('manage-mobile-custom-nav', mobileManageLayout\.matches\)/);
 });
 
 test('only a signed-in matching identity receives the public avatar edit affordance', () => {

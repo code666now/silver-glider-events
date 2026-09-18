@@ -108,10 +108,10 @@ function updateMobileManageSummaries() {
   if (going) {
     const count = document.createElement('strong');
     count.textContent = capacity ? `${going} of ${capacity}` : String(going);
-    headcount.append(count, eventData.is_past ? ` ${going === 1 ? 'person' : 'people'} went` : ' going');
+    headcount.append(count, eventData.is_past ? ' RSVP’d going' : ' going');
   } else {
     headcount.textContent = eventData.is_past
-      ? 'No one RSVP’d to this event.'
+      ? 'No one RSVP’d going to this event.'
       : 'No RSVPs yet. Share your link to get the first one.';
   }
 
@@ -182,6 +182,7 @@ function setMobileManageView(requestedView, { focus = true, historyMode = 'none'
 
 function syncMobileManageLayout() {
   const viewLink = $('view-link');
+  document.body.classList.toggle('manage-mobile-custom-nav', mobileManageLayout.matches);
   if (mobileManageLayout.matches) {
     $('manage-mobile-nav').hidden = false;
     viewLink.textContent = 'Preview';

@@ -253,7 +253,13 @@ function mountFeedbackBubble() {
     }
     const bubble = document.getElementById('feedback-bubble');
     // On phones the bubble is hidden and Feedback opens from the menu.
-    (bubble.offsetParent ? bubble : document.querySelector('.sg-nav-toggle') || bubble).focus();
+    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
+      .find(candidate => {
+        if (!candidate || candidate.hidden || !candidate.getClientRects().length) return false;
+        const style = window.getComputedStyle(candidate);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      }) || bubble;
+    focusTarget?.focus();
   }
 
   document.getElementById('feedback-bubble').addEventListener('click', openFeedback);

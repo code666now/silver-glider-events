@@ -5,6 +5,10 @@ const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const DEFAULT_PUBLIC_ROOT = path.join(__dirname, '..', '..', 'public');
 const CRITICAL_PNG_ASSETS = Object.freeze([
   'logo.png',
+  'favicon.png',
+  'apple-touch-icon.png',
+  'icon-192.png',
+  'icon-512.png',
   'images/email/calendar.png',
   'images/email/map.png',
   'images/email/manage.png',
