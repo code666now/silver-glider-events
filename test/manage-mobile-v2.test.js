@@ -28,6 +28,13 @@ test('phone event management uses one task hub and the original action controls'
   assert.match(client, /\$\('manage-mobile-screen-intro'\)\.hidden = view === 'home'/);
   assert.match(client, /view === 'actions'[\s\S]*\$\('more-menu'\)\.setAttribute\('open', ''\)/);
   assert.match(client, /view === 'actions'[\s\S]*\$\('more-menu-panel'\)/);
+  assert.match(client, /const mobileManageHistoryKey = 'sgeMobileManageView'/);
+  assert.match(client, /history\[mode === 'replace' \? 'replaceState' : 'pushState'\]/);
+  assert.match(client, /fromView: mode === 'push'[\s\S]*current\?\.view === view \? current\.fromView : null/);
+  assert.match(client, /data-manage-mobile-open[\s\S]*historyMode: 'push'/);
+  assert.match(client, /current\.fromView === 'home'\) history\.back\(\)/);
+  assert.match(client, /addEventListener\('popstate'[\s\S]*setMobileManageView\(entry\.view, \{ historyMode: 'none' \}\)/);
+  assert.match(client, /clearMobileManageHistory\(\)[\s\S]*activeMobileManageView = 'home'/);
   assert.match(view, /class="manage-mobile-screen-intro"[\s\S]*<h1 class="sr-only" id="manage-mobile-screen-title">Overview<\/h1>/);
   assert.doesNotMatch(view, /<p>Manage event<\/p>/);
 

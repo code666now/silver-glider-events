@@ -28,9 +28,43 @@ const mobileManageViews = {
     subtitle: 'Duplicate, cancel, or permanently delete this event.'
   }
 };
+const mobileManageHistoryKey = 'sgeMobileManageView';
+const mobileManageHistoryContext = `${location.pathname}${location.search}`;
 let activeMobileManageView = 'home';
 let mobilePreviewMarker = null;
 let mobileEditMarker = null;
+
+function mobileManageHistoryEntry() {
+  const entry = history.state?.[mobileManageHistoryKey];
+  if (!entry || entry.context !== mobileManageHistoryContext) return null;
+  if (entry.view !== 'home' && !mobileManageViews[entry.view]) return null;
+  return entry;
+}
+
+function writeMobileManageHistory(view, mode, fromView) {
+  if (mode === 'none') return;
+  const current = mobileManageHistoryEntry();
+  if (mode === 'push' && current?.view === view) return;
+  const baseState = history.state && typeof history.state === 'object' ? history.state : {};
+  const entry = {
+    context: mobileManageHistoryContext,
+    view,
+    fromView: mode === 'push'
+      ? (fromView || null)
+      : (current?.view === view ? current.fromView : null)
+  };
+  history[mode === 'replace' ? 'replaceState' : 'pushState']({
+    ...baseState,
+    [mobileManageHistoryKey]: entry
+  }, '', location.href);
+}
+
+function clearMobileManageHistory() {
+  if (!mobileManageHistoryEntry()) return;
+  const nextState = { ...(history.state || {}) };
+  delete nextState[mobileManageHistoryKey];
+  history.replaceState(nextState, '', location.href);
+}
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -91,13 +125,15 @@ function syncMobileManageAvailability() {
   updateMobileManageSummaries();
 
   if (mobileManageLayout.matches && activeMobileManageView !== 'home' && !mobileManageViewAvailable(activeMobileManageView)) {
-    setMobileManageView('home', { focus: false });
+    setMobileManageView('home', { focus: false, historyMode: 'replace' });
   }
 }
 
-function setMobileManageView(requestedView, { focus = true } = {}) {
+function setMobileManageView(requestedView, { focus = true, historyMode = 'none' } = {}) {
   if (!mobileManageLayout.matches) return;
   const view = requestedView === 'home' || mobileManageViewAvailable(requestedView) ? requestedView : 'home';
+  const previousView = activeMobileManageView;
+  writeMobileManageHistory(view, historyMode, previousView);
   activeMobileManageView = view;
   $('manage-shell').dataset.mobileView = view;
   $('manage-mobile-hub').hidden = view !== 'home';
@@ -135,8 +171,10 @@ function syncMobileManageLayout() {
     $('manage-mobile-preview-slot').append(viewLink);
     $('manage-mobile-edit-slot').append($('edit-link'));
     $('title').setAttribute('tabindex', '-1');
-    setMobileManageView(activeMobileManageView, { focus: false });
+    const historyView = mobileManageHistoryEntry()?.view;
+    setMobileManageView(historyView || activeMobileManageView, { focus: false, historyMode: 'replace' });
   } else {
+    clearMobileManageHistory();
     $('manage-mobile-nav').hidden = true;
     $('manage-mobile-hub').hidden = true;
     $('manage-mobile-screen-intro').hidden = true;
@@ -158,17 +196,32 @@ function initializeMobileManage() {
   mobileEditMarker = document.createComment('mobile edit link location');
   editLink.before(mobileEditMarker);
   document.querySelectorAll('[data-manage-mobile-open]').forEach(button => {
-    button.addEventListener('click', () => setMobileManageView(button.dataset.manageMobileOpen));
+    button.addEventListener('click', () => setMobileManageView(button.dataset.manageMobileOpen, { historyMode: 'push' }));
   });
   $('manage-mobile-back').addEventListener('click', () => {
-    if (activeMobileManageView !== 'home') setMobileManageView('home');
+    if (activeMobileManageView !== 'home') {
+      const current = mobileManageHistoryEntry();
+      if (current?.view === activeMobileManageView && current.fromView === 'home') history.back();
+      else setMobileManageView('home', { historyMode: 'replace' });
+    }
     else window.location.assign('/events?view=hosting');
   });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
       event.preventDefault();
-      setMobileManageView('home');
+      const current = mobileManageHistoryEntry();
+      if (current?.view === activeMobileManageView && current.fromView === 'home') history.back();
+      else setMobileManageView('home', { historyMode: 'replace' });
     }
+  });
+  window.addEventListener('popstate', () => {
+    if (!mobileManageLayout.matches) {
+      clearMobileManageHistory();
+      return;
+    }
+    const entry = mobileManageHistoryEntry();
+    if (!entry) return;
+    setMobileManageView(entry.view, { historyMode: 'none' });
   });
   mobileManageLayout.addEventListener('change', syncMobileManageLayout);
   syncMobileManageLayout();

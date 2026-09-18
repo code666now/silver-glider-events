@@ -176,4 +176,8 @@ test('settings use linkable responsive sections and separate account from host-p
   assert.match(client, /function showSettingsError\(\)/);
   assert.match(client, /function updateAccountDirty\(\)/);
   assert.match(client, /function updateHostDirty\(\)/);
+  assert.match(client, /const hostMobileHistoryKey = 'sgeSettingsHostView'/);
+  assert.match(client, /window\.history\[mode === 'replace' \? 'replaceState' : 'pushState'\]/);
+  assert.match(client, /window\.addEventListener\('popstate'/);
+  assert.match(client, /hostMobileHistoryEntry\(\)\?\.section === hostMobileSection/);
 });

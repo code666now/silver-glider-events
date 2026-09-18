@@ -292,6 +292,28 @@ body.host-share-dialog-open { overflow:hidden; }
   }
   .settings-form-actions .sg-btn { min-height:60px;border-radius:19px;font-size:17px; }
   .settings-form-status { min-height:20px;margin-top:14px;font-size:13px; }
+  #account-status,#host-status {
+    position:fixed;
+    right:22px;
+    left:22px;
+    z-index:36;
+    min-height:0;
+    margin:0;
+    padding:9px 12px;
+    border:1px solid rgba(255,255,255,.09);
+    border-radius:12px;
+    background:rgba(20,20,22,.96);
+    box-shadow:0 10px 30px rgba(0,0,0,.34);
+    color:var(--sg-text-dim);
+    line-height:1.4;
+    text-align:center;
+    pointer-events:none;
+  }
+  #account-status:empty,#host-status:empty { display:none; }
+  #account-status { bottom:calc(96px + env(safe-area-inset-bottom)); }
+  #host-status { bottom:calc(166px + env(safe-area-inset-bottom)); }
+  body:not(.has-mobile-sticky-action) #host-status { bottom:calc(20px + env(safe-area-inset-bottom)); }
+  #account-status.error,#host-status.error { color:#ff8c8c; }
   .credits-balance-block { min-height:164px;padding:24px;border-radius:22px; }
   .credits-balance-label { font-size:12px; }
   .credits-balance-number { font-size:56px; }

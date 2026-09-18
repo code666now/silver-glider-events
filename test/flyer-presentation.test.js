@@ -150,6 +150,13 @@ test('event editor keeps the desktop columns and adds a phone-only task flow', (
   assert.match(js, /function openMobileFlowView\(/);
   assert.match(js, /function refreshMobileFlowHub\(/);
   assert.match(js, /function returnToMobileFlowHub\([\s\S]*event-mobile-flow-title[\s\S]*focus\(\{ preventScroll: true \}\)/);
+  assert.match(js, /const mobileFlowHistoryKey = 'sgeMobileEventForm'/);
+  assert.match(js, /history\[mode === 'replace' \? 'replaceState' : 'pushState'\]/);
+  assert.match(js, /fromView: mode === 'push'[\s\S]*current\?\.view === view \? current\.fromView : null/);
+  assert.match(js, /function navigateBackInMobileFlow\([\s\S]*history\.back\(\)/);
+  assert.match(js, /event-mobile-flow-done'[\s\S]*mobileFlowParentViews\[mobileFlowView\][\s\S]*navigateBackInMobileFlow\('hub'/);
+  assert.match(js, /addEventListener\('popstate'[\s\S]*openMobileFlowView\(entry\.view, \{ focus: !mobileFlowHistoryFocusTarget, historyMode: 'none' \}\)/);
+  assert.match(js, /clearMobileFlowHistory\(\)[\s\S]*mobileFlowView = editId \? 'hub' : 'basics'/);
   assert.match(js, /function leaveMobileEventEditor\(\)[\s\S]*mobileFlowHasChanges\(\)[\s\S]*Discard your unsaved changes/);
   assert.match(js, /event-mobile-flow-preview'[\s\S]*window\.open\(`/);
   assert.match(js, /addEventListener\('invalid',[\s\S]*mobileFlowPanelForElement/);

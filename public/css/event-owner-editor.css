@@ -483,6 +483,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
    desktop treatment while preventing focus zoom on touch-first devices. */
 @media (max-width: 879px), (hover: none) and (pointer: coarse) {
   .owner-input { font-size: 16px; }
+  .owner-photo-category { min-height: 44px; }
 }
 .owner-input:hover { border-color: rgba(255,255,255,.25); }
 .owner-input:focus { border-color: rgba(28,197,190,.52); }

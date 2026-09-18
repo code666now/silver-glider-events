@@ -12,6 +12,9 @@
   const mobileProgress = $('quick-create-mobile-progress');
   const submitButton = $('quick-create-submit');
   const footnote = $('quick-create-footnote');
+  const QUICK_CREATE_DRAFT_PREFIX = 'sge-quick-create-draft:';
+  const QUICK_CREATE_HISTORY_KEY = 'sgeQuickCreate';
+  const draftStorageKey = `${QUICK_CREATE_DRAFT_PREFIX}${window.location.pathname}`;
   const location = {
     venueName: '', venueAddress: '', venueCity: '', venueState: '',
     venueLatitude: null, venueLongitude: null, googlePlaceId: '', kind: null
@@ -20,6 +23,7 @@
   let applyingPlace = false;
   let placesLoader;
   let mobileStep = 0;
+  let mobileHistoryReady = false;
 
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -27,6 +31,150 @@
 
   function setStatus(message) { $('create-places-status').textContent = message || ''; }
   function mobileFlowEnabled() { return mobileFlowQuery.matches; }
+  function safeText(value, maxLength = 500) {
+    return typeof value === 'string' ? value.slice(0, maxLength) : '';
+  }
+  function safeCoordinate(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const coordinate = Number(value);
+    return Number.isFinite(coordinate) ? coordinate : null;
+  }
+  function boundedMobileStep(value) {
+    const step = Number.parseInt(value, 10);
+    return Number.isInteger(step) ? Math.max(0, Math.min(step, mobileSteps.length - 1)) : 0;
+  }
+  function quickCreateHistoryStep(state = window.history.state) {
+    const quickCreateState = state && typeof state === 'object' ? state[QUICK_CREATE_HISTORY_KEY] : null;
+    if (!quickCreateState || quickCreateState.path !== window.location.pathname) return null;
+    return boundedMobileStep(quickCreateState.step);
+  }
+  function historyStateForStep(step) {
+    const currentState = window.history.state && typeof window.history.state === 'object'
+      ? window.history.state
+      : {};
+    return {
+      ...currentState,
+      [QUICK_CREATE_HISTORY_KEY]: { path: window.location.pathname, step: boundedMobileStep(step) }
+    };
+  }
+  function persistQuickCreateDraft() {
+    if (!mobileFlowEnabled()) return;
+    const draft = {
+      title: $('create-title').value,
+      eventDate: $('create-date').value,
+      startTime: $('create-start-time').value,
+      locationSearch: $('create-location-search').value,
+      manualAddress: $('create-location-manual-address').value,
+      locationName: $('create-location-name').value,
+      manualMode,
+      step: mobileStep,
+      location: {
+        venueName: location.venueName,
+        venueAddress: location.venueAddress,
+        venueCity: location.venueCity,
+        venueState: location.venueState,
+        venueLatitude: location.venueLatitude,
+        venueLongitude: location.venueLongitude,
+        googlePlaceId: location.googlePlaceId,
+        kind: location.kind
+      }
+    };
+    try {
+      window.sessionStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    } catch (_) {
+      // Form recovery is a convenience; storage restrictions must not block creation.
+    }
+  }
+  function restoreQuickCreateDraft() {
+    if (!mobileFlowEnabled()) return;
+    let draft;
+    try {
+      draft = JSON.parse(window.sessionStorage.getItem(draftStorageKey) || 'null');
+    } catch (_) {
+      return;
+    }
+    if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return;
+
+    $('create-title').value = safeText(draft.title, 140);
+    $('create-date').value = safeText(draft.eventDate, 10);
+    $('create-start-time').value = safeText(draft.startTime, 8);
+    $('create-location-search').value = safeText(draft.locationSearch);
+    $('create-location-manual-address').value = safeText(draft.manualAddress);
+    $('create-location-name').value = safeText(draft.locationName, 140);
+
+    const savedLocation = draft.location && typeof draft.location === 'object' && !Array.isArray(draft.location)
+      ? draft.location
+      : {};
+    location.venueName = safeText(savedLocation.venueName, 140);
+    location.venueAddress = safeText(savedLocation.venueAddress);
+    location.venueCity = safeText(savedLocation.venueCity, 140);
+    location.venueState = safeText(savedLocation.venueState, 80);
+    location.venueLatitude = safeCoordinate(savedLocation.venueLatitude);
+    location.venueLongitude = safeCoordinate(savedLocation.venueLongitude);
+    location.googlePlaceId = safeText(savedLocation.googlePlaceId, 255);
+    location.kind = savedLocation.kind === 'business' || savedLocation.kind === 'address'
+      ? savedLocation.kind
+      : null;
+    manualMode = draft.manualMode === true;
+    mobileStep = boundedMobileStep(draft.step);
+    if (mobileStep > 0 && !$('create-title').value.trim()) mobileStep = 0;
+    if (mobileStep > 1 && (
+      !$('create-date').value
+      || !$('create-start-time').value
+      || !$('create-date').checkValidity()
+      || !$('create-start-time').checkValidity()
+    )) mobileStep = 1;
+    $('create-location-search-mode').hidden = manualMode;
+    $('create-location-manual-mode').hidden = !manualMode;
+    renderLocation();
+  }
+  function initializeMobileHistory() {
+    if (!mobileFlowEnabled() || mobileHistoryReady) return;
+    const restoredStep = mobileStep;
+    const stateStep = quickCreateHistoryStep();
+    if (stateStep !== null) {
+      mobileStep = stateStep;
+      window.history.replaceState(historyStateForStep(mobileStep), '');
+    } else {
+      mobileStep = 0;
+      window.history.replaceState(historyStateForStep(0), '');
+      for (let step = 1; step <= restoredStep; step += 1) {
+        window.history.pushState(historyStateForStep(step), '');
+      }
+      mobileStep = restoredStep;
+    }
+    mobileHistoryReady = true;
+    persistQuickCreateDraft();
+  }
+  function pushMobileStep(step) {
+    mobileStep = boundedMobileStep(step);
+    window.history.pushState(historyStateForStep(mobileStep), '');
+    persistQuickCreateDraft();
+    renderMobileFlow({ focus: true });
+  }
+  function leaveQuickCreate() {
+    try {
+      const referrer = new URL(document.referrer);
+      if (referrer.origin === window.location.origin && referrer.pathname === '/events' && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+    } catch (_) {
+      // A direct visit has no usable same-origin referrer.
+    }
+    window.location.replace('/events');
+  }
+  function clearQuickCreateDraft() {
+    try {
+      window.sessionStorage.removeItem(draftStorageKey);
+    } catch (_) {
+      // A successful request should still continue if storage is unavailable.
+    }
+    if (quickCreateHistoryStep() === null) return;
+    const nextState = { ...window.history.state };
+    delete nextState[QUICK_CREATE_HISTORY_KEY];
+    window.history.replaceState(Object.keys(nextState).length ? nextState : null, '');
+  }
   function submitLabel() {
     return mobileFlowEnabled() && mobileStep < mobileSteps.length - 1 ? 'Continue' : 'Continue to design';
   }
@@ -101,6 +249,7 @@
       $('create-location-search').value = location.venueAddress || location.venueName;
       if (focus) $('create-location-search').focus();
     }
+    persistQuickCreateDraft();
   }
   function placeComponent(place, types, name = 'long_name') {
     const component = (place.address_components || []).find(part => types.some(type => part.types.includes(type)));
@@ -124,6 +273,7 @@
     $('create-location-name').value = '';
     renderLocation();
     setStatus('');
+    persistQuickCreateDraft();
     setTimeout(() => { applyingPlace = false; }, 0);
   }
   function loadPlaces(apiKey) {
@@ -177,16 +327,37 @@
 
   mobileBack?.addEventListener('click', () => {
     if (mobileStep > 0) {
-      mobileStep -= 1;
-      renderMobileFlow({ focus: true });
+      if (mobileHistoryReady && quickCreateHistoryStep() === mobileStep) {
+        window.history.back();
+      } else {
+        mobileStep -= 1;
+        window.history.replaceState(historyStateForStep(mobileStep), '');
+        persistQuickCreateDraft();
+        renderMobileFlow({ focus: true });
+      }
       return;
     }
-    window.location.assign('/events');
+    leaveQuickCreate();
   });
 
-  const handleMobileBreakpoint = () => renderMobileFlow();
+  window.addEventListener('popstate', event => {
+    if (!mobileFlowEnabled()) return;
+    const nextStep = quickCreateHistoryStep(event.state);
+    if (nextStep === null) return;
+    mobileStep = nextStep;
+    persistQuickCreateDraft();
+    renderMobileFlow({ focus: true });
+  });
+
+  const handleMobileBreakpoint = () => {
+    initializeMobileHistory();
+    renderMobileFlow();
+  };
   if (mobileFlowQuery.addEventListener) mobileFlowQuery.addEventListener('change', handleMobileBreakpoint);
   else mobileFlowQuery.addListener(handleMobileBreakpoint);
+
+  form.addEventListener('input', persistQuickCreateDraft);
+  form.addEventListener('change', persistQuickCreateDraft);
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -194,8 +365,7 @@
     error.textContent = '';
     if (mobileFlowEnabled() && mobileStep < mobileSteps.length - 1) {
       if (!validateMobileStep(mobileStep)) return;
-      mobileStep += 1;
-      renderMobileFlow({ focus: true });
+      pushMobileStep(mobileStep + 1);
       return;
     }
     if (!form.reportValidity()) return;
@@ -223,6 +393,7 @@
           visibility: 'public'
         }
       });
+      clearQuickCreateDraft();
       sessionStorage.setItem('sge-owner-editor-reopen', created.slug);
       window.location.assign(`/e/${encodeURIComponent(created.slug)}?edit=appearance`);
     } catch (requestError) {
@@ -232,6 +403,8 @@
     }
   });
 
+  restoreQuickCreateDraft();
+  initializeMobileHistory();
   renderMobileFlow();
   initPlaces();
 })();

@@ -29,7 +29,35 @@ let selectedCreditPack = null;
 let paymentBusy = false;
 const hostMobileFlowQuery = window.matchMedia('(max-width: 879px)');
 const hostProfileForm = settingsElement('host-profile-form');
+const hostMobileHistoryKey = 'sgeSettingsHostView';
+const hostMobileHistoryContext = window.location.pathname;
 let hostMobileSection = '';
+
+function hostMobileHistoryEntry(state = window.history.state) {
+  const entry = state?.[hostMobileHistoryKey];
+  if (!entry || entry.context !== hostMobileHistoryContext) return null;
+  return ['', 'basics', 'links', 'images'].includes(entry.section) ? entry : null;
+}
+
+function writeHostMobileHistory(section, mode = 'push') {
+  if (requestedSettingsSection !== 'host-page' || !hostMobileFlowQuery.matches || mode === 'none') return;
+  const current = hostMobileHistoryEntry();
+  if (mode === 'push' && current?.section === section) return;
+  const baseState = window.history.state && typeof window.history.state === 'object'
+    ? window.history.state
+    : {};
+  window.history[mode === 'replace' ? 'replaceState' : 'pushState']({
+    ...baseState,
+    [hostMobileHistoryKey]: { context: hostMobileHistoryContext, section }
+  }, '', window.location.href);
+}
+
+function clearHostMobileHistory() {
+  if (!hostMobileHistoryEntry()) return;
+  const nextState = { ...(window.history.state || {}) };
+  delete nextState[hostMobileHistoryKey];
+  window.history.replaceState(nextState, '', window.location.href);
+}
 
 function syncSettingsMobileStickyAction() {
   const hostSaveVisible = requestedSettingsSection === 'host-page' && !settingsElement('host-form-actions')?.hidden;
@@ -37,10 +65,11 @@ function syncSettingsMobileStickyAction() {
   document.body.classList.toggle('has-mobile-sticky-action', hostMobileFlowQuery.matches && persistentAction);
 }
 
-function renderHostMobileSection({ focus = false } = {}) {
+function renderHostMobileSection({ focus = false, historyMode = 'none' } = {}) {
   if (!hostProfileForm) return;
   if (!hostMobileFlowQuery.matches || !hostMobileSection) hostProfileForm.removeAttribute('data-host-mobile-section');
   else hostProfileForm.dataset.hostMobileSection = hostMobileSection;
+  writeHostMobileHistory(hostMobileSection, historyMode);
   syncSettingsMobileStickyAction();
   if (!focus || !hostMobileFlowQuery.matches) return;
   const scrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -57,19 +86,42 @@ function renderHostMobileSection({ focus = false } = {}) {
 hostProfileForm?.querySelectorAll('[data-host-mobile-open]').forEach(button => {
   button.addEventListener('click', () => {
     hostMobileSection = button.dataset.hostMobileOpen;
-    renderHostMobileSection({ focus: true });
+    renderHostMobileSection({ focus: true, historyMode: 'push' });
   });
 });
 hostProfileForm?.querySelectorAll('[data-host-mobile-back]').forEach(button => {
   button.addEventListener('click', () => {
-    hostMobileSection = '';
-    renderHostMobileSection({ focus: true });
+    if (hostMobileHistoryEntry()?.section === hostMobileSection) window.history.back();
+    else {
+      hostMobileSection = '';
+      renderHostMobileSection({ focus: true, historyMode: 'replace' });
+    }
   });
 });
-const handleHostMobileBreakpoint = () => renderHostMobileSection();
+window.addEventListener('popstate', event => {
+  if (requestedSettingsSection !== 'host-page' || !hostMobileFlowQuery.matches) return;
+  const entry = hostMobileHistoryEntry(event.state);
+  if (!entry) return;
+  hostMobileSection = entry.section;
+  renderHostMobileSection({ focus: true, historyMode: 'none' });
+});
+const handleHostMobileBreakpoint = () => {
+  if (!hostMobileFlowQuery.matches) {
+    clearHostMobileHistory();
+    hostMobileSection = '';
+    renderHostMobileSection();
+    return;
+  }
+  const entry = hostMobileHistoryEntry();
+  hostMobileSection = entry?.section || '';
+  renderHostMobileSection({ historyMode: 'replace' });
+};
 if (hostMobileFlowQuery.addEventListener) hostMobileFlowQuery.addEventListener('change', handleHostMobileBreakpoint);
 else hostMobileFlowQuery.addListener(handleHostMobileBreakpoint);
-renderHostMobileSection();
+if (hostMobileFlowQuery.matches && requestedSettingsSection === 'host-page') {
+  hostMobileSection = hostMobileHistoryEntry()?.section || '';
+  renderHostMobileSection({ historyMode: 'replace' });
+} else renderHostMobileSection();
 
 function settingsHostInitials(name) {
   return String(name || 'SG').trim().split(/\s+/).slice(0, 2)

@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.112
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Phone browser Back and forward navigation now move naturally through Quick Create steps, advanced editor tasks, published-event editing, Manage Event areas, preview/photo selection, and Host Page Settings before leaving the workflow.
+* Quick Create restores an unfinished form and the current step within the same browser session, then clears that recovery state after a successful event creation.
+* Published-event editing now labels section completion **Review changes** and returns to the summary hub, where the final **Save changes** or **Publish event** action remains explicit.
+
+### Accessibility and feedback
+
+* Public event, RSVP confirmation, Host Page, photo, Maps, footer, and utility controls now maintain at least a 44px phone touch target without changing their visual hierarchy.
+* Settings save success and error messages remain visible directly above the phone action dock and continue to announce through the existing live status region.
+
+### Compatibility
+
+* Desktop layouts, backend logic, permissions, event and RSVP data, uploaded assets, and email/reminder behavior are unchanged. No database migration is required.
+
 ## 1.0.111
 
 Released September 18, 2026. Built and deployed by Codex.

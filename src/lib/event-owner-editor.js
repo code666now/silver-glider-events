@@ -118,7 +118,7 @@ function renderOwnerEditor(event) {
           <section class="owner-mobile-hub" id="owner-mobile-hub" aria-labelledby="owner-mobile-hub-title" hidden>
             <div class="owner-mobile-hub-intro">
               <h3 id="owner-mobile-hub-title" tabindex="-1">Make it yours</h3>
-              <span>Choose a section. Your changes stay private until you save.</span>
+              <span>Choose a section, then review and save your changes below.</span>
             </div>
             <div class="owner-mobile-hub-list">
               <button class="owner-mobile-hub-row" type="button" data-owner-mobile-view="appearance" aria-controls="owner-panel-appearance">
@@ -347,7 +347,7 @@ function renderOwnerEditor(event) {
         </div>
 
         <div class="owner-mobile-action" id="owner-mobile-action" hidden>
-          <button class="owner-mobile-done" id="owner-mobile-done" type="button">Done</button>
+          <button class="owner-mobile-done" id="owner-mobile-done" type="button">Review changes</button>
         </div>
 
         <footer class="owner-editor-foot">

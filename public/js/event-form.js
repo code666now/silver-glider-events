@@ -47,11 +47,46 @@ const mobileFlowSubtitles = {
 };
 const mobileFlowParentViews = { designer: 'design', effects: 'design' };
 const mobileCreateSequence = ['basics', 'design', 'admission', 'visibility'];
+const mobileFlowHistoryKey = 'sgeMobileEventForm';
+const mobileFlowHistoryContext = `${location.pathname}${location.search}`;
 let mobileFlowView = 'hub';
 let mobileFlowLastTrigger = null;
+let mobileFlowHistoryFocusTarget = null;
 let mobileMoreDetailsWasOpen = null;
 let mobileFlowDirty = false;
 let mobileFlowBaseline = null;
+
+function mobileFlowHistoryEntry() {
+  const entry = history.state?.[mobileFlowHistoryKey];
+  if (!entry || entry.context !== mobileFlowHistoryContext) return null;
+  if (entry.view !== 'hub' && !mobileFlowTitles[entry.view]) return null;
+  return entry;
+}
+
+function writeMobileFlowHistory(view, mode, fromView) {
+  if (mode === 'none') return;
+  const current = mobileFlowHistoryEntry();
+  if (mode === 'push' && current?.view === view) return;
+  const baseState = history.state && typeof history.state === 'object' ? history.state : {};
+  const entry = {
+    context: mobileFlowHistoryContext,
+    view,
+    fromView: mode === 'push'
+      ? (fromView || null)
+      : (current?.view === view ? current.fromView : null)
+  };
+  history[mode === 'replace' ? 'replaceState' : 'pushState']({
+    ...baseState,
+    [mobileFlowHistoryKey]: entry
+  }, '', location.href);
+}
+
+function clearMobileFlowHistory() {
+  if (!mobileFlowHistoryEntry()) return;
+  const nextState = { ...(history.state || {}) };
+  delete nextState[mobileFlowHistoryKey];
+  history.replaceState(nextState, '', location.href);
+}
 
 function mobileFlowStateSignature() {
   const fields = Array.from($('event-form').elements)
@@ -1283,9 +1318,11 @@ function clearMobileFlowError() {
   error.hidden = true;
 }
 
-function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
+function openMobileFlowView(view, { focus = true, trigger = null, historyMode = 'push' } = {}) {
   if (!mobileFlowMedia.matches || !$('event-mobile-flow')) return;
   const nextView = view === 'hub' || mobileFlowTitles[view] ? view : 'hub';
+  const previousView = mobileFlowView;
+  writeMobileFlowHistory(nextView, historyMode, previousView);
   mobileFlowView = nextView;
   if (trigger) mobileFlowLastTrigger = trigger;
   $('event-form').dataset.mobileView = nextView;
@@ -1320,16 +1357,29 @@ function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
   }
 }
 
-function returnToMobileFlowHub({ focus = true } = {}) {
+function returnToMobileFlowHub({ focus = true, historyMode = 'push' } = {}) {
   const previousView = mobileFlowParentViews[mobileFlowView] || mobileFlowView;
   const hubTrigger = document.querySelector(`#event-mobile-flow-hub [data-mobile-flow-open="${previousView}"]`);
   const returnFocus = hubTrigger || mobileFlowLastTrigger;
-  openMobileFlowView('hub', { focus: false });
+  openMobileFlowView('hub', { focus: false, historyMode });
   if (!focus) return;
   const target = returnFocus instanceof HTMLElement && returnFocus.isConnected
     ? returnFocus
     : $('event-mobile-flow-title');
   requestAnimationFrame(() => target.focus({ preventScroll: true }));
+}
+
+function navigateBackInMobileFlow(targetView, { focusTarget = null } = {}) {
+  const current = mobileFlowHistoryEntry();
+  if (current?.view === mobileFlowView && current.fromView === targetView) {
+    mobileFlowHistoryFocusTarget = focusTarget;
+    history.back();
+    return;
+  }
+  openMobileFlowView(targetView, { focus: !focusTarget, historyMode: 'replace' });
+  if (focusTarget instanceof HTMLElement && focusTarget.isConnected) {
+    requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));
+  }
 }
 
 function revealMobileFlowError(message) {
@@ -1363,12 +1413,17 @@ function syncMobileFlowMode() {
   if (!$('event-mobile-flow')) return;
   if (mobileFlowMedia.matches) {
     document.body.classList.add('event-mobile-flow-enabled');
-    if (!$('event-form').dataset.mobileView) mobileFlowView = editId ? 'hub' : 'basics';
+    if (!$('event-form').dataset.mobileView) {
+      const historyView = mobileFlowHistoryEntry()?.view;
+      mobileFlowView = historyView || (editId ? 'hub' : 'basics');
+    }
     renderVisibilityState();
     updateMobilePreviewAvailability();
-    openMobileFlowView(mobileFlowView, { focus: false });
+    openMobileFlowView(mobileFlowView, { focus: false, historyMode: 'replace' });
     return;
   }
+  clearMobileFlowHistory();
+  mobileFlowView = editId ? 'hub' : 'basics';
   document.body.classList.remove('event-mobile-flow-enabled');
   $('event-form').removeAttribute('data-mobile-view');
   $('event-mobile-flow-hub').hidden = false;
@@ -1387,19 +1442,29 @@ function initMobileEventFlow() {
     button.addEventListener('click', () => openMobileFlowView(button.dataset.mobileFlowOpen, { trigger: button }));
   });
   $('event-mobile-flow-back').addEventListener('click', () => {
-    if (mobileFlowView === 'hub') return leaveMobileEventEditor();
-    if (mobileFlowParentViews[mobileFlowView]) return openMobileFlowView(mobileFlowParentViews[mobileFlowView]);
+    if (mobileFlowView === 'hub') {
+      const current = mobileFlowHistoryEntry();
+      if (current?.fromView) return navigateBackInMobileFlow(current.fromView);
+      return leaveMobileEventEditor();
+    }
+    if (mobileFlowParentViews[mobileFlowView]) return navigateBackInMobileFlow(mobileFlowParentViews[mobileFlowView]);
     if (!editId) {
       const index = mobileCreateSequence.indexOf(mobileFlowView);
-      if (index > 0) return openMobileFlowView(mobileCreateSequence[index - 1]);
+      if (index > 0) return navigateBackInMobileFlow(mobileCreateSequence[index - 1]);
     }
-    returnToMobileFlowHub();
+    const previousView = mobileFlowParentViews[mobileFlowView] || mobileFlowView;
+    const hubTrigger = document.querySelector(`#event-mobile-flow-hub [data-mobile-flow-open="${previousView}"]`);
+    navigateBackInMobileFlow('hub', { focusTarget: hubTrigger || mobileFlowLastTrigger });
   });
   $('event-mobile-flow-done').addEventListener('click', () => {
-    if (mobileFlowParentViews[mobileFlowView]) return openMobileFlowView(mobileFlowParentViews[mobileFlowView]);
+    if (mobileFlowParentViews[mobileFlowView]) return navigateBackInMobileFlow(mobileFlowParentViews[mobileFlowView]);
     if (!editId) {
       const index = mobileCreateSequence.indexOf(mobileFlowView);
       if (index >= 0 && index < mobileCreateSequence.length - 1) return openMobileFlowView(mobileCreateSequence[index + 1]);
+    }
+    if (editId) {
+      const hubTrigger = document.querySelector(`#event-mobile-flow-hub [data-mobile-flow-open="${mobileFlowView}"]`);
+      return navigateBackInMobileFlow('hub', { focusTarget: hubTrigger || mobileFlowLastTrigger });
     }
     returnToMobileFlowHub();
   });
@@ -1426,6 +1491,20 @@ function initMobileEventFlow() {
     const panel = mobileFlowPanelForElement(event.target);
     if (panel && panel !== mobileFlowView) openMobileFlowView(panel, { focus: false });
   }, true);
+  window.addEventListener('popstate', () => {
+    if (!mobileFlowMedia.matches) {
+      clearMobileFlowHistory();
+      return;
+    }
+    const entry = mobileFlowHistoryEntry();
+    if (!entry) return;
+    openMobileFlowView(entry.view, { focus: !mobileFlowHistoryFocusTarget, historyMode: 'none' });
+    const focusTarget = mobileFlowHistoryFocusTarget;
+    mobileFlowHistoryFocusTarget = null;
+    if (focusTarget instanceof HTMLElement && focusTarget.isConnected) {
+      requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));
+    }
+  });
   if (typeof mobileFlowMedia.addEventListener === 'function') mobileFlowMedia.addEventListener('change', syncMobileFlowMode);
   else mobileFlowMedia.addListener(syncMobileFlowMode);
   syncMobileFlowMode();

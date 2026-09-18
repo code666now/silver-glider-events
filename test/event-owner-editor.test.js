@@ -20,7 +20,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /data-owner-tab="appearance"/);
   assert.match(renderer, /data-owner-tab="details"/);
   assert.match(renderer, /data-owner-tab="settings"/);
-  assert.match(renderer, /They stay private until you save\./);
+  assert.match(renderer, /review and save your changes below\./);
   assert.match(renderer, /role="switch"/);
   assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 3);
   assert.match(renderer, /Music &amp; advanced settings/);
@@ -64,6 +64,16 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(client, /function closeEditor[\s\S]*reconcileEditorFields\(\)/);
   assert.match(client, /Discard your unsaved event changes\?/);
   assert.match(client, /sessionStorage\.setItem\('sge-owner-editor-reopen'/);
+  assert.match(renderer, /id="owner-mobile-done"[^>]*>Review changes<\/button>/);
+  assert.match(client, /const OWNER_HISTORY_KEY = 'sgeOwnerEditor'/);
+  assert.match(client, /window\.history\[mode === 'replace' \? 'replaceState' : 'pushState'\]/);
+  assert.match(client, /window\.addEventListener\('popstate'/);
+  assert.match(client, /window\.history\.back\(\)/);
+  assert.match(client, /if \(historyMode === 'push' && !currentOwnerHistory\(\)\)[\s\S]*recordOwnerHistory\('hub'\)/);
+  assert.match(client, /function closeEditor\(\{ confirmDiscard = true, unwindHistory = true \} = \{\}\)/);
+  assert.match(client, /const historyDepth = unwindHistory[\s\S]*Number\(currentOwnerHistory\(\)\?\.depth\) \|\| ownerHistoryDepth/);
+  assert.match(client, /if \(unwindHistory\) \{[\s\S]*ownerHistoryDepth = 0;[\s\S]*window\.history\.go\(-historyDepth\)/);
+  assert.match(client, /closeEditor\(\{ unwindHistory: false \}\)/);
   assert.match(renderer, /Music &amp; advanced settings/);
   assert.match(renderer, /events\/new\?id=\$\{encodeURIComponent\(event\.id\)\}&advanced=1/);
   assert.match(client, /people have'\} RSVP’d\. This change may affect their plans\./);
@@ -206,9 +216,34 @@ test('quick create becomes a focused three-step phone flow without duplicating s
   assert.match(template, /class="quick-create-mobile-back"/);
   assert.match(template, /class="quick-create-action-dock"/);
   assert.match(client, /window\.matchMedia\('\(max-width: 879px\)'\)/);
-  assert.match(client, /mobileStep \+= 1/);
+  assert.match(client, /pushMobileStep\(mobileStep \+ 1\)/);
   assert.match(client, /mobileStep -= 1/);
+  assert.match(client, /window\.history\.back\(\)/);
+  assert.match(client, /window\.addEventListener\('popstate'/);
+  assert.match(client, /window\.history\.pushState\(historyStateForStep\(mobileStep\), ''\)/);
+  assert.match(client, /referrer\.pathname === '\/events'/);
+  assert.match(client, /window\.location\.replace\('\/events'\)/);
+  assert.doesNotMatch(client, /window\.location\.assign\('\/events'\)/);
   assert.match(client, /if \(!validateLocation\(\)\) return/);
+});
+
+test('mobile quick create restores only its unfinished form and clears recovery after creation', () => {
+  const client = read('public/js/event-create.js');
+
+  assert.match(client, /const QUICK_CREATE_DRAFT_PREFIX = 'sge-quick-create-draft:'/);
+  assert.match(client, /const draftStorageKey = `\$\{QUICK_CREATE_DRAFT_PREFIX\}\$\{window\.location\.pathname\}`/);
+  assert.match(client, /function persistQuickCreateDraft\(\) \{\s*if \(!mobileFlowEnabled\(\)\) return;/);
+  assert.match(client, /title: \$\('create-title'\)\.value/);
+  assert.match(client, /eventDate: \$\('create-date'\)\.value/);
+  assert.match(client, /startTime: \$\('create-start-time'\)\.value/);
+  assert.match(client, /locationSearch: \$\('create-location-search'\)\.value/);
+  assert.match(client, /step: mobileStep/);
+  assert.match(client, /window\.sessionStorage\.setItem\(draftStorageKey, JSON\.stringify\(draft\)\)/);
+  assert.match(client, /function restoreQuickCreateDraft\(\) \{\s*if \(!mobileFlowEnabled\(\)\) return;/);
+  assert.match(client, /safeText\(draft\.title, 140\)/);
+  assert.match(client, /mobileStep = boundedMobileStep\(draft\.step\)/);
+  assert.match(client, /window\.sessionStorage\.removeItem\(draftStorageKey\)/);
+  assert.match(client, /\}\);\s*clearQuickCreateDraft\(\);\s*sessionStorage\.setItem\('sge-owner-editor-reopen'/);
 });
 
 test('quick create keeps empty iOS date and time controls as tall as mobile text inputs', () => {

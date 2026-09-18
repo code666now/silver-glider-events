@@ -313,7 +313,7 @@
     .venue { margin: 4px 0 28px; }
     .venue strong { font-size: 16px; display: block; }
     .venue span:empty, .venue span:empty + br { display: none; }
-    .venue a { font-size: 13px; font-weight: 600; }
+    .venue a { min-height:44px;display:inline-flex;align-items:center;font-size:13px;font-weight:600; }
     .ticket-note {
       display: flex;
       align-items: center;
@@ -328,7 +328,7 @@
       color: var(--sg-text-dim);
     }
     .ticket-note span { color: var(--sg-text); font-weight: 700; }
-    .ticket-note a { font-weight: 700; white-space: nowrap; }
+    .ticket-note a { min-height:44px;display:inline-flex;align-items:center;font-weight:700;white-space:nowrap; }
     .ticket-note em { font-style: normal; color: var(--sg-text-dim); white-space: nowrap; }
     .desc {
       color: rgba(255,255,255,.8);
@@ -494,6 +494,7 @@
       display: inline-flex;
       align-items: center;
       gap: 7px;
+      min-height: 44px;
       padding: 7px 0 7px 10px;
       border: 0;
       background: transparent;
@@ -860,10 +861,11 @@
     .host-attribution p { font-size:13px;color:var(--sg-text-faint);line-height:1.35; }
     .host-attribution span { display:block;font-size:10px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px; }
     .host-attribution strong, .host-attribution a { color:var(--sg-text-dim);font-weight:700; }
+    .host-attribution a { min-height:44px;display:inline-flex;align-items:center; }
     .host-attribution a:hover { color:var(--sg-accent); }
     .host-attribution b { font-weight:400;margin-left:3px; }
     .powered-by { font-size: 12px; color: var(--sg-text-faint); margin: 0 0 30px; }
-    .powered-by a { color:var(--sg-text-faint); }
+    .powered-by a { min-height:44px;display:inline-flex;align-items:center;color:var(--sg-text-faint); }
     .powered-by a:hover { color:var(--sg-accent); }
     @media (max-width: 879px) {
       .host-attribution { justify-content: center; }

@@ -13,6 +13,7 @@
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
   const mobileEditorMedia = window.matchMedia('(max-width: 879px)');
+  const OWNER_HISTORY_KEY = 'sgeOwnerEditor';
   const mobileViews = {
     appearance: { title: 'Appearance', helper: 'Choose a page style and artwork that feels like your event.', panel: 'appearance' },
     designer: { title: 'Designer credit', helper: 'Give the artist behind your flyer an optional shoutout.', panel: 'appearance', appearanceSection: 'designer', parent: 'appearance' },
@@ -122,6 +123,8 @@
   let mobileReturnFocus = null;
   let mobileNestedReturnFocus = null;
   let mobileGuidedFlow = false;
+  let ownerHistoryDepth = 0;
+  let pendingOwnerHistoryView = null;
   const mobileDraftSequence = ['appearance', 'details', 'admission', 'visibility', 'capacity', 'guests'];
   let lastFocus = null;
   let toastTimer;
@@ -167,6 +170,37 @@
 
   function primaryActionLabel() {
     return isDraftEvent() ? 'Publish event' : 'Save changes';
+  }
+
+  function currentOwnerHistory() {
+    const state = window.history.state?.[OWNER_HISTORY_KEY];
+    return state?.eventId === EVENT.id ? state : null;
+  }
+
+  function recordOwnerHistory(view, { mode = 'push', parentView = null, peeking = false } = {}) {
+    if (!mobileEditorMedia.matches || !editor.classList.contains('is-open') || !window.history?.pushState) return;
+    const current = currentOwnerHistory();
+    const nextView = view || 'hub';
+    if (mode === 'push' && current?.view === nextView && current?.guided === mobileGuidedFlow && current?.peeking === peeking) {
+      ownerHistoryDepth = Number(current.depth) || 1;
+      return;
+    }
+    const depth = mode === 'replace'
+      ? (Number(current?.depth) || Math.max(ownerHistoryDepth, 1))
+      : (Number(current?.depth) || ownerHistoryDepth) + 1;
+    const state = {
+      ...(window.history.state || {}),
+      [OWNER_HISTORY_KEY]: {
+        eventId: EVENT.id,
+        view: nextView,
+        parentView,
+        guided: mobileGuidedFlow,
+        peeking,
+        depth
+      }
+    };
+    window.history[mode === 'replace' ? 'replaceState' : 'pushState'](state, '', window.location.href);
+    ownerHistoryDepth = depth;
   }
 
   function showToast(message) {
@@ -1018,7 +1052,7 @@
     if (activeTab === 'details') initVenueAutocomplete();
   }
 
-  function openMobileView(name, { focus = true, returnFocus = null } = {}) {
+  function openMobileView(name, { focus = true, returnFocus = null, historyMode = 'push' } = {}) {
     const view = mobileViews[name] || mobileViews.appearance;
     if (!mobileEditorMedia.matches) {
       activeTab = view.panel;
@@ -1047,7 +1081,7 @@
     eyebrow.hidden = !hasGuidedProgress;
     $('owner-mobile-done').textContent = mobileGuidedFlow
       ? (guidedIndex === mobileDraftSequence.length - 1 ? 'Review event' : 'Next')
-      : 'Done';
+      : 'Review changes';
     $('owner-mobile-action').hidden = false;
     editor.classList.add('is-mobile-subview');
     document.querySelectorAll('[data-owner-tab]').forEach(button => {
@@ -1065,10 +1099,11 @@
     syncMobileAppearanceSections(activeMobileView);
     document.querySelector('.owner-editor-scroll').scrollTop = 0;
     if (activeTab === 'details') initVenueAutocomplete();
+    if (historyMode !== 'none') recordOwnerHistory(activeMobileView, { mode: historyMode });
     if (focus) setTimeout(() => $('owner-mobile-view-title').focus({ preventScroll: true }), 0);
   }
 
-  function showMobileHub({ focus = true } = {}) {
+  function showMobileHub({ focus = true, historyMode = 'push' } = {}) {
     if (!mobileEditorMedia.matches) return;
     mobileGuidedFlow = false;
     activeMobileView = 'hub';
@@ -1085,6 +1120,7 @@
     document.querySelectorAll('[data-owner-panel]').forEach(panel => { panel.hidden = true; });
     document.querySelectorAll('[data-owner-mobile-section]').forEach(section => { section.hidden = false; });
     document.querySelector('.owner-editor-scroll').scrollTop = 0;
+    if (historyMode !== 'none') recordOwnerHistory('hub', { mode: historyMode });
     if (!focus) return;
     const target = mobileReturnFocus instanceof HTMLElement && mobileReturnFocus.isConnected && mobileReturnFocus.closest('#owner-mobile-hub')
       ? mobileReturnFocus
@@ -1116,7 +1152,7 @@
     $('owner-editor-peek').setAttribute('aria-expanded', 'true');
   }
 
-  function openEditor() {
+  function openEditor({ historyMode = 'push' } = {}) {
     lastFocus = document.activeElement;
     editor.classList.add('is-open');
     resetPreviewPeek();
@@ -1126,8 +1162,16 @@
     document.body.classList.remove('owner-editor-peeking');
     startEditorFieldSync();
     if (mobileEditorMedia.matches) {
-      if (activeMobileView === 'hub') showMobileHub();
-      else openMobileView(activeMobileView);
+      if (activeMobileView === 'hub') showMobileHub({ historyMode });
+      else {
+        if (historyMode === 'push' && !currentOwnerHistory()) {
+          const guided = mobileGuidedFlow;
+          mobileGuidedFlow = false;
+          recordOwnerHistory('hub');
+          mobileGuidedFlow = guided;
+        }
+        openMobileView(activeMobileView, { historyMode });
+      }
     } else {
       setTimeout(() => document.querySelector(`[data-owner-tab="${activeTab}"]`)?.focus(), 0);
     }
@@ -1139,9 +1183,12 @@
     closePhotoBrowser();
   }
 
-  function closeEditor({ confirmDiscard = true } = {}) {
+  function closeEditor({ confirmDiscard = true, unwindHistory = true } = {}) {
     reconcileEditorFields();
-    if (confirmDiscard && isDirty() && !window.confirm('Discard your unsaved event changes?')) return;
+    if (confirmDiscard && isDirty() && !window.confirm('Discard your unsaved event changes?')) return false;
+    const historyDepth = unwindHistory
+      ? (Number(currentOwnerHistory()?.depth) || ownerHistoryDepth)
+      : 0;
     if (isDirty()) restoreSavedPreview();
     stopEditorFieldSync();
     editor.classList.remove('is-open');
@@ -1154,10 +1201,16 @@
       mobileReturnFocus = null;
       mobileNestedReturnFocus = null;
     }
+    if (unwindHistory) {
+      ownerHistoryDepth = 0;
+      pendingOwnerHistoryView = null;
+      if (historyDepth > 0) window.history.go(-historyDepth);
+    }
     (lastFocus instanceof HTMLElement ? lastFocus : trigger).focus({ preventScroll: true });
+    return true;
   }
 
-  function openPhotoBrowser() {
+  function openPhotoBrowser({ historyMode = 'push' } = {}) {
     $('owner-photo-browser').hidden = false;
     $('owner-panel-appearance').classList.add('is-photo-browser');
     if (mobileEditorMedia.matches) {
@@ -1165,6 +1218,7 @@
       $('owner-mobile-view-helper').textContent = 'Choose an image, then return to finish the appearance.';
       $('owner-mobile-action').hidden = true;
       $('owner-mobile-nav-back').setAttribute('aria-label', 'Back to Appearance');
+      if (historyMode !== 'none') recordOwnerHistory('photo-browser', { mode: historyMode, parentView: activeMobileView });
     }
     $('owner-photo-query').focus();
     if (!photosReady) {
@@ -1220,7 +1274,8 @@
         setCoverFit('auto');
         previewImage({ resolveAutoFit: true });
         syncDirtyState();
-        closePhotoBrowser();
+        if (mobileEditorMedia.matches) navigateMobileBack();
+        else closePhotoBrowser();
         request('/api/photos/track', { method: 'POST', body: { download_location: photo.download_location } }).catch(() => {});
       });
       grid.appendChild(button);
@@ -1392,12 +1447,21 @@
   });
   function navigateMobileBack() {
     if (editor.classList.contains('is-peeking')) {
+      if (currentOwnerHistory()?.peeking) {
+        window.history.back();
+        return;
+      }
       resetPreviewPeek();
       const view = mobileViews[activeMobileView];
       $('owner-mobile-nav-back').setAttribute('aria-label', view ? 'Back to event setup' : 'Close event editor');
       return;
     }
     reconcileEditorFields();
+    const historyState = currentOwnerHistory();
+    if (historyState && ownerHistoryDepth > 0) {
+      window.history.back();
+      return;
+    }
     if (!$('owner-photo-browser').hidden) {
       closePhotoBrowser();
       const view = mobileViews[activeMobileView] || mobileViews.appearance;
@@ -1433,20 +1497,36 @@
     }
     const parentView = mobileViews[activeMobileView]?.parent;
     if (parentView) {
-      const returnTarget = mobileNestedReturnFocus;
-      mobileNestedReturnFocus = null;
-      openMobileView(parentView, { focus: false });
-      if (returnTarget instanceof HTMLElement) setTimeout(() => returnTarget.focus({ preventScroll: true }), 0);
+      navigateMobileBack();
     }
-    else showMobileHub();
+    else if (mobileGuidedFlow) {
+      pendingOwnerHistoryView = 'hub';
+      const stepsBack = Math.max(ownerHistoryDepth - 1, 0);
+      if (stepsBack) window.history.go(-stepsBack);
+      else showMobileHub({ historyMode: currentOwnerHistory() ? 'replace' : 'push' });
+    }
+    else navigateMobileBack();
   });
   $('owner-editor-peek').addEventListener('click', () => {
+    if (mobileEditorMedia.matches && editor.classList.contains('is-peeking') && currentOwnerHistory()?.peeking) {
+      window.history.back();
+      return;
+    }
     const peeking = editor.classList.toggle('is-peeking');
     editor.setAttribute('aria-modal', String(!peeking));
     document.body.classList.toggle('owner-editor-peeking', peeking);
     $('owner-editor-peek').textContent = peeking ? 'Continue editing' : 'Preview';
     $('owner-editor-peek').setAttribute('aria-expanded', String(!peeking));
-    if (mobileEditorMedia.matches) $('owner-mobile-nav-back').setAttribute('aria-label', peeking ? 'Return to editing' : (activeMobileView === 'hub' ? 'Close event editor' : 'Back to event setup'));
+    if (mobileEditorMedia.matches) {
+      $('owner-mobile-nav-back').setAttribute('aria-label', peeking ? 'Return to editing' : (activeMobileView === 'hub' ? 'Close event editor' : 'Back to event setup'));
+      if (peeking) {
+        const current = currentOwnerHistory();
+        recordOwnerHistory(current?.view || activeMobileView, {
+          parentView: current?.parentView || null,
+          peeking: true
+        });
+      }
+    }
   });
 
   document.querySelectorAll('[data-owner-tab]').forEach((button, index, buttons) => {
@@ -1566,7 +1646,10 @@
     syncDirtyState();
   });
   $('owner-browse-photos').addEventListener('click', openPhotoBrowser);
-  $('owner-photo-back').addEventListener('click', closePhotoBrowser);
+  $('owner-photo-back').addEventListener('click', () => {
+    if (mobileEditorMedia.matches) navigateMobileBack();
+    else closePhotoBrowser();
+  });
   $('owner-photo-search').addEventListener('click', () => {
     const query = $('owner-photo-query').value.trim();
     if (query) loadPhotos(query);
@@ -1728,6 +1811,54 @@
     if (!isDirty()) return;
     event.preventDefault();
     event.returnValue = '';
+  });
+
+  window.addEventListener('popstate', event => {
+    if (!mobileEditorMedia.matches) return;
+    const ownerState = event.state?.[OWNER_HISTORY_KEY];
+    if (ownerState?.eventId === EVENT.id) {
+      resetPreviewPeek();
+      ownerHistoryDepth = Number(ownerState.depth) || 1;
+      mobileGuidedFlow = ownerState.guided === true;
+      if (!editor.classList.contains('is-open')) {
+        activeMobileView = ownerState.view === 'photo-browser'
+          ? (ownerState.parentView || 'appearance')
+          : (ownerState.view || 'hub');
+        openEditor({ historyMode: 'none' });
+      }
+      if (pendingOwnerHistoryView === 'hub') {
+        pendingOwnerHistoryView = null;
+        showMobileHub({ historyMode: 'replace' });
+        return;
+      }
+      closePhotoBrowser();
+      if (ownerState.view === 'hub') showMobileHub({ historyMode: 'none' });
+      else {
+        const targetView = ownerState.view === 'photo-browser'
+          ? (ownerState.parentView || 'appearance')
+          : ownerState.view;
+        openMobileView(targetView, { historyMode: 'none' });
+        if (ownerState.view === 'photo-browser') openPhotoBrowser({ historyMode: 'none' });
+      }
+      if (ownerState.peeking) {
+        editor.classList.add('is-peeking');
+        editor.setAttribute('aria-modal', 'false');
+        document.body.classList.add('owner-editor-peeking');
+        $('owner-editor-peek').textContent = 'Continue editing';
+        $('owner-editor-peek').setAttribute('aria-expanded', 'false');
+        $('owner-mobile-nav-back').setAttribute('aria-label', 'Return to editing');
+      }
+      return;
+    }
+    pendingOwnerHistoryView = null;
+    if (!editor.classList.contains('is-open') || ownerHistoryDepth < 1) {
+      ownerHistoryDepth = 0;
+      return;
+    }
+    ownerHistoryDepth = 0;
+    if (closeEditor({ unwindHistory: false }) === false) {
+      showMobileHub({ focus: false, historyMode: 'push' });
+    }
   });
 
   function syncResponsiveEditorMode() {
