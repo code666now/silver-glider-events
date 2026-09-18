@@ -211,6 +211,22 @@ test('quick create becomes a focused three-step phone flow without duplicating s
   assert.match(client, /if \(!validateLocation\(\)\) return/);
 });
 
+test('quick create keeps empty iOS date and time controls as tall as mobile text inputs', () => {
+  const template = read('src/views/event-create.html');
+  const mobileStyles = template.match(/@media \(max-width: 879px\) \{([\s\S]*?)\n    \}/);
+
+  assert.ok(mobileStyles, 'quick-create phone styles should exist');
+  assert.match(mobileStyles[1], /\.quick-create-card \.owner-input \{[\s\S]*?min-height:\s*60px;/);
+  assert.match(
+    mobileStyles[1],
+    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{\s*height:\s*60px;\s*min-height:\s*60px;\s*\}/
+  );
+  assert.match(
+    mobileStyles[1],
+    /\.owner-input\[type="date"\]::\-webkit-date-and-time-value,[\s\S]*?\.owner-input\[type="time"\]::\-webkit-date-and-time-value\s*\{\s*height:\s*1\.5em;\s*\}/
+  );
+});
+
 test('appearance editing reuses protected uploads and rate-conscious photo search', () => {
   const client = read('public/js/event-owner-editor.js');
   const styles = read('public/css/event-owner-editor.css');

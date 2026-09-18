@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.109
+
+Released September 17, 2026. Built and deployed by Codex.
+
+### Fixed
+
+* Empty Date and Start Time controls in the phone Quick Create flow now retain the same 60px height as the Location field in iPhone Safari. The correction is isolated to phone-sized native date/time controls; desktop and event data flow are unchanged.
+
 ## 1.0.108
 
 Released September 17, 2026. Built and deployed by Codex.
