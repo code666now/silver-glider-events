@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.114
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Phone Guests screens now fit Familiar Faces into a compact four-across grid, or three across on narrow phones, with clear selection rings and checkmarks, readable names and context, a quiet Export action, and a concise one-row invitation bar before the full confirmation disclosure.
+* Named +1 Share links retain a 44px touch target. Selection labels preserve RSVP or source-event context for assistive technology, reduced-motion preferences are respected, and zoomed or exceptionally narrow layouts fall back safely without overlapping actions.
+* **Enter manually** and **Search instead** now use the same calm accent-link treatment on phones in Quick Create, the full event form, and the published-page owner editor.
+
+### Compatibility
+
+* Desktop Guests cards and editor controls, invitation eligibility and consent checks, event data, backend contracts, and email delivery remain unchanged. No database migration is required.
+
 ## 1.0.113
 
 Released September 18, 2026. Built and deployed by Codex.
