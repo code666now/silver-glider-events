@@ -1292,12 +1292,14 @@ function openMobileFlowView(view, { focus = true, trigger = null } = {}) {
   $('event-mobile-flow-hub').hidden = nextView !== 'hub';
   $('event-mobile-screen-intro').hidden = nextView === 'hub';
   $('event-mobile-flow-title').textContent = editId ? 'Edit event' : 'Create event';
+  const createStep = !editId ? mobileCreateSequence.indexOf(nextView) : -1;
   if (nextView !== 'hub') {
-    $('event-mobile-screen-kicker').textContent = editId ? 'Edit event' : 'Create event';
+    const kicker = $('event-mobile-screen-kicker');
+    kicker.textContent = createStep >= 0 ? `Step ${createStep + 1} of ${mobileCreateSequence.length}` : '';
+    kicker.hidden = createStep < 0;
     $('event-mobile-screen-title').textContent = mobileFlowTitles[nextView];
     $('event-mobile-screen-subtitle').textContent = mobileFlowSubtitles[nextView];
   }
-  const createStep = !editId ? mobileCreateSequence.indexOf(nextView) : -1;
   const previousCreateView = createStep > 0 ? mobileFlowTitles[mobileCreateSequence[createStep - 1]] : null;
   $('event-mobile-flow-back').setAttribute('aria-label', previousCreateView
     ? `Back to ${previousCreateView}`

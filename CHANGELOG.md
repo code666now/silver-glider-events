@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.111
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Mobile organizer pages now share a calmer title hierarchy: compact 18px navigation, 28–30px page titles, 21px section/dialog titles, and 15px supporting copy. Repeated navigation titles, eyebrows, and page headings were removed across creation, editing, Settings, authentication, RSVP management, photo tools, and confirmation utilities.
+* **Edit event** is now the first prominent action in the phone Manage Event hub. **More** is renamed **Event actions**, and its focused screen exposes Duplicate, Cancel, and Delete directly without a second disclosure.
+
+### Accessibility and compatibility
+
+* Focus moves into the active Event actions region, semantic headings remain available to assistive technology, and touch targets retain the established phone geometry. Public event and Flyer hero typography, desktop workspaces, backend behavior, permissions, and event data are unchanged.
+
 ## 1.0.110
 
 Released September 17, 2026. Built and deployed by Codex.

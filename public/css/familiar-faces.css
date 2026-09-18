@@ -173,7 +173,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   }
   .familiar-invite-dialog-form { max-height:94dvh; }
   .familiar-invite-dialog-head { gap:16px;padding:22px 22px 18px; }
-  .familiar-invite-dialog h2 { font-size:30px;line-height:1.08; }
+  .familiar-invite-dialog h2 { font-size:var(--sg-mobile-section-title-size);line-height:1.15; }
   .familiar-invite-intro { font-size:14px;line-height:1.55; }
   .familiar-invite-close { width:44px;height:44px;font-size:25px; }
   .familiar-invite-dialog-body { padding:20px 22px; }
@@ -208,7 +208,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   .familiar-invite-dialog { width:100%;max-width:none;max-height:92dvh;margin:auto 0 0;border-right:0;border-bottom:0;border-left:0;border-radius:24px 24px 0 0; }
   .familiar-invite-dialog-form { max-height:92dvh; }
   .familiar-invite-dialog-head { padding:22px 20px 17px; }
-  .familiar-invite-dialog h2 { font-size:25px; }
+  .familiar-invite-dialog h2 { font-size:var(--sg-mobile-section-title-size); }
   .familiar-invite-dialog-body { padding:18px 20px; }
   .familiar-invite-dialog-foot { padding:14px 20px calc(16px + env(safe-area-inset-bottom)); }
   .familiar-invite-dialog-foot .sg-btn { min-width:0;flex:1;padding-right:12px;padding-left:12px; }

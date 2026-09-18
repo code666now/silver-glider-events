@@ -139,3 +139,34 @@ test('commerce waitlist stays one coherent coming-soon choice in both event edit
     assert.match(client, /commerceInterested \? 'Leave waitlist' : 'Join the waitlist'/);
   }
 });
+
+test('event creation and editing use the compact mobile title hierarchy without repeated context labels', () => {
+  const brand = read('public/css/brand.css');
+  const quickCreate = read('src/views/event-create.html');
+  const eventForm = read('src/views/event-form.html');
+  const eventClient = read('public/js/event-form.js');
+  const ownerStyles = read('public/css/event-owner-editor.css');
+  const ownerRenderer = read('src/lib/event-owner-editor.js');
+  const ownerClient = read('public/js/event-owner-editor.js');
+
+  assert.match(brand, /--sg-mobile-nav-title-size:\s*18px;/);
+  assert.match(brand, /--sg-mobile-page-title-size:\s*clamp\(28px, 7\.5vw, 30px\);/);
+  assert.match(brand, /--sg-mobile-helper-size:\s*15px;/);
+
+  assert.match(quickCreate, /\.quick-create-mobile-top strong\s*\{[^}]*var\(--sg-mobile-nav-title-size\)/);
+  assert.match(quickCreate, /\.quick-create-mobile-copy h1\s*\{[^}]*var\(--sg-mobile-page-title-size\)/);
+  assert.match(quickCreate, /\.quick-create-mobile-copy p:last-child\s*\{[^}]*var\(--sg-mobile-helper-size\)/);
+
+  assert.match(eventForm, /\.event-mobile-flow-heading h1\s*\{[\s\S]*?font-size:\s*var\(--sg-mobile-nav-title-size\)/);
+  assert.match(eventForm, /\.event-mobile-screen-intro h2\s*\{[^}]*var\(--sg-mobile-page-title-size\)/);
+  assert.match(eventForm, /id="event-mobile-screen-kicker" hidden><\/p>/);
+  assert.match(eventClient, /`Step \$\{createStep \+ 1\} of \$\{mobileCreateSequence\.length\}`/);
+  assert.match(eventClient, /kicker\.hidden = createStep < 0/);
+
+  assert.match(ownerStyles, /\.owner-editor-head h2\s*\{[^}]*var\(--sg-mobile-nav-title-size\)/);
+  assert.match(ownerStyles, /\.owner-mobile-screen-head h3\s*\{[^}]*var\(--sg-mobile-page-title-size\)/);
+  assert.match(ownerRenderer, /id="owner-mobile-view-eyebrow" hidden><\/p>/);
+  assert.doesNotMatch(ownerRenderer, /<p>Event setup<\/p>/);
+  assert.match(ownerClient, /eyebrow\.hidden = !hasGuidedProgress/);
+  assert.match(ownerClient, /`Step \$\{guidedIndex \+ 1\} of \$\{mobileDraftSequence\.length\}/);
+});

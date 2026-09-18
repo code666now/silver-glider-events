@@ -108,7 +108,7 @@ function renderOwnerEditor(event) {
         </div>
 
         <div class="owner-mobile-screen-head" id="owner-mobile-screen-head" hidden>
-          <p id="owner-mobile-view-eyebrow">Edit event</p>
+          <p id="owner-mobile-view-eyebrow" hidden></p>
           <h3 id="owner-mobile-view-title" tabindex="-1"></h3>
           <span id="owner-mobile-view-helper"></span>
         </div>
@@ -117,7 +117,6 @@ function renderOwnerEditor(event) {
         <div class="owner-editor-scroll">
           <section class="owner-mobile-hub" id="owner-mobile-hub" aria-labelledby="owner-mobile-hub-title" hidden>
             <div class="owner-mobile-hub-intro">
-              <p>Event setup</p>
               <h3 id="owner-mobile-hub-title" tabindex="-1">Make it yours</h3>
               <span>Choose a section. Your changes stay private until you save.</span>
             </div>

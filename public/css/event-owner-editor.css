@@ -624,7 +624,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   }
   .owner-editor-title-block { min-width: 0; text-align: center; }
   .owner-editor-head p { display: none; }
-  .owner-editor-head h2 { overflow: hidden; font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+  .owner-editor-head h2 { overflow: hidden; font-size: var(--sg-mobile-nav-title-size); text-overflow: ellipsis; white-space: nowrap; }
   .owner-editor-head-actions { justify-self: end; }
   .owner-editor-peek { display: inline-flex; align-items: center; min-height: 44px; padding: 0 3px; border: 0; background: transparent; color: var(--sg-accent); font: 750 14px var(--sg-font-body); cursor: pointer; }
   .owner-editor-close { display: none; }
@@ -638,30 +638,23 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-settings-group { display: block; }
   .owner-settings-group[hidden] { display: none; }
 
-  .owner-mobile-screen-head:not([hidden]) { display: block; padding: 24px 22px 14px; background: #0f0f12; }
-  .owner-mobile-screen-head p { margin: 0 0 7px; color: var(--sg-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-  .owner-mobile-screen-head h3 { margin: 0; color: var(--sg-text); font-size: clamp(32px,9vw,36px); line-height: 1.08; letter-spacing: -.035em; }
-  .owner-mobile-screen-head span { display: block; margin-top: 10px; color: var(--sg-text-dim); font-size: 16px; line-height: 1.5; }
+  .owner-mobile-screen-head:not([hidden]) { display: block; padding: var(--sg-mobile-intro-spacing) var(--sg-mobile-page-gutter) 12px; background: #0f0f12; }
+  .owner-mobile-screen-head p { margin: 0 0 7px; color: var(--sg-accent); font-size: var(--sg-mobile-meta-size); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+  .owner-mobile-screen-head p[hidden] { display: none; }
+  .owner-mobile-screen-head h3 { margin: 0; color: var(--sg-text); font-size: var(--sg-mobile-page-title-size); line-height: 1.08; letter-spacing: -.025em; }
+  .owner-mobile-screen-head span { display: block; margin-top: 8px; color: var(--sg-text-dim); font-size: var(--sg-mobile-helper-size); line-height: 1.5; }
 
   .owner-mobile-hub {
     display: block;
     min-height: 100%;
-    padding: 30px 22px 36px;
+    padding: var(--sg-mobile-intro-spacing) var(--sg-mobile-page-gutter) 36px;
   }
   .owner-mobile-hub[hidden] { display: none; }
-  .owner-mobile-hub-intro { margin: 0 3px 25px; }
-  .owner-mobile-hub-intro p {
-    margin: 0 0 8px;
-    color: var(--sg-accent);
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: .15em;
-    text-transform: uppercase;
-  }
-  .owner-mobile-hub-intro h3 { margin: 0 0 10px; color: var(--sg-text); font-size: clamp(32px,9vw,36px); line-height: 1.08; letter-spacing: -.035em; }
+  .owner-mobile-hub-intro { margin: 0 3px var(--sg-mobile-intro-spacing); }
+  .owner-mobile-hub-intro h3 { margin: 0 0 8px; color: var(--sg-text); font-size: var(--sg-mobile-page-title-size); line-height: 1.08; letter-spacing: -.025em; }
   .owner-mobile-screen-head h3:focus,
   .owner-mobile-hub-intro h3:focus { outline: none; }
-  .owner-mobile-hub-intro span { display: block; max-width: 33em; color: var(--sg-text-dim); font-size: 16px; line-height: 1.5; }
+  .owner-mobile-hub-intro span { display: block; max-width: 33em; color: var(--sg-text-dim); font-size: var(--sg-mobile-helper-size); line-height: 1.5; }
   .owner-mobile-hub-list { display: grid; gap: 12px; }
   .owner-mobile-hub-row {
     width: 100%;
@@ -817,9 +810,8 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
     padding: max(6px,env(safe-area-inset-top)) 18px 6px;
   }
   .owner-mobile-screen-head:not([hidden]) { padding: 10px 22px 6px; }
-  .owner-mobile-screen-head p,
   .owner-mobile-screen-head span { display: none; }
-  .owner-mobile-screen-head h3 { font-size: 26px; }
+  .owner-mobile-screen-head h3 { font-size: var(--sg-mobile-page-title-size); }
   .owner-editor-panel { padding-top: 8px; }
   .owner-mobile-action:not([hidden]) { padding-top: 8px; padding-bottom: max(8px,env(safe-area-inset-bottom)); }
   .owner-mobile-done { height: 60px; min-height: 60px; }

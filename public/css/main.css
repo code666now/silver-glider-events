@@ -368,13 +368,14 @@
 @media (max-width: 879px) {
   :root {
     --sg-mobile-page-gutter: 22px;
-    --sg-mobile-title-size: 34px;
+    --sg-mobile-title-size: var(--sg-mobile-page-title-size);
     --sg-mobile-body-size: 16px;
+    --sg-mobile-helper-size: 15px;
     --sg-mobile-label-size: 14px;
     --sg-mobile-control-height: 60px;
     --sg-mobile-control-radius: 18px;
     --sg-mobile-card-radius: 22px;
-    --sg-mobile-section-gap: 28px;
+    --sg-mobile-section-gap: 24px;
   }
 
   html {
@@ -602,7 +603,7 @@
   }
 
   .feedback-modal-head h2 {
-    font-size: 28px;
+    font-size: var(--sg-mobile-section-title-size);
   }
 
   .feedback-modal-head p,

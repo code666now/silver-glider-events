@@ -101,6 +101,7 @@
   .rsvp-confirmation-shell { max-height:94dvh;padding:38px 20px calc(18px + env(safe-area-inset-bottom)); }
   .rsvp-confirmation-close { top:14px;right:16px; }
   .rsvp-confirmation-mark { width:54px;height:54px;margin-bottom:15px; }
+  .rsvp-confirmation-status h2 { font-size:var(--sg-mobile-page-title-size); }
   .rsvp-confirmation-event { margin-top:23px;padding:17px; }
   .rsvp-confirmation-event dl > div { grid-template-columns:1fr;gap:5px; }
   .rsvp-confirmation-event dd { text-align:left; }

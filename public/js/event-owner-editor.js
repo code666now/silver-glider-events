@@ -1039,9 +1039,12 @@
       ? mobileViews[mobileDraftSequence[guidedIndex - 1]]
       : (view.parent ? mobileViews[view.parent] : null);
     $('owner-mobile-nav-back').setAttribute('aria-label', previousView ? `Back to ${previousView.title}` : 'Back to event setup');
-    $('owner-mobile-view-eyebrow').textContent = mobileGuidedFlow && guidedIndex >= 0
+    const eyebrow = $('owner-mobile-view-eyebrow');
+    const hasGuidedProgress = mobileGuidedFlow && guidedIndex >= 0;
+    eyebrow.textContent = hasGuidedProgress
       ? `Step ${guidedIndex + 1} of ${mobileDraftSequence.length}${view.optional ? ' · Optional' : ''}`
-      : 'Edit event';
+      : '';
+    eyebrow.hidden = !hasGuidedProgress;
     $('owner-mobile-done').textContent = mobileGuidedFlow
       ? (guidedIndex === mobileDraftSequence.length - 1 ? 'Review event' : 'Next')
       : 'Done';

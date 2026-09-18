@@ -23,13 +23,14 @@ const mobileManageViews = {
     title: 'Photos',
     subtitle: 'Request, review, and manage photos shared by guests.'
   },
-  more: {
-    title: 'More',
-    subtitle: 'Edit, duplicate, cancel, or permanently delete this event.'
+  actions: {
+    title: 'Event actions',
+    subtitle: 'Duplicate, cancel, or permanently delete this event.'
   }
 };
 let activeMobileManageView = 'home';
 let mobilePreviewMarker = null;
+let mobileEditMarker = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -108,14 +109,20 @@ function setMobileManageView(requestedView, { focus = true } = {}) {
     $('manage-mobile-screen-title').textContent = mobileManageViews[view].title;
     $('manage-mobile-screen-subtitle').textContent = mobileManageViews[view].subtitle;
   }
-  if (view !== 'more') $('more-menu').removeAttribute('open');
+  if (view === 'actions') $('more-menu').setAttribute('open', '');
+  else $('more-menu').removeAttribute('open');
   syncFamiliarMobileChrome();
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
   if (focus) {
     window.requestAnimationFrame(() => {
-      (view === 'home' ? $('title') : $('manage-mobile-screen-intro')).focus({ preventScroll: true });
+      const focusTarget = view === 'home'
+        ? $('title')
+        : view === 'actions'
+          ? $('more-menu-panel')
+          : $('manage-mobile-screen-intro');
+      focusTarget.focus({ preventScroll: true });
     });
   }
 }
@@ -126,6 +133,7 @@ function syncMobileManageLayout() {
     $('manage-mobile-nav').hidden = false;
     viewLink.textContent = 'Preview';
     $('manage-mobile-preview-slot').append(viewLink);
+    $('manage-mobile-edit-slot').append($('edit-link'));
     $('title').setAttribute('tabindex', '-1');
     setMobileManageView(activeMobileManageView, { focus: false });
   } else {
@@ -136,6 +144,8 @@ function syncMobileManageLayout() {
     activeMobileManageView = 'home';
     viewLink.textContent = 'View page';
     if (mobilePreviewMarker?.parentNode) mobilePreviewMarker.parentNode.insertBefore(viewLink, mobilePreviewMarker.nextSibling);
+    if (mobileEditMarker?.parentNode) mobileEditMarker.parentNode.insertBefore($('edit-link'), mobileEditMarker.nextSibling);
+    $('more-menu').removeAttribute('open');
     $('title').removeAttribute('tabindex');
   }
 }
@@ -144,6 +154,9 @@ function initializeMobileManage() {
   const viewLink = $('view-link');
   mobilePreviewMarker = document.createComment('mobile preview link location');
   viewLink.before(mobilePreviewMarker);
+  const editLink = $('edit-link');
+  mobileEditMarker = document.createComment('mobile edit link location');
+  editLink.before(mobileEditMarker);
   document.querySelectorAll('[data-manage-mobile-open]').forEach(button => {
     button.addEventListener('click', () => setMobileManageView(button.dataset.manageMobileOpen));
   });
@@ -731,7 +744,7 @@ $('duplicate').addEventListener('click', async () => {
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
   button.textContent = 'Duplicating…';
-  $('more-menu').removeAttribute('open');
+  if (!mobileManageLayout.matches || activeMobileManageView !== 'actions') $('more-menu').removeAttribute('open');
 
   try {
     const { event } = await api(`/api/events/${eventId}/duplicate`, { method: 'POST' });
@@ -1109,6 +1122,7 @@ $('cancel-event').addEventListener('click', async () => {
 
 document.addEventListener('click', event => {
   const menu = $('more-menu');
+  if (mobileManageLayout.matches && activeMobileManageView === 'actions') return;
   if (menu.open && !menu.contains(event.target)) menu.removeAttribute('open');
 });
 

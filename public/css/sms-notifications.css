@@ -41,7 +41,7 @@
   }
   .sms-dialog-form { max-height:94dvh; }
   .sms-dialog-head { gap:16px;padding:22px 22px 18px; }
-  .sms-dialog-head h2 { font-size:30px;line-height:1.08; }
+  .sms-dialog-head h2 { font-size:var(--sg-mobile-section-title-size);line-height:1.15; }
   .sms-dialog-head p:last-child { font-size:14px;line-height:1.55; }
   .sms-dialog-close { width:44px;height:44px;font-size:24px; }
   .sms-dialog-close:focus-visible { outline:2px solid rgba(28,197,190,.72);outline-offset:3px; }
