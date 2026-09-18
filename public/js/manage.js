@@ -100,6 +100,21 @@ function updateMobileManageSummaries() {
   const rsvps = Number(eventData.rsvp_count) || 0;
   $('manage-mobile-summary-overview').textContent = `${status} · ${rsvps} RSVP${rsvps === 1 ? '' : 's'}`;
 
+  // The number a host checks most, at the top of the phone hub.
+  const going = Number(eventData.total_attendance) || 0;
+  const capacity = Number(eventData.capacity) || 0;
+  const headcount = $('manage-mobile-headcount');
+  headcount.replaceChildren();
+  if (going) {
+    const count = document.createElement('strong');
+    count.textContent = capacity ? `${going} of ${capacity}` : String(going);
+    headcount.append(count, eventData.is_past ? ' RSVP’d going' : ' going');
+  } else {
+    headcount.textContent = eventData.is_past
+      ? 'No one RSVP’d going to this event.'
+      : 'No RSVPs yet. Share your link to get the first one.';
+  }
+
   const connected = Number(familiarFaceState?.totalCount);
   const guestCount = Number.isFinite(connected) && connected > 0 ? connected : rsvps;
   $('manage-mobile-summary-guests').textContent = guestCount
@@ -122,6 +137,8 @@ function syncMobileManageAvailability() {
   });
   $('manage-mobile-task-promote').hidden = Boolean(eventData) && !mobileManageViewAvailable('promote');
   $('manage-mobile-task-photos').hidden = !eventData || !mobileManageViewAvailable('photos');
+  $('manage-mobile-share').hidden = Boolean(eventData?.is_past);
+  $('manage-mobile-share').disabled = !ready || $('share-event').disabled;
   updateMobileManageSummaries();
 
   if (mobileManageLayout.matches && activeMobileManageView !== 'home' && !mobileManageViewAvailable(activeMobileManageView)) {
@@ -165,6 +182,7 @@ function setMobileManageView(requestedView, { focus = true, historyMode = 'none'
 
 function syncMobileManageLayout() {
   const viewLink = $('view-link');
+  document.body.classList.toggle('manage-mobile-custom-nav', mobileManageLayout.matches);
   if (mobileManageLayout.matches) {
     $('manage-mobile-nav').hidden = false;
     viewLink.textContent = 'Preview';
@@ -704,6 +722,10 @@ $('share-event').addEventListener('click', async () => {
     if (err.name !== 'AbortError') toast('Could not share this event');
   }
 });
+
+// Same share sheet as Promote → Share event; the click stays inside the tap so
+// the phone still allows the native share sheet.
+$('manage-mobile-share').addEventListener('click', () => $('share-event').click());
 
 $('copy-photo-link').addEventListener('click', async () => {
   const url = $('collect-photos-card').dataset.collectionUrl;

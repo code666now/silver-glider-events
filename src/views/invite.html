@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <meta name="robots" content="noindex,nofollow">
   <title>{{PAGE_TITLE}}</title>
   <meta name="description" content="{{META_DESCRIPTION}}">
@@ -56,7 +60,7 @@
       background:rgba(255,255,255,.025);color:var(--sg-text);
       border:1px solid rgba(255,255,255,.14);
     }
-    .invite-interest:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.55); }
+    @media (hover: hover) { .invite-interest:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.55); } }
     .invite-response {
       margin-top:18px;padding:17px 19px;border:1px solid rgba(28,197,190,.26);
       border-radius:16px;background:rgba(28,197,190,.07);color:#c7d9d8;font-size:13px;line-height:1.65;

@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>My Events — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -299,10 +303,29 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/events-view-state.js"></script>
   <script>
     renderNav('events');
-    let activeView = new URLSearchParams(location.search).get('view') === 'hosting' ? 'hosting' : 'going';
+    const { normalizeView, resolveInitialView, isUpcomingEventDate } = window.SGEventsViewState;
+    const VIEW_KEY = 'sge_events_view';
+    const requestedView = new URLSearchParams(location.search).get('view');
+    let rememberedView = null;
+    try { rememberedView = localStorage.getItem(VIEW_KEY); } catch (_) {}
+    const validRequestedView = normalizeView(requestedView);
+    const validRememberedView = normalizeView(rememberedView);
+    let activeView = resolveInitialView(requestedView, rememberedView);
+    // With no explicit or remembered choice, open the tab that has something coming up
+    // so a host never lands on an empty Going tab.
+    const chooseInitialView = validRequestedView || validRememberedView ? Promise.resolve() : Promise.all([
+      api('/api/events/going').catch(() => ({ events: [] })),
+      api('/api/events').catch(() => ({ events: [] }))
+    ]).then(([going, hosting]) => {
+      const hasUpcoming = list => (list || []).some(e => isUpcomingEventDate(e.event_date));
+      if (!hasUpcoming(going.events) && (hosting.events || []).length) activeView = 'hosting';
+    });
     const eventsLoadingMarkup = document.getElementById('events-loading').innerHTML;
+    let userSelectedView = false;
+    let loadRequestId = 0;
 
     // Wrap a card in a swipe-to-archive row
     function swipeWrap(ev, inner) {
@@ -518,6 +541,8 @@
     }
 
     async function load() {
+      const requestedLoadView = activeView;
+      const requestId = ++loadRequestId;
       const loading = document.getElementById('events-loading');
       const content = document.getElementById('events-content');
       applyViewState();
@@ -526,43 +551,46 @@
       loading.innerHTML = eventsLoadingMarkup;
       content.setAttribute('aria-busy', 'true');
       try {
-        const [{ events }, archivedResult] = activeView === 'hosting'
+        const [{ events }, archivedResult] = requestedLoadView === 'hosting'
           ? await Promise.all([api('/api/events'), api('/api/events?archived=1')])
           : [await api('/api/events/going'), { events: [] }];
+        if (requestId !== loadRequestId || requestedLoadView !== activeView) return;
         const archived = archivedResult.events;
 
-        const today = new Date(new Date().toDateString());
-        const upcoming = events.filter(e => new Date(e.event_date) >= today).reverse();
-        const past = events.filter(e => new Date(e.event_date) < today);
+        const upcoming = events.filter(e => isUpcomingEventDate(e.event_date)).reverse();
+        const past = events.filter(e => !isUpcomingEventDate(e.event_date));
 
         document.getElementById('empty').style.display =
           (!events.length && !archived.length) ? 'block' : 'none';
 
         document.getElementById('upcoming-section').style.display = upcoming.length ? 'block' : 'none';
-        document.getElementById('upcoming').innerHTML = upcoming.map(ev => activeView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
+        document.getElementById('upcoming').innerHTML = upcoming.map(ev => requestedLoadView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
         document.getElementById('upcoming').classList.toggle('visible', upcoming.length > 0);
 
         document.getElementById('past-section').style.display = past.length ? 'block' : 'none';
         document.getElementById('past-label').textContent = `Past (${past.length})`;
-        document.getElementById('past').innerHTML = past.map(ev => activeView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
+        document.getElementById('past').innerHTML = past.map(ev => requestedLoadView === 'hosting' ? swipeWrap(ev, card(ev)) : card(ev, 'going')).join('');
         document.getElementById('past').classList.remove('visible');
 
-        document.getElementById('archived-section').style.display = activeView === 'hosting' && archived.length ? 'block' : 'none';
+        document.getElementById('archived-section').style.display = requestedLoadView === 'hosting' && archived.length ? 'block' : 'none';
         document.getElementById('archived-label').textContent = `Archived (${archived.length})`;
         document.getElementById('archived').innerHTML = archived.map(archivedCard).join('');
         document.getElementById('archived').classList.remove('visible');
         loading.hidden = true;
       } catch (_) {
+        if (requestId !== loadRequestId || requestedLoadView !== activeView) return;
         loading.removeAttribute('aria-label');
         loading.innerHTML = `<div class="events-load-error"><h2>We couldn't load your events.</h2><p>Your events are safe. Try loading the page again.</p><button class="sg-btn sg-btn-ghost" id="retry-events" type="button">Try again</button></div>`;
         document.getElementById('retry-events').addEventListener('click', () => location.reload());
       } finally {
-        content.setAttribute('aria-busy', 'false');
+        if (requestId === loadRequestId && requestedLoadView === activeView) content.setAttribute('aria-busy', 'false');
       }
     }
     const eventTabs = Array.from(document.querySelectorAll('.events-tab'));
     eventTabs.forEach((tab, index) => {
       tab.addEventListener('click', () => {
+        userSelectedView = true;
+        try { localStorage.setItem(VIEW_KEY, tab.dataset.view); } catch (_) {}
         if (tab.dataset.view === activeView) return;
         activeView = tab.dataset.view;
         document.getElementById('upcoming').innerHTML = '';
@@ -582,7 +610,9 @@
         eventTabs[targetIndex].focus();
       });
     });
-    load();
+    chooseInitialView.then(() => {
+      if (!userSelectedView) load();
+    });
   </script>
 </body>
 </html>

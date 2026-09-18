@@ -16,7 +16,7 @@
   color:var(--sg-text);font-family:var(--sg-font-body);text-align:center;
 }
 button.familiar-face-card { appearance:none;cursor:pointer;transition:transform .16s ease,border-color .16s ease,background .16s ease; }
-button.familiar-face-card:hover { transform:translateY(-2px);border-color:rgba(28,197,190,.42); }
+@media (hover: hover) { button.familiar-face-card:hover { transform:translateY(-2px);border-color:rgba(28,197,190,.42); } }
 button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
 .familiar-face-card.is-selected { border-color:var(--sg-accent);background:rgba(28,197,190,.075);box-shadow:inset 0 0 0 1px rgba(28,197,190,.28); }
 .familiar-face-avatar {
@@ -42,7 +42,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   margin-top:10px;padding:5px 12px;border:1px solid rgba(28,197,190,.35);border-radius:999px;background:transparent;
   color:var(--sg-accent);font:700 11px var(--sg-font-body);cursor:pointer;
 }
-.familiar-face-share:hover,.familiar-face-share:focus-visible { background:rgba(28,197,190,.08); }
+.familiar-face-share:focus-visible { background:rgba(28,197,190,.08); }@media (hover: hover) { .familiar-face-share:hover { background:rgba(28,197,190,.08); } }
 .familiar-face-card.is-declined .familiar-face-avatar { opacity:.5; }
 .familiar-face-card.is-declined .familiar-face-name { color:var(--sg-text-dim); }
 .familiar-face-check {
@@ -83,7 +83,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
 .familiar-invite-dialog h2 { margin:0 0 7px;font-size:28px;letter-spacing:-.025em; }
 .familiar-invite-intro { margin:0;color:var(--sg-text-dim);font-size:13px;line-height:1.55; }
 .familiar-invite-close { width:36px;height:36px;padding:0;border:1px solid var(--sg-border-soft);border-radius:50%;background:rgba(255,255,255,.025);color:var(--sg-text-dim);font-size:23px;line-height:1;cursor:pointer; }
-.familiar-invite-close:hover { color:var(--sg-text);border-color:rgba(255,255,255,.22); }
+@media (hover: hover) { .familiar-invite-close:hover { color:var(--sg-text);border-color:rgba(255,255,255,.22); } }
 .familiar-invite-close:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
 .familiar-invite-dialog-body { padding:22px 28px;overflow:auto;overscroll-behavior:contain; }
 .familiar-target-list { display:grid;gap:10px; }
@@ -91,7 +91,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   width:100%;display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:14px;align-items:center;padding:10px;
   border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.018);color:var(--sg-text);font-family:var(--sg-font-body);text-align:left;cursor:pointer;
 }
-.familiar-target-card:hover:not(:disabled) { border-color:rgba(28,197,190,.42);background:rgba(28,197,190,.035); }
+@media (hover: hover) { .familiar-target-card:hover:not(:disabled) { border-color:rgba(28,197,190,.42);background:rgba(28,197,190,.035); } }
 .familiar-target-card.is-selected { border-color:var(--sg-accent);box-shadow:inset 0 0 0 1px rgba(28,197,190,.2); }
 .familiar-target-card:disabled { cursor:not-allowed;opacity:.55; }
 .familiar-target-card:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
