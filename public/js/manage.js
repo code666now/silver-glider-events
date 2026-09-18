@@ -494,13 +494,14 @@ function renderFamiliarFaces() {
   const grid = $('familiar-faces-grid');
   grid.innerHTML = familiarFaceState.faces.map(face => {
     const selected = familiarFaceSelection.has(face.id);
+    const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.status ? `, ${face.status}` : ''} ${selected ? 'from' : 'for'} an invitation`;
     const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.status)}</span>
       ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}
       ${familiarSelectionMode && !face.canInvite && face.note ? `<span class="familiar-face-note">${escapeHtml(face.note)}</span>` : ''}`;
     if (face.canInvite && familiarFaceState.canStartInvitation) {
-      return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)} ${selected ? 'from' : 'for'} an invitation">${content}</button>`;
+      return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">${content}</button>`;
     }
     return `<article class="familiar-face-card${face.declined ? ' is-declined' : ''}">${content}</article>`;
   }).join('');
@@ -857,7 +858,8 @@ let peopleRequest = 0;
 function renderPeople() {
   const cards = peopleState.people.map(face => {
     const selected = peopleSelection.has(face.id);
-    return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-person="${escapeHtml(face.id)}" data-name="${escapeHtml(face.name)}" aria-pressed="${selected}" aria-label="${selected ? 'Remove' : 'Select'} ${escapeHtml(face.name)}">
+    const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.detail ? `, ${face.detail}` : ''}`;
+    return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-person="${escapeHtml(face.id)}" data-name="${escapeHtml(face.name)}" data-detail="${escapeHtml(face.detail || '')}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">
       <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
@@ -889,6 +891,7 @@ function renderPeopleBar() {
   const count = peopleSelection.size;
   $('familiar-people-bar').hidden = count === 0;
   if (!count) peopleConfirming = false;
+  $('familiar-people-bar').classList.toggle('is-confirming', peopleConfirming);
   const people = `${count} ${count === 1 ? 'person' : 'people'}`;
   if (peopleConfirming) {
     $('familiar-people-count').textContent = `Invite ${people} to ${eventData.title}?`;
@@ -955,7 +958,7 @@ $('familiar-people-grid').addEventListener('click', async event => {
   else peopleSelection.delete(card.dataset.person);
   card.classList.toggle('is-selected', selected);
   card.setAttribute('aria-pressed', String(selected));
-  card.setAttribute('aria-label', `${selected ? 'Remove' : 'Select'} ${card.dataset.name}`);
+  card.setAttribute('aria-label', `${selected ? 'Remove' : 'Select'} ${card.dataset.name}${card.dataset.detail ? `, ${card.dataset.detail}` : ''}`);
   peopleConfirming = false;
   renderPeopleBar();
 });

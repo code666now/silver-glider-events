@@ -825,3 +825,19 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-switch-row i::after,
   .owner-editor-toast { transition: none; }
 }
+
+/* Phones: "Enter manually" / "Search instead" read as links, not as a second empty field. */
+@media (max-width: 879px) {
+  .owner-location-search-mode .owner-location-mode-button,
+  .owner-location-manual-actions .owner-location-mode-button {
+    justify-self: start;
+    height: auto;
+    min-height: 44px;
+    padding: 0 2px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: var(--sg-accent);
+    font-size: 14px;
+  }
+}
