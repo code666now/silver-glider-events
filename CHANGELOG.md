@@ -2,6 +2,26 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.113
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* My Events now opens the explicitly linked Going or Hosting tab, remembers the person’s last manual choice, and keeps events on their calendar date instead of shifting them across days through UTC parsing.
+* Signed-in phone pages move Feedback, Privacy, and Terms into the app menu where available, while focused creation and editing flows keep an accessible support footer. Feedback returns keyboard focus to the control that opened it.
+* Standard phone event pages keep cover art within the viewport and add the event’s short date and time beside the docked RSVP action. Flyer presentation remains unchanged.
+* The phone Manage Event hub now leads with attendance context and a direct Share event action. Past-event counts accurately describe guests who RSVP’d going.
+* App icons and browser metadata now cover favicon, Apple touch, 192px, 512px, theme color, and install metadata across views.
+
+### Reliability
+
+* My Events ignores stale asynchronous responses after a tab change, and release checks now cover tab precedence, date boundaries, mobile support access, focus restoration, icon dimensions, and web-manifest behavior.
+
+### Compatibility
+
+* Desktop workspaces, Flyer layout, backend contracts, permissions, event and RSVP data, emails, reminders, and public-page viewport behavior remain unchanged. No database migration is required.
+
 ## 1.0.112
 
 Released September 18, 2026. Built and deployed by Codex.
