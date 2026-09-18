@@ -382,13 +382,15 @@ const organizerProfileReady = api('/api/auth/me')
 function renderCommerceInterest() {
   const panel = $('commerce-interest');
   const button = $('commerce-interest-toggle');
-  panel.hidden = !commerceConfigLoaded || commerceEnabled || Boolean(commerceEventId);
+  const showWaitlist = commerceConfigLoaded && !commerceEnabled && !commerceEventId;
+  panel.hidden = !showWaitlist;
+  $('admission-commerce').classList.toggle('has-waitlist', showWaitlist);
   panel.classList.toggle('is-confirmed', commerceInterested);
   button.setAttribute('aria-pressed', String(commerceInterested));
   button.textContent = commerceInterested ? 'Leave waitlist' : 'Join the waitlist';
   $('commerce-interest-copy').innerHTML = commerceInterested
     ? '<span class="commerce-interest-check" aria-hidden="true">✓</span><strong>You’re on the list</strong><span>We’ll contact you at your account email when ticketing is available.</span>'
-    : '<strong>Sell with Silver Glider is coming soon.</strong><span>Join the waitlist using your account email.</span>';
+    : '<span>Join the waitlist using your account email.</span>';
 }
 
 function focusCommerceInterestConfirmation() {
@@ -403,6 +405,9 @@ const commerceConfigReady = api('/api/commerce/config')
     commerceConfigLoaded = true;
     commerceInterested = interest?.interested === true;
     $('admission-commerce').disabled = !commerceEnabled;
+    $('admission-commerce').setAttribute('aria-label', commerceEnabled
+      ? 'Sell with Silver Glider'
+      : 'Sell with Silver Glider is coming soon');
     $('admission-commerce-status').hidden = commerceEnabled;
     renderCommerceInterest();
     if (admissionType === 'silver_glider_tickets') setAdmission(admissionType, { force: true });
@@ -1020,11 +1025,15 @@ api('/api/photos/enabled').then(({ enabled }) => {
   photosEnabled = enabled;
   if (enabled) {
     $('btn-search').style.display = '';
+    $('cover-actions').classList.add('has-photo-search');
     renderImageCategories();
   } else {
+    $('cover-actions').classList.remove('has-photo-search');
     $('unsplash-panel').innerHTML = '<div class="picker-empty">Free photo search is not set up yet.</div>';
   }
-}).catch(() => {});
+}).catch(() => {
+  $('cover-actions').classList.remove('has-photo-search');
+});
 
 function renderImageCategories() {
   const wrap = $('image-categories');

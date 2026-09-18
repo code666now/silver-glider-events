@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.110
+
+Released September 17, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Phone creation and editing now share a consistent 60px control system across Quick Create, the complete event editor, and the published-page owner editor. Date, time, location, Save, and Done controls retain matching geometry in iPhone Safari, including narrow and short viewports.
+* Mobile labels and helper copy are more readable, event task cards use steadier proportions, and artwork controls stack cleanly so **Remove** never appears as a stranded half-width action.
+* **Sell with Silver Glider** remains unavailable and labeled **Coming soon**, but its existing one-tap waitlist now lives in the same coherent card instead of appearing as a duplicate feature. Connected Commerce events and the existing waitlist endpoint, success state, and account-email behavior are unchanged.
+
+### Compatibility
+
+* The layout refinements stay below the established 880px mobile breakpoint. Desktop composition, event data, permissions, RSVP behavior, and ticketing backend logic are unchanged.
+
 ## 1.0.109
 
 Released September 17, 2026. Built and deployed by Codex.

@@ -216,10 +216,10 @@ test('quick create keeps empty iOS date and time controls as tall as mobile text
   const mobileStyles = template.match(/@media \(max-width: 879px\) \{([\s\S]*?)\n    \}/);
 
   assert.ok(mobileStyles, 'quick-create phone styles should exist');
-  assert.match(mobileStyles[1], /\.quick-create-card \.owner-input \{[\s\S]*?min-height:\s*60px;/);
+  assert.match(mobileStyles[1], /\.quick-create-card \.owner-input \{[\s\S]*?min-height:\s*var\(--sg-mobile-control-height\);/);
   assert.match(
     mobileStyles[1],
-    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{\s*height:\s*60px;\s*min-height:\s*60px;\s*\}/
+    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{\s*height:\s*var\(--sg-mobile-control-height\);\s*min-height:\s*var\(--sg-mobile-control-height\);\s*\}/
   );
   assert.match(
     mobileStyles[1],

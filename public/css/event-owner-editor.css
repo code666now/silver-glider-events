@@ -665,14 +665,14 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-mobile-hub-list { display: grid; gap: 12px; }
   .owner-mobile-hub-row {
     width: 100%;
-    min-height: 88px;
+    min-height: 96px;
     display: grid;
     grid-template-columns: 45px minmax(0,1fr) auto;
     align-items: center;
     gap: 13px;
-    padding: 16px;
+    padding: 18px;
     border: 1px solid rgba(255,255,255,.11);
-    border-radius: 16px;
+    border-radius: 18px;
     background: rgba(255,255,255,.028);
     color: var(--sg-text);
     text-align: left;
@@ -705,12 +705,13 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
     line-height: 1.45;
   }
   .owner-mobile-action:not([hidden]) { display: block; flex: 0 0 auto; padding: 12px 22px max(12px,env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.1); background: rgba(18,18,22,.985); }
-  .owner-mobile-done { width: 100%; min-height: 58px; border: 0; border-radius: 16px; background: var(--sg-accent); color: #061312; font: 850 17px/1 var(--sg-font-body); cursor: pointer; }
+  .owner-mobile-done { width: 100%; height: 60px; min-height: 60px; border: 0; border-radius: 16px; background: var(--sg-accent); color: #061312; font: 850 17px/1 var(--sg-font-body); cursor: pointer; }
   .owner-editor.is-mobile-subview .owner-editor-foot { display: none; }
   .owner-editor-foot { flex: 0 0 auto; padding: 10px 22px max(12px,env(safe-area-inset-bottom)); background: #121216; }
   .owner-editor-foot > p { margin-bottom: 7px; font-size: 12px; text-align: center; }
   .owner-editor-foot > div { grid-template-columns: 1fr; }
   .owner-editor-foot button { min-height: 58px; border-radius: 16px; font-size: 17px; }
+  .owner-editor-foot .owner-save { height: 60px; min-height: 60px; }
   .owner-editor-foot .owner-cancel { display: none; }
   .owner-mobile-more-copy { display: block; margin: 2px 1px 22px; color: var(--sg-text-dim); font-size: 16px; line-height: 1.55; }
   [data-owner-mobile-section="more"] .owner-editor-links { margin-top: 0; }
@@ -718,14 +719,18 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-field { gap: 10px; margin-bottom: 22px; }
   .owner-field > span,
   .owner-field-label,
+  .owner-location-manual-mode > label,
+  .owner-location-name-field > span,
   .owner-fit-field legend,
-  .owner-theme-group h4 { font-size: 12px; }
-  .owner-input { min-height: 58px; padding: 15px 16px; border-radius: 15px; font-size: 17px; }
+  .owner-theme-group h4 { font-size: 14px; }
+  .owner-input:not(.owner-textarea) { height: 60px; min-height: 60px; padding: 15px 16px; border-radius: 15px; font-size: 17px; }
+  .owner-input[type="date"]::-webkit-date-and-time-value,
+  .owner-input[type="time"]::-webkit-date-and-time-value { height: 1.5em; }
   .owner-textarea { min-height: 150px; }
   .owner-segmented span { min-height: 50px; font-size: 15px; }
   .owner-location-search-mode,
   .owner-location-manual-actions { grid-template-columns: 1fr; gap: 10px; }
-  .owner-location-mode-button { min-height: 52px; border-radius: 14px; font-size: 14px; }
+  .owner-location-mode-button { height: 60px; min-height: 60px; border-radius: 14px; font-size: 14px; }
   .owner-location-selection { grid-template-columns: 42px minmax(0,1fr) auto; gap: 12px; padding: 14px; border-radius: 16px; }
   .owner-location-icon { width: 42px; height: 42px; }
   .owner-location-copy strong { font-size: 15px; }
@@ -745,15 +750,15 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
     border: 0;
   }
   .owner-admission-field { padding-bottom: 0; border-bottom: 0; }
-  .owner-commerce-interest { align-items: stretch; flex-direction: column; gap: 16px; margin: 14px 0 0; padding: 18px; border-radius: 18px; }
+  .owner-commerce-interest { min-height: 96px; align-items: stretch; flex-direction: column; gap: 16px; margin: 0; padding: 18px 20px; border-radius: 18px; }
   .owner-commerce-interest-copy { font-size: 14px; }
   .owner-commerce-interest-copy strong { font-size: 17px; }
   .owner-commerce-interest.is-confirmed .owner-commerce-interest-copy { grid-template-columns: auto 1fr; gap: 4px 12px; }
   .owner-commerce-interest-check { grid-row: 1 / span 2; align-self: center; color: var(--sg-accent); font-size: 28px; }
-  .owner-commerce-interest-toggle { width: 100%; min-height: 54px; }
+  .owner-commerce-interest-toggle { width: 100%; min-height: 60px; }
   .owner-commerce-interest.is-confirmed .owner-commerce-interest-toggle { display: none; }
   .owner-choice-field { gap: 14px; }
-  .owner-choice > span { min-height: 88px; justify-content: center; gap: 7px; padding: 18px 20px; border-radius: 18px; }
+  .owner-choice > span { min-height: 96px; justify-content: center; gap: 7px; padding: 18px 20px; border-radius: 18px; }
   .owner-choice strong { font-size: 17px; }
   .owner-choice small { font-size: 14px; line-height: 1.45; }
   .owner-admission-fields { margin-top: 18px; padding: 18px; border-radius: 18px; }
@@ -786,8 +791,11 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-theme { min-height: 72px; grid-template-columns: 68px minmax(0,1fr); gap: 13px; padding: 9px; border-radius: 16px; font-size: 14px; }
   .owner-theme-preview { width: 68px; height: 52px; border-radius: 11px; }
   .owner-image-card { border-radius: 19px; }
-  .owner-image-actions { gap: 10px; }
-  .owner-action-button { min-height: 52px; border-radius: 14px; font-size: 14px; }
+  .owner-image-actions { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .owner-image-actions .owner-action-muted { grid-column: 1 / -1; }
+  .owner-image-actions.is-flyer-mode { grid-template-columns: 1fr; }
+  .owner-image-actions.is-flyer-mode .owner-action-muted { grid-column: 1; }
+  .owner-action-button { min-height: 60px; border-radius: 14px; font-size: 14px; }
   .owner-subview-head { display: none; }
   .owner-editor-toast { right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); left: 14px; max-width: none; text-align: center; }
   body.owner-editor-open .owner-editor-toast { bottom: calc(112px + env(safe-area-inset-bottom)); }
@@ -796,13 +804,11 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 }
 
 @media (max-width: 420px) {
-  .owner-image-actions { grid-template-columns: 1fr 1fr; }
-  .owner-action-muted { grid-column: 1 / -1; }
   .owner-theme-grid { grid-template-columns: 1fr; }
   .owner-photo-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .owner-location-search-mode,
   .owner-location-manual-actions { grid-template-columns: 1fr; }
-  .owner-location-mode-button { min-height: 52px; }
+  .owner-location-mode-button { height: 60px; min-height: 60px; }
 }
 
 @media (max-width: 879px) and (max-height: 600px) {
@@ -816,7 +822,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-mobile-screen-head h3 { font-size: 26px; }
   .owner-editor-panel { padding-top: 8px; }
   .owner-mobile-action:not([hidden]) { padding-top: 8px; padding-bottom: max(8px,env(safe-area-inset-bottom)); }
-  .owner-mobile-done { min-height: 52px; }
+  .owner-mobile-done { height: 60px; min-height: 60px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

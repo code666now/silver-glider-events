@@ -296,15 +296,17 @@ function renderOwnerEditor(event) {
                 <legend>Admission</legend>
                 <label class="owner-choice"><input type="radio" name="owner_admission" value="free_rsvp"><span><strong>Free RSVP</strong><small>Collect guest names and confirmations here.</small></span></label>
                 <label class="owner-choice"><input type="radio" name="owner_admission" value="external_tickets"><span><strong>External tickets</strong><small>Send guests to another ticket link or sell at the door.</small></span></label>
-                <label class="owner-choice"><input type="radio" name="owner_admission" value="silver_glider_tickets"${event.commerce_event_id ? '' : ' disabled'}><span><strong>Sell with Silver Glider</strong><small>${event.commerce_event_id ? 'Connected to Silver Glider Commerce.' : 'Coming soon'}</small></span></label>
-              </fieldset>
-              <div class="owner-commerce-interest" id="owner-commerce-interest" hidden>
-              <div class="owner-commerce-interest-copy" id="owner-commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
-                  <strong>Sell with Silver Glider is coming soon.</strong>
-                  <span>Join the waitlist using your account email.</span>
+                ${event.commerce_event_id
+                  ? '<label class="owner-choice"><input type="radio" name="owner_admission" value="silver_glider_tickets"><span><strong>Sell with Silver Glider</strong><small>Connected to Silver Glider Commerce.</small></span></label>'
+                  : `<div class="owner-commerce-interest" id="owner-commerce-interest" hidden>
+                <input type="radio" name="owner_admission" value="silver_glider_tickets" disabled aria-disabled="true" hidden>
+                <div class="owner-commerce-interest-copy" id="owner-commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
+                  <strong>Sell with Silver Glider</strong>
+                  <span>Coming soon. Join the waitlist using your account email.</span>
                 </div>
                 <button class="owner-action-button owner-commerce-interest-toggle" id="owner-commerce-interest-toggle" type="button" aria-pressed="false">Join the waitlist</button>
-              </div>
+              </div>`}
+              </fieldset>
               <div class="owner-admission-fields" id="owner-ticket-fields" hidden>
                 <label class="owner-field"><span>Ticket price</span><input class="owner-input" id="owner-ticket-price" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="15"></label>
                 <label class="owner-field"><span>Ticket link <small>Optional</small></span><input class="owner-input" id="owner-ticket-url" type="url" inputmode="url" placeholder="At the door, or paste https://..."></label>

@@ -144,7 +144,7 @@ test('event editor keeps the desktop columns and adds a phone-only task flow', (
   assert.match(html, /id="event-mobile-screen-title">Event details/);
   assert.match(html, /font-size: clamp\(32px, 9vw, 36px\)/);
   assert.match(html, /grid-template-columns: 1fr; gap: 18px/);
-  assert.match(html, /\.event-mobile-flow-done \{[\s\S]*min-height: 62px/);
+  assert.match(html, /\.event-mobile-flow-done \{[\s\S]*min-height: 60px/);
   assert.match(html, /id="event-mobile-flow-done" type="button"/);
   assert.match(js, /matchMedia\('\(max-width: 879px\)'\)/);
   assert.match(js, /function openMobileFlowView\(/);

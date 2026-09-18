@@ -186,7 +186,7 @@
     button.textContent = commerceInterested ? 'Leave waitlist' : 'Join the waitlist';
     $('owner-commerce-interest-copy').innerHTML = commerceInterested
       ? '<span class="owner-commerce-interest-check" aria-hidden="true">✓</span><strong>You’re on the list</strong><span>We’ll contact you at your account email when ticketing is available.</span>'
-      : '<strong>Sell with Silver Glider is coming soon.</strong><span>Join the waitlist using your account email.</span>';
+      : '<strong>Sell with Silver Glider</strong><span>Coming soon. Join the waitlist using your account email.</span>';
   }
 
   function focusCommerceInterestConfirmation() {
@@ -590,24 +590,26 @@
   }
 
   function renderPresentationControls() {
+    const flyer = draft.presentationMode === 'flyer';
     document.querySelectorAll('input[name="owner_presentation_mode"]').forEach(input => {
       input.checked = input.value === draft.presentationMode;
     });
-    $('owner-browse-photos').hidden = draft.presentationMode === 'flyer';
-    $('owner-upload-image').textContent = draft.presentationMode === 'flyer'
+    $('owner-browse-photos').hidden = flyer;
+    document.querySelector('.owner-image-actions')?.classList.toggle('is-flyer-mode', flyer);
+    $('owner-upload-image').textContent = flyer
       ? (draft.flyerImageUrl ? 'Replace flyer' : 'Upload flyer')
       : (draft.coverImageUrl ? 'Replace image' : 'Upload image');
-    $('owner-image-card').setAttribute('aria-label', draft.presentationMode === 'flyer'
+    $('owner-image-card').setAttribute('aria-label', flyer
       ? 'Upload a new event flyer'
       : 'Upload a new event image');
-    $('owner-image-empty-title').textContent = draft.presentationMode === 'flyer'
+    $('owner-image-empty-title').textContent = flyer
       ? 'Add your flyer'
       : 'Add event image';
-    $('owner-fit-field').hidden = draft.presentationMode === 'flyer' || !draft.coverImageUrl;
-    document.querySelector('.owner-gradient-group').hidden = draft.presentationMode === 'flyer';
-    document.querySelector('.owner-flyer-default').hidden = draft.presentationMode !== 'flyer';
-    document.querySelector('[data-owner-theme="adaptive"]').hidden = draft.presentationMode === 'flyer';
-    $('owner-mobile-designer-row').hidden = !(draft.presentationMode === 'flyer' && draft.flyerImageUrl);
+    $('owner-fit-field').hidden = flyer || !draft.coverImageUrl;
+    document.querySelector('.owner-gradient-group').hidden = flyer;
+    document.querySelector('.owner-flyer-default').hidden = !flyer;
+    document.querySelector('[data-owner-theme="adaptive"]').hidden = flyer;
+    $('owner-mobile-designer-row').hidden = !(flyer && draft.flyerImageUrl);
   }
 
   function syncMobileAppearanceSections(viewName = activeMobileView) {
