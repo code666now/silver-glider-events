@@ -705,13 +705,15 @@ router.get('/e/:slug', async (req, res, next) => {
       : isCommerceTicketed
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="ticket-cta" data-primary-action="ticket" href="/e/${encodeURIComponent(event.slug)}/tickets" style="font-size:17px;padding:17px">Get Tickets</a>`
       : '<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP</button>';
+    // Once the dock appears the date has scrolled away, so it rides along beside the button.
+    const dockWhenHtml = `<p class="dock-when"><strong>${esc(new Date(event.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }))}</strong><span>${esc(formatTime(event.start_time))}</span></p>`;
     const standardMobileActionHtml = ownerDraft
       ? ''
       : event.is_past
       ? endedMobileActionHtml
       : isCommerceTicketed
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="/e/${encodeURIComponent(event.slug)}/tickets">Get Tickets</a>`
-      : '<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button>';
+      ? `<div class="dock-row">${dockWhenHtml}<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="/e/${encodeURIComponent(event.slug)}/tickets">Get Tickets</a></div>`
+      : `<div class="dock-row">${dockWhenHtml}<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button></div>`;
     const flyerPrimaryActionHtml = ownerDraft
       ? '<p class="event-ended-note">Draft preview · Only you can see this</p>'
       : event.is_past

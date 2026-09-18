@@ -71,7 +71,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   color: var(--sg-text-dim);
   transition: color .15s ease;
 }
-.sg-social-link:hover { color: var(--sg-text); }
+@media (hover: hover) { .sg-social-link:hover { color: var(--sg-text); } }
 .sg-social-link svg { width: 25px; height: 25px; flex: 0 0 auto; }
 .sg-legal-links {
   display: flex;
@@ -95,7 +95,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   line-height: 1.4 !important;
   text-decoration: none !important;
 }
-.sg-legal-links .sg-legal-link:hover { color: var(--sg-text-dim) !important; }
+@media (hover: hover) { .sg-legal-links .sg-legal-link:hover { color: var(--sg-text-dim) !important; } }
 .sg-global-footer {
   display: grid;
   justify-items: center;
@@ -147,16 +147,16 @@ a { color: var(--sg-accent); text-decoration: none; }
   text-decoration: none;
 }
 .sg-btn-primary { background: var(--sg-accent); color: #0a0a0a; }
-.sg-btn-primary:hover { background: var(--sg-accent-press); transform: translateY(-1px); }
+@media (hover: hover) { .sg-btn-primary:hover { background: var(--sg-accent-press); transform: translateY(-1px); } }
 .sg-btn-primary:disabled { background: #2a2a2a; color: #666; cursor: not-allowed; transform: none; }
 .sg-btn-ghost {
   background: transparent;
   color: var(--sg-text);
   border: 1px solid var(--sg-border);
 }
-.sg-btn-ghost:hover { border-color: var(--sg-accent); color: var(--sg-accent); }
+@media (hover: hover) { .sg-btn-ghost:hover { border-color: var(--sg-accent); color: var(--sg-accent); } }
 .sg-btn-danger { background: transparent; color: var(--sg-danger); border: 1px solid rgba(224, 82, 82, 0.3); }
-.sg-btn-danger:hover { border-color: var(--sg-danger); }
+@media (hover: hover) { .sg-btn-danger:hover { border-color: var(--sg-danger); } }
 .sg-btn-block { display: flex; width: 100%; }
 
 /* Cards */
@@ -289,7 +289,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-size: 140% 200%;
   transition: border-color 0.15s ease, transform 0.1s ease;
 }
-.sg-swatch:hover { transform: translateY(-1px); }
+@media (hover: hover) { .sg-swatch:hover { transform: translateY(-1px); } }
 .sg-swatch.on { border-color: var(--sg-accent); }
 .sg-swatch-name {
   display: block;
@@ -494,7 +494,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   padding: 11px 18px; border: 1px solid rgba(255,255,255,.18); border-radius: 999px;
   background: transparent; color: var(--sg-text); font: 800 13px var(--sg-font-body); cursor: pointer;
 }
-.returning-rsvp-change:hover, .returning-rsvp-change:focus-visible { border-color: var(--sg-accent); }
+.returning-rsvp-change:focus-visible { border-color: var(--sg-accent); }@media (hover: hover) { .returning-rsvp-change:hover { border-color: var(--sg-accent); } }
 .returning-rsvp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 
 /* "Already on the list" from a browser that can't prove it: offer the code. */
@@ -509,7 +509,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   border-bottom: 1px solid rgba(255,255,255,.2);
   color: var(--sg-text-dim); font: 700 13px var(--sg-font-body); text-decoration: none;
 }
-.host-your-own:hover, .host-your-own:focus-visible { color: var(--sg-accent); border-color: var(--sg-accent); }
+.host-your-own:focus-visible { color: var(--sg-accent); border-color: var(--sg-accent); }@media (hover: hover) { .host-your-own:hover { color: var(--sg-accent); border-color: var(--sg-accent); } }
 
 /* Email code entry — sign-in page and "confirm it's you" in the RSVP flow. */
 .sg-code-panel {
@@ -534,5 +534,5 @@ a { color: var(--sg-accent); text-decoration: none; }
   color: var(--sg-text-faint); font: 700 12px var(--sg-font-body);
   text-decoration: underline; text-underline-offset: 3px;
 }
-.sg-code-link:hover, .sg-code-link:focus-visible { color: var(--sg-text); }
+.sg-code-link:focus-visible { color: var(--sg-text); }@media (hover: hover) { .sg-code-link:hover { color: var(--sg-text); } }
 .sg-code-link[disabled] { opacity: .5; cursor: default; }

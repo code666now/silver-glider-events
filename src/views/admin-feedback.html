@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>Feedback — Admin — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -18,7 +22,7 @@
       width:100%;padding:15px 16px;margin-bottom:8px;border:1px solid var(--sg-border-soft);
       border-radius:16px;background:rgba(17,17,17,.78);color:var(--sg-text);text-align:left;cursor:pointer;
     }
-    .feedback-admin-row:hover { border-color:rgba(28,197,190,.38); }
+    @media (hover: hover) { .feedback-admin-row:hover { border-color:rgba(28,197,190,.38); } }
     .feedback-type { color:var(--sg-accent);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em; }
     .feedback-preview { min-width:0; }
     .feedback-preview strong { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px; }
@@ -32,7 +36,7 @@
       justify-self:end;padding:6px 10px;border:1px solid rgba(239,83,80,.3);border-radius:999px;
       background:transparent;color:rgba(239,83,80,.78);font:700 10px var(--sg-font-body);cursor:pointer;
     }
-    .feedback-delete:hover,.feedback-delete:focus-visible { color:#ff7370;border-color:rgba(239,83,80,.72);background:rgba(239,83,80,.08); }
+    .feedback-delete:focus-visible { color:#ff7370;border-color:rgba(239,83,80,.72);background:rgba(239,83,80,.08); }@media (hover: hover) { .feedback-delete:hover { color:#ff7370;border-color:rgba(239,83,80,.72);background:rgba(239,83,80,.08); } }
     .admin-detail-modal { align-items:center;justify-content:center; }
     .admin-detail-card { width:min(100%,620px);max-height:min(86vh,760px);overflow:auto; }
     .detail-message { white-space:pre-wrap;padding:16px;border:1px solid var(--sg-border-soft);border-radius:14px;background:var(--sg-surface);font-size:14px;line-height:1.7;margin-bottom:18px; }

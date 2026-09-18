@@ -37,8 +37,7 @@
   font:400 25px/1 var(--sg-font-body,system-ui,sans-serif);
   cursor:pointer;
 }
-.rsvp-confirmation-close:hover,
-.rsvp-confirmation-close:focus-visible { border-color:var(--sg-accent,#1cc5be);color:var(--sg-text,#fff); }
+.rsvp-confirmation-close:focus-visible { border-color:var(--sg-accent,#1cc5be);color:var(--sg-text,#fff); }@media (hover: hover) { .rsvp-confirmation-close:hover { border-color:var(--sg-accent,#1cc5be);color:var(--sg-text,#fff); } }
 .rsvp-confirmation-status { text-align:center; }
 .rsvp-confirmation-mark {
   width:58px;
@@ -85,7 +84,7 @@
 .rsvp-confirmation-error { display:none;margin:12px 0 0;color:var(--sg-danger,#ff6464);font-size:13px;line-height:1.45; }
 .rsvp-confirmation-email-note { margin:18px 0 0;color:var(--sg-text-faint,#777);font-size:12px;line-height:1.5;text-align:center; }
 .rsvp-confirmation-back { width:100%;min-height:46px;margin:14px 0 0;border:0;background:transparent;color:var(--sg-text-dim,#aaa);font:700 13px var(--sg-font-body,system-ui,sans-serif);cursor:pointer; }
-.rsvp-confirmation-back:hover,.rsvp-confirmation-back:focus-visible { color:var(--sg-text,#fff); }
+.rsvp-confirmation-back:focus-visible { color:var(--sg-text,#fff); }@media (hover: hover) { .rsvp-confirmation-back:hover { color:var(--sg-text,#fff); } }
 
 @media (max-width:640px) {
   .rsvp-confirmation-dialog {

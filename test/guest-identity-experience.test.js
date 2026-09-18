@@ -35,7 +35,7 @@ test('photo return context is derived from an RSVP-owned identity, not an arbitr
   assert.match(page, /Returning you automatically/);
 });
 
-test('My Events defaults to Going and preserves the complete Hosting workspace', () => {
+test('My Events opens on Going unless a host has nothing upcoming there, and preserves the Hosting workspace', () => {
   const routes = read('src/routes/events.js');
   const page = read('src/views/events.html');
 
@@ -45,7 +45,9 @@ test('My Events defaults to Going and preserves the complete Hosting workspace',
   assert.doesNotMatch(routes, /LOWER\(r\.email\).*api\/events\/going/s);
   assert.match(page, /data-view="going">Going</);
   assert.match(page, /data-view="hosting">Hosting</);
-  assert.match(page, /activeView = new URLSearchParams[\s\S]*\? 'hosting' : 'going'/);
+  assert.match(page, /let activeView = requestedView === 'hosting' \|\| rememberedView === 'hosting' \? 'hosting' : 'going'/);
+  assert.match(page, /if \(!hasUpcoming\(going\.events\) && \(hosting\.events \|\| \[\]\)\.length\) activeView = 'hosting'/);
+  assert.match(page, /localStorage\.setItem\(VIEW_KEY, activeView\)/);
   assert.match(page, /api\('\/api\/events\/going'\)/);
   assert.match(page, /api\('\/api\/events\?archived=1'\)/);
   assert.match(page, /Events you RSVP to will appear here/);

@@ -185,6 +185,15 @@ Codex and Claude Code both work here. Claude Code works in its own clone (`~/sge
 
 This repository is a continuation of the same Silver Glider Events project, not a restart. Treat the code, migrations, tests, and current production health response as the source of truth.
 
+### Phone polish — rules to keep (Claude, branch `claude/mobile-polish`)
+
+- **Hover styles are mouse-only.** Every `:hover` rule sits inside `@media (hover: hover)` so a tapped button doesn't stay lit on iPhone. Write new hover rules the same way; `:focus-visible` stays outside the query.
+- **My Events tab:** `?view=` wins, then the last tab the person chose (`localStorage` key `sge_events_view`), otherwise Going, unless Going has nothing upcoming and the person hosts events, in which case it opens Hosting.
+- **Signed-in pages on phones (≤879px):** pages that call `renderNav()` get `body.sg-app-page`. The Feedback pill and the legal footer are hidden there, and the hamburger menu carries **Send feedback** plus Privacy · Terms. Public pages keep the footer.
+- **Standard public page, phones:** the docked RSVP shows the short date and start time beside the button (`.dock-row` / `.dock-when`). The cover image is capped at `58svh`. The Flyer layout is untouched; only its hover rules moved behind the mouse-only query.
+- **Manage hub, phones:** a headcount line (`#manage-mobile-headcount`) and a **Share event** button (`#manage-mobile-share`) sit above the task list. The button just clicks the existing `#share-event`, so share behaviour lives in one place; it is hidden for past events.
+- **Icons:** `/favicon.png`, `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png` and `/site.webmanifest` (`display: browser`), plus `theme-color` on every view. `viewport-fit=cover` was added only to pages built on `.sg-shell`, plus login and create. The public event, flyer, host and RSVP-manage pages keep their viewport tag.
+
 ### Exact repository and production state
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`

@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <meta name="robots" content="{{ROBOTS_DIRECTIVE}}">
   <title>{{TITLE}} — Silver Glider Events</title>
   <meta property="og:title" content="{{TITLE}}">
@@ -467,14 +471,14 @@
     }
     #returning-rsvp-state:not(.has-answer) .returning-choice[data-response="going"],
     .returning-choice[data-response="going"].is-selected { border-color: rgba(28,197,190,.58); background: var(--sg-accent); color: #071211; }
-    .returning-choice:hover { transform: translateY(-1px); border-color: var(--sg-accent); }
+    @media (hover: hover) { .returning-choice:hover { transform: translateY(-1px); border-color: var(--sg-accent); } }
     .returning-choice:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
     .returning-choice.is-selected { box-shadow: 0 0 0 3px rgba(28,197,190,.16); }
     .returning-choice[data-response="not_going"].is-selected { border-color: rgba(255,255,255,.42); background: rgba(255,255,255,.14); color: #fff; }
     .returning-choice[disabled] { cursor: wait; opacity: .62; transform: none; }
     .returning-rsvp-error { display: none; margin: 13px 0 0; color: var(--sg-danger); font-size: 13px; }
     .returning-rsvp-switch { margin-top: 17px; padding: 4px 0; border: 0; background: transparent; color: var(--sg-text-faint); font: 700 12px var(--sg-font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-    .returning-rsvp-switch:hover, .returning-rsvp-switch:focus-visible { color: var(--sg-text); }
+    .returning-rsvp-switch:focus-visible { color: var(--sg-text); }@media (hover: hover) { .returning-rsvp-switch:hover { color: var(--sg-text); } }
     #rsvp-form-box .sg-input {
       background-color: rgba(255,255,255,.07);
       border-color: rgba(255,255,255,.16);
@@ -503,7 +507,7 @@
       cursor: pointer;
     }
     .rsvp-close span { color: var(--sg-accent); font-size: 20px; line-height: .8; }
-    .rsvp-close:hover, .rsvp-close:focus-visible { color: var(--sg-text); }
+    .rsvp-close:focus-visible { color: var(--sg-text); }@media (hover: hover) { .rsvp-close:hover { color: var(--sg-text); } }
     .check {
       display: flex; gap: 12px; align-items: flex-start;
       font-size: 13px; color: var(--sg-text-dim);
@@ -587,7 +591,7 @@
     .event-recap-grid a:only-child { grid-column:1 / -1; }
     .event-recap-grid a:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
     .event-recap-grid img { display:block;width:100%;aspect-ratio:4 / 3;object-fit:cover;transition:transform .18s ease; }
-    .event-recap-grid a:hover img { transform:scale(1.02); }
+    @media (hover: hover) { .event-recap-grid a:hover img { transform:scale(1.02); } }
     @media (prefers-reduced-motion:reduce) { .event-recap-grid img { transition:none; } }
     .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
     .section-heading h2 { font-size: 22px; }
@@ -717,7 +721,7 @@
     }
     .guest-avatar img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover; }
     .guest-avatar-edit { cursor:pointer;text-decoration:none;transition:transform .16s ease,border-color .16s ease; }
-    .guest-avatar-edit:hover { transform:translateY(-2px);border-color:var(--accent); }
+    @media (hover: hover) { .guest-avatar-edit:hover { transform:translateY(-2px);border-color:var(--accent); } }
     .guest-avatar-edit:focus-visible { outline:2px solid var(--accent);outline-offset:3px; }
     .guest-avatar-edit b { position:absolute;right:-3px;bottom:-3px;z-index:2;display:grid;place-items:center;width:20px;height:20px;border:2px solid #111;border-radius:50%;background:var(--accent);color:#071110;font:900 10px/1 sans-serif; }
     .guest-list-toggle {
@@ -783,7 +787,7 @@
       font: 300 28px/1 var(--sg-font-body);
       cursor: pointer;
     }
-    .guest-list-modal-close:hover { border-color: var(--sg-accent); color: var(--sg-text); }
+    @media (hover: hover) { .guest-list-modal-close:hover { border-color: var(--sg-accent); color: var(--sg-text); } }
     .guest-list-modal .guest-avatar {
       width: 80px;
       height: 80px;
@@ -862,11 +866,11 @@
     .host-attribution span { display:block;font-size:10px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px; }
     .host-attribution strong, .host-attribution a { color:var(--sg-text-dim);font-weight:700; }
     .host-attribution a { min-height:44px;display:inline-flex;align-items:center; }
-    .host-attribution a:hover { color:var(--sg-accent); }
+    @media (hover: hover) { .host-attribution a:hover { color:var(--sg-accent); } }
     .host-attribution b { font-weight:400;margin-left:3px; }
     .powered-by { font-size: 12px; color: var(--sg-text-faint); margin: 0 0 30px; }
     .powered-by a { min-height:44px;display:inline-flex;align-items:center;color:var(--sg-text-faint); }
-    .powered-by a:hover { color:var(--sg-accent); }
+    @media (hover: hover) { .powered-by a:hover { color:var(--sg-accent); } }
     @media (max-width: 879px) {
       .host-attribution { justify-content: center; }
       .powered-by { text-align: center; }
@@ -892,6 +896,42 @@
         margin: 0 auto;
         font-size: 16px;
         box-shadow: 0 8px 28px rgba(0,0,0,.32);
+      }
+      .mobile-rsvp-dock .dock-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .mobile-rsvp-dock .dock-when {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        gap: 1px;
+        margin: 0;
+        padding-left: 4px;
+        line-height: 1.25;
+      }
+      .mobile-rsvp-dock .dock-when strong {
+        overflow: hidden;
+        color: var(--sg-text);
+        font-size: 15px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mobile-rsvp-dock .dock-when span { color: var(--sg-text-dim); font-size: 13px; }
+      .mobile-rsvp-dock .dock-row .sg-btn {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 150px;
+        margin: 0;
+        padding: 0 28px;
+      }
+      /* Keep the title, date and first action close to the top of the screen. */
+      .hero.standard-hero:not(.no-image) {
+        max-height: 58vh;
+        max-height: 58svh;
       }
     }
     .photo-credit { font-size: 11px; color: var(--sg-text-faint); margin-top: 8px; text-align: center; }

@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>My Events — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -301,7 +305,21 @@
   <script src="/js/api.js"></script>
   <script>
     renderNav('events');
-    let activeView = new URLSearchParams(location.search).get('view') === 'hosting' ? 'hosting' : 'going';
+    const VIEW_KEY = 'sge_events_view';
+    const requestedView = new URLSearchParams(location.search).get('view');
+    let rememberedView = null;
+    try { rememberedView = localStorage.getItem(VIEW_KEY); } catch (_) {}
+    let activeView = requestedView === 'hosting' || rememberedView === 'hosting' ? 'hosting' : 'going';
+    // With no explicit or remembered choice, open the tab that has something coming up
+    // so a host never lands on an empty Going tab.
+    const chooseInitialView = requestedView || rememberedView ? Promise.resolve() : Promise.all([
+      api('/api/events/going').catch(() => ({ events: [] })),
+      api('/api/events').catch(() => ({ events: [] }))
+    ]).then(([going, hosting]) => {
+      const today = new Date(new Date().toDateString());
+      const hasUpcoming = list => (list || []).some(e => new Date(e.event_date) >= today);
+      if (!hasUpcoming(going.events) && (hosting.events || []).length) activeView = 'hosting';
+    });
     const eventsLoadingMarkup = document.getElementById('events-loading').innerHTML;
 
     // Wrap a card in a swipe-to-archive row
@@ -565,6 +583,7 @@
       tab.addEventListener('click', () => {
         if (tab.dataset.view === activeView) return;
         activeView = tab.dataset.view;
+        try { localStorage.setItem(VIEW_KEY, activeView); } catch (_) {}
         document.getElementById('upcoming').innerHTML = '';
         document.getElementById('past').innerHTML = '';
         document.getElementById('archived').innerHTML = '';
@@ -582,7 +601,7 @@
         eventTabs[targetIndex].focus();
       });
     });
-    load();
+    chooseInitialView.then(load);
   </script>
 </body>
 </html>

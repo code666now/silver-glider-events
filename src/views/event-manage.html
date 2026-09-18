@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>Manage Event — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -38,7 +42,7 @@
       background: transparent; color: var(--sg-text); font: 600 13px var(--sg-font-body);
       text-align: left; cursor: pointer;
     }
-    .more-menu-panel button:hover { background: rgba(255,255,255,.055); }
+    @media (hover: hover) { .more-menu-panel button:hover { background: rgba(255,255,255,.055); } }
     .more-menu-panel button:disabled { cursor:wait;opacity:.58; }
     .more-menu-panel .danger { color: var(--sg-danger); }
     .more-menu-divider { height: 1px; margin: 6px 4px; background: var(--sg-border); }
@@ -64,7 +68,7 @@
       text-align:left;cursor:pointer;transition:background .16s ease,color .16s ease;
     }
     .promotion-action[hidden] { display:none; }
-    .promotion-action:hover { background:rgba(255,255,255,.035); }
+    @media (hover: hover) { .promotion-action:hover { background:rgba(255,255,255,.035); } }
     .promotion-action:focus-visible { outline:2px solid var(--sg-accent);outline-offset:-2px; }
     .promotion-action:disabled { cursor:not-allowed;opacity:.55; }
     .promotion-action-icon {
@@ -76,9 +80,9 @@
     .promotion-action-title { display:block;margin-bottom:2px;font-size:13px;font-weight:800;line-height:1.25; }
     .promotion-action-description { display:block;color:var(--sg-text-faint);font-size:11px;line-height:1.4; }
     .promotion-action-arrow { color:var(--sg-text-faint);font-size:18px;transition:transform .16s ease,color .16s ease; }
-    .promotion-action:hover .promotion-action-arrow { color:var(--sg-accent);transform:translateX(2px); }
+    @media (hover: hover) { .promotion-action:hover .promotion-action-arrow { color:var(--sg-accent);transform:translateX(2px); } }
     .promotion-action-readonly { cursor:default; }
-    .promotion-action-readonly:hover { background:transparent; }
+    @media (hover: hover) { .promotion-action-readonly:hover { background:transparent; } }
     .promotion-action-count {
       min-width:30px;padding:5px 8px;border:1px solid rgba(28,197,190,.22);border-radius:999px;
       background:rgba(28,197,190,.08);color:var(--sg-accent);font-size:11px;font-weight:800;text-align:center;
@@ -96,7 +100,7 @@
       font:800 12px var(--sg-font-body);cursor:pointer;transition:background .16s ease,border-color .16s ease;
     }
     .line-submit::after { content:'  →'; }
-    .line-submit:hover { border-color:var(--sg-accent);background:rgba(28,197,190,.14); }
+    @media (hover: hover) { .line-submit:hover { border-color:var(--sg-accent);background:rgba(28,197,190,.14); } }
     .line-submit:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
     .line-submit:disabled { cursor:not-allowed;opacity:.58; }
     .photo-collection-summary {
@@ -281,11 +285,13 @@
         letter-spacing:.01em;
         backdrop-filter:blur(10px);
       }
-      .manage-shell.is-past-event .manage-visual-column .hero-artwork-link:hover .hero-artwork-hint,
       .manage-shell.is-past-event .manage-visual-column .hero-artwork-link:focus-visible .hero-artwork-hint {
         border-color:rgba(28,197,190,.4);
         color:#fff;
-      }
+      }@media (hover: hover) { .manage-shell.is-past-event .manage-visual-column .hero-artwork-link:hover .hero-artwork-hint {
+        border-color:rgba(28,197,190,.4);
+        color:#fff;
+      } }
       .manage-shell.is-past-event .manage-visual-column .hero-banner:not(.flyer) {
         height:auto;
         min-height:0;
@@ -408,6 +414,10 @@
       .manage-mobile-hub[hidden] { display:none; }
       .manage-mobile-hub-intro { margin-bottom:var(--sg-mobile-intro-spacing); }
       .manage-mobile-hub-intro p { margin:0;color:var(--sg-text-dim);font-size:var(--sg-mobile-helper-size);line-height:1.5; }
+      .manage-mobile-headcount strong { color:var(--sg-text);font-weight:700; }
+      .manage-mobile-share { gap:10px;margin-top:18px; }
+      .manage-mobile-share[hidden] { display:none; }
+      .manage-mobile-share svg { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
       .manage-mobile-task-list { display:grid;gap:14px; }
       .manage-mobile-edit-slot:empty { display:none; }
       .manage-mobile-task {
@@ -418,7 +428,7 @@
       }
       .manage-mobile-task[hidden] { display:none; }
       .manage-mobile-task:not(:disabled):active { transform:scale(.99); }
-      .manage-mobile-task:not(:disabled):hover { border-color:rgba(28,197,190,.38);background:rgba(28,197,190,.035); }
+      @media (hover: hover) { .manage-mobile-task:not(:disabled):hover { border-color:rgba(28,197,190,.38);background:rgba(28,197,190,.035); } }
       .manage-mobile-task:disabled { cursor:wait;opacity:.52; }
       .manage-mobile-task-icon {
         width:48px;height:48px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:15px;
@@ -436,7 +446,7 @@
         color:var(--sg-text);font-family:var(--sg-font-body);text-align:left;text-decoration:none;box-shadow:none;
         transition:border-color .16s ease,background .16s ease,transform .16s ease;
       }
-      .manage-mobile-edit-slot #edit-link:not([aria-disabled="true"]):hover { border-color:var(--sg-accent);background:rgba(28,197,190,.095); }
+      @media (hover: hover) { .manage-mobile-edit-slot #edit-link:not([aria-disabled="true"]):hover { border-color:var(--sg-accent);background:rgba(28,197,190,.095); } }
       .manage-mobile-edit-slot #edit-link:not([aria-disabled="true"]):active { transform:scale(.99); }
       .manage-mobile-edit-slot #edit-link[aria-disabled="true"] { opacity:.52; }
       .manage-edit-desktop-label { display:none; }
@@ -572,7 +582,11 @@
 
     <section class="manage-mobile-hub" id="manage-mobile-hub" aria-label="Event management sections" hidden>
       <div class="manage-mobile-hub-intro">
-        <p>Choose an area. Your event stays live while you work.</p>
+        <p class="manage-mobile-headcount" id="manage-mobile-headcount" aria-live="polite">Choose an area. Your event stays live while you work.</p>
+        <button class="sg-btn sg-btn-primary sg-btn-block manage-mobile-share" id="manage-mobile-share" type="button" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v9h14v-9"/></svg>
+          Share event
+        </button>
       </div>
       <div class="manage-mobile-task-list">
         <div class="manage-mobile-edit-slot" id="manage-mobile-edit-slot"></div>

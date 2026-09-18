@@ -21,7 +21,7 @@
   cursor: pointer;
   transition: transform .18s ease, background .18s ease, border-color .18s ease;
 }
-.owner-edit-trigger:hover { transform: translateY(-1px); border-color: rgba(28,197,190,.45); background: rgba(47,47,52,.95); }
+@media (hover: hover) { .owner-edit-trigger:hover { transform: translateY(-1px); border-color: rgba(28,197,190,.45); background: rgba(47,47,52,.95); } }
 .owner-edit-trigger:focus-visible,
 .owner-editor button:focus-visible,
 .owner-editor a:focus-visible,
@@ -208,7 +208,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   font: 300 27px/1 var(--sg-font-body);
   cursor: pointer;
 }
-.owner-editor-close:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+@media (hover: hover) { .owner-editor-close:hover { color: #fff; border-color: rgba(255,255,255,.3); } }
 .owner-editor-peek { display: none; }
 .owner-editor-form { min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .owner-draft-notice { display: flex; align-items: center; gap: 9px; padding: 10px 16px; border-bottom: 1px solid rgba(245,185,66,.18); background: rgba(245,185,66,.065); color: #d9bd82; font-size: 10px; }
@@ -263,14 +263,17 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   cursor: pointer;
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
 }
-.owner-image-card:hover,
-.owner-image-card:focus-visible,
-.owner-image-card.is-dragging {
+.owner-image-card:focus-visible, .owner-image-card.is-dragging {
   border-color: rgba(28,197,190,.68);
   background-color: rgba(28,197,190,.07);
   box-shadow: 0 0 0 3px rgba(28,197,190,.1);
   outline: none;
-}
+}@media (hover: hover) { .owner-image-card:hover {
+  border-color: rgba(28,197,190,.68);
+  background-color: rgba(28,197,190,.07);
+  box-shadow: 0 0 0 3px rgba(28,197,190,.1);
+  outline: none;
+} }
 .owner-image-card img { width: 100%; height: 100%; display: none; object-fit: cover; }
 .owner-image-card.fit-contain {
   background:
@@ -317,9 +320,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   font: 700 11px/1.2 var(--sg-font-body);
   cursor: pointer;
 }
-.owner-action-button:hover,
-.owner-photo-search button:hover,
-.owner-load-more:hover { border-color: rgba(28,197,190,.46); color: var(--sg-accent); }
+@media (hover: hover) { .owner-action-button:hover, .owner-photo-search button:hover, .owner-load-more:hover { border-color: rgba(28,197,190,.46); color: var(--sg-accent); } }
 .owner-action-muted { padding-inline: 12px; color: var(--sg-text-faint); }
 .owner-inline-status { min-height: 18px; margin: 7px 2px 0; color: var(--sg-text-dim); font-size: 11px; }
 
@@ -450,7 +451,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-subview-head strong { font-size: 13px; }
 .owner-photo-search { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; }
 .owner-photo-search button { padding: 0 14px; background: var(--sg-accent); color: #071211; border-color: transparent; }
-.owner-photo-search button:hover { color: #071211; filter: brightness(1.08); }
+@media (hover: hover) { .owner-photo-search button:hover { color: #071211; filter: brightness(1.08); } }
 .owner-photo-categories { display: flex; gap: 7px; overflow-x: auto; margin: 12px 0 8px; padding-bottom: 3px; scrollbar-width: none; }
 .owner-photo-categories::-webkit-scrollbar { display: none; }
 .owner-photo-category { flex: 0 0 auto; min-height: 36px; padding: 0 12px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(255,255,255,.025); color: var(--sg-text-dim); font: 700 10px var(--sg-font-body); cursor: pointer; }
@@ -485,7 +486,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   .owner-input { font-size: 16px; }
   .owner-photo-category { min-height: 44px; }
 }
-.owner-input:hover { border-color: rgba(255,255,255,.25); }
+@media (hover: hover) { .owner-input:hover { border-color: rgba(255,255,255,.25); } }
 .owner-input:focus { border-color: rgba(28,197,190,.52); }
 .owner-textarea { min-height: 126px; resize: vertical; }
 .owner-places-status { min-height: 14px; color: var(--sg-text-faint); font-size: 10px; line-height: 1.4; }
@@ -508,7 +509,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   font: 700 10px/1.2 var(--sg-font-body);
   cursor: pointer;
 }
-.owner-location-mode-button:hover { border-color: rgba(28,197,190,.45); color: var(--sg-text); }
+@media (hover: hover) { .owner-location-mode-button:hover { border-color: rgba(28,197,190,.45); color: var(--sg-text); } }
 .owner-location-mode-button:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
 .owner-location-selection {
   display: grid;
@@ -540,8 +541,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   font-family: var(--sg-font-body);
 }
 .pac-item { padding: 9px 12px; border-top: 1px solid rgba(255,255,255,.08); color: var(--sg-text-dim); cursor: pointer; }
-.pac-item:hover,
-.pac-item-selected { background: rgba(28,197,190,.1); }
+.pac-item-selected { background: rgba(28,197,190,.1); }@media (hover: hover) { .pac-item:hover { background: rgba(28,197,190,.1); } }
 .pac-item-query { color: var(--sg-text); }
 .pac-matched { color: var(--sg-accent); }
 .owner-choice-field { display: grid; gap: 9px; }
@@ -580,7 +580,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-switch-row input:focus-visible + i { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
 .owner-editor-links { display: grid; gap: 8px; margin-top: 20px; }
 .owner-editor-links a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding: 0 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; color: var(--sg-text-dim); font-size: 11px; font-weight: 700; }
-.owner-editor-links a:hover { border-color: rgba(28,197,190,.36); color: var(--sg-accent); }
+@media (hover: hover) { .owner-editor-links a:hover { border-color: rgba(28,197,190,.36); color: var(--sg-accent); } }
 
 .owner-editor-foot { padding: 12px 16px max(12px,env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.1); background: rgba(19,19,23,.98); }
 .owner-editor-foot > p { min-height: 16px; margin: 0 0 8px; color: var(--sg-text-faint); font-size: 10px; text-align: right; }

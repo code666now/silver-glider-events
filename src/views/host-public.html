@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>{{HOST_NAME}} events | Silver Glider</title>
   <meta name="description" content="{{META_DESCRIPTION}}">
   <meta property="og:title" content="{{HOST_NAME}} events">
@@ -26,14 +30,14 @@
     .host-hero::after { content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,5,5,.12),transparent 45%,rgba(14,14,14,.82) 100%); }
     .host-hero-image { width:100%;height:100%;display:block;object-fit:cover;object-position:center; }
     .host-brand { position:absolute;z-index:2;top:28px;left:max(24px,calc((100% - 1080px)/2));color:rgba(255,255,255,.72);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.22em;text-shadow:0 1px 8px rgba(0,0,0,.6); }
-    .host-brand:hover { color:#fff; }
+    @media (hover: hover) { .host-brand:hover { color:#fff; } }
     .host-owner-dashboard {
       position:absolute;z-index:3;top:22px;right:clamp(24px,2vw,40px);display:inline-flex;align-items:center;justify-content:center;
       min-height:44px;padding:8px 14px;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(10,10,10,.58);
       color:rgba(255,255,255,.78);font-size:11px;font-weight:700;letter-spacing:.02em;box-shadow:0 8px 24px rgba(0,0,0,.16);
       -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);transition:color .16s ease,border-color .16s ease,background .16s ease,transform .16s ease;
     }
-    .host-owner-dashboard:hover { color:#fff;border-color:rgba(255,255,255,.28);background:rgba(10,10,10,.74);transform:translateY(-1px); }
+    @media (hover: hover) { .host-owner-dashboard:hover { color:#fff;border-color:rgba(255,255,255,.28);background:rgba(10,10,10,.74);transform:translateY(-1px); } }
     .host-shell { width:min(100% - 40px,1080px);margin:0 auto;padding:0 0 84px; }
     .host-identity { position:relative;z-index:3;display:flex;align-items:flex-end;gap:24px;margin-top:-54px;margin-bottom:58px; }
     .host-avatar {
@@ -51,11 +55,11 @@
       width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--sg-border);
       border-radius:50%;color:var(--sg-text-dim);background:rgba(17,17,17,.64);transition:color .16s ease,border-color .16s ease,transform .16s ease;
     }
-    .host-link:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.4);transform:translateY(-1px); }
+    @media (hover: hover) { .host-link:hover { color:var(--sg-accent);border-color:rgba(28,197,190,.4);transform:translateY(-1px); } }
     .host-link svg { width:18px;height:18px; }
     .host-follow { display:flex;align-items:center;gap:14px;margin-top:20px; }
     .host-follow-button { min-height:46px;padding:11px 21px;border:1px solid var(--sg-accent);border-radius:999px;background:var(--sg-accent);color:#080808;font:800 13px var(--sg-font-body);cursor:pointer;transition:transform .16s ease,background .16s ease,color .16s ease; }
-    .host-follow-button:hover { transform:translateY(-1px);background:var(--sg-accent-press); }
+    @media (hover: hover) { .host-follow-button:hover { transform:translateY(-1px);background:var(--sg-accent-press); } }
     .host-follow-button.following { background:rgba(28,197,190,.1);color:var(--sg-accent); }
     .host-follow-button:disabled { cursor:wait;opacity:.62;transform:none; }
     .host-follow p { max-width:360px;color:var(--sg-text-dim);font-size:13px;font-weight:600;line-height:1.5; }
@@ -71,7 +75,7 @@
     .follow-returning[hidden] { display:none; }
     .follow-returning-email { color:var(--sg-text-dim);font-size:13px;line-height:1.5;text-align:center; }
     .follow-use-email { min-height:44px;justify-self:center;border:0;background:transparent;color:var(--sg-text-dim);font:700 12px var(--sg-font-body);text-decoration:underline;text-underline-offset:3px;cursor:pointer; }
-    .follow-use-email:hover,.follow-use-email:focus-visible { color:var(--sg-text); }
+    .follow-use-email:focus-visible { color:var(--sg-text); }@media (hover: hover) { .follow-use-email:hover { color:var(--sg-text); } }
     .follow-modal-sent { display:none;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
     .follow-modal-sent > p { margin:0 0 16px; }
     .follow-account { display:grid;gap:15px; }
@@ -92,7 +96,7 @@
     .host-event-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px; }
     .host-event-grid.past { grid-template-columns:repeat(3,minmax(0,1fr)); }
     .host-event-card { display:flex;min-width:0;flex-direction:column;color:var(--sg-text);background:rgba(17,17,17,.82);border:1px solid var(--sg-border-soft);border-radius:22px;overflow:hidden;transition:transform .16s ease,border-color .16s ease; }
-    .host-event-card:hover { transform:translateY(-2px);border-color:rgba(28,197,190,.4); }
+    @media (hover: hover) { .host-event-card:hover { transform:translateY(-2px);border-color:rgba(28,197,190,.4); } }
     .host-event-art { aspect-ratio:16/9;background:var(--sg-surface);overflow:hidden; }
     .host-event-art img,.host-event-placeholder { display:block;width:100%;height:100%;object-fit:cover; }
     .host-event-art img.flyer-art { object-fit:contain;background:#090909; }
@@ -101,7 +105,7 @@
     .host-event-copy h3 { font-size:24px;line-height:1.15;margin-bottom:10px;overflow-wrap:anywhere; }
     .host-event-location { color:var(--sg-text-dim);font-size:13px;line-height:1.45; }
     .host-event-cta { display:inline-flex;align-items:center;gap:5px;margin-top:20px;color:var(--sg-text);font-size:12px;font-weight:700; }
-    .host-event-card:hover .host-event-cta { color:var(--sg-accent); }
+    @media (hover: hover) { .host-event-card:hover .host-event-cta { color:var(--sg-accent); } }
     .host-event-card.past .host-event-copy { padding:17px 18px 19px; }
     .host-event-card.past .host-event-copy h3 { font-size:20px; }
     .host-event-card.past .host-event-cta { margin-top:16px; }

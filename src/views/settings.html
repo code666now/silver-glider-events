@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title>Settings — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -72,7 +76,7 @@
     .credits-setup[hidden] { display:none; }
     .credit-packs { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px; }
     .credit-pack { min-width:0;padding:17px;text-align:left;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(255,255,255,.018);color:var(--sg-text);cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease; }
-    .credit-pack:hover:not(:disabled) { border-color:rgba(28,197,190,.5);transform:translateY(-1px); }
+    @media (hover: hover) { .credit-pack:hover:not(:disabled) { border-color:rgba(28,197,190,.5);transform:translateY(-1px); } }
     .credit-pack[aria-pressed="true"] { border-color:var(--sg-accent);background:rgba(28,197,190,.075); }
     .credit-pack:focus-visible { outline:2px solid rgba(28,197,190,.45);outline-offset:3px; }
     .credit-pack:disabled { opacity:.46;cursor:not-allowed; }

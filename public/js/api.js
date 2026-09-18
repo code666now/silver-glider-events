@@ -70,11 +70,16 @@ function renderNav(active) {
     ['settings', '/settings', 'Settings']
   ];
   el.className = 'sg-nav';
+  // On phones, signed-in pages keep Feedback and the legal links inside this menu
+  // instead of a floating pill and a footer below every screen.
+  document.body.classList.add('sg-app-page');
   el.innerHTML = `
     <a class="sg-nav-brand" href="/dashboard">Silver Glider <span>Events</span></a>
     <div class="sg-nav-links">
       ${links.map(([key, href, label]) =>
         `<a href="${href}" class="${key === active ? 'active' : ''}${key === 'settings' ? ' sg-nav-settings-link' : ''}">${label}</a>`).join('')}
+      <button class="sg-nav-feedback" type="button">Send feedback</button>
+      <p class="sg-nav-legal"><a href="/privacy">Privacy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
     </div>
     <div class="sg-nav-actions">
       <div class="sg-account-menu">
@@ -125,6 +130,10 @@ function renderNav(active) {
   });
   el.querySelector('.sg-nav-links').addEventListener('click', e => {
     if (e.target.closest('a')) closeMenu();
+  });
+  el.querySelector('.sg-nav-feedback').addEventListener('click', () => {
+    closeMenu();
+    document.getElementById('feedback-bubble')?.click();
   });
   document.addEventListener('click', e => {
     if (!el.contains(e.target)) {
@@ -242,7 +251,9 @@ function mountFeedbackBubble() {
       localStorage.removeItem(draftKey);
       restoredDraft = false;
     }
-    document.getElementById('feedback-bubble').focus();
+    const bubble = document.getElementById('feedback-bubble');
+    // On phones the bubble is hidden and Feedback opens from the menu.
+    (bubble.offsetParent ? bubble : document.querySelector('.sg-nav-toggle') || bubble).focus();
   }
 
   document.getElementById('feedback-bubble').addEventListener('click', openFeedback);
