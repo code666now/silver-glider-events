@@ -155,7 +155,10 @@ function renderNav(active) {
   });
 
   api('/api/auth/me').then(({ organizer }) => updateNavAccount(organizer)).catch(() => {});
-  if (TAB_BAR_TABS.some(([key]) => key === active)) mountTabBar(active);
+  // The tab bar belongs only to the four top-level destinations. Focused
+  // create, edit, manage, and Settings detail screens reuse the same nav key
+  // but keep their own back navigation and bottom action docks.
+  if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
 }
 
 // Phones: the four main places sit in a bottom tab bar, within thumb reach.
@@ -167,6 +170,11 @@ const TAB_BAR_TABS = [
   ['following', '/following', 'Following', '<path d="M12 20s-7.5-4.6-7.5-10.1A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20Z"/>'],
   ['settings', '/settings', 'Settings', '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>']
 ];
+
+function topLevelTabForPath(pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return TAB_BAR_TABS.find(([, href]) => href === normalized)?.[0] || null;
+}
 
 function mountTabBar(active) {
   if (document.querySelector('.sg-tab-bar')) return;
@@ -275,7 +283,7 @@ function mountFeedbackBubble() {
     }
     const bubble = document.getElementById('feedback-bubble');
     // On phones the bubble is hidden and Feedback opens from the menu.
-    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
+    const focusTarget = [document.getElementById('settings-feedback'), bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
       .find(candidate => {
         if (!candidate || candidate.hidden || !candidate.getClientRects().length) return false;
         const style = window.getComputedStyle(candidate);
