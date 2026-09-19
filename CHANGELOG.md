@@ -2,6 +2,24 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.115
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* Signed-in phone Home, My Events, Following, and Settings pages now use a fixed, safe-area-aware bottom tab bar with clear active states and thumb-friendly targets. Existing Create Event actions and toasts move above it instead of being covered.
+* Settings keeps Send feedback, Privacy Policy, Terms, and administrator destinations available after the phone hamburger is replaced.
+
+### Maintenance and reliability
+
+* The unused target-first `previous-guests` API and its duplicate eligibility helper are removed. Familiar Faces, invitation batches, delivery jobs, message auditing, and the active Invite your people flow remain intact.
+* The tab bar is restricted to the four exact top-level destinations, so Quick Create, event editing, Manage Event, and Settings detail screens retain their focused navigation and action docks. Closing Feedback from Settings restores focus to the visible launcher.
+
+### Compatibility
+
+* Desktop navigation, admin workspaces, public Standard and Flyer pages, event and RSVP data, permissions, emails, reminders, and the active Familiar Faces backend are unchanged. No database migration is required.
+
 ## 1.0.114
 
 Released September 18, 2026. Built and deployed by Codex.
