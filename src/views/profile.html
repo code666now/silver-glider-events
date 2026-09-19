@@ -45,6 +45,7 @@
     }
     .profile-stat strong { font: 700 44px/1 var(--sg-font-display); }
     .profile-stat span { text-align: center; color: var(--sg-text-dim); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .profile-stats-status { min-height: 20px; margin: 10px 0 0; color: var(--sg-text-dim); font-size: 13px; text-align: center; }
     .profile-host {
       display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; min-height: 72px; margin-top: 16px;
       padding: 0 20px; border: 1px solid var(--sg-border-soft); border-radius: 18px; background: rgba(255,255,255,.025); color: var(--sg-text);
@@ -62,7 +63,7 @@
     <nav id="nav"></nav>
     <main class="profile-card" aria-busy="true" id="profile">
       <div class="profile-photo">
-        <span class="profile-avatar" data-sg-avatar><span data-sg-initials></span><img alt="" hidden></span>
+        <span class="profile-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials></span><img alt="" hidden></span>
         <button class="profile-photo-button" id="profile-photo-button" type="button" aria-label="Change your photo" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
         </button>
@@ -77,6 +78,7 @@
       <div class="profile-stat"><strong id="stat-attended">–</strong><span>Attended</span></div>
       <div class="profile-stat"><strong id="stat-hosted">–</strong><span>Hosted</span></div>
     </section>
+    <p class="profile-stats-status" id="profile-stats-status" role="status" aria-live="polite"></p>
     <a class="profile-host" id="profile-host" href="/settings/host-page" hidden>
       <span><strong id="profile-host-title">Your host page</strong><small id="profile-host-copy">See what guests see.</small></span>
       <span aria-hidden="true">›</span>
@@ -111,11 +113,14 @@
 
     api('/api/auth/me').then(({ organizer }) => showAccount(organizer)).catch(() => {
       $('profile-status').textContent = 'Your profile could not be loaded. Try again.';
+      $('profile').setAttribute('aria-busy', 'false');
     });
     api('/api/me/stats').then(stats => {
       $('stat-attended').textContent = Number(stats.attended) || 0;
       $('stat-hosted').textContent = Number(stats.hosted) || 0;
-    }).catch(() => {});
+    }).catch(() => {
+      $('profile-stats-status').textContent = 'Event counts could not be loaded. Refresh to try again.';
+    });
 
     // Same upload path as Settings → Account; saves only the account photo.
     $('profile-photo-button').addEventListener('click', () => $('profile-photo-input').click());

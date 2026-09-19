@@ -101,7 +101,6 @@
 
 @media (max-width: 1023px) {
   .sg-nav-links .sg-nav-settings-link { display: block; }
-  .sg-account-menu { display: none; }
   .sg-nav-actions { margin-left: 0; }
 }
 .sg-nav-toggle span {
@@ -366,6 +365,8 @@
 
 /* Phone-only V2 foundation. Keep every override below the 880px desktop split. */
 @media (max-width: 879px) {
+  .sg-account-menu { display: none; }
+
   :root {
     --sg-mobile-page-gutter: 22px;
     --sg-mobile-title-size: var(--sg-mobile-page-title-size);

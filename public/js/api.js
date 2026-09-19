@@ -52,10 +52,21 @@ function sgPaintAvatar(el, organizer) {
   if (initials) initials.textContent = sgAccountInitials(organizer);
   const url = sgSafeHttpUrl(organizer?.avatar_url);
   if (image && url) {
+    image.hidden = true;
+    if (initials) initials.hidden = false;
+    image.onload = () => {
+      image.hidden = false;
+      if (initials) initials.hidden = true;
+    };
+    image.onerror = () => {
+      image.removeAttribute('src');
+      image.hidden = true;
+      if (initials) initials.hidden = false;
+    };
     image.src = url;
-    image.hidden = false;
-    if (initials) initials.hidden = true;
   } else if (image) {
+    image.onload = null;
+    image.onerror = null;
     image.removeAttribute('src');
     image.hidden = true;
     if (initials) initials.hidden = false;
@@ -70,20 +81,24 @@ function updateNavAccount(organizer) {
     sgCurrentAccount = sgCurrentAccount && sgCurrentAccount.id === organizer.id ? { ...sgCurrentAccount, ...organizer } : organizer;
     document.querySelectorAll('[data-sg-avatar]').forEach(el => sgPaintAvatar(el, sgCurrentAccount));
     document.querySelectorAll('[data-sg-name]').forEach(el => { el.textContent = sgAccountDisplayName(sgCurrentAccount); });
+    // The menu can be opened before the account request finishes. Hydrate every
+    // value as soon as the response arrives instead of requiring a close/reopen.
+    if (menuSheet) fillMenuSheet(menuSheet, sgCurrentAccount);
   }
   const menu = document.querySelector('.sg-account-menu');
   if (!menu || !organizer) return;
-  const displayName = String(organizer.name || organizer.org_name || organizer.email || 'Account').trim();
+  const account = sgCurrentAccount || organizer;
+  const displayName = String(account.name || account.org_name || account.email || 'Account').trim();
   const initials = displayName.split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
   const name = menu.querySelector('.sg-account-menu-name');
   const plan = menu.querySelector('.sg-account-menu-plan');
   const fallback = menu.querySelector('.sg-account-avatar-fallback');
   const image = menu.querySelector('.sg-account-avatar-image');
   name.textContent = displayName;
-  plan.textContent = `${organizer.plan === 'pro' ? 'Pro' : 'Free'} plan`;
+  plan.textContent = `${account.plan === 'pro' ? 'Pro' : 'Free'} plan`;
   fallback.textContent = initials;
-  if (organizer.avatar_url) {
-    image.src = organizer.avatar_url;
+  if (account.avatar_url) {
+    image.src = account.avatar_url;
     image.hidden = false;
     fallback.hidden = true;
   } else {
@@ -337,11 +352,30 @@ function loadMenuSheetArt(sheet) {
   if (menuSheetArtLoaded) return;
   menuSheetArtLoaded = true;
   api('/api/events').then(({ events }) => {
-    const withArt = (events || []).find(ev => sgSafeHttpUrl(ev.cover_image_url || ev.flyer_image_url));
-    if (!withArt) return;
+    const artworkUrls = (events || []).map(ev => sgSafeHttpUrl(
+      ev.presentation_mode === 'flyer'
+        ? (ev.flyer_image_url || ev.cover_image_url)
+        : (ev.cover_image_url || ev.flyer_image_url)
+    )).filter(Boolean);
+    if (!artworkUrls.length) return;
     const art = sheet.querySelector('.sg-menu-new-art');
-    art.querySelector('img').src = sgSafeHttpUrl(withArt.cover_image_url || withArt.flyer_image_url);
-    art.hidden = false;
+    const image = art.querySelector('img');
+    const tryArtwork = () => {
+      const url = artworkUrls.shift();
+      if (!url) {
+        art.hidden = true;
+        image.removeAttribute('src');
+        return;
+      }
+      image.onload = () => { art.hidden = false; };
+      image.onerror = () => {
+        art.hidden = true;
+        image.removeAttribute('src');
+        tryArtwork();
+      };
+      image.src = url;
+    };
+    tryArtwork();
   }).catch(() => {});
 }
 
