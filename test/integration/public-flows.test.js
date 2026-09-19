@@ -3915,3 +3915,30 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
   const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(signedInLogin.headers.get('location'), '/events/new');
 });
+
+test('profile stats count past events attended elsewhere and past events hosted', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  await createEvent({ slug: 'stats-hosted-past', event_date: '2020-02-02' });
+  await createEvent({ slug: 'stats-hosted-future', event_date: '2031-02-02' });
+  await createEvent({ slug: 'stats-hosted-draft', event_date: '2020-03-03', status: 'draft' });
+  const otherHost = (await pool.query(
+    `INSERT INTO organizers (email, org_name, public_slug) VALUES ('stats-host@example.test','Stats Host','stats-host') RETURNING id`
+  )).rows[0];
+  const insertOther = async (slug, date) => (await pool.query(
+    `INSERT INTO events (organizer_id, slug, title, event_date, start_time, venue_name, visibility, status)
+     VALUES ($1,$2,'Other','${date}','20:00','Hall','public','published') RETURNING id`,
+    [otherHost.id, slug]
+  )).rows[0];
+  const went = await insertOther('stats-went', '2020-04-04');
+  const cancelled = await insertOther('stats-cancelled', '2020-05-05');
+  const upcoming = await insertOther('stats-upcoming', '2031-05-05');
+  await createRsvp(went.id, { account_id: organizerId });
+  await createRsvp(went.id, { account_id: organizerId });
+  await createRsvp(cancelled.id, { account_id: organizerId, status: 'cancelled' });
+  await createRsvp(upcoming.id, { account_id: organizerId });
+
+  const response = await fetch(`${baseUrl}/api/me/stats`, { headers: { cookie } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { attended: 1, hosted: 1 });
+  assert.equal((await fetch(`${baseUrl}/api/me/stats`)).status, 401);
+});

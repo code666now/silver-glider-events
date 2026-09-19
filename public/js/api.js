@@ -37,7 +37,40 @@ function sgSafeHttpUrl(value) {
   }
 }
 
+function sgAccountDisplayName(organizer) {
+  return String(organizer?.name || organizer?.org_name || organizer?.email || 'Account').trim();
+}
+
+function sgAccountInitials(organizer) {
+  return sgAccountDisplayName(organizer).split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
+}
+
+// Paints a photo-or-initials avatar: <span data-sg-avatar><span data-sg-initials></span><img hidden></span>
+function sgPaintAvatar(el, organizer) {
+  const initials = el.querySelector('[data-sg-initials]');
+  const image = el.querySelector('img');
+  if (initials) initials.textContent = sgAccountInitials(organizer);
+  const url = sgSafeHttpUrl(organizer?.avatar_url);
+  if (image && url) {
+    image.src = url;
+    image.hidden = false;
+    if (initials) initials.hidden = true;
+  } else if (image) {
+    image.removeAttribute('src');
+    image.hidden = true;
+    if (initials) initials.hidden = false;
+  }
+}
+
+let sgCurrentAccount = null;
+
 function updateNavAccount(organizer) {
+  if (organizer) {
+    // Merge: some responses (e.g. a photo upload) carry only part of the account.
+    sgCurrentAccount = sgCurrentAccount && sgCurrentAccount.id === organizer.id ? { ...sgCurrentAccount, ...organizer } : organizer;
+    document.querySelectorAll('[data-sg-avatar]').forEach(el => sgPaintAvatar(el, sgCurrentAccount));
+    document.querySelectorAll('[data-sg-name]').forEach(el => { el.textContent = sgAccountDisplayName(sgCurrentAccount); });
+  }
   const menu = document.querySelector('.sg-account-menu');
   if (!menu || !organizer) return;
   const displayName = String(organizer.name || organizer.org_name || organizer.email || 'Account').trim();
@@ -92,6 +125,7 @@ function renderNav(active) {
             <strong class="sg-account-menu-name">Account</strong>
             <span class="sg-account-menu-plan">Free plan</span>
           </div>
+          <a href="/profile" role="menuitem">Profile</a>
           <a href="/settings/account" role="menuitem">Settings</a>
           <button class="sg-account-menu-signout" type="button" role="menuitem">Sign out</button>
         </div>
@@ -116,6 +150,10 @@ function renderNav(active) {
   };
 
   toggle.addEventListener('click', () => {
+    if (usesMenuSheet()) {
+      openMenuSheet(toggle);
+      return;
+    }
     closeAccountMenu();
     const isOpen = el.classList.toggle('open');
     toggle.setAttribute('aria-expanded', String(isOpen));
@@ -161,19 +199,24 @@ function renderNav(active) {
   if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
 }
 
-// Phones: the four main places sit in a bottom tab bar, within thumb reach.
-// It replaces the hamburger menu there (CSS hides it); Feedback and the legal
-// links live on the Settings screen.
+// Phones: Home, Events, Create, Hosts and You sit in a bottom tab bar, within
+// thumb reach. The ☰ then opens a full-screen menu panel instead of the dropdown.
+const TAB_BAR_KEYS = ['dashboard', 'events', 'following', 'profile', 'settings'];
 const TAB_BAR_TABS = [
   ['dashboard', '/dashboard', 'Home', '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-5h4v5"/>'],
   ['events', '/events', 'Events', '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'],
-  ['following', '/following', 'Following', '<path d="M12 20s-7.5-4.6-7.5-10.1A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20Z"/>'],
-  ['settings', '/settings', 'Settings', '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>']
+  ['create', '/events/new', 'Create', '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M12 8v8M8 12h8"/>'],
+  ['following', '/following', 'Hosts', '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 5.3"/>'],
+  ['profile', '/profile', 'You', null]
 ];
 
+// Settings is reached from the ☰ panel, not a tab, but its top-level screen
+// still shows the bar (with no tab highlighted).
 function topLevelTabForPath(pathname) {
   const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
-  return TAB_BAR_TABS.find(([, href]) => href === normalized)?.[0] || null;
+  if (normalized === '/settings') return 'settings';
+  const tab = TAB_BAR_TABS.find(([, href]) => href === normalized)?.[0] || null;
+  return TAB_BAR_KEYS.includes(tab) ? tab : null;
 }
 
 function mountTabBar(active) {
@@ -181,11 +224,153 @@ function mountTabBar(active) {
   const bar = document.createElement('nav');
   bar.className = 'sg-tab-bar';
   bar.setAttribute('aria-label', 'Main');
-  bar.innerHTML = TAB_BAR_TABS.map(([key, href, label, icon]) =>
-    `<a class="sg-tab" href="${href}"${key === active ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span></a>`).join('');
+  bar.innerHTML = TAB_BAR_TABS.map(([key, href, label, icon]) => {
+    const glyph = icon
+      ? `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>`
+      : '<span class="sg-tab-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials>SG</span><img alt="" hidden></span>';
+    return `<a class="sg-tab sg-tab-${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}>${glyph}<span>${label}</span></a>`;
+  }).join('');
   document.body.appendChild(bar);
   document.body.classList.add('has-tab-bar');
+  if (sgCurrentAccount) updateNavAccount(sgCurrentAccount);
 }
+
+const menuSheetMedia = window.matchMedia('(max-width: 879px)');
+function usesMenuSheet() {
+  return document.body.classList.contains('has-tab-bar') && menuSheetMedia.matches;
+}
+
+const MENU_ICONS = {
+  host: '<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>',
+  messaging: '<path d="M4 5h16v11H9l-5 4z"/>',
+  feedback: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path d="M8.5 10h.01M15.5 10h.01M8.5 14.5c1.9 1.6 5.1 1.6 7 0"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+  admin: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/>',
+  signout: '<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 16l-4-4 4-4M6 12h10"/>'
+};
+const menuIcon = name => `<svg class="sg-menu-icon" viewBox="0 0 24 24" aria-hidden="true">${MENU_ICONS[name]}</svg>`;
+
+let menuSheet = null;
+let menuSheetReturnFocus = null;
+let menuSheetArtLoaded = false;
+
+function buildMenuSheet() {
+  const sheet = document.createElement('div');
+  sheet.className = 'sg-menu-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+  sheet.setAttribute('aria-label', 'Menu');
+  sheet.hidden = true;
+  sheet.innerHTML = `
+    <div class="sg-menu-sheet-inner">
+      <button class="sg-menu-close" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <a class="sg-menu-profile" href="/profile">
+        <span class="sg-menu-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials>SG</span><img alt="" hidden></span>
+        <span class="sg-menu-profile-copy"><strong data-sg-name>Account</strong><small>See your profile</small></span>
+        <span class="sg-menu-chevron" aria-hidden="true">›</span>
+      </a>
+      <a class="sg-menu-new" href="/events/new">
+        <span class="sg-menu-new-label"><span aria-hidden="true">+</span> New event</span>
+        <span class="sg-menu-new-art" aria-hidden="true" hidden><img alt=""></span>
+      </a>
+      <div class="sg-menu-group">
+        <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>Host page</span><span class="sg-menu-value" data-menu-host-value></span></a>
+        <a class="sg-menu-row" href="/settings/messaging">${menuIcon('messaging')}<span>Messaging</span><span class="sg-menu-value" data-menu-credits></span></a>
+        <button class="sg-menu-row" type="button" data-menu-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
+      </div>
+      <div class="sg-menu-group">
+        <a class="sg-menu-row" href="/settings">${menuIcon('settings')}<span>Settings</span></a>
+      </div>
+      <div class="sg-menu-group" data-menu-admin hidden></div>
+      <div class="sg-menu-group">
+        <button class="sg-menu-row" type="button" data-menu-signout>${menuIcon('signout')}<span>Sign out</span></button>
+      </div>
+      <p class="sg-menu-legal"><a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
+    </div>`;
+  document.body.appendChild(sheet);
+
+  sheet.querySelector('.sg-menu-close').addEventListener('click', closeMenuSheet);
+  sheet.querySelector('[data-menu-feedback]').addEventListener('click', () => {
+    closeMenuSheet();
+    document.getElementById('feedback-bubble')?.click();
+  });
+  sheet.querySelector('[data-menu-signout]').addEventListener('click', async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+    window.location.href = '/login';
+  });
+  sheet.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMenuSheet();
+    if (event.key !== 'Tab') return;
+    const focusable = [...sheet.querySelectorAll('a[href],button:not([disabled])')].filter(el => el.offsetParent);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  return sheet;
+}
+
+function fillMenuSheet(sheet, organizer) {
+  if (!organizer) return;
+  sheet.querySelectorAll('[data-sg-avatar]').forEach(el => sgPaintAvatar(el, organizer));
+  sheet.querySelector('[data-sg-name]').textContent = sgAccountDisplayName(organizer);
+  const host = sheet.querySelector('[data-menu-host]');
+  if (organizer.public_slug) {
+    host.href = `/h/${encodeURIComponent(organizer.public_slug)}`;
+    sheet.querySelector('[data-menu-host-value]').textContent = 'View';
+  } else {
+    host.href = '/settings/host-page';
+    sheet.querySelector('[data-menu-host-value]').textContent = 'Set up';
+  }
+  const credits = Number(organizer.sms_credits) || 0;
+  sheet.querySelector('[data-menu-credits]').textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
+  const admin = sheet.querySelector('[data-menu-admin]');
+  admin.hidden = !organizer.is_admin;
+  // One row; the admin pages have their own section tabs.
+  if (organizer.is_admin && !admin.children.length) {
+    admin.innerHTML = `<a class="sg-menu-row" href="/admin/hosts">${menuIcon('admin')}<span>Admin</span></a>`;
+  }
+}
+
+// The New event card shows the host's latest artwork, so it feels like theirs.
+function loadMenuSheetArt(sheet) {
+  if (menuSheetArtLoaded) return;
+  menuSheetArtLoaded = true;
+  api('/api/events').then(({ events }) => {
+    const withArt = (events || []).find(ev => sgSafeHttpUrl(ev.cover_image_url || ev.flyer_image_url));
+    if (!withArt) return;
+    const art = sheet.querySelector('.sg-menu-new-art');
+    art.querySelector('img').src = sgSafeHttpUrl(withArt.cover_image_url || withArt.flyer_image_url);
+    art.hidden = false;
+  }).catch(() => {});
+}
+
+function openMenuSheet(trigger) {
+  menuSheet = menuSheet || buildMenuSheet();
+  menuSheetReturnFocus = trigger || null;
+  fillMenuSheet(menuSheet, sgCurrentAccount);
+  loadMenuSheetArt(menuSheet);
+  menuSheet.hidden = false;
+  document.documentElement.classList.add('sg-menu-sheet-open');
+  if (trigger) trigger.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => {
+    menuSheet.classList.add('open');
+    menuSheet.querySelector('.sg-menu-close').focus();
+  });
+}
+
+function closeMenuSheet() {
+  if (!menuSheet || menuSheet.hidden) return;
+  menuSheet.classList.remove('open');
+  document.documentElement.classList.remove('sg-menu-sheet-open');
+  if (menuSheetReturnFocus) {
+    menuSheetReturnFocus.setAttribute('aria-expanded', 'false');
+    menuSheetReturnFocus.focus();
+  }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(() => { if (!menuSheet.classList.contains('open')) menuSheet.hidden = true; }, reduced ? 0 : 220);
+}
+menuSheetMedia.addEventListener('change', () => { if (!menuSheetMedia.matches) closeMenuSheet(); });
 
 // Inject the moving aurora background behind the page (once).
 function mountAurora() {
@@ -283,7 +468,7 @@ function mountFeedbackBubble() {
     }
     const bubble = document.getElementById('feedback-bubble');
     // On phones the bubble is hidden and Feedback opens from the menu.
-    const focusTarget = [document.getElementById('settings-feedback'), bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
+    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
       .find(candidate => {
         if (!candidate || candidate.hidden || !candidate.getClientRects().length) return false;
         const style = window.getComputedStyle(candidate);

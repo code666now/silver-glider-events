@@ -79,6 +79,7 @@ app.get('/login', (req, res) => {
 app.get('/dashboard', requireOrganizer, view('dashboard.html'));
 app.get('/events', requireOrganizer, view('events.html'));
 app.get('/following', requireOrganizer, view('following.html'));
+app.get('/profile', requireOrganizer, view('profile.html'));
 app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
   try {
     const requestedSlug = String(req.query.event || '').trim();
