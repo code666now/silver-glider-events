@@ -456,11 +456,17 @@ api('/api/auth/me').then(({ organizer }) => {
   if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
   if (organizer.is_admin) {
     const nav = document.querySelector('.sg-nav-links');
-    nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/ticketing">Ticketing</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
+    const adminLinks = [['/admin/line', 'The Line'], ['/admin/hosts', 'Hosts'], ['/admin/ticketing', 'Ticketing'], ['/admin/feedback', 'Feedback'], ['/admin/invitations', 'Invitations']];
+    nav.insertAdjacentHTML('beforeend', adminLinks.map(([href, label]) => `<a href="${href}">${label}</a>`).join(''));
+    // Phones hide the hamburger behind the tab bar, so admin links also live on Settings.
+    const adminList = settingsElement('settings-admin-list');
+    adminList.innerHTML = adminLinks.map(([href, label]) => `<a class="settings-more-link" href="${href}">Admin · ${label}</a>`).join('');
+    adminList.hidden = false;
   }
   loadSmsCredits().then(showCheckoutReturn);
 }).catch(showSettingsError);
 
+settingsElement('settings-feedback').addEventListener('click', () => document.getElementById('feedback-bubble')?.click());
 settingsElement('name').addEventListener('input', updateAccountDirty);
 settingsElement('account-form').addEventListener('submit', async event => {
   event.preventDefault();
