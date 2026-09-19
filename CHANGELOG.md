@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.117
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Identity foundation
+
+* A new canonical `users` record now owns normalized email, phone, and future Google identities. Existing organizer IDs are preserved one-for-one, so current sessions and every host/guest relationship remain compatible while later migrations can move ownership to `user_id` incrementally.
+* Verified email and phone sign-in now resolve through the canonical identity layer. First RSVPs still create only an unverified person record, and event-, invitation-, or photo-scoped proof can never become account authentication by accident.
+* Email/phone conflicts are quarantined for review and are never silently merged. Active normalized credentials are unique, scoped proof provenance is auditable, and legacy phone/email projections remain synchronized during the compatibility window.
+
+### Safety and compatibility
+
+* Migration `043_canonical_user_identity_foundation.sql` is additive: it retains legacy columns and data, backfills conservatively, records ambiguous rows instead of guessing, preserves the monotonic account-ID sequence, and keeps organizer names synchronized with canonical users.
+* Identity attachment is transaction-safe under concurrent sign-in and enrollment. Sign out everywhere remains available during quarantined store drift, and verified phone sign-in repairs a missing legacy projection only after possession is proved.
+* No UI, RSVP journey, event permissions, Follow Host behavior, Familiar Faces behavior, emails, reminders, pricing, or public-page presentation changed in this release.
+
 ## 1.0.116
 
 Released September 18, 2026. Built and deployed by Codex.

@@ -1,0 +1,561 @@
+-- Canonical people and their authentication identifiers. This migration is
+-- deliberately additive: organizers remains the compatibility/profile table
+-- while users.id is backfilled to the same integer for every legacy row.
+CREATE TABLE IF NOT EXISTS users (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT users_name_check
+    CHECK (name IS NULL OR CHAR_LENGTH(BTRIM(name)) BETWEEN 1 AND 160)
+);
+
+-- Prevent an organizer write from racing the explicit-ID backfill or its
+-- sequence repair while this transactional migration is running.
+LOCK TABLE organizers IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE;
+
+-- Both tables allocate from the existing organizer sequence. Sharing one
+-- allocator prevents a canonical-only user and a later organizer from ever
+-- receiving the same integer while IDs remain compatibility-aligned.
+DO $$
+DECLARE
+  organizer_id_sequence TEXT;
+BEGIN
+  organizer_id_sequence := pg_get_serial_sequence('organizers', 'id');
+  IF organizer_id_sequence IS NULL THEN
+    RAISE EXCEPTION 'organizers.id must have a sequence before canonical identity migration';
+  END IF;
+  EXECUTE format(
+    'ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval(%L::regclass)',
+    organizer_id_sequence
+  );
+END
+$$;
+
+INSERT INTO users (id, name, created_at, updated_at)
+SELECT
+  o.id,
+  LEFT(NULLIF(BTRIM(o.name), ''), 160),
+  COALESCE(o.created_at, NOW()),
+  COALESCE(o.last_login_at, o.created_at, NOW())
+FROM organizers o
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    updated_at = CASE
+      WHEN users.name IS DISTINCT FROM EXCLUDED.name THEN NOW()
+      ELSE GREATEST(users.updated_at, EXCLUDED.updated_at)
+    END;
+
+-- Explicit legacy IDs do not advance the shared sequence. Move it forward when
+-- necessary, but never rewind it to MAX(id): deleted numeric IDs may still be
+-- present in signed sessions and must never be handed to a different person.
+DO $$
+DECLARE
+  organizer_id_sequence REGCLASS;
+  sequence_last_value BIGINT;
+  sequence_is_called BOOLEAN;
+  maximum_user_id BIGINT;
+BEGIN
+  organizer_id_sequence := pg_get_serial_sequence('organizers', 'id')::regclass;
+  EXECUTE format('SELECT last_value,is_called FROM %s', organizer_id_sequence)
+    INTO sequence_last_value, sequence_is_called;
+
+  SELECT MAX(candidate.id)
+    INTO maximum_user_id
+    FROM (
+      SELECT id FROM organizers
+      UNION ALL
+      SELECT id FROM users
+    ) candidate;
+
+  PERFORM setval(
+    organizer_id_sequence,
+    GREATEST(sequence_last_value, COALESCE(maximum_user_id, 1)),
+    sequence_is_called OR maximum_user_id IS NOT NULL
+  );
+END
+$$;
+
+ALTER TABLE organizers ADD COLUMN IF NOT EXISTS user_id INTEGER;
+
+UPDATE organizers
+   SET user_id = id
+ WHERE user_id IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conname = 'organizers_user_id_fkey'
+       AND conrelid = 'organizers'::regclass
+  ) THEN
+    ALTER TABLE organizers
+      ADD CONSTRAINT organizers_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conname = 'organizers_user_id_matches_id_check'
+       AND conrelid = 'organizers'::regclass
+  ) THEN
+    ALTER TABLE organizers
+      ADD CONSTRAINT organizers_user_id_matches_id_check
+      CHECK (user_id IS NULL OR user_id = id);
+  END IF;
+END
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS organizers_user_id_uq
+  ON organizers (user_id)
+  WHERE user_id IS NOT NULL;
+
+-- Legacy code still inserts organizers directly. Keep those rows aligned with
+-- the canonical key during the staged application rollout, but do not infer or
+-- promote any login identity in this trigger. It runs AFTER INSERT so a losing
+-- INSERT ... ON CONFLICT attempt cannot leave behind an orphan users row.
+CREATE OR REPLACE FUNCTION ensure_organizer_canonical_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  INSERT INTO users (id, name, created_at, updated_at)
+  VALUES (
+    NEW.id,
+    LEFT(NULLIF(BTRIM(NEW.name), ''), 160),
+    COALESCE(NEW.created_at, NOW()),
+    COALESCE(NEW.last_login_at, NEW.created_at, NOW())
+  )
+  ON CONFLICT (id) DO UPDATE
+    SET name = EXCLUDED.name,
+        updated_at = CASE
+          WHEN users.name IS DISTINCT FROM EXCLUDED.name THEN NOW()
+          ELSE users.updated_at
+        END;
+
+  UPDATE organizers
+     SET user_id = NEW.id
+   WHERE id = NEW.id
+     AND user_id IS NULL;
+  RETURN NEW;
+END
+$$;
+
+DROP TRIGGER IF EXISTS organizers_ensure_canonical_user ON organizers;
+CREATE TRIGGER organizers_ensure_canonical_user
+AFTER INSERT OR UPDATE OF name ON organizers
+FOR EACH ROW
+EXECUTE FUNCTION ensure_organizer_canonical_user();
+
+CREATE TABLE IF NOT EXISTS user_identities (
+  id                         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  user_id                    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  identity_type              TEXT NOT NULL,
+  value                      TEXT NOT NULL,
+  normalized_value           TEXT NOT NULL,
+  verified_at                TIMESTAMPTZ,
+  verification_scope         TEXT NOT NULL DEFAULT 'unverified',
+  verification_source        TEXT NOT NULL,
+  source_record_id           BIGINT,
+  is_primary                 BOOLEAN NOT NULL DEFAULT FALSE,
+  revoked_at                 TIMESTAMPTZ,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT user_identities_type_check
+    CHECK (identity_type IN ('email', 'phone', 'google')),
+  CONSTRAINT user_identities_value_check
+    CHECK (CHAR_LENGTH(BTRIM(value)) BETWEEN 1 AND 2048),
+  CONSTRAINT user_identities_normalized_value_check
+    CHECK (CHAR_LENGTH(normalized_value) BETWEEN 1 AND 2048),
+  CONSTRAINT user_identities_scope_check
+    CHECK (verification_scope IN ('unverified', 'account')),
+  CONSTRAINT user_identities_verification_check CHECK (
+    (verification_scope = 'unverified' AND verified_at IS NULL)
+    OR
+    (verification_scope = 'account' AND verified_at IS NOT NULL)
+  ),
+  CONSTRAINT user_identities_source_check
+    CHECK (CHAR_LENGTH(BTRIM(verification_source)) BETWEEN 1 AND 160),
+  CONSTRAINT user_identities_source_record_check
+    CHECK (source_record_id IS NULL OR source_record_id > 0),
+  CONSTRAINT user_identities_normalization_check CHECK (
+    (identity_type = 'email'
+      AND normalized_value = LOWER(BTRIM(value))
+      AND CHAR_LENGTH(normalized_value) <= 320)
+    OR
+    (identity_type = 'phone'
+      AND value = normalized_value
+      AND normalized_value ~ '^\+[1-9][0-9]{7,14}$')
+    OR
+    (identity_type = 'google'
+      AND normalized_value = BTRIM(value))
+  ),
+  CONSTRAINT user_identities_revocation_order_check
+    CHECK (revoked_at IS NULL OR revoked_at >= created_at)
+);
+
+-- A currently usable normalized credential can resolve to exactly one user.
+-- Revocation preserves history and permits a later, explicit reassignment.
+CREATE UNIQUE INDEX IF NOT EXISTS user_identities_active_value_uq
+  ON user_identities (identity_type, normalized_value)
+  WHERE revoked_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_identities_active_primary_uq
+  ON user_identities (user_id, identity_type)
+  WHERE revoked_at IS NULL AND is_primary;
+
+CREATE INDEX IF NOT EXISTS user_identities_user_idx
+  ON user_identities (user_id, identity_type, created_at DESC);
+
+-- Scoped event/photo evidence is intentionally separate from the canonical
+-- identity's account-verification state. One identifier may have proofs for
+-- many contexts without any of them becoming global login authority.
+CREATE TABLE IF NOT EXISTS user_identity_verifications (
+  id                         BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  user_identity_id           BIGINT NOT NULL REFERENCES user_identities(id) ON DELETE CASCADE,
+  verification_scope         TEXT NOT NULL,
+  verified_at                TIMESTAMPTZ NOT NULL,
+  verification_source        TEXT NOT NULL,
+  source_record_id           BIGINT,
+  verification_context_type  TEXT,
+  verification_context_id    BIGINT,
+  revoked_at                 TIMESTAMPTZ,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT user_identity_verifications_scope_check
+    CHECK (verification_scope IN ('account', 'event', 'photo')),
+  CONSTRAINT user_identity_verifications_source_check
+    CHECK (CHAR_LENGTH(BTRIM(verification_source)) BETWEEN 1 AND 160),
+  CONSTRAINT user_identity_verifications_source_record_check
+    CHECK (source_record_id IS NULL OR source_record_id > 0),
+  CONSTRAINT user_identity_verifications_context_check CHECK (
+    (verification_scope = 'account'
+      AND verification_context_type IS NULL
+      AND verification_context_id IS NULL)
+    OR
+    (verification_scope IN ('event', 'photo')
+      AND verification_context_type IS NOT NULL
+      AND CHAR_LENGTH(BTRIM(verification_context_type)) BETWEEN 1 AND 80
+      AND verification_context_id IS NOT NULL
+      AND verification_context_id > 0)
+  ),
+  CONSTRAINT user_identity_verifications_revocation_order_check
+    CHECK (revoked_at IS NULL OR revoked_at >= verified_at)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_identity_verifications_active_proof_uq
+  ON user_identity_verifications (
+    user_identity_id,
+    verification_scope,
+    verification_source,
+    COALESCE(source_record_id, 0),
+    COALESCE(verification_context_type, ''),
+    COALESCE(verification_context_id, 0)
+  )
+  WHERE revoked_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS user_identity_verifications_context_idx
+  ON user_identity_verifications (
+    verification_scope,
+    verification_context_type,
+    verification_context_id,
+    user_identity_id
+  )
+  WHERE revoked_at IS NULL;
+
+-- Ambiguous or invalid legacy identifiers are quarantined for review. They are
+-- never resolved by choosing a winner and never cause two users to be merged.
+CREATE TABLE IF NOT EXISTS user_identity_conflicts (
+  id                   BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  identity_type        TEXT NOT NULL,
+  normalized_value     TEXT NOT NULL,
+  candidate_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  conflicting_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  verification_source  TEXT NOT NULL,
+  source_record_id     BIGINT NOT NULL,
+  reason               TEXT NOT NULL,
+  detected_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at          TIMESTAMPTZ,
+  resolution           TEXT,
+  CONSTRAINT user_identity_conflicts_type_check
+    CHECK (identity_type IN ('email', 'phone', 'google')),
+  CONSTRAINT user_identity_conflicts_reason_check
+    CHECK (reason IN ('invalid_normalized_value', 'normalized_value_collision', 'already_claimed')),
+  CONSTRAINT user_identity_conflicts_resolution_check CHECK (
+    (resolved_at IS NULL AND resolution IS NULL)
+    OR
+    (resolved_at IS NOT NULL AND NULLIF(BTRIM(resolution), '') IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_identity_conflicts_source_uq
+  ON user_identity_conflicts (
+    identity_type,
+    normalized_value,
+    candidate_user_id,
+    verification_source,
+    source_record_id
+  );
+
+-- Legacy email rows can include whitespace differences that the old LOWER-only
+-- uniqueness index did not catch. Record every candidate in such a group and
+-- import none of them; an operator must resolve the ownership explicitly.
+WITH email_candidates AS (
+  SELECT
+    o.id AS user_id,
+    o.email AS value,
+    LOWER(BTRIM(o.email)) AS normalized_value,
+    o.last_login_at,
+    COUNT(*) OVER (PARTITION BY LOWER(BTRIM(o.email))) AS normalized_count
+  FROM organizers o
+  JOIN users u ON u.id = o.id
+)
+INSERT INTO user_identity_conflicts (
+  identity_type,
+  normalized_value,
+  candidate_user_id,
+  verification_source,
+  source_record_id,
+  reason
+)
+SELECT
+  'email',
+  LEFT(candidate.normalized_value, 320),
+  candidate.user_id,
+  'legacy_organizers.email',
+  candidate.user_id,
+  CASE
+    WHEN candidate.normalized_value = ''
+      OR CHAR_LENGTH(candidate.normalized_value) > 320
+      OR candidate.normalized_value !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
+      THEN 'invalid_normalized_value'
+    ELSE 'normalized_value_collision'
+  END
+FROM email_candidates candidate
+WHERE candidate.normalized_count > 1
+   OR candidate.normalized_value = ''
+   OR CHAR_LENGTH(candidate.normalized_value) > 320
+   OR candidate.normalized_value !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
+ON CONFLICT DO NOTHING;
+
+WITH email_candidates AS (
+  SELECT
+    o.id AS user_id,
+    o.email AS value,
+    LOWER(BTRIM(o.email)) AS normalized_value,
+    o.last_login_at,
+    COUNT(*) OVER (PARTITION BY LOWER(BTRIM(o.email))) AS normalized_count
+  FROM organizers o
+  JOIN users u ON u.id = o.id
+)
+INSERT INTO user_identities (
+  user_id,
+  identity_type,
+  value,
+  normalized_value,
+  verified_at,
+  verification_scope,
+  verification_source,
+  source_record_id,
+  is_primary
+)
+SELECT
+  candidate.user_id,
+  'email',
+  BTRIM(candidate.value),
+  candidate.normalized_value,
+  candidate.last_login_at,
+  CASE WHEN candidate.last_login_at IS NULL THEN 'unverified' ELSE 'account' END,
+  CASE
+    WHEN candidate.last_login_at IS NULL THEN 'legacy_organizers.email'
+    ELSE 'legacy_organizers.last_login_at'
+  END,
+  candidate.user_id,
+  TRUE
+FROM email_candidates candidate
+WHERE candidate.normalized_count = 1
+  AND candidate.normalized_value <> ''
+  AND CHAR_LENGTH(candidate.normalized_value) <= 320
+  AND candidate.normalized_value ~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
+ON CONFLICT DO NOTHING;
+
+-- If this migration is re-applied after canonical writes have begun, record a
+-- pre-existing owner instead of reassigning or merging the legacy organizer.
+WITH email_candidates AS (
+  SELECT
+    o.id AS user_id,
+    LOWER(BTRIM(o.email)) AS normalized_value
+  FROM organizers o
+  JOIN users u ON u.id = o.id
+)
+INSERT INTO user_identity_conflicts (
+  identity_type,
+  normalized_value,
+  candidate_user_id,
+  conflicting_user_id,
+  verification_source,
+  source_record_id,
+  reason
+)
+SELECT
+  'email',
+  candidate.normalized_value,
+  candidate.user_id,
+  identity.user_id,
+  'legacy_organizers.email',
+  candidate.user_id,
+  'already_claimed'
+FROM email_candidates candidate
+JOIN user_identities identity
+  ON identity.identity_type = 'email'
+ AND identity.normalized_value = candidate.normalized_value
+ AND identity.revoked_at IS NULL
+ AND identity.user_id <> candidate.user_id
+ON CONFLICT DO NOTHING;
+
+-- Only the dedicated, active account credential is global phone proof. RSVP,
+-- Follow Host, invitation, and reminder phone fields are intentionally absent.
+WITH phone_candidates AS (
+  SELECT
+    credential.id AS credential_id,
+    credential.organizer_id AS user_id,
+    credential.phone_e164 AS normalized_value,
+    credential.verified_at,
+    credential.created_at,
+    COUNT(*) OVER (PARTITION BY credential.phone_e164) AS normalized_count
+  FROM account_phone_credentials credential
+  JOIN users u ON u.id = credential.organizer_id
+  WHERE credential.revoked_at IS NULL
+)
+INSERT INTO user_identity_conflicts (
+  identity_type,
+  normalized_value,
+  candidate_user_id,
+  verification_source,
+  source_record_id,
+  reason
+)
+SELECT
+  'phone',
+  candidate.normalized_value,
+  candidate.user_id,
+  'account_phone_credentials',
+  candidate.credential_id,
+  CASE
+    WHEN candidate.normalized_value !~ '^\+[1-9][0-9]{7,14}$'
+      THEN 'invalid_normalized_value'
+    ELSE 'normalized_value_collision'
+  END
+FROM phone_candidates candidate
+WHERE candidate.normalized_count > 1
+   OR candidate.normalized_value !~ '^\+[1-9][0-9]{7,14}$'
+ON CONFLICT DO NOTHING;
+
+WITH phone_candidates AS (
+  SELECT
+    credential.id AS credential_id,
+    credential.organizer_id AS user_id,
+    credential.phone_e164 AS normalized_value,
+    credential.verified_at,
+    credential.created_at,
+    COUNT(*) OVER (PARTITION BY credential.phone_e164) AS normalized_count
+  FROM account_phone_credentials credential
+  JOIN users u ON u.id = credential.organizer_id
+  WHERE credential.revoked_at IS NULL
+)
+INSERT INTO user_identities (
+  user_id,
+  identity_type,
+  value,
+  normalized_value,
+  verified_at,
+  verification_scope,
+  verification_source,
+  source_record_id,
+  is_primary,
+  created_at,
+  updated_at
+)
+SELECT
+  candidate.user_id,
+  'phone',
+  candidate.normalized_value,
+  candidate.normalized_value,
+  candidate.verified_at,
+  'account',
+  'account_phone_credentials',
+  candidate.credential_id,
+  TRUE,
+  candidate.created_at,
+  candidate.created_at
+FROM phone_candidates candidate
+WHERE candidate.normalized_count = 1
+  AND candidate.normalized_value ~ '^\+[1-9][0-9]{7,14}$'
+ON CONFLICT DO NOTHING;
+
+WITH phone_candidates AS (
+  SELECT
+    credential.id AS credential_id,
+    credential.organizer_id AS user_id,
+    credential.phone_e164 AS normalized_value
+  FROM account_phone_credentials credential
+  JOIN users u ON u.id = credential.organizer_id
+  WHERE credential.revoked_at IS NULL
+)
+INSERT INTO user_identity_conflicts (
+  identity_type,
+  normalized_value,
+  candidate_user_id,
+  conflicting_user_id,
+  verification_source,
+  source_record_id,
+  reason
+)
+SELECT
+  'phone',
+  candidate.normalized_value,
+  candidate.user_id,
+  identity.user_id,
+  'account_phone_credentials',
+  candidate.credential_id,
+  'already_claimed'
+FROM phone_candidates candidate
+JOIN user_identities identity
+  ON identity.identity_type = 'phone'
+ AND identity.normalized_value = candidate.normalized_value
+ AND identity.revoked_at IS NULL
+ AND identity.user_id <> candidate.user_id
+ON CONFLICT DO NOTHING;
+
+-- Seed explicit provenance rows for every account proof imported above. Lower
+-- scoped RSVP, invitation, event, and photo activity was never imported as
+-- account proof and therefore creates no row here.
+INSERT INTO user_identity_verifications (
+  user_identity_id,
+  verification_scope,
+  verified_at,
+  verification_source,
+  source_record_id
+)
+SELECT
+  identity.id,
+  'account',
+  identity.verified_at,
+  identity.verification_source,
+  identity.source_record_id
+FROM user_identities identity
+WHERE identity.verification_scope = 'account'
+  AND identity.verified_at IS NOT NULL
+  AND identity.revoked_at IS NULL
+ON CONFLICT DO NOTHING;
+
+COMMENT ON TABLE users IS
+  'Canonical people. Legacy organizer-backed users retain users.id = organizers.id.';
+COMMENT ON TABLE user_identities IS
+  'Normalized login identifiers with explicit proof strength and provenance; resolution must enforce verification_scope.';
+COMMENT ON COLUMN user_identities.verification_scope IS
+  'Only account is global login proof; RSVP, event, invitation, and photo activity leaves this unverified.';
+COMMENT ON TABLE user_identity_verifications IS
+  'Proof provenance. Event and photo rows are context-bound and never become account authentication by themselves.';

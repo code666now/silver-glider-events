@@ -62,14 +62,20 @@ function sessionRevoked(session, account) {
   return session.iat < new Date(account.sessions_valid_after).getTime();
 }
 
-// Resolves the signed-in account: a valid signature, an organizer that still
-// exists, and a cookie issued after any "sign out everywhere". `stale` means a
-// cookie was presented but must no longer be honored.
+// Resolves the signed-in account through the canonical user id while retaining
+// the legacy organizer row as the response/profile compatibility shape.
+// `stale` means a cookie was presented but must no longer be honored.
 async function loadSessionAccount(db, req) {
   const cookie = readSessionCookie(req);
   const session = parseSession(cookie);
   if (!session) return { session: null, account: null, stale: Boolean(cookie) };
-  const { rows } = await db.query('SELECT * FROM organizers WHERE id=$1', [session.id]);
+  const { rows } = await db.query(
+    `SELECT organizer.*
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE canonical_user.id=$1 AND organizer.id=$1`,
+    [session.id]
+  );
   const account = rows[0] || null;
   if (!account || sessionRevoked(session, account)) return { session: null, account: null, stale: true };
   return { session, account, stale: false };

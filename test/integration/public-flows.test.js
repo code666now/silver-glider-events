@@ -78,7 +78,7 @@ function resetRateLimits() {
 }
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -433,6 +433,18 @@ test('keeps first-RSVP persistence without using its browser cookie as event-pag
   assert.equal(stored.account_id, null);
   assert.ok(stored.guest_session_id);
   assert.equal(stored.verified_at, null);
+  const provisionalIdentity = (await pool.query(
+    `SELECT o.user_id,u.id AS canonical_user_id,ui.verification_scope,ui.verified_at
+       FROM organizers o
+       JOIN users u ON u.id=o.user_id
+       JOIN user_identities ui ON ui.user_id=u.id
+      WHERE LOWER(BTRIM(o.email))='lucas@example.test'
+        AND ui.identity_type='email' AND ui.revoked_at IS NULL`
+  )).rows[0];
+  assert.equal(Number(provisionalIdentity.user_id), Number(provisionalIdentity.canonical_user_id));
+  assert.equal(provisionalIdentity.verification_scope, 'unverified');
+  assert.equal(provisionalIdentity.verified_at, null,
+    'submitting an RSVP creates a reusable person record without granting account-level email proof');
 
   // The RSVP response supplies its event-scoped personal URL proof immediately,
   // so the same confirmation can be reopened on a browser with no cookies.
@@ -1678,6 +1690,17 @@ test('completes logged-in and magic-link Host follows without creating Host Page
       WHERE follower_organizer_id=$1 AND host_organizer_id=$2 AND unsubscribed_at IS NULL`,
     [follower.id, organizerId]
   )).rows[0].count, 1);
+  const followerIdentity = (await pool.query(
+    `SELECT u.id,ui.verification_scope,ui.verified_at
+       FROM users u
+       JOIN user_identities ui ON ui.user_id=u.id
+      WHERE u.id=$1 AND ui.identity_type='email' AND ui.normalized_value=$2
+        AND ui.revoked_at IS NULL`,
+    [follower.id, 'new-follower@example.test']
+  )).rows[0];
+  assert.equal(Number(followerIdentity.id), Number(follower.id));
+  assert.equal(followerIdentity.verification_scope, 'account');
+  assert.ok(followerIdentity.verified_at);
 
   // A first-time RSVP still creates only a lightweight remembered guest. If
   // that person later follows a Host, the server uses the remembered email,
@@ -3120,9 +3143,32 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.deepEqual({ organizerId: credential.organizer_id, phone: credential.phone_e164 }, {
       organizerId, phone
     });
+    const authIdentities = (await pool.query(
+      `SELECT identity_type,normalized_value,verification_scope,verified_at
+         FROM user_identities
+        WHERE user_id=$1 AND revoked_at IS NULL
+        ORDER BY identity_type`,
+      [organizerId]
+    )).rows;
+    assert.deepEqual(authIdentities.map(identity => ({
+      type: identity.identity_type,
+      value: identity.normalized_value,
+      scope: identity.verification_scope,
+      verified: Boolean(identity.verified_at)
+    })), [
+      { type: 'email', value: 'host@example.test', scope: 'account', verified: true },
+      { type: 'phone', value: phone, scope: 'account', verified: true }
+    ]);
     assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM host_follows')).rows[0].count, 0,
       'an authentication phone never creates follow or text consent');
 
+    // During the compatibility window, the canonical credential is the source
+    // of truth. A missing legacy projection must still start and complete sign
+    // in, then be repaired only after Twilio proves phone possession.
+    await pool.query(
+      'DELETE FROM account_phone_credentials WHERE organizer_id=$1 AND phone_e164=$2',
+      [organizerId, phone]
+    );
     const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phone, next: '/events/new' })
@@ -3146,6 +3192,11 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.equal(providerChecks, 2);
     const returningSession = responseCookie(returningVerify, 'sge_session');
     assert.ok(returningSession);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM account_phone_credentials
+        WHERE organizer_id=$1 AND phone_e164=$2 AND revoked_at IS NULL`,
+      [organizerId, phone]
+    )).rows[0].count, 1, 'verified sign-in repairs the missing legacy phone projection');
     const replay = await fetch(`${baseUrl}/api/auth/phone/verify`, {
       method: 'POST', headers: { 'content-type': 'application/json', cookie: returningCookie },
       body: JSON.stringify({ code: '123456' })
@@ -3166,6 +3217,11 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.equal((await pool.query(
       'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE phone_e164=$1 AND revoked_at IS NULL', [phone]
     )).rows[0].count, 0, 'account recovery revokes phone sign-in');
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM user_identities
+        WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2 AND revoked_at IS NULL`,
+      [organizerId, phone]
+    )).rows[0].count, 0, 'account recovery revokes the canonical phone identity too');
     assert.equal((await pool.query(
       'SELECT COUNT(*)::int AS count FROM phone_auth_challenges WHERE phone_e164=$1 AND used_at IS NULL', [phone]
     )).rows[0].count, 0, 'account recovery invalidates pending phone codes');
@@ -3356,6 +3412,11 @@ test('phone enrollment collisions never merge identities or create a session', a
     assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM organizers WHERE email=$1', [email])).rows[0].count, 0,
       'the rolled-back bind does not leave a duplicate identity');
     assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM user_identities
+        WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL`,
+      [email]
+    )).rows[0].count, 0, 'the rolled-back bind leaves no canonical email identity');
+    assert.equal((await pool.query(
       'SELECT organizer_id FROM account_phone_credentials WHERE phone_e164=$1 AND revoked_at IS NULL', [phone]
     )).rows[0].organizer_id, competing.id);
   } finally {
@@ -3388,6 +3449,17 @@ test('email scanners cannot use up a sign-in link, and signed-in people are not 
   assert.equal(signedIn.headers.get('location'), '/events');
   const sessionCookie = responseCookie(signedIn, 'sge_session');
   assert.ok(sessionCookie);
+  const canonicalLogin = (await pool.query(
+    `SELECT o.id,o.user_id,ui.verification_scope,ui.verified_at
+       FROM organizers o
+       JOIN users u ON u.id=o.user_id
+       JOIN user_identities ui ON ui.user_id=u.id
+      WHERE ui.identity_type='email' AND ui.normalized_value=$1 AND ui.revoked_at IS NULL`,
+    [email]
+  )).rows[0];
+  assert.equal(Number(canonicalLogin.id), Number(canonicalLogin.user_id));
+  assert.equal(canonicalLogin.verification_scope, 'account');
+  assert.ok(canonicalLogin.verified_at);
 
   // The same link again: signed in → straight to the app, signed out → expired.
   const againSignedIn = await fetch(`${baseUrl}/auth/verify?token=${tokenFromLink(link)}`, {
@@ -3525,6 +3597,59 @@ test('sign out of all devices rejects older cookies everywhere, including pre-up
   // Signing in again afterwards works normally.
   const fresh = `sge_session=${signSession(account.id)}`;
   assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: fresh } })).status, 200);
+});
+
+test('sign out everywhere stays available during quarantined phone ownership drift', async () => {
+  resetRateLimits();
+  const account = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('drift-session@example.test','Drift Session',NOW()) RETURNING id`
+  )).rows[0];
+  const other = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('drift-owner@example.test','Drift Owner',NOW()) RETURNING id`
+  )).rows[0];
+  const phone = '+14155550191';
+  await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW())`,
+    [account.id, phone]
+  );
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'phone',$2,$2,NOW(),'account','drift_fixture',TRUE)`,
+    [other.id, phone]
+  );
+  await pool.query(
+    `INSERT INTO phone_auth_challenges
+       (request_hash,phone_e164,purpose,organizer_id,provider_sid,expires_at)
+     VALUES ('drift-request-hash',$1,'sign_in',$2,'VE123456789012345678901234567890',NOW() + INTERVAL '20 minutes')`,
+    [phone, account.id]
+  );
+
+  const cookie = `sge_session=${signSession(account.id, Date.now() - 1000)}`;
+  const response = await fetch(`${baseUrl}/api/auth/logout-all`, {
+    method: 'POST', headers: { cookie }
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie } })).status, 401);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM account_phone_credentials
+      WHERE organizer_id=$1 AND revoked_at IS NULL`,
+    [account.id]
+  )).rows[0].count, 0, 'the account-owned legacy credential is revoked');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2 AND revoked_at IS NULL`,
+    [other.id, phone]
+  )).rows[0].count, 1, 'another canonical owner is never changed by recovery');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM phone_auth_challenges
+      WHERE phone_e164=$1 AND used_at IS NULL`,
+    [phone]
+  )).rows[0].count, 0, 'pending challenges for the drifted phone are invalidated');
 });
 
 test('remembered guest cookies remain forgettable but never drive event-page greetings', async () => {

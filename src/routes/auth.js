@@ -33,13 +33,18 @@ const { esc } = require('../lib/public-html');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const {
+  attachVerifiedPhoneIdentity,
+  CanonicalIdentityError,
+  resolveOrCreateOrganizerByEmail,
+  resolveVerifiedPhoneIdentity
+} = require('../lib/canonical-identity');
+const {
   CODE_LENGTH: PHONE_CODE_LENGTH,
   PhoneAuthError,
   bindVerifiedPhone,
   cancelPhoneChallenge,
   clearPhoneAuthCookie,
   createPhoneChallenge,
-  invalidateOrganizerPhoneChallenges,
   markPhoneChallengeVerified,
   maskPhone,
   readPhoneChallenge,
@@ -121,6 +126,7 @@ async function logEmail(email) {
 
 function phoneError(res, error) {
   const safe = error instanceof PhoneAuthError ||
+    error instanceof CanonicalIdentityError ||
     error instanceof phoneVerification.PhoneVerificationError ||
     error instanceof sms.SmsDeliveryError;
   if (!safe) return false;
@@ -264,16 +270,11 @@ router.post('/api/auth/phone/start', async (req, res, next) => {
       });
     }
 
-    const { rows } = await pool.query(
-      `SELECT credential.organizer_id
-         FROM account_phone_credentials credential
-         JOIN organizers account ON account.id=credential.organizer_id
-        WHERE credential.phone_e164=$1 AND credential.revoked_at IS NULL
-        LIMIT 1`,
-      [phone]
-    );
+    const resolvedPhone = await resolveVerifiedPhoneIdentity(pool, { phone });
     const verification = await phoneVerification.startVerification(phone);
-    const returningOrganizerId = rows[0]?.organizer_id || null;
+    const returningOrganizerId = resolvedPhone
+      ? Number(resolvedPhone.identity.user_id)
+      : null;
     const challenge = await createPhoneChallenge(pool, {
       phone,
       purpose: returningOrganizerId ? 'sign_in' : 'enroll',
@@ -287,7 +288,10 @@ router.post('/api/auth/phone/start', async (req, res, next) => {
     await waitForMinimum(startedAt);
     res.json({ ok: true, codeLength: PHONE_CODE_LENGTH });
   } catch (error) {
-    if (phoneStartProviderError(error)) {
+    if (phoneStartProviderError(error) || error instanceof CanonicalIdentityError) {
+      if (error instanceof CanonicalIdentityError) {
+        console.error('[auth:phone-start] canonical identity resolution failed:', error.code);
+      }
       await waitForMinimum(startedAt);
       return res.status(503).json({
         error: 'phone_code_unavailable',
@@ -339,13 +343,20 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
             code: 'phone_verification_expired', status: 400
           });
         }
+        const canonicalPhone = await resolveVerifiedPhoneIdentity(client, {
+          phone: locked.phone_e164
+        });
+        if (!canonicalPhone || Number(canonicalPhone.identity.user_id) !== Number(locked.organizer_id)) {
+          throw new PhoneAuthError('This phone sign-in is no longer available. Use email instead.', {
+            code: 'phone_credential_unavailable', status: 400
+          });
+        }
         const { rows } = await client.query(
           `SELECT account.id,account.is_admin
              FROM organizers account
-             JOIN account_phone_credentials credential ON credential.organizer_id=account.id
-            WHERE account.id=$1 AND credential.phone_e164=$2 AND credential.revoked_at IS NULL
-            FOR UPDATE OF credential`,
-          [locked.organizer_id, locked.phone_e164]
+            WHERE account.id=$1
+            FOR UPDATE`,
+          [locked.organizer_id]
         );
         const account = rows[0];
         if (!account) {
@@ -363,6 +374,15 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
             message: 'For account security, sign in with email.'
           });
         }
+        // Canonical identity is authoritative. Repair the legacy compatibility
+        // credential after possession is proved so a partially migrated row
+        // cannot receive an OTP and then fail only at completion.
+        await attachVerifiedPhoneIdentity(client, {
+          userId: account.id,
+          phone: locked.phone_e164,
+          verifiedAt: new Date(),
+          verificationSource: 'twilio_verify_sign_in'
+        });
         await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [account.id]);
         await client.query(
           `UPDATE account_phone_credentials SET last_used_at=NOW(),updated_at=NOW()
@@ -477,11 +497,14 @@ function displayNameParts(value, email) {
 // Finishes a consumed link or code. Database work happens on `client` inside
 // the caller's transaction; cookies are applied only after COMMIT through
 // `afterCommit(res)`.
-async function completeChallenge(client, req, pending, { globalizeTypedGuestCode = false } = {}) {
+async function completeChallenge(client, req, pending, {
+  globalizeTypedGuestCode = false,
+  emailProofSource = 'email_link'
+} = {}) {
   const email = pending.email;
 
   if (pending.intent === 'verify_guest') {
-    const identity = await ensureGuestIdentity(client, { email, displayName: '' });
+    let identity = await ensureGuestIdentity(client, { email, displayName: '' });
     await linkVerifiedRsvps(client, identity.id, email);
     const current = await readGuestSession(client, req);
     let displayName = current && Number(current.identity_id) === Number(identity.id) ? current.display_name : '';
@@ -493,6 +516,17 @@ async function completeChallenge(client, req, pending, { globalizeTypedGuestCode
       displayName = rows[0] ? `${rows[0].first_name || ''} ${rows[0].last_name || ''}` : identity.name;
     }
     const names = displayNameParts(displayName, email);
+    if (globalizeTypedGuestCode) {
+      const canonical = await resolveOrCreateOrganizerByEmail(client, {
+        email,
+        name: names.full,
+        accountVerification: {
+          verifiedAt: new Date(),
+          verificationSource: emailProofSource
+        }
+      });
+      identity = canonical.organizer;
+    }
     if (current) await revokeGuestSession(client, req);
     const session = await createGuestSession(client, {
       identityId: identity.id,
@@ -500,9 +534,6 @@ async function completeChallenge(client, req, pending, { globalizeTypedGuestCode
       displayName: names.full,
       verified: true
     });
-    if (globalizeTypedGuestCode) {
-      await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [identity.id]);
-    }
     return {
       kind: 'guest',
       firstName: names.first,
@@ -531,14 +562,16 @@ async function completeChallenge(client, req, pending, { globalizeTypedGuestCode
     };
   }
 
-  let organizer = (await client.query('SELECT * FROM organizers WHERE LOWER(email)=LOWER($1)', [email])).rows[0];
-  if (organizer) {
-    await client.query('UPDATE organizers SET last_login_at=NOW() WHERE id=$1', [organizer.id]);
-  } else {
-    organizer = (await client.query(
-      'INSERT INTO organizers (email, last_login_at) VALUES ($1, NOW()) RETURNING *', [email]
-    )).rows[0];
-  }
+  const canonical = await resolveOrCreateOrganizerByEmail(client, {
+    email,
+    accountVerification: {
+      verifiedAt: new Date(),
+      verificationSource: emailProofSource
+    }
+  });
+  const organizer = (await client.query(
+    'SELECT * FROM organizers WHERE id=$1', [canonical.user.id]
+  )).rows[0];
 
   if (pending.intent === 'bind_phone') {
     if (!pending.phone_auth_challenge_id) {
@@ -686,7 +719,9 @@ router.post('/auth/verify', async (req, res, next) => {
       if (req.sessionAccount) return res.redirect(303, legacyNext || '/dashboard');
       return res.redirect(303, expiredRedirect(legacyNext));
     }
-    const outcome = await completeChallenge(client, req, pending);
+    const outcome = await completeChallenge(client, req, pending, {
+      emailProofSource: 'email_link'
+    });
     await client.query('COMMIT');
     outcome.afterCommit(res);
     clearSignInRequestCookie(res);
@@ -727,7 +762,8 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     // verification code therefore also establishes the normal account
     // session; limited email links keep their narrower scopes.
     const outcome = await completeChallenge(client, req, result.pending, {
-      globalizeTypedGuestCode: result.pending.intent === 'verify_guest'
+      globalizeTypedGuestCode: result.pending.intent === 'verify_guest',
+      emailProofSource: 'email_code'
     });
     await client.query('COMMIT');
     outcome.afterCommit(res);
@@ -776,7 +812,33 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
       'UPDATE magic_link_tokens SET used_at=NOW() WHERE LOWER(email)=LOWER($1) AND used_at IS NULL',
       [req.organizer.email]
     );
-    await invalidateOrganizerPhoneChallenges(client, req.organizer.id);
+    const { rows: activePhones } = await client.query(
+      `SELECT phone_e164 AS phone
+         FROM account_phone_credentials
+        WHERE organizer_id=$1 AND revoked_at IS NULL
+       UNION
+       SELECT normalized_value AS phone
+         FROM user_identities
+        WHERE user_id=$1 AND identity_type='phone' AND revoked_at IS NULL`,
+      [req.organizer.id]
+    );
+    const phoneValues = activePhones.map(row => row.phone);
+    await client.query(
+      `UPDATE phone_auth_challenges
+          SET used_at=COALESCE(used_at,NOW())
+        WHERE used_at IS NULL
+          AND (organizer_id=$1 OR phone_e164=ANY($2::text[]))`,
+      [req.organizer.id, phoneValues]
+    );
+    // Recovery must always invalidate sessions, even if an operator is still
+    // reviewing a quarantined legacy/canonical ownership mismatch. Revoke only
+    // rows that belong to this user; never guess at or mutate another owner.
+    await client.query(
+      `UPDATE user_identities
+          SET revoked_at=COALESCE(revoked_at,NOW()),updated_at=NOW()
+        WHERE user_id=$1 AND identity_type='phone' AND revoked_at IS NULL`,
+      [req.organizer.id]
+    );
     await client.query(
       `UPDATE account_phone_credentials
           SET revoked_at=COALESCE(revoked_at,NOW()),updated_at=NOW()

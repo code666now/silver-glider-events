@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { ensureGuestIdentity } = require('./guest-identity');
 const { tokenHash } = require('./guest-session');
+const { withCanonicalIdentityTransaction } = require('./canonical-identity');
 
 const INVITATION_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
@@ -11,18 +12,20 @@ function invitationExpiry() {
 }
 
 async function createGuestInvitation(db, { messageLogId, eventId, eventDate, email, recipientName }) {
-  const identity = await ensureGuestIdentity(db, { email, displayName: recipientName });
-  const token = crypto.randomBytes(32).toString('base64url');
-  await db.query(
-    `INSERT INTO guest_invitation_tokens
-       (message_log_id,target_event_id,identity_id,token_hash,expires_at)
-     VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (message_log_id) DO UPDATE
-       SET identity_id=EXCLUDED.identity_id,token_hash=EXCLUDED.token_hash,
-           expires_at=EXCLUDED.expires_at,revoked_at=NULL`,
-    [messageLogId, eventId, identity.id, tokenHash(token), invitationExpiry(eventDate)]
-  );
-  return { token, identity };
+  return withCanonicalIdentityTransaction(db, async client => {
+    const identity = await ensureGuestIdentity(client, { email, displayName: recipientName });
+    const token = crypto.randomBytes(32).toString('base64url');
+    await client.query(
+      `INSERT INTO guest_invitation_tokens
+         (message_log_id,target_event_id,identity_id,token_hash,expires_at)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (message_log_id) DO UPDATE
+         SET identity_id=EXCLUDED.identity_id,token_hash=EXCLUDED.token_hash,
+             expires_at=EXCLUDED.expires_at,revoked_at=NULL`,
+      [messageLogId, eventId, identity.id, tokenHash(token), invitationExpiry(eventDate)]
+    );
+    return { token, identity };
+  });
 }
 
 async function resolveGuestInvitation(db, rawToken, { eventId = null, publishedOnly = true } = {}) {

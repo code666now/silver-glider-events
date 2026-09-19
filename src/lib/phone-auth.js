@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { tokenHash } = require('./guest-session');
 const { readCookie } = require('./private-events');
 const { normalizeE164 } = require('./sms');
+const { attachVerifiedPhoneIdentity } = require('./canonical-identity');
 
 const REQUEST_COOKIE = 'sge_phone_auth';
 const CODE_LENGTH = 6;
@@ -156,6 +157,12 @@ async function bindVerifiedPhone(client, { challengeId, organizerId }) {
       [organizerId, challenge.phone_e164]
     );
   }
+  await attachVerifiedPhoneIdentity(client, {
+    userId: organizerId,
+    phone: challenge.phone_e164,
+    verifiedAt: challenge.verified_at,
+    verificationSource: 'twilio_verify'
+  });
   await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [challenge.id]);
   return challenge.phone_e164;
 }
