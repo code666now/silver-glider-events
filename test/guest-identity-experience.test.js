@@ -70,7 +70,7 @@ test('phone feedback returns focus to the menu while desktop feedback returns to
   const styles = read('public/css/main.css');
   const manage = read('public/js/manage.js');
 
-  assert.match(api, /document\.getElementById\('settings-feedback'\), bubble/);
+  assert.match(api, /\[bubble, document\.querySelector\('\.sg-legal-feedback'\), document\.querySelector\('\.sg-nav-toggle'\)\]/);
   assert.match(api, /document\.querySelector\('\.sg-legal-feedback'\)/);
   assert.match(api, /candidate\.getClientRects\(\)\.length/);
   assert.match(api, /style\.display !== 'none' && style\.visibility !== 'hidden'/);
@@ -90,11 +90,13 @@ test('phone tab bar is limited to top-level destinations and preserves focused t
   assert.match(api, /function topLevelTabForPath\(pathname\)/);
   assert.match(api, /topLevelTabForPath\(window\.location\.pathname\) === active/);
   assert.match(api, /TAB_BAR_TABS\.find\(\(\[, href\]\) => href === normalized\)/);
+  assert.match(api, /if \(normalized === '\/settings'\) return 'settings';/);
+  assert.match(api, /return TAB_BAR_KEYS\.includes\(tab\) \? tab : null;/);
   assert.match(api, /className = 'sg-tab-bar'/);
   assert.match(api, /setAttribute\('aria-label', 'Main'\)/);
   assert.match(styles, /@media \(max-width: 879px\)[\s\S]*body\.has-tab-bar \{ --sg-tab-bar-height: 62px; \}/);
   assert.match(styles, /padding:[^;]*env\(safe-area-inset-bottom\)/);
-  assert.match(settings, /id="settings-feedback">Send feedback<\/button>/);
+  assert.doesNotMatch(settings, /settings-feedback/, 'Feedback lives in the ☰ panel');
 });
 
 test('only a signed-in matching identity receives the public avatar edit affordance', () => {
@@ -106,4 +108,38 @@ test('only a signed-in matching identity receives the public avatar edit afforda
   assert.match(routes, /Number\(entry\.identityId\) === Number\(viewerIdentityId\) && viewerIdentityId/);
   assert.match(routes, /class="guest-avatar guest-avatar-edit" href="\/add-photo\?event=/);
   assert.match(routes, /viewerIdentityId: req\.sessionAccount\?\.id/);
+});
+
+test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a full-screen menu', () => {
+  const api = read('public/js/api.js');
+  const styles = read('public/css/main.css');
+  const profile = read('src/views/profile.html');
+  const index = read('src/index.js');
+  const auth = read('src/routes/auth.js');
+
+  assert.match(api, /\['create', '\/events\/new', 'Create'/);
+  assert.match(api, /\['following', '\/following', 'Hosts'/);
+  assert.match(api, /\['profile', '\/profile', 'You', null\]/);
+  assert.match(api, /if \(usesMenuSheet\(\)\) \{\s*openMenuSheet\(toggle\);/);
+  assert.match(api, /setAttribute\('aria-modal', 'true'\)/);
+  assert.match(api, /data-menu-feedback/);
+  assert.match(api, /data-menu-signout/);
+  assert.match(styles, /body\.has-tab-bar \.sg-mobile-sticky-action \{ display: none !important; \}/);
+  assert.match(styles, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /@media \(max-width: 879px\) \{[\s\S]*?\.sg-account-menu \{ display: none; \}/);
+  const tabletNavigation = styles.match(/@media \(max-width: 1023px\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.doesNotMatch(tabletNavigation, /\.sg-account-menu/, 'Profile remains reachable from the account menu above the phone breakpoint');
+  assert.match(api, /if \(menuSheet\) fillMenuSheet\(menuSheet, sgCurrentAccount\)/);
+  assert.match(api, /ev\.presentation_mode === 'flyer'[\s\S]*?ev\.flyer_image_url \|\| ev\.cover_image_url/);
+  assert.match(api, /const tryArtwork = \(\) => \{/);
+  assert.match(api, /image\.onload = \(\) => \{ art\.hidden = false; \}/);
+  assert.match(api, /image\.onerror = \(\) => \{[\s\S]*?tryArtwork\(\)/);
+  assert.match(api, /image\.onerror = \(\) => \{[\s\S]*?initials\.hidden = false/);
+  assert.match(index, /app\.get\('\/profile', requireOrganizer, view\('profile\.html'\)\)/);
+  assert.match(auth, /router\.get\('\/api\/me\/stats', requireOrganizer/);
+  assert.match(profile, /renderNav\('profile'\)/);
+  assert.match(profile, /data-sg-avatar aria-hidden="true"/);
+  assert.match(profile, /profile-stats-status/);
+  assert.match(profile, /profile'\)\.setAttribute\('aria-busy', 'false'\)/);
+  assert.match(profile, /fetch\('\/api\/uploads\/avatar'/);
 });

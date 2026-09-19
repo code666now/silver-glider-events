@@ -823,6 +823,24 @@ router.get('/api/me', requirePhotoAccess, (req, res) => {
   });
 });
 
+// Profile badges: events you went to (someone else's, already happened) and
+// events you hosted (published, already happened).
+router.get('/api/me/stats', requireOrganizer, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         (SELECT COUNT(DISTINCT r.event_id) FROM rsvps r JOIN events e ON e.id=r.event_id
+           WHERE r.account_id=$1 AND r.status='confirmed' AND e.status='published' AND e.organizer_id<>$1
+             AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date)::int AS attended,
+         (SELECT COUNT(*) FROM events e
+           WHERE e.organizer_id=$1 AND e.status='published'
+             AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date)::int AS hosted`,
+      [req.organizer.id]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
 router.post('/api/me/link-rsvps', requireOrganizer, async (req, res, next) => {
   try {
     const eventSlug = String(req.body?.eventSlug || '').trim().slice(0, 180);
