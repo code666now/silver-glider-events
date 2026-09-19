@@ -2,6 +2,26 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.116
+
+Released September 18, 2026. Built and deployed by Codex.
+
+### Improved
+
+* The signed-in phone tab bar now has five clear destinations: Home, Events, Create, Hosts, and You. The new You destination opens a dedicated Profile page with account photo editing, join date, Host Page access, and past Attended / Hosted totals.
+* The phone hamburger now opens a full-screen, thumb-friendly menu with the host profile, New event, Host page, Messaging credits, Feedback, Settings, administrator access when applicable, Sign out, and legal links.
+* Profile remains reachable through the established account menu from tablet widths through desktop, while focused create, edit, manage, and Settings detail flows continue without the bottom tab bar.
+
+### Accessibility and reliability
+
+* Menu focus is contained while open, Escape and Feedback dismissal restore focus correctly, and profile loading failures clear busy state and announce retry guidance.
+* Account photos and menu artwork stay hidden until they load, fall back cleanly when an image fails, and Flyer events prefer their actual flyer artwork.
+* The authenticated profile-stats endpoint counts only past published events, excludes a host's own events from Attended, and exposes aggregate counts without guest details. No database migration is required.
+
+### Compatibility
+
+* Desktop workspaces, public Standard and Flyer pages, event and RSVP data, permissions, emails, reminders, and existing account/session behavior are unchanged.
+
 ## 1.0.115
 
 Released September 18, 2026. Built and deployed by Codex.
