@@ -113,14 +113,21 @@ test('optional host-update consent remains explicit and separate from direct eve
 
 test('server eligibility excludes opt-outs, +1s, existing attendees, duplicates, and Secret Shows', () => {
   const routes = read('src/routes/events.js');
-  const helper = routes.slice(routes.indexOf('async function eligiblePreviousGuests'), routes.indexOf('// GET /api/events/:id/previous-guests'));
-  assert.match(helper, /r\.status='confirmed'/);
-  assert.doesNotMatch(helper, /organizer_optin/);
-  assert.match(helper, /follower_optouts/);
-  assert.match(helper, /target_rsvp\.status='confirmed'/);
-  assert.match(helper, /message_type IN \('announcement','previous_guest_invite'\)/);
-  assert.doesNotMatch(helper, /guest_email/);
-  assert.match(routes, /target\.secret_show_enabled/);
-  assert.match(routes, /rsvpIds\.length > 500/);
-  assert.match(routes, /Previous guests were already invited to this event/);
+  const connected = routes.slice(routes.indexOf('function connectedToTarget'), routes.indexOf('const PAST_RSVPS'));
+  const past = routes.slice(routes.indexOf('const PAST_RSVPS'), routes.indexOf('function candidateDetail'));
+  assert.match(past, /r\.status='confirmed'/);
+  assert.doesNotMatch(past, /organizer_optin/);
+  assert.doesNotMatch(past, /guest_email/);
+  assert.match(routes, /follower_optouts fo WHERE fo\.organizer_id=\$1/);
+  assert.match(connected, /target_rsvp\.status IN \('confirmed','cancelled'\)/);
+  assert.match(connected, /message_type IN \('announcement','previous_guest_invite'\)/);
+  assert.match(routes, /!target\.secret_show_enabled/);
+  assert.match(routes, /faceIds\.length > 500/);
+  assert.match(routes, /These people were already invited to that event/);
+});
+
+test('the retired previous-guests API stays removed', () => {
+  const routes = read('src/routes/events.js');
+  assert.doesNotMatch(routes, /\/previous-guests/);
+  assert.doesNotMatch(routes, /eligiblePreviousGuests/);
 });

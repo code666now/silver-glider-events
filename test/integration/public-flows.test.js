@@ -2276,7 +2276,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(hiddenShortUploadPage.status, 404);
 });
 
-test('invites confirmed primary guests from one past event and never emails them twice', async () => {
+test('a private event counts consenting past guests as followers but cannot announce to them', async () => {
   const source = await createEvent({
     slug: 'past-birthday-crowd',
     title: 'Past Birthday Crowd',
@@ -2295,7 +2295,7 @@ test('invites confirmed primary guests from one past event and never emails them
   await createRsvp(source.id, {
     first_name: 'Frank', last_name: 'Selectable', email: 'frank@example.test', organizer_optin: true
   });
-  const rsvpOnly = await createRsvp(source.id, {
+  await createRsvp(source.id, {
     first_name: 'No', last_name: 'Consent', email: 'no-consent@example.test', organizer_optin: false
   });
   await createRsvp(source.id, {
@@ -2316,57 +2316,6 @@ test('invites confirmed primary guests from one past event and never emails them
   });
 
   const cookie = `sge_session=${signSession(organizerId)}`;
-  const overviewResponse = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests`, {
-    headers: { cookie }
-  });
-  const overview = await overviewResponse.json();
-  assert.equal(overviewResponse.status, 200);
-  assert.equal(overview.canInvite, true);
-  assert.equal(overview.sources.length, 1);
-  assert.equal(overview.sources[0].peopleCount, 6);
-  assert.equal(overview.sources[0].eligibleCount, 3);
-
-  const reviewResponse = await fetch(
-    `${baseUrl}/api/events/${target.id}/previous-guests?sourceEventId=${source.id}`,
-    { headers: { cookie } }
-  );
-  const review = await reviewResponse.json();
-  assert.equal(reviewResponse.status, 200);
-  assert.deepEqual(review.recipients.map(person => person.email).sort(), [
-    'alice@example.test', 'frank@example.test', 'no-consent@example.test'
-  ]);
-  assert.doesNotMatch(JSON.stringify(review.recipients), /plus-one|cancelled|host-optout|already-going/);
-
-  const sendResponse = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [rsvpOnly.id] })
-  });
-  assert.equal(sendResponse.status, 202);
-  assert.equal((await sendResponse.json()).queued, 1);
-
-  let delivery;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const { rows } = await pool.query(
-      `SELECT recipient, recipient_name, status, attempt_count
-         FROM message_log WHERE event_id=$1 AND message_type='previous_guest_invite'`,
-      [target.id]
-    );
-    delivery = rows[0];
-    if (delivery?.status === 'sent') break;
-    await new Promise(resolve => setTimeout(resolve, 20));
-  }
-  assert.deepEqual(delivery, {
-    recipient: 'no-consent@example.test', recipient_name: 'No Consent', status: 'sent', attempt_count: 1
-  });
-
-  const repeated = await fetch(`${baseUrl}/api/events/${target.id}/previous-guests/invite`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ sourceEventId: source.id, rsvpIds: [rsvpOnly.id] })
-  });
-  assert.equal(repeated.status, 409);
-
   const followers = await fetch(`${baseUrl}/api/events/${target.id}/followers`, { headers: { cookie } });
   const followerData = await followers.json();
   assert.equal(followerData.count, 2);
