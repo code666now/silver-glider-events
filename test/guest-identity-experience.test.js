@@ -70,6 +70,7 @@ test('phone feedback returns focus to the menu while desktop feedback returns to
   const styles = read('public/css/main.css');
   const manage = read('public/js/manage.js');
 
+  assert.match(api, /document\.getElementById\('settings-feedback'\), bubble/);
   assert.match(api, /document\.querySelector\('\.sg-legal-feedback'\)/);
   assert.match(api, /candidate\.getClientRects\(\)\.length/);
   assert.match(api, /style\.display !== 'none' && style\.visibility !== 'hidden'/);
@@ -79,6 +80,21 @@ test('phone feedback returns focus to the menu while desktop feedback returns to
   assert.match(styles, /body\.sg-app-page:not\(\.quick-create-mobile-flow\):not\(\.event-mobile-flow-enabled\):not\(\.manage-mobile-custom-nav\) \.sg-global-footer \{ display: none; \}/);
   assert.match(styles, /body\.sg-app-page\.manage-mobile-custom-nav \.sg-legal-feedback/);
   assert.match(manage, /document\.body\.classList\.toggle\('manage-mobile-custom-nav', mobileManageLayout\.matches\)/);
+});
+
+test('phone tab bar is limited to top-level destinations and preserves focused task docks', () => {
+  const api = read('public/js/api.js');
+  const styles = read('public/css/main.css');
+  const settings = read('src/views/settings-v2.html');
+
+  assert.match(api, /function topLevelTabForPath\(pathname\)/);
+  assert.match(api, /topLevelTabForPath\(window\.location\.pathname\) === active/);
+  assert.match(api, /TAB_BAR_TABS\.find\(\(\[, href\]\) => href === normalized\)/);
+  assert.match(api, /className = 'sg-tab-bar'/);
+  assert.match(api, /setAttribute\('aria-label', 'Main'\)/);
+  assert.match(styles, /@media \(max-width: 879px\)[\s\S]*body\.has-tab-bar \{ --sg-tab-bar-height: 62px; \}/);
+  assert.match(styles, /padding:[^;]*env\(safe-area-inset-bottom\)/);
+  assert.match(settings, /id="settings-feedback">Send feedback<\/button>/);
 });
 
 test('only a signed-in matching identity receives the public avatar edit affordance', () => {

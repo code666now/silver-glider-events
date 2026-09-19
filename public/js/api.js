@@ -155,6 +155,36 @@ function renderNav(active) {
   });
 
   api('/api/auth/me').then(({ organizer }) => updateNavAccount(organizer)).catch(() => {});
+  // The tab bar belongs only to the four top-level destinations. Focused
+  // create, edit, manage, and Settings detail screens reuse the same nav key
+  // but keep their own back navigation and bottom action docks.
+  if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
+}
+
+// Phones: the four main places sit in a bottom tab bar, within thumb reach.
+// It replaces the hamburger menu there (CSS hides it); Feedback and the legal
+// links live on the Settings screen.
+const TAB_BAR_TABS = [
+  ['dashboard', '/dashboard', 'Home', '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-5h4v5"/>'],
+  ['events', '/events', 'Events', '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'],
+  ['following', '/following', 'Following', '<path d="M12 20s-7.5-4.6-7.5-10.1A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20Z"/>'],
+  ['settings', '/settings', 'Settings', '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>']
+];
+
+function topLevelTabForPath(pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return TAB_BAR_TABS.find(([, href]) => href === normalized)?.[0] || null;
+}
+
+function mountTabBar(active) {
+  if (document.querySelector('.sg-tab-bar')) return;
+  const bar = document.createElement('nav');
+  bar.className = 'sg-tab-bar';
+  bar.setAttribute('aria-label', 'Main');
+  bar.innerHTML = TAB_BAR_TABS.map(([key, href, label, icon]) =>
+    `<a class="sg-tab" href="${href}"${key === active ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg><span>${label}</span></a>`).join('');
+  document.body.appendChild(bar);
+  document.body.classList.add('has-tab-bar');
 }
 
 // Inject the moving aurora background behind the page (once).
@@ -253,7 +283,7 @@ function mountFeedbackBubble() {
     }
     const bubble = document.getElementById('feedback-bubble');
     // On phones the bubble is hidden and Feedback opens from the menu.
-    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
+    const focusTarget = [document.getElementById('settings-feedback'), bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
       .find(candidate => {
         if (!candidate || candidate.hidden || !candidate.getClientRects().length) return false;
         const style = window.getComputedStyle(candidate);

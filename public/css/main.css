@@ -725,3 +725,51 @@
     font-size: 12px;
   }
 }
+
+/* Bottom tab bar (phones, signed-in top-level pages). */
+.sg-tab-bar { display: none; }
+
+@media (max-width: 879px) {
+  body.has-tab-bar { --sg-tab-bar-height: 62px; }
+  body.has-tab-bar .sg-nav-toggle,
+  body.has-tab-bar .sg-nav-links { display: none; }
+
+  .sg-tab-bar {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 70;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    border-top: 1px solid rgba(255,255,255,.08);
+    background: rgba(10,10,11,.88);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  }
+  .sg-tab {
+    min-height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 12px;
+    color: var(--sg-text-faint);
+    font: 700 11px/1.1 var(--sg-font-body);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sg-tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sg-tab[aria-current="page"] { color: var(--sg-accent); }
+  .sg-tab:active { background: rgba(255,255,255,.04); }
+  .sg-tab:focus-visible { outline: 2px solid rgba(28,197,190,.68); outline-offset: -2px; }
+
+  /* Everything that sat on the bottom edge moves up by the bar's height. */
+  body.has-tab-bar .sg-shell { padding-bottom: calc(104px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+  body.has-tab-bar.has-mobile-sticky-action .sg-shell { padding-bottom: calc(156px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+  body.has-tab-bar .sg-mobile-sticky-action { bottom: calc(12px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+  body.has-tab-bar .sg-toast { bottom: calc(72px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+  body.has-tab-bar.has-mobile-sticky-action .sg-toast { bottom: calc(146px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+  body.has-tab-bar .settings-shell { padding-bottom: calc(112px + var(--sg-tab-bar-height) + env(safe-area-inset-bottom)); }
+}
