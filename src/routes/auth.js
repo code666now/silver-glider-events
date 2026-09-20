@@ -33,11 +33,27 @@ const { esc } = require('../lib/public-html');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const {
+  attachIdentity,
   attachVerifiedPhoneIdentity,
   CanonicalIdentityError,
+  CanonicalIdentityConflictError,
+  IDENTITY_TYPES,
+  normalizeEmail,
   resolveOrCreateOrganizerByEmail,
   resolveVerifiedPhoneIdentity
 } = require('../lib/canonical-identity');
+const {
+  listAccountIdentities,
+  makePrimaryEmail,
+  recordOwnershipConflict,
+  removeAccountIdentity,
+  replaceVerifiedPhone
+} = require('../lib/account-identities');
+const {
+  clearIdentityStepUpCookie,
+  hasIdentityStepUp,
+  setIdentityStepUpCookie
+} = require('../lib/identity-step-up');
 const {
   CODE_LENGTH: PHONE_CODE_LENGTH,
   PhoneAuthError,
@@ -116,12 +132,25 @@ function limitEmailRequest(req, res, email) {
   return false;
 }
 
-async function logEmail(email) {
+async function logEmail(email, recipientUserId = null) {
   await pool.query(
-    `INSERT INTO message_log (recipient, message_type, channel, status, sent_at)
-     VALUES ($1, 'magic_link', 'email', 'sent', NOW())`,
-    [email]
+    `INSERT INTO message_log
+       (recipient,recipient_user_id,message_type,channel,status,sent_at)
+     VALUES ($1,$2,'magic_link','email','sent',NOW())`,
+    [email, recipientUserId]
   );
+}
+
+async function accountIdentityState(req) {
+  const userId = Number(req.organizer.user_id || req.organizer.id);
+  return {
+    identities: await listAccountIdentities(pool, userId),
+    capabilities: {
+      canAddPhone: !req.organizer.is_admin,
+      identityStepUpVerified: hasIdentityStepUp(req, userId),
+      phoneLimit: 1
+    }
+  };
 }
 
 function phoneError(res, error) {
@@ -135,6 +164,15 @@ function phoneError(res, error) {
     message: error.message || 'Phone sign-in could not be completed'
   });
   return true;
+}
+
+function requireIdentityStepUp(req, res, next) {
+  const userId = req.organizer?.user_id || req.organizer?.id;
+  if (hasIdentityStepUp(req, userId)) return next();
+  return res.status(403).json({
+    error: 'identity_step_up_required',
+    message: 'Confirm your current email before changing sign-in methods.'
+  });
 }
 
 function waitForMinimum(startedAt, minimumMs = 650) {
@@ -394,6 +432,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         clearPhoneAuthCookie(res);
         clearPhotoAccessCookie(res);
         setSessionCookie(res, account.id);
+        setIdentityStepUpCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
         return res.json({ ok: true, redirect: creatorNext(locked.return_path) || '/events/new' });
       } catch (error) {
@@ -503,6 +542,55 @@ async function completeChallenge(client, req, pending, {
 } = {}) {
   const email = pending.email;
 
+  if (pending.intent === 'identity_step_up') {
+    const requestedUserId = Number(pending.requested_user_id);
+    const signedInUserId = Number(req.sessionAccount?.user_id || req.sessionAccount?.id);
+    if (!requestedUserId || !signedInUserId || requestedUserId !== signedInUserId) {
+      throw new CanonicalIdentityError(
+        'Sign in to the account that requested this confirmation.',
+        { code: 'identity_session_mismatch', status: 401 }
+      );
+    }
+    return {
+      kind: 'identity_step_up',
+      redirect: '/settings/account',
+      afterCommit: res => setIdentityStepUpCookie(res, requestedUserId)
+    };
+  }
+
+  if (pending.intent === 'attach_email') {
+    const requestedUserId = Number(pending.requested_user_id);
+    const signedInUserId = Number(req.sessionAccount?.user_id || req.sessionAccount?.id);
+    if (!requestedUserId || !signedInUserId || requestedUserId !== signedInUserId) {
+      throw new CanonicalIdentityError(
+        'Sign in to the account that requested this email before entering the code.',
+        { code: 'identity_session_mismatch', status: 401 }
+      );
+    }
+    if (!hasIdentityStepUp(req, requestedUserId)) {
+      throw new CanonicalIdentityError(
+        'Confirm your current email before adding a new one.',
+        { code: 'identity_step_up_required', status: 403 }
+      );
+    }
+    const attached = await attachIdentity(client, {
+      userId: requestedUserId,
+      identityType: IDENTITY_TYPES.EMAIL,
+      value: email,
+      verifiedAt: new Date(),
+      verificationScope: 'account',
+      verificationSource: 'account_settings.email_code',
+      sourceRecordId: Number(pending.id),
+      isPrimary: false
+    });
+    return {
+      kind: 'identity',
+      identity: attached.identity,
+      redirect: '/settings/account',
+      afterCommit: () => {}
+    };
+  }
+
   if (pending.intent === 'verify_guest') {
     let identity = await ensureGuestIdentity(client, { email, displayName: '' });
     await linkVerifiedRsvps(client, identity.id, email);
@@ -544,6 +632,7 @@ async function completeChallenge(client, req, pending, {
         if (globalizeTypedGuestCode) {
           clearPhotoAccessCookie(res);
           setSessionCookie(res, identity.id);
+          setIdentityStepUpCookie(res, identity.id);
         }
       }
     };
@@ -614,12 +703,27 @@ async function completeChallenge(client, req, pending, {
       clearPhotoAccessCookie(res);
       if (pending.intent === 'bind_phone') clearPhoneAuthCookie(res);
       setSessionCookie(res, organizer.id);
+      setIdentityStepUpCookie(res, organizer.id);
     }
   };
 }
 
 function continuePageCopy(pending, hostName) {
   const masked = esc(maskEmail(pending.email));
+  if (pending.intent === 'identity_step_up') {
+    return {
+      title: 'Confirm it’s you',
+      body: `Confirm ${masked} before changing sign-in methods.`,
+      button: 'Confirm account'
+    };
+  }
+  if (pending.intent === 'attach_email') {
+    return {
+      title: 'Confirm this email',
+      body: `Confirm ${masked} for the Silver Glider account that requested it.`,
+      button: 'Confirm email'
+    };
+  }
   if (pending.intent === 'follow_host' && hostName) {
     return {
       title: `Follow ${esc(hostName)}`,
@@ -751,6 +855,7 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     return res.status(429).json({ error: 'too_many_attempts', message: 'Too many attempts. Wait a few minutes and try again.' });
   }
   const client = await pool.connect();
+  let consumedPending = null;
   try {
     await client.query('BEGIN');
     const result = await consumeCode(client, readSignInRequest(req), req.body?.code);
@@ -759,6 +864,7 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
       res.setHeader('Cache-Control', 'private, no-store');
       return res.status(400).json({ error: result.error, message: CODE_ERRORS[result.error], remaining: result.remaining });
     }
+    consumedPending = result.pending;
     // Typing a browser-bound code is an explicit proof of the inbox. A guest
     // verification code therefore also establishes the normal account
     // session; limited email links keep their narrower scopes.
@@ -779,6 +885,22 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof CanonicalIdentityConflictError && consumedPending?.intent === 'attach_email') {
+      const candidateUserId = Number(consumedPending.requested_user_id);
+      await recordOwnershipConflict(pool, {
+        identityType: IDENTITY_TYPES.EMAIL,
+        normalizedValue: consumedPending.email,
+        candidateUserId,
+        conflictingUserId: err.existingUserId,
+        verificationSource: 'account_settings.email_code',
+        sourceRecordId: Number(consumedPending.id)
+      }).catch(auditError => console.error('[identity:email-conflict-audit]', auditError.message));
+      await pool.query(
+        'UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW()) WHERE id=$1',
+        [consumedPending.id]
+      ).catch(() => {});
+      clearSignInRequestCookie(res);
+    }
     if (!phoneError(res, err)) next(err);
   } finally {
     client.release();
@@ -797,6 +919,7 @@ router.post('/api/auth/logout', async (req, res, next) => {
     clearPhotoAccessCookie(res);
     clearSignInRequestCookie(res);
     clearPhoneAuthCookie(res);
+    clearIdentityStepUpCookie(res);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -809,9 +932,23 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
     await client.query('BEGIN');
     await client.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
     await revokeIdentityGuestSessions(client, req.organizer.id, req.organizer.user_id);
+    const { rows: activeEmails } = await client.query(
+      `SELECT normalized_value AS email
+         FROM user_identities
+        WHERE user_id=$1 AND identity_type='email' AND revoked_at IS NULL
+          AND verification_scope='account' AND verified_at IS NOT NULL`,
+      [req.organizer.user_id || req.organizer.id]
+    );
+    const emailValues = activeEmails.map(row => row.email);
+    if (!emailValues.includes(String(req.organizer.email || '').trim().toLowerCase())) {
+      emailValues.push(String(req.organizer.email || '').trim().toLowerCase());
+    }
     await client.query(
-      'UPDATE magic_link_tokens SET used_at=NOW() WHERE LOWER(email)=LOWER($1) AND used_at IS NULL',
-      [req.organizer.email]
+      `UPDATE magic_link_tokens
+          SET used_at=NOW()
+        WHERE used_at IS NULL
+          AND (LOWER(BTRIM(email))=ANY($2::text[]) OR requested_user_id=$1)`,
+      [req.organizer.user_id || req.organizer.id, emailValues]
     );
     const { rows: activePhones } = await client.query(
       `SELECT phone_e164 AS phone
@@ -852,6 +989,7 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
     clearPhotoAccessCookie(res);
     clearSignInRequestCookie(res);
     clearPhoneAuthCookie(res);
+    clearIdentityStepUpCookie(res);
     res.json({ ok: true });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -875,6 +1013,268 @@ router.get('/api/auth/me', requireOrganizer, (req, res) => {
     }
   });
 });
+
+router.get('/api/me/identities', requireOrganizer, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await accountIdentityState(req));
+  } catch (error) { next(error); }
+});
+
+// Sensitive credential changes require fresh proof of the account's current
+// primary inbox. The resulting HttpOnly proof lasts only long enough to finish
+// one account-settings visit; the normal 30-day session remains unchanged.
+router.post('/api/me/identities/step-up/start', requireOrganizer, async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const email = normalizeEmail(req.organizer.email);
+    if (!limitEmailRequest(req, res, email)) return;
+    const userId = Number(req.organizer.user_id || req.organizer.id);
+    const { code, requestToken } = await createSignInChallenge(pool, {
+      email,
+      intent: 'identity_step_up',
+      requestedUserId: userId,
+      returnPath: '/settings/account'
+    });
+    await sendAccountVerificationCode({ to: email, code, purpose: 'identity_step_up' });
+    await logEmail(email, userId);
+    setSignInRequestCookie(res, requestToken);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
+  } catch (error) {
+    if (!phoneError(res, error)) next(error);
+  }
+});
+
+router.post(
+  '/api/me/identities/email/start',
+  requireOrganizer,
+  requireIdentityStepUp,
+  async (req, res, next) => {
+    if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+    try {
+      const email = normalizeEmail(req.body?.email);
+      const userId = Number(req.organizer.user_id || req.organizer.id);
+      const own = await pool.query(
+        `SELECT id FROM user_identities
+          WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2
+            AND revoked_at IS NULL AND verification_scope='account' AND verified_at IS NOT NULL`,
+        [userId, email]
+      );
+      if (own.rows[0]) {
+        return res.status(409).json({
+          error: 'identity_already_connected',
+          message: 'That email is already connected to your account.'
+        });
+      }
+      if (!limitEmailRequest(req, res, email)) return;
+      const { code, requestToken } = await createSignInChallenge(pool, {
+        email,
+        intent: 'attach_email',
+        requestedUserId: userId,
+        returnPath: '/settings/account'
+      });
+      await sendAccountVerificationCode({ to: email, code, purpose: 'attach_email' });
+      // Ownership is not known until the code is entered. Do not attach the
+      // requester to this delivery snapshot prematurely.
+      await logEmail(email);
+      setSignInRequestCookie(res, requestToken);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
+    } catch (error) {
+      if (!phoneError(res, error)) next(error);
+    }
+  }
+);
+
+router.post(
+  '/api/me/identities/phone/start',
+  requireOrganizer,
+  requireIdentityStepUp,
+  async (req, res, next) => {
+    if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+    const startedAt = Date.now();
+    let phone;
+    try {
+      if (req.organizer.is_admin) {
+        return res.status(403).json({
+          error: 'email_sign_in_required',
+          message: 'Administrators use email sign-in.'
+        });
+      }
+      phone = sms.normalizeE164(req.body?.phone);
+      const userId = Number(req.organizer.user_id || req.organizer.id);
+      const own = await pool.query(
+        `SELECT id FROM user_identities
+          WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2
+            AND revoked_at IS NULL AND verification_scope='account' AND verified_at IS NOT NULL`,
+        [userId, phone]
+      );
+      if (own.rows[0]) {
+        return res.status(409).json({
+          error: 'identity_already_connected',
+          message: 'That phone is already connected to your account.'
+        });
+      }
+      const rate = phoneRequestLimiter.consume({ phone, ip: clientIp(req) });
+      if (!rate.allowed) {
+        res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+        return res.status(429).json({
+          error: 'too_many_phone_requests',
+          message: 'Too many requests. Wait a few minutes and try again.'
+        });
+      }
+      const verification = await phoneVerification.startVerification(phone);
+      const challenge = await createPhoneChallenge(pool, {
+        phone,
+        purpose: 'add_phone',
+        organizerId: userId,
+        providerSid: verification.verificationSid,
+        returnPath: '/settings/account'
+      });
+      setPhoneAuthCookie(res, challenge.requestToken);
+      res.setHeader('Cache-Control', 'private, no-store');
+      await waitForMinimum(startedAt);
+      res.json({ ok: true, codeLength: PHONE_CODE_LENGTH });
+    } catch (error) {
+      if (phoneStartProviderError(error) || error instanceof CanonicalIdentityError) {
+        await waitForMinimum(startedAt);
+        return res.status(error.status || 503).json({
+          error: error.code || 'phone_code_unavailable',
+          message: error instanceof CanonicalIdentityError
+            ? error.message
+            : 'We couldn’t send a code. Try again.'
+        });
+      }
+      if (!phoneError(res, error)) next(error);
+    }
+  }
+);
+
+router.post(
+  '/api/me/identities/phone/verify',
+  requireOrganizer,
+  requireIdentityStepUp,
+  async (req, res, next) => {
+    if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+    const rate = phoneCodeAttemptLimiter.consume({ ip: clientIp(req) });
+    if (!rate.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(rate.retryAfterMs / 1000)));
+      return res.status(429).json({
+        error: 'too_many_attempts',
+        message: 'Too many attempts. Wait a few minutes and try again.'
+      });
+    }
+
+    let challenge;
+    let client;
+    const userId = Number(req.organizer.user_id || req.organizer.id);
+    try {
+      challenge = await readPhoneChallenge(pool, req);
+      if (!challenge || challenge.purpose !== 'add_phone' ||
+          Number(challenge.organizer_id) !== userId) {
+        throw new PhoneAuthError('That code has expired. Request a new one.', {
+          code: 'phone_verification_expired', status: 400
+        });
+      }
+      const verification = await phoneVerification.checkVerification({
+        verificationSid: challenge.provider_sid,
+        code: req.body?.code
+      });
+      if (!verification.phone || verification.phone !== challenge.phone_e164) {
+        throw new PhoneAuthError('Phone verification could not be completed.', {
+          code: 'phone_verification_mismatch', status: 400
+        });
+      }
+
+      client = await pool.connect();
+      await client.query('BEGIN');
+      const locked = await readPhoneChallenge(client, req, { forUpdate: true });
+      if (!locked || Number(locked.id) !== Number(challenge.id) ||
+          locked.purpose !== 'add_phone' || Number(locked.organizer_id) !== userId ||
+          locked.provider_sid !== verification.verificationSid) {
+        throw new PhoneAuthError('Phone verification expired. Start again.', {
+          code: 'phone_verification_expired', status: 400
+        });
+      }
+      await replaceVerifiedPhone(client, {
+        userId,
+        phone: locked.phone_e164,
+        verifiedAt: new Date(),
+        verificationSource: 'account_settings.twilio_verify'
+      });
+      await client.query(
+        `UPDATE phone_auth_challenges
+            SET verified_at=COALESCE(verified_at,NOW()),used_at=NOW()
+          WHERE id=$1`,
+        [locked.id]
+      );
+      await client.query('COMMIT');
+      clearPhoneAuthCookie(res);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ ok: true, ...(await accountIdentityState(req)) });
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {});
+      if (error instanceof CanonicalIdentityConflictError && challenge) {
+        await recordOwnershipConflict(pool, {
+          identityType: IDENTITY_TYPES.PHONE,
+          normalizedValue: challenge.phone_e164,
+          candidateUserId: userId,
+          conflictingUserId: error.existingUserId,
+          verificationSource: 'account_settings.twilio_verify',
+          sourceRecordId: Number(challenge.id)
+        }).catch(auditError => console.error('[identity:phone-conflict-audit]', auditError.message));
+        await pool.query(
+          'UPDATE phone_auth_challenges SET used_at=COALESCE(used_at,NOW()) WHERE id=$1',
+          [challenge.id]
+        ).catch(() => {});
+        clearPhoneAuthCookie(res);
+      }
+      if (!phoneError(res, error)) next(error);
+    } finally {
+      client?.release();
+    }
+  }
+);
+
+router.patch(
+  '/api/me/identities/:id/primary',
+  requireOrganizer,
+  requireIdentityStepUp,
+  async (req, res, next) => {
+    if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+    try {
+      const userId = Number(req.organizer.user_id || req.organizer.id);
+      await makePrimaryEmail(pool, { userId, identityId: req.params.id });
+      const { rows } = await pool.query(
+        'SELECT email FROM organizers WHERE id=$1',
+        [userId]
+      );
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ ok: true, primaryEmail: rows[0]?.email || '', ...(await accountIdentityState(req)) });
+    } catch (error) {
+      if (!phoneError(res, error)) next(error);
+    }
+  }
+);
+
+router.delete(
+  '/api/me/identities/:id',
+  requireOrganizer,
+  requireIdentityStepUp,
+  async (req, res, next) => {
+    if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
+    try {
+      const userId = Number(req.organizer.user_id || req.organizer.id);
+      await removeAccountIdentity(pool, { userId, identityId: req.params.id });
+      clearPhoneAuthCookie(res);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ ok: true, ...(await accountIdentityState(req)) });
+    } catch (error) {
+      if (!phoneError(res, error)) next(error);
+    }
+  }
+);
 
 // Also answers for a photo-only grant, which the Add Photo page needs; `scope`
 // tells the page not to render account navigation.

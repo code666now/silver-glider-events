@@ -13,7 +13,13 @@ async function api(path, opts = {}) {
     throw new Error('Not signed in');
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) {
+    const error = new Error(data.message || data.error || 'Request failed');
+    error.code = data.error || 'request_failed';
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
   return data;
 }
 

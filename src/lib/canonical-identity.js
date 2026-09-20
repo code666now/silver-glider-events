@@ -691,11 +691,15 @@ async function resolveOrCreateOrganizerByEmail(db, {
       `SELECT id,user_id,email,name,created_at,last_login_at
          FROM organizers
         WHERE LOWER(BTRIM(email))=$1
+           OR ($2::int IS NOT NULL AND id=$2)
         ORDER BY id
         FOR UPDATE`,
-      [normalizedEmail]
+      [normalizedEmail, existingIdentity ? Number(existingIdentity.user_id) : null]
     );
-    if (organizerResult.rows.length > 1) {
+    const emailOrganizers = organizerResult.rows.filter(
+      row => String(row.email || '').trim().toLowerCase() === normalizedEmail
+    );
+    if (emailOrganizers.length > 1) {
       throw new CanonicalIdentityConflictError(
         'Multiple legacy organizer rows claim that normalized email.',
         {
@@ -706,38 +710,46 @@ async function resolveOrCreateOrganizerByEmail(db, {
       );
     }
 
-    let organizer = organizerResult.rows[0] || null;
-    if (existingIdentity && organizer
-      && Number(existingIdentity.user_id) !== Number(organizer.id)) {
-      throw new CanonicalIdentityConflictError(
-        'The canonical email and legacy organizer have different owners.',
-        {
-          code: 'email_owner_conflict',
-          identityType: IDENTITY_TYPES.EMAIL,
-          normalizedValue: normalizedEmail,
-          requestedUserId: Number(organizer.id),
-          existingUserId: Number(existingIdentity.user_id)
-        }
+    let organizer = null;
+    if (existingIdentity) {
+      const canonicalOrganizer = organizerResult.rows.find(
+        row => Number(row.id) === Number(existingIdentity.user_id)
       );
+      const emailOrganizer = emailOrganizers[0] || null;
+      if (emailOrganizer && Number(emailOrganizer.id) !== Number(existingIdentity.user_id)) {
+        throw new CanonicalIdentityConflictError(
+          'The canonical email and legacy organizer have different owners.',
+          {
+            code: 'email_owner_conflict',
+            identityType: IDENTITY_TYPES.EMAIL,
+            normalizedValue: normalizedEmail,
+            requestedUserId: Number(emailOrganizer.id),
+            existingUserId: Number(existingIdentity.user_id)
+          }
+        );
+      }
+      if (!canonicalOrganizer) {
+        throw new CanonicalIdentityError('Organizer does not exist for this canonical email.', {
+          code: 'organizer_not_found', status: 404
+        });
+      }
+      // A verified secondary email belongs to the existing canonical user; it
+      // must never create a second organizer merely because organizers.email
+      // stores the compatibility primary.
+      organizer = canonicalOrganizer;
+    } else {
+      organizer = emailOrganizers[0] || null;
     }
 
     let createdOrganizer = false;
     if (!organizer) {
-      const inserted = existingIdentity
-        ? await client.query(
-            `INSERT INTO organizers (id,user_id,email,name)
-             VALUES ($1,$1,$2,$3)
-             ON CONFLICT DO NOTHING
-             RETURNING id,user_id,email,name,created_at,last_login_at`,
-            [Number(existingIdentity.user_id), normalizedEmail, normalizedName]
-          )
-        : await client.query(
-            `INSERT INTO organizers (email,name)
-             VALUES ($1,$2)
-             ON CONFLICT DO NOTHING
-             RETURNING id,user_id,email,name,created_at,last_login_at`,
-            [normalizedEmail, normalizedName]
-          );
+      const inserted = await client.query(
+        `INSERT INTO organizers (email,name)
+         VALUES ($1,$2)
+         ON CONFLICT DO NOTHING
+         RETURNING id,user_id,email,name,created_at,last_login_at`,
+        [normalizedEmail, normalizedName]
+      );
       organizer = inserted.rows[0] || null;
       createdOrganizer = Boolean(organizer);
 
@@ -757,25 +769,12 @@ async function resolveOrCreateOrganizerByEmail(db, {
               code: 'ambiguous_legacy_email',
               identityType: IDENTITY_TYPES.EMAIL,
               normalizedValue: normalizedEmail,
-              existingUserId: existingIdentity ? Number(existingIdentity.user_id) : null
+              existingUserId: null
             }
           );
         }
         organizer = raced.rows[0];
       }
-    }
-
-    if (existingIdentity && Number(existingIdentity.user_id) !== Number(organizer.id)) {
-      throw new CanonicalIdentityConflictError(
-        'The canonical email and legacy organizer have different owners.',
-        {
-          code: 'email_owner_conflict',
-          identityType: IDENTITY_TYPES.EMAIL,
-          normalizedValue: normalizedEmail,
-          requestedUserId: Number(organizer.id),
-          existingUserId: Number(existingIdentity.user_id)
-        }
-      );
     }
 
     const ensured = await ensureOrganizerUserRecord(client, organizer);
@@ -794,7 +793,7 @@ async function resolveOrCreateOrganizerByEmail(db, {
       sourceRecordId: accountProof
         ? accountProof.sourceRecordId
         : Number(organizer.id),
-      isPrimary: true
+      isPrimary: String(organizer.email || '').trim().toLowerCase() === normalizedEmail
     });
 
     if (accountProof) {
@@ -1082,6 +1081,14 @@ async function revokeActivePhoneIdentity(db, {
           [identity.id, revokedAt]
         )
       : { rows: [], rowCount: 0 };
+    if (identity) {
+      await client.query(
+        `UPDATE user_identity_verifications
+            SET revoked_at=COALESCE(revoked_at,$2)
+          WHERE user_identity_id=$1 AND revoked_at IS NULL`,
+        [identity.id, revokedAt]
+      );
+    }
     const legacyResult = await client.query(
       `UPDATE account_phone_credentials
           SET revoked_at=$3,updated_at=NOW()

@@ -43,7 +43,7 @@ async function createPhoneChallenge(db, {
   returnPath = null,
   ttlMinutes = 20
 }) {
-  if (!['enroll', 'sign_in'].includes(purpose)) {
+  if (!['enroll', 'sign_in', 'add_phone'].includes(purpose)) {
     throw new PhoneAuthError('Unsupported phone authentication purpose');
   }
   const phoneE164 = normalizeE164(phone);

@@ -176,6 +176,33 @@ function responseCookie(response, name) {
   return match ? `${name}=${match[1]}` : '';
 }
 
+function cookieHeader(...cookies) {
+  return cookies.filter(Boolean).join('; ');
+}
+
+async function signInAccount(email, next = '/settings/account') {
+  const started = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next })
+  });
+  assert.equal(started.status, 200);
+  const requestCookie = responseCookie(started, 'sge_sign_in');
+  assert.ok(requestCookie);
+  const { code } = lastDevEmail(email, 'magic_link');
+  const completed = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  return {
+    body: await completed.json(),
+    sessionCookie: responseCookie(completed, 'sge_session'),
+    stepUpCookie: responseCookie(completed, 'sge_identity_step_up')
+  };
+}
+
 test.before(async () => {
   await migrate();
   await resetDatabase();
@@ -3770,6 +3797,437 @@ test('sign out everywhere stays available during quarantined phone ownership dri
       WHERE phone_e164=$1 AND used_at IS NULL`,
     [phone]
   )).rows[0].count, 0, 'pending challenges for the drifted phone are invalidated');
+});
+
+// ---------------------------------------------------------------------------
+// Account identity controls
+// ---------------------------------------------------------------------------
+
+test('account email controls require matching step-up and preserve one user through add, primary, login, and removal', async () => {
+  resetRateLimits();
+  const originalEmail = 'host@example.test';
+  const secondaryEmail = 'host-secondary@example.test';
+  const initialSignIn = await signInAccount(originalEmail);
+  assert.equal(initialSignIn.body.kind, 'account');
+  assert.ok(initialSignIn.sessionCookie);
+
+  // A normal account session can inspect identities, but it cannot mutate
+  // credentials until the current primary inbox has just been proved.
+  const beforeStepUp = await fetch(`${baseUrl}/api/me/identities`, {
+    headers: { cookie: initialSignIn.sessionCookie }
+  });
+  assert.equal(beforeStepUp.status, 200);
+  const beforeStepUpBody = await beforeStepUp.json();
+  assert.equal(beforeStepUpBody.capabilities.identityStepUpVerified, false);
+  assert.deepEqual(beforeStepUpBody.identities.map(identity => ({
+    type: identity.type,
+    value: identity.value,
+    primary: identity.isPrimary
+  })), [{ type: 'email', value: originalEmail, primary: true }]);
+
+  const unprovedAdd = await fetch(`${baseUrl}/api/me/identities/email/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: initialSignIn.sessionCookie },
+    body: JSON.stringify({ email: secondaryEmail })
+  });
+  assert.equal(unprovedAdd.status, 403);
+  assert.equal((await unprovedAdd.json()).error, 'identity_step_up_required');
+
+  const stepUpStart = await fetch(`${baseUrl}/api/me/identities/step-up/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: initialSignIn.sessionCookie }
+  });
+  assert.equal(stepUpStart.status, 200);
+  const stepUpRequestCookie = responseCookie(stepUpStart, 'sge_sign_in');
+  const stepUpCode = lastDevEmail(originalEmail, 'account_verification_code').code;
+  const otherAccount = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('step-up-other@example.test','Other Account',NOW()) RETURNING id`
+  )).rows[0];
+  const wrongSession = `sge_session=${signSession(otherAccount.id)}`;
+  const wrongAccountAttempt = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(wrongSession, stepUpRequestCookie)
+    },
+    body: JSON.stringify({ code: stepUpCode })
+  });
+  assert.equal(wrongAccountAttempt.status, 401);
+  assert.equal((await wrongAccountAttempt.json()).error, 'identity_session_mismatch');
+  assert.equal(responseCookie(wrongAccountAttempt, 'sge_identity_step_up'), '');
+
+  // The mismatched session rolls the challenge back, so the rightful account
+  // can still finish without asking for another email.
+  const stepUpComplete = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(initialSignIn.sessionCookie, stepUpRequestCookie)
+    },
+    body: JSON.stringify({ code: stepUpCode })
+  });
+  assert.equal(stepUpComplete.status, 200);
+  assert.equal((await stepUpComplete.json()).kind, 'identity_step_up');
+  const stepUpCookie = responseCookie(stepUpComplete, 'sge_identity_step_up');
+  assert.ok(stepUpCookie);
+  const settingsCookies = cookieHeader(initialSignIn.sessionCookie, stepUpCookie);
+  const stolenStepUp = await fetch(`${baseUrl}/api/me/identities/email/start`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(wrongSession, stepUpCookie)
+    },
+    body: JSON.stringify({ email: 'must-not-attach@example.test' })
+  });
+  assert.equal(stolenStepUp.status, 403);
+  assert.equal((await stolenStepUp.json()).error, 'identity_step_up_required');
+
+  const countsBeforeAdd = (await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0];
+  const addStart = await fetch(`${baseUrl}/api/me/identities/email/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: settingsCookies },
+    body: JSON.stringify({ email: `  ${secondaryEmail.toUpperCase()}  ` })
+  });
+  assert.equal(addStart.status, 200);
+  const addRequestCookie = responseCookie(addStart, 'sge_sign_in');
+  assert.ok(addRequestCookie);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE normalized_value=$1 AND revoked_at IS NULL`, [secondaryEmail]
+  )).rows[0].count, 0, 'delivery alone never attaches an email');
+
+  const addComplete = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(settingsCookies, addRequestCookie)
+    },
+    body: JSON.stringify({
+      code: lastDevEmail(secondaryEmail, 'account_verification_code').code
+    })
+  });
+  assert.equal(addComplete.status, 200);
+  assert.equal((await addComplete.json()).kind, 'identity');
+
+  const countsAfterAdd = (await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0];
+  assert.deepEqual(countsAfterAdd, countsBeforeAdd,
+    'a secondary login belongs to the existing user instead of creating an organizer');
+  const emails = (await pool.query(
+    `SELECT id,user_id,normalized_value,is_primary,revoked_at
+       FROM user_identities
+      WHERE user_id=$1 AND identity_type='email'
+      ORDER BY normalized_value`,
+    [organizerId]
+  )).rows;
+  assert.equal(emails.length, 2);
+  assert.ok(emails.every(identity => Number(identity.user_id) === Number(organizerId)));
+  const originalIdentity = emails.find(identity => identity.normalized_value === originalEmail);
+  const secondaryIdentity = emails.find(identity => identity.normalized_value === secondaryEmail);
+  assert.equal(originalIdentity.is_primary, true);
+  assert.equal(secondaryIdentity.is_primary, false);
+
+  const makePrimary = await fetch(
+    `${baseUrl}/api/me/identities/${secondaryIdentity.id}/primary`,
+    { method: 'PATCH', headers: { cookie: settingsCookies } }
+  );
+  assert.equal(makePrimary.status, 200);
+  const primaryBody = await makePrimary.json();
+  assert.equal(primaryBody.primaryEmail, secondaryEmail);
+  assert.equal(primaryBody.identities.find(identity => identity.id === Number(secondaryIdentity.id)).isPrimary, true);
+  const sameSession = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: initialSignIn.sessionCookie }
+  });
+  assert.equal(sameSession.status, 200);
+  const sameSessionOrganizer = (await sameSession.json()).organizer;
+  assert.equal(Number(sameSessionOrganizer.id), Number(organizerId));
+  assert.equal(sameSessionOrganizer.email, secondaryEmail);
+
+  // Changing the compatibility primary does not strand the old alias: either
+  // verified email still resolves to the same canonical user and host row.
+  resetRateLimits();
+  const oldAliasSignIn = await signInAccount(originalEmail);
+  const oldAliasMe = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: oldAliasSignIn.sessionCookie }
+  });
+  assert.equal(oldAliasMe.status, 200);
+  const oldAliasOrganizer = (await oldAliasMe.json()).organizer;
+  assert.equal(Number(oldAliasOrganizer.id), Number(organizerId));
+  assert.equal(oldAliasOrganizer.email, secondaryEmail);
+  assert.deepEqual((await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0], countsBeforeAdd);
+
+  const removePrimary = await fetch(`${baseUrl}/api/me/identities/${secondaryIdentity.id}`, {
+    method: 'DELETE', headers: { cookie: settingsCookies }
+  });
+  assert.equal(removePrimary.status, 409);
+  assert.equal((await removePrimary.json()).error, 'primary_identity_required');
+
+  resetRateLimits();
+  const pendingOldAlias = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: originalEmail, next: '/dashboard' })
+  });
+  assert.equal(pendingOldAlias.status, 200);
+  const pendingOldAliasToken = tokenFromLink(lastDevEmail(originalEmail, 'magic_link').link);
+  const removeSecondary = await fetch(`${baseUrl}/api/me/identities/${originalIdentity.id}`, {
+    method: 'DELETE', headers: { cookie: settingsCookies }
+  });
+  assert.equal(removeSecondary.status, 200);
+  const removalBody = await removeSecondary.json();
+  assert.deepEqual(removalBody.identities.map(identity => identity.value), [secondaryEmail]);
+  const removedState = (await pool.query(
+    `SELECT identity.revoked_at,
+            COUNT(proof.id) FILTER (WHERE proof.revoked_at IS NULL)::int AS active_proofs
+       FROM user_identities identity
+       LEFT JOIN user_identity_verifications proof ON proof.user_identity_id=identity.id
+      WHERE identity.id=$1
+      GROUP BY identity.id`,
+    [originalIdentity.id]
+  )).rows[0];
+  assert.ok(removedState.revoked_at);
+  assert.equal(removedState.active_proofs, 0);
+  const invalidatedAliasLink = await fetch(
+    `${baseUrl}/auth/verify?token=${pendingOldAliasToken}`,
+    { redirect: 'manual' }
+  );
+  assert.equal(invalidatedAliasLink.status, 302);
+  assert.equal(invalidatedAliasLink.headers.get('location'), '/login?error=expired');
+});
+
+test('verified email ownership conflicts are quarantined without merging either account', async () => {
+  resetRateLimits();
+  const host = await signInAccount('host@example.test');
+  const claimedEmail = 'claimed-identity@example.test';
+  const claimant = await signInAccount(claimedEmail);
+  const claimantMe = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: claimant.sessionCookie }
+  });
+  const claimantId = Number((await claimantMe.json()).organizer.id);
+  const before = (await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0];
+  const hostCookies = cookieHeader(host.sessionCookie, host.stepUpCookie);
+
+  const started = await fetch(`${baseUrl}/api/me/identities/email/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: hostCookies },
+    body: JSON.stringify({ email: claimedEmail })
+  });
+  assert.equal(started.status, 200,
+    'ownership is deliberately checked only after inbox proof');
+  const requestCookie = responseCookie(started, 'sge_sign_in');
+  const pending = (await pool.query(
+    `SELECT id FROM magic_link_tokens
+      WHERE email=$1 AND intent='attach_email' ORDER BY id DESC LIMIT 1`,
+    [claimedEmail]
+  )).rows[0];
+  const completion = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(hostCookies, requestCookie)
+    },
+    body: JSON.stringify({
+      code: lastDevEmail(claimedEmail, 'account_verification_code').code
+    })
+  });
+  assert.equal(completion.status, 409);
+  assert.equal((await completion.json()).error, 'identity_conflict');
+
+  const conflict = (await pool.query(
+    `SELECT identity_type,normalized_value,candidate_user_id,conflicting_user_id,
+            verification_source,source_record_id,reason,resolved_at
+       FROM user_identity_conflicts
+      WHERE source_record_id=$1 AND verification_source='account_settings.email_code'`,
+    [pending.id]
+  )).rows[0];
+  assert.deepEqual({
+    type: conflict.identity_type,
+    value: conflict.normalized_value,
+    candidate: Number(conflict.candidate_user_id),
+    owner: Number(conflict.conflicting_user_id),
+    sourceId: Number(conflict.source_record_id),
+    reason: conflict.reason,
+    resolved: conflict.resolved_at
+  }, {
+    type: 'email',
+    value: claimedEmail,
+    candidate: Number(organizerId),
+    owner: claimantId,
+    sourceId: Number(pending.id),
+    reason: 'already_claimed',
+    resolved: null
+  });
+  const ownership = (await pool.query(
+    `SELECT user_id FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL`,
+    [claimedEmail]
+  )).rows;
+  assert.deepEqual(ownership.map(row => Number(row.user_id)), [claimantId]);
+  assert.deepEqual((await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0], before);
+  assert.ok((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE id=$1', [pending.id]
+  )).rows[0].used_at, 'the conflicted proof is consumed instead of remaining replayable');
+});
+
+test('administrators cannot add phone sign-in even after fresh account proof', async () => {
+  resetRateLimits();
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const account = await signInAccount('host@example.test');
+  const cookies = cookieHeader(account.sessionCookie, account.stepUpCookie);
+  const state = await fetch(`${baseUrl}/api/me/identities`, { headers: { cookie: cookies } });
+  assert.equal(state.status, 200);
+  assert.equal((await state.json()).capabilities.canAddPhone, false);
+
+  const originalStartVerification = phoneVerification.startVerification;
+  let providerStarts = 0;
+  phoneVerification.startVerification = async () => {
+    providerStarts += 1;
+    return { verificationSid: `VE${'f'.repeat(32)}`, phone: '+14155550195', status: 'pending' };
+  };
+  try {
+    const response = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookies },
+      body: JSON.stringify({ phone: '+1 (415) 555-0195' })
+    });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, 'email_sign_in_required');
+    assert.equal(providerStarts, 0);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM phone_auth_challenges
+        WHERE purpose='add_phone'`
+    )).rows[0].count, 0);
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+  }
+});
+
+test('a freshly verified replacement phone revokes the old credential without changing the user', async () => {
+  resetRateLimits();
+  const account = await signInAccount('host@example.test');
+  const cookies = cookieHeader(account.sessionCookie, account.stepUpCookie);
+  const oldPhone = '+14155550196';
+  const newPhone = '+14155550197';
+  const credential = (await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW()) RETURNING id`,
+    [organizerId, oldPhone]
+  )).rows[0];
+  const oldIdentity = (await pool.query(
+    `INSERT INTO user_identities (
+       user_id,identity_type,value,normalized_value,verified_at,
+       verification_scope,verification_source,source_record_id,is_primary
+     ) VALUES ($1,'phone',$2,$2,NOW(),'account','phone_replacement_fixture',$3,TRUE)
+     RETURNING id`,
+    [organizerId, oldPhone, credential.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identity_verifications (
+       user_identity_id,verification_scope,verified_at,verification_source,source_record_id
+     ) VALUES ($1,'account',NOW(),'phone_replacement_fixture',$2)`,
+    [oldIdentity.id, credential.id]
+  );
+  const countsBefore = (await pool.query(
+    `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+            (SELECT COUNT(*)::int FROM organizers) AS organizers`
+  )).rows[0];
+
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalCheckVerification = phoneVerification.checkVerification;
+  const verificationSid = `VE${'d'.repeat(32)}`;
+  let providerStarts = 0;
+  let providerChecks = 0;
+  phoneVerification.startVerification = async phone => {
+    providerStarts += 1;
+    assert.equal(phone, newPhone);
+    return { verificationSid, phone, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async input => {
+    providerChecks += 1;
+    assert.deepEqual(input, { verificationSid, code: '246810' });
+    return { approved: true, verificationSid, phone: newPhone, status: 'approved' };
+  };
+  try {
+    const started = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookies },
+      body: JSON.stringify({ phone: '+1 (415) 555-0197' })
+    });
+    assert.equal(started.status, 200);
+    const phoneCookie = responseCookie(started, 'sge_phone_auth');
+    assert.ok(phoneCookie);
+    assert.equal(providerStarts, 1);
+
+    const verified = await fetch(`${baseUrl}/api/me/identities/phone/verify`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookieHeader(cookies, phoneCookie)
+      },
+      body: JSON.stringify({ code: '246810' })
+    });
+    assert.equal(verified.status, 200);
+    const verifiedBody = await verified.json();
+    assert.deepEqual(
+      verifiedBody.identities.filter(identity => identity.type === 'phone').map(identity => ({
+        value: identity.value,
+        primary: identity.isPrimary
+      })),
+      [{ value: newPhone, primary: true }]
+    );
+    assert.equal(providerChecks, 1);
+
+    const phoneIdentities = (await pool.query(
+      `SELECT normalized_value,is_primary,revoked_at
+         FROM user_identities
+        WHERE user_id=$1 AND identity_type='phone'
+        ORDER BY id`,
+      [organizerId]
+    )).rows;
+    assert.equal(phoneIdentities.length, 2);
+    assert.equal(phoneIdentities[0].normalized_value, oldPhone);
+    assert.ok(phoneIdentities[0].revoked_at);
+    assert.equal(phoneIdentities[1].normalized_value, newPhone);
+    assert.equal(phoneIdentities[1].revoked_at, null);
+    assert.equal(phoneIdentities[1].is_primary, true);
+    const credentials = (await pool.query(
+      `SELECT phone_e164,revoked_at FROM account_phone_credentials
+        WHERE organizer_id=$1 ORDER BY id`, [organizerId]
+    )).rows;
+    assert.equal(credentials.length, 2);
+    assert.equal(credentials[0].phone_e164, oldPhone);
+    assert.ok(credentials[0].revoked_at);
+    assert.equal(credentials[1].phone_e164, newPhone);
+    assert.equal(credentials[1].revoked_at, null);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM user_identity_verifications
+        WHERE user_identity_id=$1 AND revoked_at IS NULL`, [oldIdentity.id]
+    )).rows[0].count, 0);
+    assert.deepEqual((await pool.query(
+      `SELECT (SELECT COUNT(*)::int FROM users) AS users,
+              (SELECT COUNT(*)::int FROM organizers) AS organizers`
+    )).rows[0], countsBefore);
+    assert.equal((await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { cookie: account.sessionCookie }
+    })).status, 200, 'phone replacement keeps the existing session and account');
+  } finally {
+    phoneVerification.startVerification = originalStartVerification;
+    phoneVerification.checkVerification = originalCheckVerification;
+  }
 });
 
 test('remembered guest cookies remain forgettable but never drive event-page greetings', async () => {

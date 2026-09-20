@@ -503,19 +503,25 @@ async function sendVerificationCode({ to, code }) {
 // Glider identity. Keeping this in the requesting browser makes the two-step
 // phone + inbox proof explicit and avoids silently binding credentials from a
 // forwarded or cross-device link.
-async function sendAccountVerificationCode({ to, code }) {
+async function sendAccountVerificationCode({ to, code, purpose = 'creator_setup' }) {
   if (!resend) {
     console.log(`[mailer:dev] ACCOUNT VERIFICATION CODE for ${to}: ${code}`);
     recordDevEmail({ to, kind: 'account_verification_code', code });
     return { dev: true };
   }
+  const accountSettings = purpose === 'attach_email' || purpose === 'identity_step_up';
+  const stepUp = purpose === 'identity_step_up';
   return send({
     to,
-    subject: `Confirm your Silver Glider email: ${code}`,
+    subject: stepUp
+      ? `Confirm your Silver Glider account: ${code}`
+      : `Confirm your Silver Glider email: ${code}`,
     html: layout({
-      kicker: 'Finish setting up',
-      headline: 'Confirm your email',
-      sub: 'Enter this code where you started creating your event. It expires in 15 minutes.',
+      kicker: stepUp ? 'Account security' : 'Finish setting up',
+      headline: stepUp ? 'Confirm it’s you' : 'Confirm your email',
+      sub: accountSettings
+        ? 'Enter this code in Account settings. It expires in 15 minutes.'
+        : 'Enter this code where you started creating your event. It expires in 15 minutes.',
       bodyHtml: signInCodeBlock(code),
       footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
     })

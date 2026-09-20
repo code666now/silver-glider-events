@@ -93,10 +93,6 @@
                   <div class="settings-row-control"><input class="sg-input" id="name" maxlength="100" autocomplete="name" placeholder="Adrian Martinez" disabled></div>
                 </div>
                 <div class="settings-row">
-                  <div class="settings-row-copy"><span class="settings-row-label">Email</span><span class="settings-row-description">Used for password-free sign in and account messages.</span></div>
-                  <div class="settings-row-control"><span class="settings-display-value" id="email-value"></span></div>
-                </div>
-                <div class="settings-row">
                   <div class="settings-row-copy"><span class="settings-row-label">Plan</span><span class="settings-row-description">Create events and send included email notifications.</span></div>
                   <div class="settings-row-control"><span class="plan-value" id="plan-badge">Free</span></div>
                 </div>
@@ -104,7 +100,22 @@
               <div class="settings-form-actions"><button class="sg-btn sg-btn-primary" type="submit" id="account-save-btn" disabled>Save changes</button></div>
               <p class="settings-form-status" id="account-status" role="status" aria-live="polite" aria-atomic="true"></p>
             </form>
-            <div class="settings-row" style="margin-top:28px">
+            <section class="account-identities" aria-labelledby="account-identities-title">
+              <div class="settings-group-head">
+                <h3 id="account-identities-title">Sign-in &amp; recovery</h3>
+                <p>Verified methods that belong to this account. Sensitive changes require a fresh code to your primary email.</p>
+              </div>
+              <div class="identity-list" id="identity-list" aria-live="polite" aria-busy="true">
+                <div class="identity-loading"><span class="sg-skeleton"></span><span class="sg-skeleton"></span></div>
+              </div>
+              <div class="identity-actions" id="identity-actions" hidden>
+                <button class="sg-btn sg-btn-ghost" type="button" id="identity-add-email">Add email</button>
+                <button class="sg-btn sg-btn-ghost" type="button" id="identity-add-phone">Add mobile number</button>
+              </div>
+              <p class="identity-admin-note" id="identity-admin-note" hidden>Administrator accounts use email sign-in.</p>
+              <p class="identity-status" id="identity-status" role="status" aria-live="polite" aria-atomic="true"></p>
+            </section>
+            <div class="settings-row account-devices-row">
               <div class="settings-row-copy"><span class="settings-row-label">Signed-in devices</span><span class="settings-row-description">Sign out everywhere, including phones and browsers you no longer use. For account recovery, this also removes phone sign-in; you can verify it again next time.</span></div>
               <div class="settings-row-control"><button class="sg-btn sg-btn-ghost" type="button" id="logout-all-btn">Sign out of all devices</button></div>
             </div>
@@ -211,6 +222,29 @@
       </div>
     </div>
   </div>
+
+  <dialog class="identity-dialog" id="identity-dialog" aria-modal="true" aria-labelledby="identity-dialog-title">
+    <div class="identity-dialog-head">
+      <div>
+        <p class="identity-dialog-eyebrow" id="identity-dialog-eyebrow">Account security</p>
+        <h2 id="identity-dialog-title">Confirm it’s you</h2>
+      </div>
+      <button class="identity-dialog-close" id="identity-dialog-close" type="button">Close</button>
+    </div>
+    <p class="identity-dialog-copy" id="identity-dialog-copy"></p>
+    <form class="identity-dialog-form" id="identity-entry-form" hidden>
+      <label for="identity-entry" id="identity-entry-label">Email</label>
+      <input class="sg-input" id="identity-entry" autocomplete="email" inputmode="email">
+      <button class="sg-btn sg-btn-primary" id="identity-entry-submit" type="submit">Send code</button>
+    </form>
+    <form class="identity-dialog-form" id="identity-code-form" hidden>
+      <label for="identity-code">6-digit code</label>
+      <input class="sg-input identity-code-input" id="identity-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" aria-describedby="identity-code-help">
+      <p class="identity-code-help" id="identity-code-help"></p>
+      <button class="sg-btn sg-btn-primary" id="identity-code-submit" type="submit">Verify</button>
+    </form>
+    <p class="identity-dialog-status" id="identity-dialog-status" role="alert" aria-live="assertive"></p>
+  </dialog>
 
   <dialog class="host-share-dialog" id="host-follow-share-dialog" aria-modal="true" aria-labelledby="host-follow-share-dialog-title">
     <div class="host-share-dialog-head">

@@ -2,6 +2,27 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.119
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Account identity controls
+
+* Account Settings now shows the verified email addresses and phone number owned by the signed-in user. People can add a verified recovery email, choose their primary email, safely remove eligible secondary emails, or replace their verified phone without creating another account.
+* Sensitive identity changes require a fresh, short-lived code sent to the current primary email. The focused flow works as a desktop dialog and a full-screen, keyboard-safe mobile screen, with clear recovery guidance and accessible focus handling.
+* Every verified email alias signs into the same canonical user. Changing the primary email keeps existing sessions, events, RSVPs, followers, and other owned records attached to that one user.
+
+### Identity safety
+
+* A verified email or phone already owned by another user is never reassigned or silently merged. The conflict is quarantined for review, and the verification attempt is consumed without changing either account.
+* Phone replacement is atomic: the old phone and its account proof are revoked only when the newly verified phone can be attached successfully. Administrators remain email-only, and sign out everywhere clears fresh identity-change authorization.
+* Twilio verification runs before a database transaction is opened, preventing provider latency from occupying the connection pool. Identity mutations remain row-locked and transaction-safe under concurrent requests.
+
+### Compatibility and verification
+
+* The migration is additive and preserves existing host login, RSVP, invitation, Follow Host, messaging consent, event ownership, and session behavior. Legacy organizer email remains synchronized while canonical `user_id` ownership is the source of identity truth.
+* Release coverage exercises step-up isolation, email aliases, primary changes, old-alias login, safe removal, collision quarantine, administrator restrictions, phone replacement, proof revocation, responsive UI, and the complete existing product suite.
+
 ## 1.0.118
 
 Released September 19, 2026. Built and deployed by Codex.

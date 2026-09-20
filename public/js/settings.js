@@ -27,6 +27,14 @@ let savedHostSnapshot = '';
 let smsCreditState = null;
 let selectedCreditPack = null;
 let paymentBusy = false;
+let identityState = {
+  identities: [],
+  capabilities: { canAddPhone: false, identityStepUpVerified: false, phoneLimit: 1 }
+};
+let identityDialogReturnFocus = null;
+let identityDialogMode = '';
+let pendingIdentityAction = null;
+let identityDialogGeneration = 0;
 const hostMobileFlowQuery = window.matchMedia('(max-width: 879px)');
 const hostProfileForm = settingsElement('host-profile-form');
 const hostMobileHistoryKey = 'sgeSettingsHostView';
@@ -61,7 +69,8 @@ function clearHostMobileHistory() {
 
 function syncSettingsMobileStickyAction() {
   const hostSaveVisible = requestedSettingsSection === 'host-page' && !settingsElement('host-form-actions')?.hidden;
-  const persistentAction = requestedSettingsSection === 'account' || requestedSettingsSection === 'messaging' || hostSaveVisible;
+  const identityDialogOpen = document.body.classList.contains('identity-dialog-open');
+  const persistentAction = !identityDialogOpen && (requestedSettingsSection === 'account' || requestedSettingsSection === 'messaging' || hostSaveVisible);
   document.body.classList.toggle('has-mobile-sticky-action', hostMobileFlowQuery.matches && persistentAction);
 }
 
@@ -156,7 +165,6 @@ function updateAccountDirty() {
 }
 
 function populateAccount(organizer) {
-  settingsElement('email-value').textContent = organizer.email || '';
   settingsElement('name').value = organizer.name || '';
   savedAccountName = settingsElement('name').value.trim();
   settingsElement('plan-badge').textContent = organizer.plan === 'pro' ? 'Pro' : 'Free';
@@ -249,6 +257,302 @@ function populateSettings(organizer) {
   populateAccount(organizer);
   populateHostFields(organizer);
   updateNavAccount(organizer);
+}
+
+function identityTypeLabel(type) {
+  return type === 'phone' ? 'Mobile number' : 'Email';
+}
+
+function identityDisplayValue(identity) {
+  const value = String(identity.value || identity.normalizedValue || '');
+  if (identity.type !== 'phone') return value;
+  const digits = value.replace(/\D/g, '');
+  return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : value;
+}
+
+function setIdentityStatus(message = '', isError = false) {
+  const status = settingsElement('identity-status');
+  status.textContent = message;
+  status.classList.toggle('error', isError);
+}
+
+function setIdentityDialogStatus(message = '', isError = true) {
+  const status = settingsElement('identity-dialog-status');
+  status.textContent = message;
+  status.classList.toggle('success', Boolean(message) && !isError);
+}
+
+function identityActionButton(label, action, className = '') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `identity-row-action ${className}`.trim();
+  button.textContent = label;
+  button.addEventListener('click', action);
+  return button;
+}
+
+function renderAccountIdentities(state) {
+  identityState = state;
+  const list = settingsElement('identity-list');
+  list.replaceChildren();
+  list.setAttribute('aria-busy', 'false');
+
+  (state.identities || []).forEach(identity => {
+    const row = document.createElement('article');
+    row.className = 'identity-row';
+
+    const copy = document.createElement('div');
+    copy.className = 'identity-row-copy';
+    const heading = document.createElement('div');
+    heading.className = 'identity-row-heading';
+    const type = document.createElement('strong');
+    type.textContent = identityTypeLabel(identity.type);
+    const verified = document.createElement('span');
+    verified.className = 'identity-verified';
+    verified.textContent = 'Verified';
+    heading.append(type, verified);
+    const value = document.createElement('span');
+    value.className = 'identity-row-value';
+    value.textContent = identityDisplayValue(identity);
+    const note = document.createElement('span');
+    note.className = 'identity-row-note';
+    note.textContent = identity.isPrimary
+      ? `Primary ${identity.type === 'phone' ? 'phone' : 'email'}`
+      : 'Can be used to sign in';
+    copy.append(heading, value, note);
+
+    const actions = document.createElement('div');
+    actions.className = 'identity-row-actions';
+    if (identity.type === 'email' && !identity.isPrimary) {
+      actions.append(identityActionButton('Make primary', () => makeIdentityPrimary(identity)));
+    }
+    if (!(identity.type === 'email' && identity.isPrimary)) {
+      actions.append(identityActionButton('Remove', () => removeIdentity(identity), 'danger'));
+    }
+    row.append(copy, actions);
+    list.appendChild(row);
+  });
+
+  if (!state.identities?.length) {
+    const empty = document.createElement('p');
+    empty.className = 'identity-empty';
+    empty.textContent = 'No verified sign-in methods were found. Contact support before signing out.';
+    list.appendChild(empty);
+  }
+
+  const hasPhone = state.identities?.some(identity => identity.type === 'phone');
+  settingsElement('identity-actions').hidden = false;
+  settingsElement('identity-add-phone').hidden = !state.capabilities?.canAddPhone;
+  settingsElement('identity-add-phone').textContent = hasPhone ? 'Change mobile number' : 'Add mobile number';
+  settingsElement('identity-admin-note').hidden = Boolean(state.capabilities?.canAddPhone);
+}
+
+async function loadAccountIdentities({ announce = false } = {}) {
+  const list = settingsElement('identity-list');
+  list.setAttribute('aria-busy', 'true');
+  try {
+    const state = await api('/api/me/identities');
+    renderAccountIdentities(state);
+    if (announce) setIdentityStatus('Sign-in methods updated.');
+    return state;
+  } catch (error) {
+    list.setAttribute('aria-busy', 'false');
+    list.replaceChildren();
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'identity-retry';
+    retry.textContent = 'Couldn’t load sign-in methods. Try again';
+    retry.addEventListener('click', () => loadAccountIdentities());
+    list.appendChild(retry);
+    settingsElement('identity-actions').hidden = true;
+    setIdentityStatus(error.message || 'Sign-in methods could not be loaded.', true);
+    return null;
+  }
+}
+
+function setIdentityDialogBusy(busy, button) {
+  settingsElement('identity-dialog-close').disabled = busy;
+  if (button) {
+    button.disabled = busy;
+    button.setAttribute('aria-busy', String(busy));
+  }
+}
+
+function identityDialogFlowIsCurrent(generation) {
+  return generation === identityDialogGeneration;
+}
+
+function resetIdentityDialogControls() {
+  settingsElement('identity-dialog-close').disabled = false;
+  const entryButton = settingsElement('identity-entry-submit');
+  entryButton.disabled = false;
+  entryButton.setAttribute('aria-busy', 'false');
+  entryButton.textContent = 'Send code';
+  const codeButton = settingsElement('identity-code-submit');
+  codeButton.disabled = false;
+  codeButton.setAttribute('aria-busy', 'false');
+  codeButton.textContent = 'Verify';
+}
+
+function restoreIdentityDialogFocus() {
+  let target = identityDialogReturnFocus;
+  if (!target?.isConnected || target.disabled || target.hidden) {
+    target = settingsElement('identity-add-email');
+  }
+  target?.focus();
+  identityDialogReturnFocus = null;
+}
+
+function showIdentityDialog() {
+  const dialog = settingsElement('identity-dialog');
+  if (!dialog.open) {
+    identityDialogGeneration += 1;
+    identityDialogReturnFocus = document.activeElement;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  }
+  document.body.classList.add('identity-dialog-open');
+  syncSettingsMobileStickyAction();
+}
+
+function configureIdentityDialog({ eyebrow = 'Account security', title, copy, entry = null, codeHelp = '' }) {
+  showIdentityDialog();
+  settingsElement('identity-dialog-eyebrow').textContent = eyebrow;
+  settingsElement('identity-dialog-title').textContent = title;
+  settingsElement('identity-dialog-copy').textContent = copy;
+  settingsElement('identity-entry-form').hidden = !entry;
+  settingsElement('identity-code-form').hidden = Boolean(entry);
+  setIdentityDialogStatus('');
+  settingsElement('identity-code').value = '';
+
+  if (entry) {
+    const input = settingsElement('identity-entry');
+    settingsElement('identity-entry-label').textContent = entry.label;
+    settingsElement('identity-entry-submit').textContent = entry.button;
+    input.value = '';
+    input.type = entry.type;
+    input.inputMode = entry.inputMode;
+    input.autocomplete = entry.autocomplete;
+    input.placeholder = entry.placeholder;
+    window.requestAnimationFrame(() => input.focus());
+  } else {
+    settingsElement('identity-code-help').textContent = codeHelp;
+    window.requestAnimationFrame(() => settingsElement('identity-code').focus());
+  }
+}
+
+function closeIdentityDialog({ cancelled = true } = {}) {
+  const dialog = settingsElement('identity-dialog');
+  if (dialog.open) identityDialogGeneration += 1;
+  if (dialog.open && typeof dialog.close === 'function') dialog.close();
+  else dialog.removeAttribute('open');
+  document.body.classList.remove('identity-dialog-open');
+  identityDialogMode = '';
+  if (cancelled) pendingIdentityAction = null;
+  settingsElement('identity-entry-form').reset();
+  settingsElement('identity-code-form').reset();
+  resetIdentityDialogControls();
+  setIdentityDialogStatus('');
+  syncSettingsMobileStickyAction();
+  restoreIdentityDialogFocus();
+}
+
+async function startIdentityStepUp(action) {
+  pendingIdentityAction = action;
+  identityDialogMode = 'step-up';
+  const button = settingsElement('identity-code-submit');
+  configureIdentityDialog({
+    title: 'Confirm it’s you',
+    copy: 'Before changing sign-in methods, enter the code sent to your primary email.',
+    codeHelp: 'Sending a fresh code…'
+  });
+  const generation = identityDialogGeneration;
+  setIdentityDialogBusy(true, button);
+  try {
+    const result = await api('/api/me/identities/step-up/start', { method: 'POST' });
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    settingsElement('identity-code-help').textContent = `We sent a code to ${result.maskedEmail}.`;
+  } catch (error) {
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    setIdentityDialogStatus(error.message || 'A confirmation code could not be sent.');
+  } finally {
+    if (identityDialogFlowIsCurrent(generation)) setIdentityDialogBusy(false, button);
+  }
+}
+
+function withIdentityStepUp(action) {
+  if (identityState.capabilities?.identityStepUpVerified) return action();
+  return startIdentityStepUp(action);
+}
+
+function openIdentityEntry(type) {
+  identityDialogMode = type === 'phone' ? 'add-phone' : 'add-email';
+  configureIdentityDialog({
+    eyebrow: 'Sign-in & recovery',
+    title: type === 'phone' ? 'Add a mobile number' : 'Add an email',
+    copy: type === 'phone'
+      ? 'We’ll verify this number before it replaces your current phone sign-in.'
+      : 'We’ll verify this address before connecting it to your account.',
+    entry: type === 'phone'
+      ? { label: 'Mobile number', button: 'Send code', type: 'tel', inputMode: 'tel', autocomplete: 'tel', placeholder: '(415) 555-0123' }
+      : { label: 'Email address', button: 'Send code', type: 'email', inputMode: 'email', autocomplete: 'email', placeholder: 'you@example.com' }
+  });
+}
+
+async function makeIdentityPrimary(identity) {
+  if (!confirm(`Make ${identity.value || identity.normalizedValue} your primary email?`)) return;
+  return withIdentityStepUp(() => executeMakeIdentityPrimary(identity));
+}
+
+async function executeMakeIdentityPrimary(identity) {
+  const generation = identityDialogGeneration;
+  setIdentityStatus('Updating primary email…');
+  try {
+    const state = await api(`/api/me/identities/${identity.id}/primary`, { method: 'PATCH' });
+    if (state.primaryEmail && currentOrganizer) {
+      currentOrganizer.email = state.primaryEmail;
+      updateNavAccount(currentOrganizer);
+    }
+    renderAccountIdentities(state);
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    setIdentityStatus('Primary email updated.');
+    closeIdentityDialog({ cancelled: false });
+  } catch (error) {
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    if (error.code === 'identity_step_up_required') {
+      identityState.capabilities.identityStepUpVerified = false;
+      return startIdentityStepUp(() => executeMakeIdentityPrimary(identity));
+    }
+    setIdentityStatus(error.message, true);
+    setIdentityDialogStatus(error.message);
+  }
+}
+
+async function removeIdentity(identity) {
+  const label = identity.type === 'phone' ? 'mobile number' : 'email';
+  if (!confirm(`Remove this ${label} from your account?`)) return;
+  return withIdentityStepUp(() => executeRemoveIdentity(identity));
+}
+
+async function executeRemoveIdentity(identity) {
+  const label = identity.type === 'phone' ? 'mobile number' : 'email';
+  const generation = identityDialogGeneration;
+  setIdentityStatus(`Removing ${label}…`);
+  try {
+    const state = await api(`/api/me/identities/${identity.id}`, { method: 'DELETE' });
+    renderAccountIdentities(state);
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    setIdentityStatus(`${identityTypeLabel(identity.type)} removed.`);
+    closeIdentityDialog({ cancelled: false });
+  } catch (error) {
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    if (error.code === 'identity_step_up_required') {
+      identityState.capabilities.identityStepUpVerified = false;
+      return startIdentityStepUp(() => executeRemoveIdentity(identity));
+    }
+    setIdentityStatus(error.message, true);
+    setIdentityDialogStatus(error.message);
+  }
 }
 
 function creditMoney(amountCents, includeCents = false) {
@@ -450,9 +754,130 @@ function showSettingsError() {
   settingsElement('settings-loading').innerHTML = `<div></div><div class="settings-load-error"><h2>Settings could not be loaded</h2><p>Your account has not been changed. Reload this page to try again.</p><a class="sg-btn sg-btn-ghost" href="${window.location.pathname}">Reload settings</a></div>`;
 }
 
+settingsElement('identity-add-email').addEventListener('click', () => {
+  withIdentityStepUp(() => openIdentityEntry('email'));
+});
+settingsElement('identity-add-phone').addEventListener('click', () => {
+  withIdentityStepUp(() => openIdentityEntry('phone'));
+});
+
+settingsElement('identity-entry-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const mode = identityDialogMode;
+  const isPhone = mode === 'add-phone';
+  if (!['add-email', 'add-phone'].includes(mode)) return;
+  const input = settingsElement('identity-entry');
+  const button = settingsElement('identity-entry-submit');
+  const value = input.value.trim();
+  if (!value) {
+    setIdentityDialogStatus(`Enter ${isPhone ? 'a mobile number' : 'an email address'}.`);
+    input.focus();
+    return;
+  }
+  const generation = identityDialogGeneration;
+  setIdentityDialogBusy(true, button);
+  button.textContent = 'Sending…';
+  setIdentityDialogStatus('');
+  try {
+    const result = await api(`/api/me/identities/${isPhone ? 'phone' : 'email'}/start`, {
+      method: 'POST',
+      body: isPhone ? { phone: value } : { email: value }
+    });
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    identityDialogMode = mode;
+    configureIdentityDialog({
+      eyebrow: 'Sign-in & recovery',
+      title: isPhone ? 'Verify your number' : 'Verify this email',
+      copy: isPhone
+        ? 'Enter the text message code to finish changing your phone sign-in.'
+        : 'Enter the email code to connect this address to your account.',
+      codeHelp: isPhone ? 'We sent a code by text message.' : `We sent a code to ${result.maskedEmail}.`
+    });
+  } catch (error) {
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    if (error.code === 'identity_step_up_required') {
+      identityState.capabilities.identityStepUpVerified = false;
+      return startIdentityStepUp(() => openIdentityEntry(isPhone ? 'phone' : 'email'));
+    }
+    setIdentityDialogStatus(error.message || 'A verification code could not be sent.');
+  } finally {
+    if (identityDialogFlowIsCurrent(generation)) {
+      setIdentityDialogBusy(false, button);
+      button.textContent = 'Send code';
+    }
+  }
+});
+
+settingsElement('identity-code-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const code = settingsElement('identity-code').value.trim();
+  const button = settingsElement('identity-code-submit');
+  if (!/^\d{6}$/.test(code)) {
+    setIdentityDialogStatus('Enter the 6-digit code.');
+    settingsElement('identity-code').focus();
+    return;
+  }
+  const generation = identityDialogGeneration;
+  setIdentityDialogBusy(true, button);
+  button.textContent = 'Verifying…';
+  setIdentityDialogStatus('');
+  try {
+    if (identityDialogMode === 'step-up') {
+      const result = await api('/api/auth/verify-code', { method: 'POST', body: { code } });
+      if (!identityDialogFlowIsCurrent(generation)) return;
+      if (result.kind !== 'identity_step_up') throw new Error('Account confirmation could not be completed.');
+      identityState.capabilities.identityStepUpVerified = true;
+      const action = pendingIdentityAction;
+      pendingIdentityAction = null;
+      if (action) await action();
+      else closeIdentityDialog({ cancelled: false });
+      return;
+    }
+    if (identityDialogMode === 'add-email') {
+      const result = await api('/api/auth/verify-code', { method: 'POST', body: { code } });
+      if (!identityDialogFlowIsCurrent(generation)) return;
+      if (result.kind !== 'identity') throw new Error('Email verification could not be completed.');
+      closeIdentityDialog({ cancelled: false });
+      await loadAccountIdentities();
+      setIdentityStatus('Email added. You can now use it to sign in.');
+      return;
+    }
+    if (identityDialogMode === 'add-phone') {
+      const state = await api('/api/me/identities/phone/verify', { method: 'POST', body: { code } });
+      if (!identityDialogFlowIsCurrent(generation)) return;
+      renderAccountIdentities(state);
+      closeIdentityDialog({ cancelled: false });
+      setIdentityStatus('Mobile number verified and ready for sign-in.');
+    }
+  } catch (error) {
+    if (!identityDialogFlowIsCurrent(generation)) return;
+    setIdentityDialogStatus(error.message || 'That code could not be verified.');
+  } finally {
+    if (identityDialogFlowIsCurrent(generation)) {
+      setIdentityDialogBusy(false, button);
+      button.textContent = 'Verify';
+    }
+  }
+});
+
+settingsElement('identity-dialog-close').addEventListener('click', () => closeIdentityDialog());
+settingsElement('identity-dialog').addEventListener('cancel', event => {
+  event.preventDefault();
+  closeIdentityDialog();
+});
+settingsElement('identity-dialog').addEventListener('click', event => {
+  const dialog = event.currentTarget;
+  if (event.target !== dialog) return;
+  const bounds = dialog.getBoundingClientRect();
+  const outside = event.clientX < bounds.left || event.clientX > bounds.right ||
+    event.clientY < bounds.top || event.clientY > bounds.bottom;
+  if (outside) closeIdentityDialog();
+});
+
 api('/api/auth/me').then(({ organizer }) => {
   populateSettings(organizer);
   showSettings();
+  loadAccountIdentities();
   if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
   if (organizer.is_admin) {
     const nav = document.querySelector('.sg-nav-links');
