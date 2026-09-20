@@ -530,6 +530,7 @@ async function completeChallenge(client, req, pending, {
     if (current) await revokeGuestSession(client, req);
     const session = await createGuestSession(client, {
       identityId: identity.id,
+      userId: identity.user_id,
       displayFirstName: names.first,
       displayName: names.full,
       verified: true
@@ -807,7 +808,7 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
   try {
     await client.query('BEGIN');
     await client.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
-    await revokeIdentityGuestSessions(client, req.organizer.id);
+    await revokeIdentityGuestSessions(client, req.organizer.id, req.organizer.user_id);
     await client.query(
       'UPDATE magic_link_tokens SET used_at=NOW() WHERE LOWER(email)=LOWER($1) AND used_at IS NULL',
       [req.organizer.email]
@@ -892,12 +893,13 @@ router.get('/api/me/stats', requireOrganizer, async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT
          (SELECT COUNT(DISTINCT r.event_id) FROM rsvps r JOIN events e ON e.id=r.event_id
-           WHERE r.account_id=$1 AND r.status='confirmed' AND e.status='published' AND e.organizer_id<>$1
+           WHERE (r.user_id=$2 OR (r.user_id IS NULL AND r.account_id=$1))
+             AND r.status='confirmed' AND e.status='published' AND e.organizer_id<>$1
              AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date)::int AS attended,
          (SELECT COUNT(*) FROM events e
            WHERE e.organizer_id=$1 AND e.status='published'
              AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date)::int AS hosted`,
-      [req.organizer.id]
+      [req.organizer.id, req.organizer.user_id]
     );
     res.json(rows[0]);
   } catch (err) { next(err); }

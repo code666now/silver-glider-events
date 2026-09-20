@@ -48,12 +48,13 @@ test('profile-photo changes are bound to the authenticated session', () => {
   assert.match(auth, /linkVerifiedRsvps\(client, organizer\.id, email\)/);
   assert.match(uploads, /linkVerifiedRsvps\(pool, req\.organizer\.id, req\.organizer\.email\)/);
   assert.match(settingsClient, /api\('\/api\/me\/link-rsvps', \{ method: 'POST' \}\)/);
-  assert.match(accountRsvps, /WHERE account_id IS NULL AND LOWER\(email\)=LOWER\(\$2\)/);
+  assert.match(accountRsvps, /user_id=COALESCE\(user_id,\(SELECT user_id FROM organizers WHERE id=\$1\)\)/);
+  assert.match(accountRsvps, /WHERE \(account_id IS NULL OR account_id=\$1\)[\s\S]*LOWER\(email\)=LOWER\(\$2\)/);
   assert.match(accountRsvps, /\[id, verifiedEmail\]/);
   assert.doesNotMatch(accountRsvps, /req\.body|userId|organizerId/);
   assert.match(auth, /linkOwnedRsvpForEvent/);
   assert.match(auth, /readCookie\(req, attendeeCookieName\(eventId\)\)/);
-  assert.match(accountRsvps, /WHERE event_id=\$2 AND account_id IS NULL/);
+  assert.match(accountRsvps, /WHERE event_id=\$2 AND \(account_id IS NULL OR account_id=\$1\)/);
   assert.match(accountRsvps, /LOWER\(email\)=LOWER\(\$3\) OR \(\$4 <> '' AND manage_token=\$4\)/);
   assert.match(publicClient, /fetch\('\/api\/me'/);
   assert.match(publicClient, /function prefillRsvpIdentity\(user\)/);

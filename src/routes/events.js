@@ -89,7 +89,7 @@ function importantEventChanges(current, updates) {
 
 async function createEventNotificationBatch(client, { eventId, kind, changes = [] }) {
   const { rows: recipients } = await client.query(
-    `SELECT id, email FROM rsvps WHERE event_id=$1 AND status='confirmed' ORDER BY id`,
+    `SELECT id, user_id, email FROM rsvps WHERE event_id=$1 AND status='confirmed' ORDER BY id`,
     [eventId]
   );
   if (!recipients.length) return null;
@@ -102,11 +102,12 @@ async function createEventNotificationBatch(client, { eventId, kind, changes = [
   for (const recipient of recipients) {
     await client.query(
       `INSERT INTO message_log
-         (rsvp_id, event_id, notification_batch_id, recipient, message_type, channel, status)
-       VALUES ($1,$2,$3,$4,$5,'email','pending')
+         (rsvp_id, event_id, notification_batch_id, recipient, recipient_user_id,
+          message_type, channel, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'email','pending')
        ON CONFLICT (notification_batch_id, rsvp_id, channel)
          WHERE notification_batch_id IS NOT NULL AND rsvp_id IS NOT NULL DO NOTHING`,
-      [recipient.id, eventId, batchId, recipient.email, kind]
+      [recipient.id, eventId, batchId, recipient.email, recipient.user_id, kind]
     );
   }
   return { batchId, queued: recipients.length, status: 'pending' };
@@ -338,10 +339,11 @@ router.get('/api/events/going', async (req, res, next) => {
          FROM rsvps r
          JOIN events e ON e.id=r.event_id
          JOIN organizers o ON o.id=e.organizer_id
-        WHERE r.account_id=$1 AND r.status='confirmed'
+        WHERE (r.user_id=$2 OR (r.user_id IS NULL AND r.account_id=$1))
+          AND r.status='confirmed'
           AND e.status IN ('published','cancelled')
         ORDER BY e.id, r.created_at DESC`,
-      [req.organizer.id]
+      [req.organizer.id, req.organizer.user_id]
     );
     rows.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)) || Number(b.id) - Number(a.id));
     res.json({ events: rows });
@@ -817,6 +819,12 @@ function familiarFaceKey(type, id) {
   return `${type}:${Number(id)}`;
 }
 
+function familiarPersonKey({ userId, email }) {
+  const canonicalId = Number(userId);
+  if (Number.isInteger(canonicalId) && canonicalId > 0) return `user:${canonicalId}`;
+  return `email:${String(email || '').trim().toLowerCase()}`;
+}
+
 // A named +1 came with a friend; say whose, so the card makes sense.
 function plusOneLabel(primaryFirstName) {
   const first = String(primaryFirstName || '').trim().split(/\s+/)[0];
@@ -843,7 +851,7 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
   const recipients = [];
   if (rsvpIds.length) {
     const { rows } = await queryable.query(
-      `SELECT r.id, r.first_name, r.last_name, LOWER(r.email) AS email
+      `SELECT r.id, r.user_id, r.first_name, r.last_name, LOWER(r.email) AS email
         FROM rsvps r
         JOIN events source ON source.id=r.event_id
         WHERE source.id=$1 AND source.organizer_id=$2
@@ -856,13 +864,15 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
       [sourceEventId, organizerId, rsvpIds]
     );
     for (const row of rows) recipients.push({
+      userId: row.user_id,
       email: row.email,
       name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || null
     });
   }
   if (invitationIds.length) {
     const { rows } = await queryable.query(
-      `SELECT ml.id, LOWER(ml.recipient) AS email, ml.recipient_name
+      `SELECT ml.id, ml.recipient_user_id AS user_id,
+              LOWER(ml.recipient) AS email, ml.recipient_name
          FROM message_log ml
          JOIN events source ON source.id=ml.event_id
         WHERE source.id=$1 AND source.organizer_id=$2
@@ -874,38 +884,56 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
           )`,
       [sourceEventId, organizerId, invitationIds]
     );
-    for (const row of rows) recipients.push({ email: row.email, name: row.recipient_name || null });
+    for (const row of rows) recipients.push({
+      userId: row.user_id,
+      email: row.email,
+      name: row.recipient_name || null
+    });
   }
   const deduped = new Map();
   for (const recipient of recipients) {
     const email = String(recipient.email || '').trim().toLowerCase();
-    if (email && !deduped.has(email)) deduped.set(email, { ...recipient, email });
+    const key = familiarPersonKey({ userId: recipient.userId, email });
+    if (email && !deduped.has(key)) deduped.set(key, { ...recipient, email, personKey: key });
   }
   return [...deduped.values()];
 }
 
-async function targetRecipientState(queryable, { targetEventId, emails }) {
-  if (!emails.length) return { rsvpd: new Set(), invited: new Set() };
+async function targetRecipientState(queryable, { targetEventId, recipients }) {
+  if (!recipients.length) return { rsvpd: new Set(), invited: new Set() };
+  const emails = [...new Set(recipients.map(recipient => recipient.email).filter(Boolean))];
+  const userIds = [...new Set(recipients.map(recipient => Number(recipient.userId))
+    .filter(userId => Number.isInteger(userId) && userId > 0))];
   const { rows: rsvpRows } = await queryable.query(
-    `SELECT DISTINCT LOWER(email) AS email FROM rsvps
-      WHERE event_id=$1 AND status='confirmed' AND LOWER(email)=ANY($2::text[])`,
-    [targetEventId, emails]
+    `SELECT DISTINCT user_id, LOWER(email) AS email FROM rsvps
+      WHERE event_id=$1 AND status='confirmed'
+        AND (LOWER(email)=ANY($2::text[]) OR user_id=ANY($3::int[]))`,
+    [targetEventId, emails, userIds]
   );
   const { rows: invitedRows } = await queryable.query(
-    `SELECT DISTINCT LOWER(recipient) AS email FROM message_log
-      WHERE event_id=$1 AND LOWER(recipient)=ANY($2::text[])
+    `SELECT DISTINCT recipient_user_id AS user_id, LOWER(recipient) AS email FROM message_log
+      WHERE event_id=$1
+        AND (LOWER(recipient)=ANY($2::text[]) OR recipient_user_id=ANY($3::int[]))
         AND message_type IN ('announcement','previous_guest_invite')
         AND status IN ('pending','sent')`,
-    [targetEventId, emails]
+    [targetEventId, emails, userIds]
   );
+  const matchesRecipient = rows => recipient => rows.some(row => {
+    const recipientUserId = Number(recipient.userId) || null;
+    const rowUserId = Number(row.user_id) || null;
+    if (recipientUserId && rowUserId) return recipientUserId === rowUserId;
+    return row.email === recipient.email;
+  });
   return {
-    rsvpd: new Set(rsvpRows.map(row => row.email)),
-    invited: new Set(invitedRows.map(row => row.email))
+    rsvpd: new Set(recipients.filter(matchesRecipient(rsvpRows)).map(recipient => recipient.personKey)),
+    invited: new Set(recipients.filter(matchesRecipient(invitedRows)).map(recipient => recipient.personKey))
   };
 }
 
 function eligibleTargetRecipients(recipients, state) {
-  return recipients.filter(recipient => !state.rsvpd.has(recipient.email) && !state.invited.has(recipient.email));
+  return recipients.filter(recipient =>
+    !state.rsvpd.has(recipient.personKey) && !state.invited.has(recipient.personKey)
+  );
 }
 
 // GET /api/events/:id/familiar-faces — visual, event-specific people view.
@@ -920,7 +948,8 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     if (!eventRows.length) return res.status(404).json({ error: 'Event not found' });
 
     const { rows: rsvps } = await pool.query(
-      `SELECT r.id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
+      `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
+              r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
               r.created_at, o.avatar_url,
               NOT EXISTS (
                 SELECT 1 FROM follower_optouts fo
@@ -929,11 +958,15 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         FROM rsvps r
          LEFT JOIN organizers o ON o.id=r.account_id
         WHERE r.event_id=$1 AND r.status='confirmed'
-        ORDER BY r.created_at DESC, r.id DESC`,
+        ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
+                 r.created_at DESC, r.id DESC`,
       [req.params.id, req.organizer.id]
     );
     const { rows: invitations } = await pool.query(
-      `SELECT DISTINCT ON (LOWER(ml.recipient)) ml.id, ml.recipient, ml.recipient_name,
+      `SELECT DISTINCT ON (
+                COALESCE('user:' || ml.recipient_user_id::text, 'email:' || LOWER(TRIM(ml.recipient)))
+              ) ml.id, ml.recipient_user_id AS user_id,
+              ml.recipient, ml.recipient_name,
               ml.created_at, identity.avatar_url,
               NOT EXISTS (
                 SELECT 1 FROM follower_optouts fo
@@ -945,7 +978,9 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
              FROM rsvps linked
              JOIN events linked_event ON linked_event.id=linked.event_id AND linked_event.organizer_id=$2
              JOIN organizers o ON o.id=linked.account_id
-            WHERE LOWER(linked.email)=LOWER(ml.recipient)
+            WHERE ((ml.recipient_user_id IS NOT NULL AND linked.user_id=ml.recipient_user_id)
+                   OR ((ml.recipient_user_id IS NULL OR linked.user_id IS NULL)
+                       AND LOWER(linked.email)=LOWER(ml.recipient)))
             ORDER BY linked.id DESC LIMIT 1
          ) identity ON TRUE
         WHERE ml.event_id=$1 AND ml.message_type='previous_guest_invite'
@@ -953,19 +988,26 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
           AND NOT EXISTS (
             SELECT 1 FROM rsvps current_rsvp
              WHERE current_rsvp.event_id=$1 AND current_rsvp.status IN ('confirmed','cancelled')
-               AND LOWER(current_rsvp.email)=LOWER(ml.recipient)
+               AND ((ml.recipient_user_id IS NOT NULL
+                     AND current_rsvp.user_id=ml.recipient_user_id)
+                    OR ((ml.recipient_user_id IS NULL OR current_rsvp.user_id IS NULL)
+                        AND LOWER(current_rsvp.email)=LOWER(ml.recipient)))
           )
-        ORDER BY LOWER(ml.recipient), ml.id DESC`,
+        ORDER BY COALESCE('user:' || ml.recipient_user_id::text,
+                          'email:' || LOWER(TRIM(ml.recipient))),
+                 ml.id DESC`,
       [req.params.id, req.organizer.id]
     );
     // "I'm not going" (and a cancelled RSVP) is an answer the host should see,
     // not a silent disappearance. These people are not invitation targets.
     const { rows: declined } = await pool.query(
-      `SELECT r.id, r.first_name, r.last_name, r.email, r.created_at, o.avatar_url
+      `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
+              r.id, r.user_id, r.first_name, r.last_name, r.email, r.created_at, o.avatar_url
          FROM rsvps r
          LEFT JOIN organizers o ON o.id=r.account_id
         WHERE r.event_id=$1 AND r.status='cancelled'
-        ORDER BY r.created_at DESC, r.id DESC`,
+        ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
+                 r.created_at DESC, r.id DESC`,
       [req.params.id]
     );
 
@@ -1072,10 +1114,9 @@ router.post('/api/events/:id/familiar-faces/preview', async (req, res, next) => 
         ORDER BY event_date, start_time, id`,
       [req.organizer.id, sourceRows[0].id]
     );
-    const emails = recipients.map(recipient => recipient.email);
     const events = [];
     for (const target of targets) {
-      const state = await targetRecipientState(pool, { targetEventId: target.id, emails });
+      const state = await targetRecipientState(pool, { targetEventId: target.id, recipients });
       events.push({
         id: target.id,
         title: target.title,
@@ -1141,7 +1182,7 @@ router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
     });
     const state = await targetRecipientState(client, {
       targetEventId: target.id,
-      emails: selected.map(recipient => recipient.email)
+      recipients: selected
     });
     const recipients = eligibleTargetRecipients(selected, state);
     if (!recipients.length) {
@@ -1160,12 +1201,12 @@ router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
     for (const recipient of recipients) {
       const result = await client.query(
         `INSERT INTO message_log
-           (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+           (event_id, previous_guest_invitation_batch_id, recipient, recipient_name, recipient_user_id,
             message_type, channel, status)
-         VALUES ($1,$2,$3,$4,'previous_guest_invite','email','pending')
+         VALUES ($1,$2,$3,$4,$5,'previous_guest_invite','email','pending')
          ON CONFLICT (event_id, LOWER(recipient)) WHERE message_type='previous_guest_invite'
          DO NOTHING RETURNING id`,
-        [target.id, batch.id, recipient.email, recipient.name]
+        [target.id, batch.id, recipient.email, recipient.name, recipient.userId]
       );
       queued += result.rowCount;
     }
@@ -1214,23 +1255,29 @@ async function loadInviteTarget(queryable, { eventId, organizerId, lock = false 
   return { target, canInvite };
 }
 
-// SQL condition: the (lower-cased) email is already connected to the target
-// event ($2) — RSVP'd, declined, or invited.
-function connectedToTarget(emailExpression) {
+// SQL condition: the canonical person (with normalized-email fallback for
+// legacy rows) is already connected to target event $2.
+function connectedToTarget(emailExpression, userIdExpression = 'NULL') {
   return `(EXISTS (
     SELECT 1 FROM rsvps target_rsvp
      WHERE target_rsvp.event_id=$2 AND target_rsvp.status IN ('confirmed','cancelled')
-       AND LOWER(TRIM(target_rsvp.email))=${emailExpression}
+       AND ((${userIdExpression} IS NOT NULL AND target_rsvp.user_id=${userIdExpression})
+            OR ((${userIdExpression} IS NULL OR target_rsvp.user_id IS NULL)
+                AND LOWER(TRIM(target_rsvp.email))=${emailExpression}))
   ) OR EXISTS (
     SELECT 1 FROM message_log ml
-     WHERE ml.event_id=$2 AND LOWER(TRIM(ml.recipient))=${emailExpression}
+     WHERE ml.event_id=$2
+       AND ((${userIdExpression} IS NOT NULL AND ml.recipient_user_id=${userIdExpression})
+            OR ((${userIdExpression} IS NULL OR ml.recipient_user_id IS NULL)
+                AND LOWER(TRIM(ml.recipient))=${emailExpression}))
        AND ml.message_type IN ('announcement','previous_guest_invite')
        AND ml.status IN ('pending','sent')
   ))`;
 }
 
 const PAST_RSVPS = `
-  SELECT r.id, LOWER(TRIM(r.email)) AS email, r.first_name, r.last_name, r.account_id,
+  SELECT r.id, r.user_id, LOWER(TRIM(r.email)) AS email, r.first_name, r.last_name, r.account_id,
+         COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))) AS person_key,
          e.id AS event_id, e.title AS event_title, e.event_date
     FROM rsvps r JOIN events e ON e.id=r.event_id
    WHERE e.organizer_id=$1 AND e.id<>$2 AND e.status='published'
@@ -1259,7 +1306,10 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
     const { rows: people } = await pool.query(
       `WITH past AS (${PAST_RSVPS}),
        grouped AS (
-         SELECT email,
+         SELECT person_key,
+                (ARRAY_AGG(email ORDER BY event_date DESC, id DESC))[1] AS email,
+                (ARRAY_AGG(user_id ORDER BY event_date DESC, id DESC)
+                  FILTER (WHERE user_id IS NOT NULL))[1] AS user_id,
                 COALESCE(
                   (ARRAY_AGG(id ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
                   (ARRAY_AGG(id ORDER BY event_date DESC, id DESC))[1]) AS rsvp_id,
@@ -1272,13 +1322,13 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
                 MAX(event_date) AS last_event_date,
                 COUNT(DISTINCT event_id)::int AS event_count,
                 BOOL_OR(event_id=$3) AS in_source
-           FROM past GROUP BY email
+           FROM past GROUP BY person_key
        )
        SELECT g.*, o.avatar_url, COUNT(*) OVER ()::int AS total
          FROM grouped g
          LEFT JOIN organizers o ON o.id=g.account_id
         WHERE NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=g.email)
-          AND NOT ${connectedToTarget('g.email')}
+          AND NOT ${connectedToTarget('g.email', 'g.user_id')}
           AND ($3::int IS NULL OR g.in_source)
           AND ($4 = '' OR CONCAT_WS(' ', g.first_name, g.last_name) ILIKE $4 OR g.email ILIKE $4)
         ORDER BY g.event_count DESC, g.last_event_date DESC, LOWER(COALESCE(g.first_name, g.email))
@@ -1319,7 +1369,7 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
       `SELECT COUNT(DISTINCT past.email)::int AS n
          FROM (${PAST_RSVPS}) past
         WHERE EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=past.email)
-          AND NOT ${connectedToTarget('past.email')}`,
+          AND NOT ${connectedToTarget('past.email', 'past.user_id')}`,
       [req.organizer.id, target.id]
     );
 
@@ -1380,14 +1430,14 @@ router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, nex
       `SELECT past.* FROM (${PAST_RSVPS}) past
         WHERE past.id=ANY($3::int[])
           AND NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=past.email)
-          AND NOT ${connectedToTarget('past.email')}
+          AND NOT ${connectedToTarget('past.email', 'past.user_id')}
         ORDER BY past.event_date DESC, past.id DESC`,
       [req.organizer.id, target.id, rsvpIds]
     );
-    const byEmail = new Map();
-    for (const row of selected) if (!byEmail.has(row.email)) byEmail.set(row.email, row);
+    const byPerson = new Map();
+    for (const row of selected) if (!byPerson.has(row.person_key)) byPerson.set(row.person_key, row);
     const bySource = new Map();
-    for (const row of byEmail.values()) {
+    for (const row of byPerson.values()) {
       if (!bySource.has(row.event_id)) bySource.set(row.event_id, { title: row.event_title, people: [] });
       bySource.get(row.event_id).people.push(row);
     }
@@ -1406,12 +1456,12 @@ router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, nex
         const name = `${person.first_name || ''} ${person.last_name || ''}`.trim() || null;
         const result = await client.query(
           `INSERT INTO message_log
-             (event_id, previous_guest_invitation_batch_id, recipient, recipient_name,
+             (event_id, previous_guest_invitation_batch_id, recipient, recipient_name, recipient_user_id,
               message_type, channel, status)
-           VALUES ($1,$2,$3,$4,'previous_guest_invite','email','pending')
+           VALUES ($1,$2,$3,$4,$5,'previous_guest_invite','email','pending')
            ON CONFLICT (event_id, LOWER(recipient)) WHERE message_type='previous_guest_invite'
            DO NOTHING RETURNING id`,
-          [target.id, batches[0].id, person.email, name]
+          [target.id, batches[0].id, person.email, name, person.user_id]
         );
         batchQueued += result.rowCount;
       }
@@ -1598,15 +1648,17 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
         await sendEventAnnouncement({ to: r.email, event, organizerLabel, replyTo: req.organizer.email, unsubscribeUrl });
         sent++;
         await pool.query(
-          `INSERT INTO message_log (event_id, recipient, message_type, channel, status, sent_at)
-           VALUES ($1,$2,'announcement','email','sent',NOW())`,
-          [event.id, r.email]
+          `INSERT INTO message_log
+             (event_id, recipient, recipient_user_id, message_type, channel, status, sent_at)
+           VALUES ($1,$2,$3,'announcement','email','sent',NOW())`,
+          [event.id, r.email, r.user_id]
         );
       } catch (err) {
         await pool.query(
-          `INSERT INTO message_log (event_id, recipient, message_type, channel, status, error)
-           VALUES ($1,$2,'announcement','email','failed',$3)`,
-          [event.id, r.email, err.message]
+          `INSERT INTO message_log
+             (event_id, recipient, recipient_user_id, message_type, channel, status, error)
+           VALUES ($1,$2,$3,'announcement','email','failed',$4)`,
+          [event.id, r.email, r.user_id, err.message]
         ).catch(() => {});
       }
     }

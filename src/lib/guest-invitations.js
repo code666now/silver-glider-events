@@ -17,12 +17,39 @@ async function createGuestInvitation(db, { messageLogId, eventId, eventDate, ema
     const token = crypto.randomBytes(32).toString('base64url');
     await client.query(
       `INSERT INTO guest_invitation_tokens
-         (message_log_id,target_event_id,identity_id,token_hash,expires_at)
-       VALUES ($1,$2,$3,$4,$5)
+         (message_log_id,target_event_id,identity_id,user_id,token_hash,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (message_log_id) DO UPDATE
-         SET identity_id=EXCLUDED.identity_id,token_hash=EXCLUDED.token_hash,
+         SET identity_id=EXCLUDED.identity_id,user_id=EXCLUDED.user_id,token_hash=EXCLUDED.token_hash,
              expires_at=EXCLUDED.expires_at,revoked_at=NULL`,
-      [messageLogId, eventId, identity.id, tokenHash(token), invitationExpiry(eventDate)]
+      [messageLogId, eventId, identity.id, identity.user_id, tokenHash(token), invitationExpiry(eventDate)]
+    );
+    await client.query(
+      `INSERT INTO canonical_user_link_conflicts
+         (relationship_type,source_record_id,first_candidate_user_id,second_candidate_user_id,reason)
+       SELECT 'message_log',message.id,message.recipient_user_id,$2,'legacy_owner_mismatch'
+         FROM message_log message
+        WHERE message.id=$1
+          AND message.recipient_user_id IS NOT NULL
+          AND message.recipient_user_id<>$2
+       ON CONFLICT DO NOTHING`,
+      [messageLogId, identity.user_id]
+    );
+    await client.query(
+      `UPDATE message_log
+          SET recipient_user_id=CASE
+                WHEN EXISTS (
+                  SELECT 1
+                    FROM canonical_user_link_conflicts conflict
+                   WHERE conflict.relationship_type='message_log'
+                     AND conflict.source_record_id=message_log.id
+                     AND conflict.reason='legacy_owner_mismatch'
+                     AND conflict.resolved_at IS NULL
+                ) THEN NULL
+                ELSE COALESCE(recipient_user_id,$2)
+              END
+        WHERE id=$1`,
+      [messageLogId, identity.user_id]
     );
     return { token, identity };
   });
@@ -44,7 +71,7 @@ async function resolveGuestInvitation(db, rawToken, { eventId = null, publishedO
   if (publishedOnly) conditions.push("e.status='published'");
 
   const { rows } = await db.query(
-    `SELECT invitation.id,invitation.identity_id,invitation.target_event_id,
+    `SELECT invitation.id,invitation.identity_id,invitation.user_id,invitation.target_event_id,
             invitation.rsvp_id,invitation.response,invitation.responded_at,
             ml.recipient,ml.recipient_name,e.slug,e.status AS event_status
        FROM guest_invitation_tokens invitation
@@ -63,12 +90,19 @@ async function resolveGuestInvitation(db, rawToken, { eventId = null, publishedO
       WHERE event_id=$1
         AND (
           id=$2
-          OR account_id=$3
-          OR LOWER(email)=LOWER($4)
+          OR ($3::int IS NOT NULL AND user_id=$3)
+          OR ($3::int IS NULL AND account_id=$4)
+          OR (($3::int IS NULL OR user_id IS NULL) AND LOWER(email)=LOWER($5))
         )
-      ORDER BY CASE WHEN id=$2 THEN 0 WHEN account_id=$3 THEN 1 ELSE 2 END, id DESC
+      ORDER BY CASE
+        WHEN id=$2 THEN 0
+        WHEN $3::int IS NOT NULL AND user_id=$3 THEN 1
+        WHEN $3::int IS NULL AND account_id=$4 THEN 2
+        ELSE 3
+      END, id DESC
       LIMIT 1`,
-    [invitation.target_event_id, invitation.rsvp_id, invitation.identity_id, invitation.recipient]
+    [invitation.target_event_id, invitation.rsvp_id, invitation.user_id,
+     invitation.identity_id, invitation.recipient]
   )).rows;
 
   return { token, invitation, rsvp: rsvpRows[0] || null };

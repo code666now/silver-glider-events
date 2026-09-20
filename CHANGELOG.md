@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.118
+
+Released September 19, 2026. Built and deployed by Codex.
+
+### Canonical relationship bridge
+
+* RSVPs, remembered guest sessions, personal invitations, delivery records, Host follows, and event-photo uploads can now reference the canonical `users` record while every legacy key remains in place. New writes populate both representations so the rollout stays reversible and existing sessions, links, and permissions continue to work.
+* Returning RSVP, Going, Profile statistics, Familiar Faces, Follow announcements, photo return links, and sign-out-everywhere use canonical ownership first with a conservative legacy fallback. A person whose delivery email changes is no longer treated as a second attendee or sent a duplicate host announcement.
+* Personal invitations and all RSVP-backed email records now retain canonical recipient ownership, allowing event-specific dedupe to work across email aliases without changing the immutable address snapshot used for delivery.
+
+### Safety and operations
+
+* Historical relationships are backfilled only from exact account, session, or invitation owners. Conflicting RSVP or message owners are recorded for review and left unassigned; names, phone numbers, and unverified email similarity are never used to merge people.
+* Canonical association remains separate from authorization. Event management still requires the existing account, invitation, RSVP-token, or scoped session proof, and unverified associations never expose a signed-in account's profile photo.
+* A read-only reconciliation command reports linked, legacy, mismatched, ambiguous, and explicitly quarantined relationships so later migration stages can be measured before legacy columns are retired.
+
 ## 1.0.117
 
 Released September 18, 2026. Built and deployed by Codex.

@@ -462,6 +462,7 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
     const displayName = String(invitation.recipient_name || '').trim() || firstNameFrom(invitation.recipient);
     return {
       identityId: invitation.identity_id,
+      userId: invitation.user_id,
       email: invitation.recipient,
       displayFirstName: rsvp?.first_name || firstNameFrom(displayName),
       displayName: rsvp
@@ -487,6 +488,7 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
     if (!rsvp) return { invalidPersonalToken: true };
     return {
       identityId: rsvp.account_id || null,
+      userId: rsvp.user_id || null,
       email: rsvp.email,
       displayFirstName: firstNameFrom(rsvp.first_name),
       displayName: `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || rsvp.first_name,
@@ -501,11 +503,15 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
   if (identity) {
     const rsvp = (await db.query(
       `SELECT *
-         FROM rsvps WHERE event_id=$1 AND account_id=$2 LIMIT 1`,
-      [eventId, identity.id]
+         FROM rsvps
+        WHERE event_id=$1
+          AND (user_id=$2 OR (user_id IS NULL AND account_id=$3))
+        LIMIT 1`,
+      [eventId, identity.user_id, identity.id]
     )).rows[0] || null;
     return {
       identityId: identity.id,
+      userId: identity.user_id,
       email: identity.email,
       displayFirstName: rsvp?.first_name || firstNameFrom(identity.name),
       displayName: rsvp ? rsvp.first_name : (identity.name || firstNameFrom(identity.email)),
@@ -1071,11 +1077,13 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       String(invitationAccess.invitation.recipient).toLowerCase() === email
       ? invitationAccess.invitation.identity_id
       : null;
+    const invitationUserId = invitationAccess &&
+      String(invitationAccess.invitation.recipient).toLowerCase() === email
+      ? invitationAccess.invitation.user_id
+      : null;
 
-    const { rows: existing } = await client.query(
-      `SELECT * FROM rsvps WHERE event_id=$1 AND LOWER(email)=LOWER($2)`, [event.id, email]
-    );
     const accountId = verifiedSessionAccountId(req, email);
+    const accountUserId = accountId ? req.sessionAccount.user_id : null;
     const rememberedGuest = accountId ? null : await readGuestSession(client, req, { touch: true });
     // An identity is "proven" by a signed-in account with this email, or by a
     // remembered guest that verified this email (a code, or this event's own
@@ -1086,6 +1094,32 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         ? rememberedGuest.identity_id
         : null
     );
+    const provenUserId = accountUserId || invitationUserId || (
+      rememberedGuest && guestVerifiedFor(rememberedGuest, event.id) &&
+      String(rememberedGuest.email).toLowerCase() === email
+        ? rememberedGuest.user_id
+        : null
+    );
+    let relationshipUserId = provenUserId || (
+      rememberedGuest && String(rememberedGuest.email).toLowerCase() === email
+        ? rememberedGuest.user_id
+        : null
+    );
+    // Prefer an exact canonical attendee before the mutable delivery-address
+    // snapshot. The email fallback remains for legacy rows that have not yet
+    // acquired a canonical owner; two different non-null users never merge.
+    const { rows: existing } = await client.query(
+      `SELECT *
+         FROM rsvps
+        WHERE event_id=$1
+          AND (
+            ($3::int IS NOT NULL AND user_id=$3)
+            OR (($3::int IS NULL OR user_id IS NULL) AND LOWER(email)=LOWER($2))
+          )
+        ORDER BY CASE WHEN $3::int IS NOT NULL AND user_id=$3 THEN 0 ELSE 1 END,id DESC
+        LIMIT 1`,
+      [event.id, email, relationshipUserId]
+    );
     const attendeeToken = readCookie(req, attendeeCookieName(event.id));
     const ownsExisting = Boolean(existing[0] && (
       provenIdentityId ||
@@ -1093,10 +1127,12 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       (attendeeToken && attendeeToken === existing[0].manage_token)
     ));
     if (existing.length && existing[0].status === 'confirmed') {
-      if (provenIdentityId && !existing[0].account_id) {
+      if ((provenIdentityId && !existing[0].account_id) || (relationshipUserId && !existing[0].user_id)) {
         existing[0] = (await client.query(
-          'UPDATE rsvps SET account_id=$2 WHERE id=$1 RETURNING *',
-          [existing[0].id, provenIdentityId]
+          `UPDATE rsvps
+              SET account_id=COALESCE(account_id,$2),user_id=COALESCE(user_id,$3)
+            WHERE id=$1 RETURNING *`,
+          [existing[0].id, provenIdentityId, relationshipUserId]
         )).rows[0];
       }
       if (invitationIdentityId) {
@@ -1168,11 +1204,13 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         const identity = await ensureGuestIdentity(client, { email, displayName });
         guestSessionToRemember = await createGuestSession(client, {
           identityId: identity.id,
+          userId: identity.user_id,
           displayFirstName: firstName,
           displayName,
           verified: false
         });
         guestSessionId = guestSessionToRemember.id;
+        relationshipUserId = guestSessionToRemember.user_id;
       }
     }
     if (existing.length) {
@@ -1187,23 +1225,25 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
                 sms_opted_out_at=CASE WHEN $7 THEN NULL WHEN sms_optin THEN NOW() ELSE sms_opted_out_at END,
                 guest_first_name=$12, guest_last_name=$13, guest_email=$14,
                 account_id=COALESCE(account_id,$15),
-                guest_session_id=COALESCE(guest_session_id,$16)
+                guest_session_id=COALESCE(guest_session_id,$16),
+                user_id=COALESCE(user_id,$17)
           WHERE id=$1 RETURNING *`,
         [existing[0].id, firstName, lastName, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
-         guest.guestFirstName, guest.guestLastName, guest.guestEmail, provenIdentityId, guestSessionId]
+         guest.guestFirstName, guest.guestLastName, guest.guestEmail, provenIdentityId, guestSessionId,
+         relationshipUserId]
       )).rows[0];
     } else {
       rsvp = (await client.query(
         `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
                             sms_optin, sms_consent_at, sms_consent_source, sms_consent_version, sms_consent_text,
                             guest_first_name, guest_last_name, guest_email, manage_token, account_id,
-                            guest_session_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+                            guest_session_id, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
         [event.id, firstName, lastName, email, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
-         crypto.randomBytes(16).toString('hex'), provenIdentityId, guestSessionId]
+         crypto.randomBytes(16).toString('hex'), provenIdentityId, guestSessionId, relationshipUserId]
       )).rows[0];
     }
     if (invitationIdentityId) {
@@ -1320,10 +1360,11 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
         `UPDATE rsvps
             SET status=$2,
                 account_id=CASE WHEN $3 THEN COALESCE(account_id,$4) ELSE account_id END,
-                guest_session_id=COALESCE(guest_session_id,$5)
+                guest_session_id=COALESCE(guest_session_id,$5),
+                user_id=COALESCE(user_id,$6)
           WHERE id=$1 RETURNING *`,
         [rsvp.id, answer === 'going' ? 'confirmed' : 'cancelled', guest.verified,
-         guest.identityId, guest.sessionId]
+         guest.identityId, guest.sessionId, guest.userId]
       );
       rsvp = rows[0];
     } else {
@@ -1333,13 +1374,13 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
       const { rows } = await client.query(
         `INSERT INTO rsvps
            (event_id,first_name,last_name,email,wants_reminders,organizer_optin,status,
-            manage_token,account_id,guest_session_id)
-         VALUES ($1,$2,$3,$4,TRUE,FALSE,$5,$6,$7,$8)
+            manage_token,account_id,guest_session_id,user_id)
+         VALUES ($1,$2,$3,$4,TRUE,FALSE,$5,$6,$7,$8,$9)
          RETURNING *`,
         [event.id, firstName, lastName, guest.email,
          answer === 'going' ? 'confirmed' : 'cancelled',
          crypto.randomBytes(16).toString('hex'), guest.verified ? guest.identityId : null,
-         guest.sessionId]
+         guest.sessionId, guest.userId]
       );
       rsvp = rows[0];
     }
@@ -1355,9 +1396,10 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
       await client.query(
         `UPDATE guest_invitation_tokens
             SET response=$3,responded_at=NOW(),rsvp_id=$4
-          WHERE target_event_id=$1 AND identity_id=$2
+          WHERE target_event_id=$1
+            AND (user_id=$2 OR (user_id IS NULL AND identity_id=$5))
             AND revoked_at IS NULL`,
-        [event.id, guest.identityId, answer, rsvp.id]
+        [event.id, guest.userId, answer, rsvp.id, guest.identityId]
       );
     }
     await client.query('COMMIT');
@@ -1403,16 +1445,18 @@ async function createAddPhotoMagicLink(event, rsvp) {
 // last 15 minutes — so the page can say truthfully whether an email went out.
 async function claimConfirmation(event, rsvp) {
   const { rows } = await pool.query(
-    `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
-     VALUES ($1,$2,$3,'rsvp_confirmation','email','pending')
+    `INSERT INTO message_log
+       (rsvp_id, event_id, recipient, recipient_user_id, message_type, channel, status)
+     VALUES ($1,$2,$3,$4,'rsvp_confirmation','email','pending')
      ON CONFLICT (rsvp_id, message_type, channel)
        WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL
      DO UPDATE SET event_id=EXCLUDED.event_id, recipient=EXCLUDED.recipient,
+                   recipient_user_id=COALESCE(message_log.recipient_user_id,EXCLUDED.recipient_user_id),
                    status='pending', provider_id=NULL, error=NULL,
                    created_at=NOW(), sent_at=NULL
      WHERE COALESCE(message_log.sent_at, message_log.created_at) < NOW() - INTERVAL '15 minutes'
      RETURNING id`,
-    [rsvp.id, event.id, rsvp.email]
+    [rsvp.id, event.id, rsvp.email, rsvp.user_id]
   );
   return rows[0]?.id || null;
 }

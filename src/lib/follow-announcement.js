@@ -30,37 +30,53 @@ function buildFollowerAnnouncementMessage(event, baseUrl = process.env.APP_URL) 
 async function eligibleEmailRecipients(queryable, organizerId, eventId) {
   const { rows } = await queryable.query(
     `WITH candidates AS (
-       SELECT LOWER(r.email) AS email,MIN(r.first_name) AS first_name
+       SELECT r.user_id,LOWER(r.email) AS email,MIN(r.first_name) AS first_name,
+              1 AS source_rank,MAX(r.created_at) AS consent_at
          FROM rsvps r JOIN events source_event ON source_event.id=r.event_id
         WHERE source_event.organizer_id=$1 AND r.organizer_optin=TRUE AND r.status='confirmed'
-        GROUP BY LOWER(r.email)
+        GROUP BY r.user_id,LOWER(r.email)
        UNION ALL
-       SELECT LOWER(follower.email) AS email,
-              MIN(COALESCE(NULLIF(SPLIT_PART(follower.name,' ',1),''),'Friend')) AS first_name
+       SELECT hf.follower_user_id AS user_id,LOWER(follower.email) AS email,
+              MIN(COALESCE(NULLIF(SPLIT_PART(follower.name,' ',1),''),'Friend')) AS first_name,
+              0 AS source_rank,MAX(hf.email_opted_in_at) AS consent_at
          FROM host_follows hf JOIN organizers follower ON follower.id=hf.follower_organizer_id
         WHERE hf.host_organizer_id=$1 AND hf.unsubscribed_at IS NULL
           AND hf.email_opted_in_at IS NOT NULL
           AND hf.email_consent_version=$3
-        GROUP BY LOWER(follower.email)
+        GROUP BY hf.follower_user_id,LOWER(follower.email)
+     ), ranked AS (
+       SELECT candidate.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY COALESCE('user:' || candidate.user_id::text,'email:' || candidate.email)
+                ORDER BY candidate.source_rank,candidate.consent_at DESC,candidate.email
+              ) AS person_rank
+         FROM candidates candidate
      )
-     SELECT c.email,MIN(c.first_name) AS first_name
-       FROM candidates c
-      WHERE NOT EXISTS (
+     SELECT c.email,c.first_name,c.user_id,
+            COALESCE('user:' || c.user_id::text,'email:' || c.email) AS person_key
+       FROM ranked c
+      WHERE c.person_rank=1
+        AND NOT EXISTS (
               SELECT 1 FROM follower_optouts fo
                WHERE fo.organizer_id=$1 AND LOWER(fo.email)=c.email
             )
         AND NOT EXISTS (
               SELECT 1 FROM rsvps target
                WHERE target.event_id=$2 AND target.status='confirmed'
-                 AND LOWER(target.email)=c.email
+                 AND ((c.user_id IS NOT NULL AND target.user_id=c.user_id)
+                      OR ((c.user_id IS NULL OR target.user_id IS NULL)
+                          AND LOWER(target.email)=c.email))
             )
         AND NOT EXISTS (
               SELECT 1 FROM message_log ml
-               WHERE ml.event_id=$2 AND LOWER(ml.recipient)=c.email
+               WHERE ml.event_id=$2
+                 AND ((c.user_id IS NOT NULL AND ml.recipient_user_id=c.user_id)
+                      OR ((c.user_id IS NULL OR ml.recipient_user_id IS NULL)
+                          AND LOWER(ml.recipient)=c.email))
                  AND ml.message_type IN ('announcement','previous_guest_invite')
                  AND ml.status IN ('pending','sent')
             )
-      GROUP BY c.email ORDER BY c.email`,
+      ORDER BY c.email`,
     [organizerId, eventId, FOLLOW_EMAIL_CONSENT_VERSION]
   );
   return rows;
@@ -70,6 +86,7 @@ async function eligibleSmsRecipients(queryable, organizerId, eventId) {
   const { rows } = await queryable.query(
     `SELECT DISTINCT ON (hf.sms_phone)
             hf.id,hf.sms_phone AS phone,LOWER(follower.email) AS email,
+            hf.follower_user_id AS user_id,
             COALESCE(NULLIF(follower.name,''),'Friend') AS name
        FROM host_follows hf JOIN organizers follower ON follower.id=hf.follower_organizer_id
       WHERE hf.host_organizer_id=$1 AND hf.unsubscribed_at IS NULL
@@ -79,7 +96,9 @@ async function eligibleSmsRecipients(queryable, organizerId, eventId) {
         AND NOT EXISTS (
               SELECT 1 FROM rsvps target
                WHERE target.event_id=$2 AND target.status='confirmed'
-                 AND LOWER(target.email)=LOWER(follower.email)
+                 AND ((hf.follower_user_id IS NOT NULL AND target.user_id=hf.follower_user_id)
+                      OR ((hf.follower_user_id IS NULL OR target.user_id IS NULL)
+                          AND LOWER(target.email)=LOWER(follower.email)))
             )
       ORDER BY hf.sms_phone,hf.updated_at DESC,hf.id DESC`,
     [organizerId, eventId, FOLLOW_SMS_CONSENT_VERSION]
@@ -108,7 +127,10 @@ async function makeFollowerAnnouncementPreview(queryable, event) {
   return {
     emailCount: emails.length,
     textCount: texts.length,
-    count: new Set([...emails.map(row => row.email), ...texts.map(row => row.email || `sms:${row.phone}`)]).size,
+    count: new Set([
+      ...emails.map(row => row.person_key || row.email),
+      ...texts.map(row => row.user_id ? `user:${row.user_id}` : (row.email || `sms:${row.phone}`))
+    ]).size,
     messageBody,
     segmentCount: segmentInfo.segments,
     creditCost,

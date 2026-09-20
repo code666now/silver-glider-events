@@ -27,8 +27,8 @@ test('photo return context is derived from an RSVP-owned identity, not an arbitr
   const page = read('src/views/add-photo.html');
 
   assert.match(index, /JOIN rsvps r ON r\.event_id=e\.id/);
-  assert.match(index, /e\.slug=\$1 AND r\.account_id=\$2/);
-  assert.match(index, /\[requestedSlug, req\.organizer\.id\]/);
+  assert.match(index, /e\.slug=\$1[\s\S]*r\.user_id=\$3 OR \(r\.user_id IS NULL AND r\.account_id=\$2\)/);
+  assert.match(index, /\[requestedSlug, req\.organizer\.id, req\.organizer\.user_id\]/);
   assert.match(index, /event \? `\/e\/\$\{encodeURIComponent\(event\.slug\)\}`/);
   assert.match(page, /id="add-photo-back" href="\{\{RETURN_URL\}\}"/);
   assert.match(page, /id="add-photo-success" hidden/);
@@ -40,7 +40,7 @@ test('My Events opens on Going unless a host has nothing upcoming there, and pre
   const page = read('src/views/events.html');
 
   assert.match(routes, /router\.get\('\/api\/events\/going'/);
-  assert.match(routes, /r\.account_id=\$1 AND r\.status='confirmed'/);
+  assert.match(routes, /r\.user_id=\$2 OR \(r\.user_id IS NULL AND r\.account_id=\$1\)[\s\S]*r\.status='confirmed'/);
   assert.match(routes, /e\.status IN \('published','cancelled'\)/);
   assert.doesNotMatch(routes, /LOWER\(r\.email\).*api\/events\/going/s);
   assert.match(page, /data-view="going">Going</);

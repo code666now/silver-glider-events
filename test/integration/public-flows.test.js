@@ -425,7 +425,8 @@ test('keeps first-RSVP persistence without using its browser cookie as event-pag
   await waitForConfirmation('lucas@example.test');
 
   const stored = (await pool.query(
-    `SELECT r.account_id,r.guest_session_id,gs.identity_id,gs.verified_at
+    `SELECT r.account_id,r.user_id AS rsvp_user_id,r.guest_session_id,
+            gs.identity_id,gs.user_id AS session_user_id,gs.verified_at
        FROM rsvps r JOIN guest_sessions gs ON gs.id=r.guest_session_id
       WHERE r.event_id=$1`,
     [firstEvent.id]
@@ -442,6 +443,15 @@ test('keeps first-RSVP persistence without using its browser cookie as event-pag
         AND ui.identity_type='email' AND ui.revoked_at IS NULL`
   )).rows[0];
   assert.equal(Number(provisionalIdentity.user_id), Number(provisionalIdentity.canonical_user_id));
+  assert.equal(Number(stored.rsvp_user_id), Number(provisionalIdentity.canonical_user_id));
+  assert.equal(Number(stored.session_user_id), Number(provisionalIdentity.canonical_user_id));
+  const confirmationRecipient = (await pool.query(
+    `SELECT recipient_user_id FROM message_log
+      WHERE event_id=$1 AND message_type='rsvp_confirmation'
+      ORDER BY id DESC LIMIT 1`,
+    [firstEvent.id]
+  )).rows[0];
+  assert.equal(Number(confirmationRecipient.recipient_user_id), Number(provisionalIdentity.canonical_user_id));
   assert.equal(provisionalIdentity.verification_scope, 'unverified');
   assert.equal(provisionalIdentity.verified_at, null,
     'submitting an RSVP creates a reusable person record without granting account-level email proof');
@@ -517,8 +527,12 @@ test('personal Familiar Faces links are permanent, cross-device, and link a matc
     first_name: 'Maya', last_name: 'Lopez', email: 'maya-personal@example.test'
   });
   const identity = (await pool.query(
-    `INSERT INTO organizers (email,name) VALUES ('maya-personal@example.test','Maya Lopez') RETURNING id`
+    `INSERT INTO organizers (email,name)
+     VALUES ('maya-personal@example.test','Maya Lopez') RETURNING id`
   )).rows[0];
+  identity.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [identity.id]
+  )).rows[0].user_id;
   const message = (await pool.query(
     `INSERT INTO message_log
        (event_id,rsvp_id,recipient,recipient_name,message_type,channel,status)
@@ -562,13 +576,20 @@ test('personal Familiar Faces links are permanent, cross-device, and link a matc
   });
   assert.equal(answer.status, 201);
   const linked = (await pool.query(
-    `SELECT r.status,r.account_id,t.response,t.responded_at
-       FROM rsvps r JOIN guest_invitation_tokens t ON t.rsvp_id=r.id
+    `SELECT r.status,r.account_id,r.user_id AS rsvp_user_id,
+            t.user_id AS invitation_user_id,t.response,t.responded_at,
+            ml.recipient_user_id
+       FROM rsvps r
+       JOIN guest_invitation_tokens t ON t.rsvp_id=r.id
+       JOIN message_log ml ON ml.id=t.message_log_id
       WHERE r.event_id=$1`,
     [target.id]
   )).rows[0];
   assert.equal(linked.status, 'confirmed');
   assert.equal(linked.account_id, identity.id);
+  assert.equal(Number(linked.rsvp_user_id), Number(identity.user_id));
+  assert.equal(Number(linked.invitation_user_id), Number(identity.user_id));
+  assert.equal(Number(linked.recipient_user_id), Number(identity.user_id));
   assert.equal(linked.response, 'going');
   assert.ok(linked.responded_at);
 
@@ -588,6 +609,59 @@ test('personal Familiar Faces links are permanent, cross-device, and link a matc
   );
   assert.equal((await fetch(`${baseUrl}/g/${invitation.token}`)).status, 404);
   assert.equal((await fetch(`${baseUrl}${personalLocation}`)).status, 404);
+});
+
+test('a changed-email invitation reuses its canonical RSVP instead of creating a duplicate', async () => {
+  const event = await createEvent({ slug: 'canonical-rsvp-alias', title: 'Canonical RSVP Alias' });
+  const account = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('canonical-new@example.test','Canonical Guest') RETURNING id`
+  )).rows[0];
+  const userId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [account.id]
+  )).rows[0].user_id;
+  const existing = await createRsvp(event.id, {
+    first_name: 'Canonical', last_name: 'Guest', email: 'canonical-old@example.test',
+    account_id: null, user_id: userId
+  });
+  const message = (await pool.query(
+    `INSERT INTO message_log
+       (event_id,recipient,recipient_name,recipient_user_id,message_type,channel,status)
+     VALUES ($1,'canonical-new@example.test','Canonical Guest',$2,'previous_guest_invite','email','sent')
+     RETURNING id`,
+    [event.id, userId]
+  )).rows[0];
+  const invitation = await createGuestInvitation(pool, {
+    messageLogId: message.id,
+    eventId: event.id,
+    eventDate: event.event_date,
+    email: 'canonical-new@example.test',
+    recipientName: 'Canonical Guest'
+  });
+
+  const response = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      full_name: 'Canonical Guest',
+      email: 'canonical-new@example.test',
+      inviteToken: invitation.token
+    })
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).alreadyRsvpd, true);
+  const rows = (await pool.query(
+    `SELECT r.id,r.account_id,r.user_id,t.rsvp_id
+       FROM rsvps r
+       JOIN guest_invitation_tokens t ON t.message_log_id=$2
+      WHERE r.event_id=$1`,
+    [event.id, message.id]
+  )).rows;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].id, existing.id);
+  assert.equal(Number(rows[0].account_id), Number(account.id));
+  assert.equal(Number(rows[0].user_id), Number(userId));
+  assert.equal(rows[0].rsvp_id, existing.id);
 });
 
 test('RSVP SMS consent requires an enabled reminder and valid phone, then powers the host eligibility count', async () => {
@@ -1631,6 +1705,14 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   assert.deepEqual(await signedInFollow.json(), {
     following: true, emailOn: true, textOn: false, smsAvailable: false, phoneLast4: null
   });
+  const canonicalFollow = (await pool.query(
+    `SELECT follow.follower_user_id, follower.user_id
+       FROM host_follows follow
+       JOIN organizers follower ON follower.id=follow.follower_organizer_id
+      WHERE follow.follower_organizer_id=$1 AND follow.host_organizer_id=$2`,
+    [organizerId, secondHostId]
+  )).rows[0];
+  assert.equal(Number(canonicalFollow.follower_user_id), Number(canonicalFollow.user_id));
   await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
     method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
@@ -1779,6 +1861,16 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     `INSERT INTO organizers (email,name)
      VALUES ('follow-updates@example.test','Follow Updates') RETURNING id`
   )).rows[0];
+  const followerUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [follower.id]
+  )).rows[0].user_id;
+  const earlierEvent = await createEvent({
+    slug: 'follow-update-history', title: 'Follow Update History', event_date: '2020-04-04'
+  });
+  await createRsvp(earlierEvent.id, {
+    first_name: 'Follow', last_name: 'Updates', email: 'follow-updates-old@example.test',
+    organizer_optin: true, user_id: followerUserId
+  });
   const followerCookie = `sge_session=${signSession(follower.id)}`;
   const followed = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
     method: 'POST', headers: { cookie: followerCookie }
@@ -1848,11 +1940,12 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     )).rows[0];
     assert.ok(delivery.host_follow_id);
     assert.equal(delivery.rsvp_id, null);
-    assert.equal((await pool.query(
-      `SELECT COUNT(*)::int AS count FROM message_log
-        WHERE event_id=$1 AND recipient='follow-updates@example.test'
-          AND message_type='announcement' AND status='sent'`, [event.id]
-    )).rows[0].count, 1);
+    const announcementLogs = (await pool.query(
+      `SELECT recipient,recipient_user_id FROM message_log
+        WHERE event_id=$1 AND message_type='announcement' AND status='sent'`, [event.id]
+    )).rows;
+    assert.deepEqual(announcementLogs.map(row => row.recipient), ['follow-updates@example.test']);
+    assert.equal(Number(announcementLogs[0].recipient_user_id), Number(followerUserId));
   } finally {
     sms.sendSms = originalSendSms;
   }
@@ -2198,11 +2291,23 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(normalEventPage.status, 200);
   assert.doesNotMatch(normalEventHtml, /photo-form|Collect photos/);
 
+  const photoGuest = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('photo-guest@example.test','Photo Guest') RETURNING id`
+  )).rows[0];
+  const photoGuestUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [photoGuest.id]
+  )).rows[0].user_id;
   await pool.query(
     `INSERT INTO rsvps (event_id, first_name, last_name, email, wants_reminders, organizer_optin, status, manage_token)
      VALUES ($1,'Photo','Guest','photo-guest@example.test',TRUE,FALSE,'confirmed','photo-guest-token'),
             ($1,'No','Updates','no-updates@example.test',FALSE,FALSE,'confirmed','no-updates-token')`,
     [past.id]
+  );
+  await pool.query(
+    `UPDATE rsvps SET user_id=$2
+      WHERE event_id=$1 AND email='photo-guest@example.test'`,
+    [past.id, photoGuestUserId]
   );
 
   const collection = await fetch(`${baseUrl}/api/events/${past.id}/photos`, {
@@ -2277,10 +2382,15 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
   assert.equal(request.status, 200);
   assert.deepEqual(await request.json(), { sent: 1, total: 1 });
   const logs = await pool.query(
-    `SELECT recipient, status FROM message_log WHERE event_id=$1 AND message_type='photo_request'`,
+    `SELECT recipient,recipient_user_id,status FROM message_log
+      WHERE event_id=$1 AND message_type='photo_request'`,
     [past.id]
   );
-  assert.deepEqual(logs.rows, [{ recipient: 'photo-guest@example.test', status: 'sent' }]);
+  assert.deepEqual(logs.rows, [{
+    recipient: 'photo-guest@example.test',
+    recipient_user_id: photoGuestUserId,
+    status: 'sent'
+  }]);
 
   const repeated = await fetch(`${baseUrl}/api/events/${past.id}/photo-request`, {
     method: 'POST', headers: { cookie: organizerCookie }
@@ -2585,6 +2695,9 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
      VALUES ('going-guest@example.test','Going Guest','https://res.cloudinary.com/demo/image/upload/v1/going-guest.jpg')
      RETURNING id`
   )).rows[0];
+  guest.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [guest.id]
+  )).rows[0].user_id;
   const other = (await pool.query(
     `INSERT INTO organizers (email, name)
      VALUES ('other-guest@example.test','Other Guest') RETURNING id`
@@ -2598,6 +2711,13 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
   await createRsvp(event.id, {
     first_name: 'Going', last_name: 'Guest', email: 'going-guest@example.test', account_id: guest.id
   });
+  const canonicalEvent = await createEvent({
+    slug: 'canonical-going-night', title: 'Canonical Going Night', event_date: '2030-10-12'
+  });
+  await createRsvp(canonicalEvent.id, {
+    first_name: 'Going', last_name: 'Guest', email: 'old-going-alias@example.test',
+    account_id: null, user_id: guest.user_id
+  });
   const emailOnlyEvent = await createEvent({
     slug: 'email-only-going-night', title: 'Email Only Going Night', event_date: '2030-10-11'
   });
@@ -2609,7 +2729,7 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
   const goingResponse = await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: guestCookie } });
   assert.equal(goingResponse.status, 200);
   const going = await goingResponse.json();
-  assert.deepEqual(going.events.map(item => item.slug), ['going-list-night']);
+  assert.deepEqual(going.events.map(item => item.slug).sort(), ['canonical-going-night', 'going-list-night']);
 
   const eventsPage = await fetch(`${baseUrl}/events`, { headers: { cookie: guestCookie } });
   const eventsHtml = await eventsPage.text();
@@ -3941,6 +4061,88 @@ test('upcoming events offer every past guest once as a face and invite them with
   assert.equal(strangers.status, 404);
 });
 
+test('Familiar Faces dedupes canonical aliases without merging different canonical people', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const target = await createEvent({
+    slug: 'canonical-faces-target', title: 'Canonical Faces Target', event_date: '2030-11-01'
+  });
+  const aliasPast = await createEvent({
+    slug: 'canonical-alias-past', title: 'Alias Past', event_date: '2020-04-01'
+  });
+  const aliasRecent = await createEvent({
+    slug: 'canonical-alias-recent', title: 'Alias Recent', event_date: '2020-04-02'
+  });
+  const sharedPast = await createEvent({
+    slug: 'canonical-shared-past', title: 'Shared Past', event_date: '2020-04-03'
+  });
+  const sharedRecent = await createEvent({
+    slug: 'canonical-shared-recent', title: 'Shared Recent', event_date: '2020-04-04'
+  });
+  const aliasPerson = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('alias-current@example.test','Alias Person') RETURNING id`
+  )).rows[0];
+  const connectedPerson = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('shared-snapshot@example.test','Connected Person') RETURNING id`
+  )).rows[0];
+  const separatePerson = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('separate-person@example.test','Separate Person') RETURNING id`
+  )).rows[0];
+  for (const person of [aliasPerson, connectedPerson, separatePerson]) {
+    person.user_id = (await pool.query(
+      'SELECT user_id FROM organizers WHERE id=$1', [person.id]
+    )).rows[0].user_id;
+  }
+
+  await createRsvp(aliasPast.id, {
+    first_name: 'Alias', last_name: 'Person', email: 'alias-old@example.test', user_id: aliasPerson.user_id
+  });
+  const latestAlias = await createRsvp(aliasRecent.id, {
+    first_name: 'Alias', last_name: 'Person', email: 'alias-current@example.test', user_id: aliasPerson.user_id
+  });
+  await createRsvp(sharedPast.id, {
+    first_name: 'Connected', last_name: 'Person', email: 'shared-snapshot@example.test',
+    user_id: connectedPerson.user_id
+  });
+  await createRsvp(sharedRecent.id, {
+    first_name: 'Separate', last_name: 'Person', email: 'shared-snapshot@example.test',
+    user_id: separatePerson.user_id
+  });
+  await createRsvp(target.id, {
+    first_name: 'Connected', last_name: 'Person', email: 'shared-snapshot@example.test',
+    user_id: connectedPerson.user_id
+  });
+
+  const payload = await (await fetch(
+    `${baseUrl}/api/events/${target.id}/familiar-faces/people`, { headers: { cookie } }
+  )).json();
+  assert.equal(payload.total, 2);
+  const aliasFace = payload.people.find(face => face.name === 'Alias Person');
+  assert.equal(aliasFace.id, `rsvp:${latestAlias.id}`);
+  assert.equal(aliasFace.eventCount, 2, 'different email snapshots for one user stay one face');
+  assert.equal(aliasFace.detail, '2 of your events');
+  assert.ok(payload.people.some(face => face.name === 'Separate Person'),
+    'a different non-null user remains eligible even when its email snapshot matches');
+  assert.ok(!payload.people.some(face => face.name === 'Connected Person'),
+    'only the canonical person already connected to the target is excluded');
+
+  const invite = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people/invite`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ faceIds: [aliasFace.id] })
+  });
+  assert.equal(invite.status, 202);
+  assert.equal((await invite.json()).queued, 1);
+  const delivery = (await pool.query(
+    `SELECT recipient_user_id FROM message_log
+      WHERE event_id=$1 AND message_type='previous_guest_invite'`,
+    [target.id]
+  )).rows[0];
+  assert.equal(Number(delivery.recipient_user_id), Number(aliasPerson.user_id));
+});
+
 test('past-event pickers explain why a face can’t be selected', async () => {
   const cookie = `sge_session=${signSession(organizerId)}`;
   const past = await createEvent({ slug: 'picker-notes', title: 'Picker Notes', event_date: '2020-03-03' });
@@ -4043,6 +4245,9 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
 test('profile stats count past events attended elsewhere and past events hosted', async () => {
   const cookie = `sge_session=${signSession(organizerId)}`;
+  const organizerUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].user_id;
   const hostedPast = await createEvent({ slug: 'stats-hosted-past', event_date: '2020-02-02' });
   await createEvent({ slug: 'stats-hosted-future', event_date: '2099-02-02' });
   await createEvent({ slug: 'stats-hosted-draft', event_date: '2020-03-03', status: 'draft' });
@@ -4059,7 +4264,9 @@ test('profile stats count past events attended elsewhere and past events hosted'
   const upcoming = await insertOther('stats-upcoming', '2099-05-05');
   const cancelledEvent = await insertOther('stats-event-cancelled', '2020-06-06', 'cancelled');
   await createRsvp(hostedPast.id, { account_id: organizerId });
-  await createRsvp(went.id, { account_id: organizerId });
+  await createRsvp(went.id, {
+    account_id: null, user_id: organizerUserId, email: 'old-stats-alias@example.test'
+  });
   await createRsvp(went.id, { account_id: organizerId });
   await createRsvp(cancelled.id, { account_id: organizerId, status: 'cancelled' });
   await createRsvp(upcoming.id, { account_id: organizerId });

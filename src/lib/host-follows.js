@@ -27,7 +27,8 @@ async function followHost(db, followerOrganizerId, hostOrganizerId, sourceEventI
     throw err;
   }
   const { rows: identityRows } = await db.query(
-    `SELECT follower.email, COALESCE(host.org_name,host.name,'this host') AS host_name
+    `SELECT follower.email, follower.user_id AS follower_user_id,
+            COALESCE(host.org_name,host.name,'this host') AS host_name
        FROM organizers follower CROSS JOIN organizers host
       WHERE follower.id=$1 AND host.id=$2`,
     [followerOrganizerId, hostOrganizerId]
@@ -36,11 +37,12 @@ async function followHost(db, followerOrganizerId, hostOrganizerId, sourceEventI
   const consentText = followEmailConsentCopy(identityRows[0].host_name);
   const { rows } = await db.query(
     `INSERT INTO host_follows
-       (follower_organizer_id, host_organizer_id, source_event_id,
+       (follower_organizer_id, follower_user_id, host_organizer_id, source_event_id,
         email_opted_in_at,email_consent_source,email_consent_version,email_consent_text)
-     VALUES ($1,$2,$3,NOW(),$4,$5,$6)
+     VALUES ($1,$2,$3,$4,NOW(),$5,$6,$7)
      ON CONFLICT (follower_organizer_id, host_organizer_id)
-     DO UPDATE SET unsubscribed_at=NULL,
+     DO UPDATE SET follower_user_id=EXCLUDED.follower_user_id,
+                   unsubscribed_at=NULL,
                    source_event_id=COALESCE(host_follows.source_event_id, EXCLUDED.source_event_id),
                    email_opted_in_at=NOW(),
                    email_consent_source=EXCLUDED.email_consent_source,
@@ -48,7 +50,7 @@ async function followHost(db, followerOrganizerId, hostOrganizerId, sourceEventI
                    email_consent_text=EXCLUDED.email_consent_text,
                    updated_at=NOW()
      RETURNING id, created_at, unsubscribed_at`,
-    [followerOrganizerId, hostOrganizerId, sourceEventId,
+    [followerOrganizerId, identityRows[0].follower_user_id, hostOrganizerId, sourceEventId,
      FOLLOW_EMAIL_CONSENT_SOURCE, FOLLOW_EMAIL_CONSENT_VERSION, consentText]
   );
   await db.query(

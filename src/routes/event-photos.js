@@ -9,6 +9,8 @@ const { uploadEventPhoto, deleteEventPhoto, configured } = require('../lib/cloud
 const { sendPhotoRequest } = require('../lib/mailer');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { esc, render404 } = require('../lib/public-html');
+const { guestVerifiedFor, readGuestSession } = require('../lib/guest-session');
+const { attendeeCookieName, readCookie } = require('../lib/private-events');
 
 const router = express.Router();
 const uploadTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-photo-upload.html'), 'utf8');
@@ -96,6 +98,25 @@ async function publicCollection(token) {
   return rows[0] || null;
 }
 
+async function canonicalPhotoUploader(req, eventId) {
+  if (req.sessionAccount?.user_id) return req.sessionAccount.user_id;
+
+  const attendeeToken = readCookie(req, attendeeCookieName(eventId));
+  if (attendeeToken) {
+    const { rows } = await pool.query(
+      `SELECT user_id FROM rsvps
+        WHERE event_id=$1 AND manage_token=$2 AND status='confirmed'
+          AND user_id IS NOT NULL
+        LIMIT 1`,
+      [eventId, attendeeToken]
+    );
+    if (rows[0]?.user_id) return rows[0].user_id;
+  }
+
+  const guest = await readGuestSession(pool, req);
+  return guest && guest.user_id && guestVerifiedFor(guest, eventId) ? guest.user_id : null;
+}
+
 router.get(['/photos/:token', '/p/:token'], async (req, res, next) => {
   try {
     const token = validToken(req.params.token);
@@ -140,6 +161,7 @@ router.post('/api/public/photo-collections/:token', (req, res, next) => {
 
     const contributorName = String(req.body.contributor_name || '').trim().replace(/\s+/g, ' ').slice(0, 100) || null;
     const publicFeatureConsent = req.body.public_feature_consent === 'true';
+    const uploaderUserId = await canonicalPhotoUploader(req, event.id);
     uploaded = await Promise.all(req.files.map(file => uploadEventPhoto(file.buffer)));
     const client = await pool.connect();
     try {
@@ -156,9 +178,9 @@ router.post('/api/public/photo-collections/:token', (req, res, next) => {
       for (const image of uploaded) {
         await client.query(
           `INSERT INTO event_photos
-             (event_id, cloudinary_id, image_url, contributor_name, public_feature_consent)
-           VALUES ($1,$2,$3,$4,$5)`,
-          [event.id, image.public_id, image.secure_url, contributorName, publicFeatureConsent]
+             (event_id, cloudinary_id, image_url, contributor_name, public_feature_consent, uploader_user_id)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [event.id, image.public_id, image.secure_url, contributorName, publicFeatureConsent, uploaderUserId]
         );
       }
       await client.query('COMMIT');
@@ -229,7 +251,7 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
 
     const event = claimed[0];
     const { rows: recipients } = await pool.query(
-      `SELECT id, email, first_name FROM rsvps
+      `SELECT id, user_id, email, first_name FROM rsvps
         WHERE event_id=$1 AND status='confirmed' AND wants_reminders=TRUE
         ORDER BY id`,
       [event.id]
@@ -241,12 +263,13 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
       let logId = null;
       try {
         const { rows } = await pool.query(
-          `INSERT INTO message_log (rsvp_id, event_id, recipient, message_type, channel, status)
-           VALUES ($1,$2,$3,'photo_request','email','pending')
+          `INSERT INTO message_log
+             (rsvp_id, event_id, recipient, recipient_user_id, message_type, channel, status)
+           VALUES ($1,$2,$3,$4,'photo_request','email','pending')
            ON CONFLICT (rsvp_id, message_type, channel)
              WHERE rsvp_id IS NOT NULL AND notification_batch_id IS NULL DO NOTHING
            RETURNING id`,
-          [recipient.id, event.id, recipient.email]
+          [recipient.id, event.id, recipient.email, recipient.user_id]
         );
         if (!rows.length) continue;
         logId = rows[0].id;

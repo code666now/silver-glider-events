@@ -89,9 +89,10 @@ app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
         `SELECT e.slug, e.title
            FROM events e
            JOIN rsvps r ON r.event_id=e.id
-          WHERE e.slug=$1 AND r.account_id=$2
+          WHERE e.slug=$1
+            AND (r.user_id=$3 OR (r.user_id IS NULL AND r.account_id=$2))
           ORDER BY r.id DESC LIMIT 1`,
-        [requestedSlug, req.organizer.id]
+        [requestedSlug, req.organizer.id, req.organizer.user_id]
       );
       event = rows[0] || null;
     }

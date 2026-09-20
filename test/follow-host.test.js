@@ -85,6 +85,8 @@ test('new-event updates combine legacy consent and explicit Host follows without
   assert.match(announcements, /r\.organizer_optin=TRUE/);
   assert.match(announcements, /host_follows/);
   assert.match(announcements, /follower_optouts/);
+  assert.match(announcements, /MAX\(r\.created_at\) AS consent_at/);
+  assert.match(announcements, /candidate\.consent_at DESC/);
   assert.match(announcements, /createFollowerAnnouncementBatch/);
   assert.match(events, /includeTexts/);
   assert.match(events, /SEND_FOLLOWER_UPDATE/);
