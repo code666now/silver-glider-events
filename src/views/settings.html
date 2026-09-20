@@ -745,7 +745,7 @@
       }
       if (organizer.is_admin) {
         const nav = document.querySelector('.sg-nav-links');
-        nav.insertAdjacentHTML('beforeend', '<a href="/admin/line">The Line</a><a href="/admin/hosts">Hosts</a><a href="/admin/ticketing">Ticketing</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
+        nav.insertAdjacentHTML('beforeend', '<a href="/admin/accounts">Accounts</a><a href="/admin/hosts">Hosts</a><a href="/admin/line">The Line</a><a href="/admin/ticketing">Ticketing</a><a href="/admin/feedback">Feedback</a><a href="/admin/invitations">Invitations</a>');
       }
       loadSmsCredits();
     }).catch(showSettingsError);

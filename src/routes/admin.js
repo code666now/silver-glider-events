@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
-const { ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
+const { normalizeHostProfile } = require('../lib/host-profile');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 
@@ -20,6 +20,18 @@ const smsTestLimiter = createRateLimiter({
 function positiveId(value) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function sameOriginMutation(req) {
+  const site = req.get('sec-fetch-site');
+  if (site) return site === 'same-origin' || site === 'none';
+  const origin = req.get('origin');
+  if (!origin || origin === 'null') return true;
+  let originHost;
+  try { originHost = new URL(origin).host; } catch (_) { return false; }
+  const allowed = [req.get('host'), req.get('x-forwarded-host')];
+  try { allowed.push(new URL(process.env.APP_URL).host); } catch (_) {}
+  return allowed.filter(Boolean).includes(originHost);
 }
 
 function slugify(value) {
@@ -143,23 +155,62 @@ router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
 
 // PUT /api/admin/hosts/:id/profile — targeted public-profile editing only.
 router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  let client;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
     const id = positiveId(req.params.id);
-    if (!id) return res.status(404).json({ error: 'Host account not found' });
-    const { rows: currentRows } = await pool.query('SELECT * FROM organizers WHERE id=$1', [id]);
+    if (!id) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Host account not found' });
+    }
+    const { rows: currentRows } = await client.query(
+      'SELECT * FROM organizers WHERE id=$1 FOR UPDATE',
+      [id]
+    );
     const current = currentRows[0];
-    if (!current) return res.status(404).json({ error: 'Host account not found' });
+    if (!current) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Host account not found' });
+    }
 
     const normalized = normalizeHostProfile(req.body || {}, current);
-    if (normalized.error) return res.status(400).json({ error: normalized.error });
+    if (normalized.error) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: normalized.error });
+    }
     const profile = normalized.value;
     let publicSlug = profile.publicSlug;
     if (profile.orgName && !publicSlug) {
-      const ensured = await ensureHostProfile(id, profile.orgName);
-      publicSlug = ensured.public_slug;
+      const base = slugify(profile.orgName);
+      // Claim a unique slug inside this transaction so profile data and its
+      // support audit record can never commit independently.
+      for (let attempt = 0; attempt < 6 && !publicSlug; attempt++) {
+        const suffix = attempt === 0
+          ? ''
+          : `-${attempt === 1 ? id : crypto.randomBytes(2).toString('hex')}`;
+        const candidate = `${base.slice(0, 70 - suffix.length)}${suffix}`;
+        await client.query('SAVEPOINT host_profile_slug');
+        try {
+          const claimed = await client.query(
+            `UPDATE organizers SET public_slug=$2,updated_at=NOW()
+              WHERE id=$1 AND public_slug IS NULL
+              RETURNING public_slug`,
+            [id, candidate]
+          );
+          publicSlug = claimed.rows[0]?.public_slug || current.public_slug || null;
+          await client.query('RELEASE SAVEPOINT host_profile_slug');
+        } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT host_profile_slug');
+          await client.query('RELEASE SAVEPOINT host_profile_slug');
+          if (error.code !== '23505') throw error;
+        }
+      }
+      if (!publicSlug) throw new Error('Could not create a unique host page');
     }
 
-    const { rows } = await pool.query(
+    const { rows } = await client.query(
       `UPDATE organizers
           SET org_name=$2, public_slug=$3, bio=$4, website_url=$5,
               instagram_handle=$6, contact_email=$7, updated_at=NOW()
@@ -172,11 +223,41 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
         profile.websiteUrl, profile.instagramHandle, profile.contactEmail
       ]
     );
+    await client.query(
+      `INSERT INTO admin_account_audit_log
+         (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
+          request_ip,user_agent)
+       VALUES ($1,$2,'host_profile_updated','Admin Host Page update',$3::jsonb,$4::jsonb,$5,$6)`,
+      [
+        Number(req.organizer.user_id || req.organizer.id),
+        Number(current.user_id || current.id),
+        JSON.stringify({
+          orgName: current.org_name || null,
+          publicSlug: current.public_slug || null,
+          bio: current.bio || null,
+          websiteUrl: current.website_url || null,
+          instagramHandle: current.instagram_handle || null,
+          hasContactEmail: Boolean(current.contact_email)
+        }),
+        JSON.stringify({
+          orgName: rows[0].org_name || null,
+          publicSlug: rows[0].public_slug || null,
+          bio: rows[0].bio || null,
+          websiteUrl: rows[0].website_url || null,
+          instagramHandle: rows[0].instagram_handle || null,
+          hasContactEmail: Boolean(rows[0].contact_email)
+        }),
+        String(clientIp(req) || '').slice(0, 100) || null,
+        String(req.get('user-agent') || '').slice(0, 1000) || null
+      ]
+    );
+    await client.query('COMMIT');
     res.json({ host: rows[0] });
   } catch (err) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (err.code === '23505') return res.status(409).json({ error: 'That host page slug is already taken' });
     next(err);
-  }
+  } finally { if (client) client.release(); }
 });
 
 // GET /api/admin/invitations

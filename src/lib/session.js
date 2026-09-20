@@ -73,7 +73,8 @@ async function loadSessionAccount(db, req) {
     `SELECT organizer.*
        FROM users canonical_user
        JOIN organizers organizer ON organizer.user_id=canonical_user.id
-      WHERE canonical_user.id=$1 AND organizer.id=$1`,
+      WHERE canonical_user.id=$1 AND organizer.id=$1
+        AND canonical_user.account_status='active'`,
     [session.id]
   );
   const account = rows[0] || null;

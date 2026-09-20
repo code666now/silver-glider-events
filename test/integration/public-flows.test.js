@@ -34,6 +34,7 @@ const { settlePreviousGuestInvitationWork } = require('../../src/jobs/previous-g
 const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
+const adminAccountsRoutes = require('../../src/routes/admin-accounts');
 
 let server;
 let baseUrl;
@@ -75,6 +76,8 @@ async function followSignInLink(link, { cookie = '', next = '' } = {}) {
 function resetRateLimits() {
   authRoutes.resetRateLimitsForTests();
   publicRoutes.resetRateLimitsForTests();
+  adminAccountsRoutes.resetRateLimitsForTests();
+  adminAccountsRoutes.setAccountClaimSenderForTests();
 }
 
 async function resetDatabase() {
@@ -4734,4 +4737,603 @@ test('profile stats count past events attended elsewhere and past events hosted'
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { attended: 1, hosted: 1 });
   assert.equal((await fetch(`${baseUrl}/api/me/stats`)).status, 401);
+});
+
+test('Accounts & Support finds every canonical user but returns only masked identity data', async () => {
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('accounts-admin@example.test','Accounts Admin',TRUE,NOW()) RETURNING id,user_id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const guest = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('rsvp-only-support@example.test','RSVP Only Support') RETURNING id,user_id`
+  )).rows[0];
+  guest.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [guest.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'email','rsvp-only-support@example.test','rsvp-only-support@example.test',
+             NOW(),'account','integration_test',TRUE),
+            ($1,'phone','+14155550129','+14155550129',NOW(),
+             'account','integration_test',TRUE)`,
+    [guest.user_id]
+  );
+  const attended = await createEvent({ slug: 'support-guest-rsvp', title: 'Support Guest RSVP' });
+  await createRsvp(attended.id, {
+    first_name: 'RSVP', last_name: 'Only Support',
+    email: 'rsvp-only-support@example.test', account_id: guest.id, user_id: guest.user_id
+  });
+
+  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  })).status, 403);
+
+  const page = await fetch(`${baseUrl}/admin/accounts`, { headers: { cookie: adminCookie } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Accounts &amp; Support/);
+
+  const search = await fetch(
+    `${baseUrl}/api/admin/accounts?q=${encodeURIComponent('rsvp-only-support@example.test')}&type=guest`,
+    { headers: { cookie: adminCookie } }
+  );
+  assert.equal(search.status, 200);
+  assert.match(search.headers.get('cache-control'), /no-store/);
+  const searchPayload = await search.json();
+  assert.equal(searchPayload.accounts.length, 1);
+  assert.equal(searchPayload.accounts[0].id, Number(guest.user_id));
+  assert.equal(searchPayload.accounts[0].kind, 'guest');
+  assert.equal(searchPayload.accounts[0].rsvpCount, 1);
+  assert.equal(searchPayload.accounts[0].email, 'r•••@example.test');
+  assert.equal(searchPayload.accounts[0].phone, '••• ••• 0129');
+  assert.ok(!JSON.stringify(searchPayload).includes('rsvp-only-support@example.test'));
+  assert.ok(!JSON.stringify(searchPayload).includes('+14155550129'));
+
+  const detail = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}`, {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(detail.status, 200);
+  assert.match(detail.headers.get('cache-control'), /no-store/);
+  const detailPayload = await detail.json();
+  assert.equal(detailPayload.account.id, Number(guest.user_id));
+  assert.equal(detailPayload.account.email, 'r•••@example.test');
+  assert.equal(detailPayload.account.phone, '••• ••• 0129');
+  assert.deepEqual(
+    detailPayload.identities.map(identity => [identity.type, identity.maskedValue]).sort(),
+    [['email', 'r•••@example.test'], ['phone', '••• ••• 0129']]
+  );
+  assert.ok(detailPayload.identities.every(identity => !('value' in identity) && !('normalizedValue' in identity)));
+  assert.ok(!JSON.stringify(detailPayload).includes('rsvp-only-support@example.test'));
+  assert.ok(!JSON.stringify(detailPayload).includes('+14155550129'));
+
+  const profileWithoutReason = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/profile`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ name: 'Support Renamed' })
+  });
+  assert.equal(profileWithoutReason.status, 400);
+  const profileUpdate = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/profile`, {
+    method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ name: 'Support Renamed', reason: 'Correcting the display name at their request' })
+  });
+  assert.equal(profileUpdate.status, 200);
+  assert.deepEqual((await pool.query(
+    'SELECT u.name AS user_name,o.name AS organizer_name FROM users u JOIN organizers o ON o.user_id=u.id WHERE u.id=$1',
+    [guest.user_id]
+  )).rows[0], { user_name: 'Support Renamed', organizer_name: 'Support Renamed' });
+  assert.deepEqual((await pool.query(
+    `SELECT action_type,reason FROM admin_account_audit_log
+      WHERE target_user_id=$1 ORDER BY id`, [guest.user_id]
+  )).rows, [{
+    action_type: 'profile_name_updated',
+    reason: 'Correcting the display name at their request'
+  }]);
+
+  const selfSignOut = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/sign-out-all`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'This should use Account settings instead' })
+  });
+  assert.equal(selfSignOut.status, 400);
+  const guestOldCookie = `sge_session=${signSession(guest.id, Date.now() - 5000)}`;
+  assert.equal((await fetch(`${baseUrl}/profile`, { headers: { cookie: guestOldCookie } })).status, 200);
+  const signedOutEverywhere = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/sign-out-all`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'Account owner reported a lost device' })
+  });
+  assert.equal(signedOutEverywhere.status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: guestOldCookie } })).status, 401);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='sessions_revoked'
+        AND reason='Account owner reported a lost device'`, [guest.user_id]
+  )).rows[0].count, 1);
+
+  for (const [method, suffix] of [['DELETE', ''], ['POST', '/impersonate'], ['PATCH', '/identities/1']]) {
+    const response = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}${suffix}`, {
+      method,
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: method === 'DELETE' ? undefined : JSON.stringify({ value: 'attacker@example.test' })
+    });
+    assert.equal(response.status, 404, `${method} ${suffix || '/'} is intentionally absent`);
+  }
+});
+
+test('admin suspension is audited, revokes access, preserves public property, and can be reversed safely', async () => {
+  resetRateLimits();
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('suspension-admin@example.test','Suspension Admin',TRUE,NOW()) RETURNING id,user_id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug,last_login_at)
+     VALUES ('suspended-host@example.test','Suspended Host','Suspended Host','suspended-host',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'email','suspended-host@example.test','suspended-host@example.test',
+             NOW(),'account','integration_test',TRUE)`,
+    [target.user_id]
+  );
+  const publicEvent = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'suspension-public-event','Still Public','2030-12-20','20:00','Public Hall','public','published')
+     RETURNING id`,
+    [target.id]
+  )).rows[0];
+  assert.ok(publicEvent.id);
+
+  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const oldTargetCookie = `sge_session=${signSession(target.id, Date.now() - 5000)}`;
+
+  const preexistingLogin = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'suspended-host@example.test', next: '/dashboard' })
+  });
+  assert.equal(preexistingLogin.status, 200);
+  const preexistingRequestCookie = responseCookie(preexistingLogin, 'sge_sign_in');
+  const preexistingCode = lastDevEmail('suspended-host@example.test', 'magic_link').code;
+
+  const missingReason = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: '' })
+  });
+  assert.equal(missingReason.status, 400);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='account_suspended'`, [target.user_id]
+  )).rows[0].count, 0);
+
+  const selfSuspend = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/suspend`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'Accidental self action' })
+  });
+  assert.equal(selfSuspend.status, 400);
+
+  const suspended = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
+    method: 'POST', headers: {
+      'content-type': 'application/json', cookie: adminCookie,
+      'user-agent': 'Silver Glider Integration Support'
+    },
+    body: JSON.stringify({ reason: 'Owner requested a temporary security hold' })
+  });
+  assert.equal(suspended.status, 200);
+  assert.equal((await suspended.json()).status, 'suspended');
+
+  const blockedDashboard = await fetch(`${baseUrl}/dashboard`, {
+    headers: { cookie: oldTargetCookie }, redirect: 'manual'
+  });
+  assert.equal(blockedDashboard.status, 302);
+  assert.equal(blockedDashboard.headers.get('location'), '/login');
+  assert.match(blockedDashboard.headers.get('set-cookie') || '', /sge_session=;/);
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: oldTargetCookie } })).status, 401);
+
+  const invalidatedCode = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: preexistingRequestCookie },
+    body: JSON.stringify({ code: preexistingCode })
+  });
+  assert.notEqual(invalidatedCode.status, 200);
+  assert.equal((await fetch(`${baseUrl}/e/suspension-public-event`)).status, 200,
+    'suspension preserves the public event rather than deleting property');
+
+  const audit = (await pool.query(
+    `SELECT action_type,reason,before_state,after_state,request_ip,user_agent
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 ORDER BY id`,
+    [target.user_id]
+  )).rows;
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].action_type, 'account_suspended');
+  assert.equal(audit[0].reason, 'Owner requested a temporary security hold');
+  assert.equal(audit[0].before_state.status, 'active');
+  assert.equal(audit[0].after_state.status, 'suspended');
+  assert.equal(audit[0].user_agent, 'Silver Glider Integration Support');
+
+  const reactivated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/reactivate`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'Security review completed with the owner' })
+  });
+  assert.equal(reactivated.status, 200);
+  assert.equal((await reactivated.json()).status, 'active');
+
+  assert.equal((await fetch(`${baseUrl}/dashboard`, {
+    headers: { cookie: oldTargetCookie }, redirect: 'manual'
+  })).status, 302, 'reactivation never resurrects an old session');
+  const freshSignIn = await signInAccount('suspended-host@example.test', '/dashboard');
+  assert.ok(freshSignIn.sessionCookie);
+  assert.equal((await fetch(`${baseUrl}/dashboard`, {
+    headers: { cookie: freshSignIn.sessionCookie }
+  })).status, 200);
+
+  const actions = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE target_user_id=$1 ORDER BY id`, [target.user_id]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(actions, ['account_suspended', 'account_reactivated']);
+});
+
+test('admin account invitations create no identity until the recipient claims the one-use link', async () => {
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('invitation-admin@example.test','Invitation Admin',TRUE,NOW()) RETURNING id,user_id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const invitedEmail = 'future-host-support@example.test';
+
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1`, [invitedEmail]
+  )).rows[0].count, 0);
+
+  const invited = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', cookie: adminCookie,
+      'user-agent': 'Silver Glider Invitation Test'
+    },
+    body: JSON.stringify({
+      name: 'Future Host Support',
+      email: invitedEmail,
+      prepareHostPage: true
+    })
+  });
+  assert.equal(invited.status, 201);
+  const invitedBody = await invited.json();
+  const invitationPayload = invitedBody.invitation;
+  assert.equal(invitationPayload.email, 'f•••@example.test');
+  assert.equal(invitationPayload.status, 'sent');
+  assert.ok(invitationPayload.sentAt);
+  assert.equal(invitationPayload.prepareHostPage, true);
+  assert.ok(!('claimUrl' in invitationPayload),
+    'the admin response must never expose the recipient bearer link');
+  assert.ok(!('token' in invitationPayload),
+    'the admin response must never expose the recipient bearer token');
+  assert.ok(!JSON.stringify(invitedBody).includes('/auth/verify?token='));
+
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1`, [invitedEmail]
+  )).rows[0].count, 0, 'sending an invitation does not pre-verify or provision an account');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM organizers WHERE LOWER(email)=$1`, [invitedEmail]
+  )).rows[0].count, 0);
+
+  const email = lastDevEmail(invitedEmail, 'account_claim');
+  assert.match(email.link, /\/auth\/verify\?token=/);
+  const claim = await followSignInLink(email.link);
+  assert.equal(claim.status, 303);
+  assert.equal(claim.headers.get('location'), '/dashboard');
+  assert.ok(responseCookie(claim, 'sge_session'));
+
+  const claimed = (await pool.query(
+    `SELECT o.id,o.user_id,o.name,o.org_name,o.public_slug,
+            identity.verified_at,identity.verification_scope,identity.is_primary,
+            invitation.claimed_at,invitation.claimed_user_id
+       FROM organizers o
+       JOIN user_identities identity
+         ON identity.user_id=o.user_id AND identity.identity_type='email'
+        AND identity.normalized_value=$1 AND identity.revoked_at IS NULL
+       JOIN admin_account_invitations invitation
+         ON invitation.id=$2
+      WHERE LOWER(o.email)=$1`,
+    [invitedEmail, invitationPayload.id]
+  )).rows[0];
+  assert.ok(claimed);
+  assert.equal(claimed.id, claimed.user_id);
+  assert.equal(claimed.name, 'Future Host Support');
+  assert.equal(claimed.org_name, 'Future Host Support');
+  assert.match(claimed.public_slug, /^future-host-support-/);
+  assert.ok(claimed.verified_at);
+  assert.equal(claimed.verification_scope, 'account');
+  assert.equal(claimed.is_primary, true);
+  assert.ok(claimed.claimed_at);
+  assert.equal(claimed.claimed_user_id, claimed.user_id);
+
+  const token = tokenFromLink(email.link);
+  const secondUse = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(secondUse.status, 400);
+  assert.doesNotMatch(secondUse.headers.get('set-cookie') || '', /sge_session=/);
+
+  const audit = (await pool.query(
+    `SELECT action_type,actor_user_id,target_user_id,reason,metadata
+       FROM admin_account_audit_log
+      WHERE metadata->>'invitationId'=$1 OR target_user_id=$2
+      ORDER BY id`,
+    [String(invitationPayload.id), claimed.user_id]
+  )).rows;
+  assert.deepEqual(audit.map(row => row.action_type), [
+    'account_invitation_created', 'account_invitation_sent', 'account_claimed'
+  ]);
+  assert.equal(audit[0].target_user_id, null);
+  assert.equal(audit[1].target_user_id, null);
+  assert.equal(audit[2].target_user_id, claimed.user_id);
+  assert.deepEqual(audit.map(row => row.actor_user_id), [
+    admin.user_id, admin.user_id, claimed.user_id
+  ]);
+  assert.equal(Number(audit[2].metadata.invitedByUserId), Number(admin.user_id));
+
+  const duplicate = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ name: 'Future Host Support', email: invitedEmail })
+  });
+  assert.equal(duplicate.status, 409);
+  const duplicateBody = await duplicate.json();
+  assert.equal(duplicateBody.error, 'account_already_exists');
+});
+
+test('an RSVP-only shell claims an invitation into the same canonical user without duplication', async () => {
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('shell-invitation-admin@example.test','Shell Invitation Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  const adminUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  assert.ok(adminUserId);
+
+  const invitedEmail = 'rsvp-shell-invite@example.test';
+  const shell = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ($1,'RSVP Shell Guest') RETURNING id`, [invitedEmail]
+  )).rows[0];
+  const shellUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [shell.id]
+  )).rows[0].user_id;
+  const attended = await createEvent({
+    slug: 'rsvp-shell-before-account-claim',
+    title: 'RSVP Shell Before Account Claim'
+  });
+  await createRsvp(attended.id, {
+    first_name: 'RSVP', last_name: 'Shell Guest', email: invitedEmail,
+    account_id: shell.id, user_id: shellUserId
+  });
+
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND identity_type='email' AND verified_at IS NOT NULL
+        AND revoked_at IS NULL`, [shellUserId]
+  )).rows[0].count, 0);
+
+  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const shellDetailBeforeClaim = await fetch(
+    `${baseUrl}/api/admin/accounts/${shellUserId}`,
+    { headers: { cookie: adminCookie } }
+  );
+  assert.equal(shellDetailBeforeClaim.status, 200);
+  const shellDetailPayload = await shellDetailBeforeClaim.json();
+  assert.equal(shellDetailPayload.account.email, null,
+    'a legacy RSVP email is not presented as a verified sign-in method');
+  assert.deepEqual(shellDetailPayload.identities, []);
+
+  const invited = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({
+      name: 'RSVP Shell Guest', email: invitedEmail, prepareHostPage: false
+    })
+  });
+  assert.equal(invited.status, 201);
+  const invitation = (await invited.json()).invitation;
+  assert.equal(invitation.email, 'r•••@example.test');
+  assert.ok(!('claimUrl' in invitation));
+  assert.ok(!('token' in invitation));
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM organizers WHERE LOWER(email)=$1', [invitedEmail]
+  )).rows[0].count, 1, 'sending the invitation does not duplicate the RSVP-only shell');
+
+  const email = lastDevEmail(invitedEmail, 'account_claim');
+  const claim = await followSignInLink(email.link);
+  assert.equal(claim.status, 303);
+  assert.ok(responseCookie(claim, 'sge_session'));
+
+  const afterClaim = (await pool.query(
+    `SELECT o.id,o.user_id,o.last_login_at,identity.verified_at,
+            identity.verification_scope,invitation.claimed_user_id
+       FROM organizers o
+       JOIN user_identities identity
+         ON identity.user_id=o.user_id AND identity.identity_type='email'
+        AND identity.normalized_value=$1 AND identity.revoked_at IS NULL
+       JOIN admin_account_invitations invitation ON invitation.id=$2
+      WHERE o.id=$3`,
+    [invitedEmail, invitation.id, shell.id]
+  )).rows[0];
+  assert.ok(afterClaim);
+  assert.equal(afterClaim.id, shell.id);
+  assert.equal(afterClaim.user_id, shellUserId);
+  assert.equal(afterClaim.claimed_user_id, shellUserId);
+  assert.ok(afterClaim.verified_at);
+  assert.ok(afterClaim.last_login_at);
+  assert.equal(afterClaim.verification_scope, 'account');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM organizers WHERE LOWER(email)=$1', [invitedEmail]
+  )).rows[0].count, 1, 'claiming upgrades the shell rather than creating a second account');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM rsvps
+      WHERE event_id=$1 AND user_id=$2`, [attended.id, shellUserId]
+  )).rows[0].count, 1, 'the existing RSVP remains owned by the same canonical user');
+});
+
+test('concurrent account invitations serialize by normalized email and mint one live link', async () => {
+  resetRateLimits();
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('concurrent-invite-admin@example.test','Concurrent Invite Admin',TRUE,NOW())
+     RETURNING id`
+  )).rows[0];
+  const cookie = `sge_session=${signSession(admin.id)}`;
+  const email = 'same-invite@example.test';
+  const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ name: 'Same Recipient', email })
+  });
+
+  const responses = await Promise.all([request(), request()]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409]);
+  const live = (await pool.query(
+    `SELECT invitation.id,invitation.sent_at,token.used_at
+       FROM admin_account_invitations invitation
+       JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+      WHERE invitation.email=$1 AND invitation.claimed_at IS NULL
+        AND invitation.revoked_at IS NULL AND invitation.delivery_failed_at IS NULL
+        AND invitation.expires_at>NOW()`,
+    [email]
+  )).rows;
+  assert.equal(live.length, 1);
+  assert.ok(live[0].sent_at);
+  assert.equal(live[0].used_at, null);
+  const audit = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE metadata->>'invitationId'=$1 ORDER BY id`,
+    [String(live[0].id)]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(audit, ['account_invitation_created', 'account_invitation_sent']);
+});
+
+test('failed account-invitation delivery consumes its token and permits an immediate retry', async t => {
+  resetRateLimits();
+  t.after(() => adminAccountsRoutes.setAccountClaimSenderForTests());
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('failed-invite-admin@example.test','Failed Invite Admin',TRUE,NOW())
+     RETURNING id`
+  )).rows[0];
+  const cookie = `sge_session=${signSession(admin.id)}`;
+  const email = 'retry-invite@example.test';
+  const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ name: 'Retry Recipient', email })
+  });
+
+  adminAccountsRoutes.setAccountClaimSenderForTests(async () => {
+    throw new Error('Synthetic provider failure');
+  });
+  const failed = await request();
+  assert.equal(failed.status, 500);
+  const failedState = (await pool.query(
+    `SELECT invitation.id,invitation.sent_at,invitation.delivery_failed_at,token.used_at
+       FROM admin_account_invitations invitation
+       JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+      WHERE invitation.email=$1 ORDER BY invitation.id LIMIT 1`,
+    [email]
+  )).rows[0];
+  assert.equal(failedState.sent_at, null);
+  assert.ok(failedState.delivery_failed_at);
+  assert.ok(failedState.used_at);
+  assert.deepEqual((await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE metadata->>'invitationId'=$1 ORDER BY id`,
+    [String(failedState.id)]
+  )).rows.map(row => row.action_type), [
+    'account_invitation_created', 'account_invitation_delivery_failed'
+  ]);
+
+  adminAccountsRoutes.setAccountClaimSenderForTests();
+  const retried = await request();
+  assert.equal(retried.status, 201);
+  const retriedBody = await retried.json();
+  assert.equal(retriedBody.invitation.status, 'sent');
+  assert.notEqual(retriedBody.invitation.id, Number(failedState.id));
+  assert.ok(retriedBody.invitation.sentAt);
+});
+
+test('a stale never-sent invitation is revoked before its replacement is created', async () => {
+  resetRateLimits();
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('stale-invite-admin@example.test','Stale Invite Admin',TRUE,NOW())
+     RETURNING id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const email = 'stale-invite@example.test';
+  const token = (await pool.query(
+    `INSERT INTO magic_link_tokens
+       (token,email,expires_at,intent,return_path,created_at)
+     VALUES ('stale-account-invite-token',$1,NOW() + INTERVAL '7 days',
+             'claim_account','/dashboard',NOW() - INTERVAL '6 minutes')
+     RETURNING id`,
+    [email]
+  )).rows[0];
+  const stale = (await pool.query(
+    `INSERT INTO admin_account_invitations
+       (email,name,magic_link_token_id,created_by_user_id,expires_at,created_at)
+     VALUES ($1,'Stale Recipient',$2,$3,NOW() + INTERVAL '7 days',
+             NOW() - INTERVAL '6 minutes')
+     RETURNING id`,
+    [email, token.id, admin.user_id]
+  )).rows[0];
+
+  const response = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `sge_session=${signSession(admin.id)}`
+    },
+    body: JSON.stringify({ name: 'Stale Recipient', email })
+  });
+  assert.equal(response.status, 201);
+  const replacement = (await response.json()).invitation;
+  assert.notEqual(replacement.id, Number(stale.id));
+  assert.equal(replacement.status, 'sent');
+
+  const old = (await pool.query(
+    `SELECT invitation.revoked_at,token.used_at
+       FROM admin_account_invitations invitation
+       JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+      WHERE invitation.id=$1`,
+    [stale.id]
+  )).rows[0];
+  assert.ok(old.revoked_at);
+  assert.ok(old.used_at);
+  assert.deepEqual((await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE metadata->>'invitationId'=$1 ORDER BY id`,
+    [String(stale.id)]
+  )).rows.map(row => row.action_type), ['account_invitation_stale_revoked']);
 });

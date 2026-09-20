@@ -55,6 +55,7 @@ app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
+app.use(require('./routes/admin-accounts'));
 
 // Auth guards for app pages (server-side redirect to /login when signed out)
 const requireOrganizer = require('./middleware/requireOrganizer');
@@ -152,6 +153,7 @@ app.get([
   '/settings/host-page'
 ], requireOrganizer, view('settings-v2.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
+app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));

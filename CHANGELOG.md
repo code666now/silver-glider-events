@@ -2,6 +2,17 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.120
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Accounts & Support
+
+* Super-admins can search every canonical user, including RSVP-only people, from the responsive `/admin/accounts` console and review masked verified identities, ownership, Host Page details, support notes, and a permanent action history.
+* Audited support actions can correct a display name, edit an existing Host Page, sign out every device, suspend or reactivate account access, and send a single-use account-claim invitation. Suspension blocks authentication while preserving the person's events and public Host Page.
+* Account invitations serialize concurrent sends, record truthful delivery outcomes, fail closed if production email is unavailable, and safely allow retry after failed or stale delivery.
+* The console deliberately does not expose hard delete, impersonation, administrator promotion, direct verified email or phone editing, or account merging. Claim secrets are delivered only to the recipient and are never returned through the admin API.
+
 ## 1.0.119
 
 Released September 20, 2026. Built and deployed by Codex.

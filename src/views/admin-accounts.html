@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Accounts &amp; Support — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-accounts.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body>
+  <main class="sg-shell accounts-shell">
+    <nav id="nav"></nav>
+
+    <header class="accounts-page-head">
+      <div>
+        <p class="accounts-eyebrow">Admin workspace</p>
+        <h1 class="sg-page-title">Accounts &amp; Support</h1>
+        <p class="sg-page-sub">Find a person, understand their account, then take one safe support action.</p>
+      </div>
+      <button class="sg-btn sg-btn-primary accounts-invite-button" id="open-invitation" type="button">Send setup invitation</button>
+    </header>
+
+    <nav class="admin-section-nav" aria-label="Admin sections">
+      <a class="active" href="/admin/accounts" aria-current="page">Accounts</a>
+      <a href="/admin/hosts">Hosts</a>
+      <a href="/admin/line">The Line</a>
+      <a href="/admin/ticketing">Ticketing</a>
+      <a href="/admin/feedback">Feedback</a>
+      <a href="/admin/invitations">Invitations</a>
+    </nav>
+
+    <section class="accounts-summary" aria-label="Account summary" aria-busy="true">
+      <article class="accounts-summary-card">
+        <span>All accounts</span>
+        <strong id="summary-total"><i class="sg-skeleton accounts-summary-skeleton" aria-hidden="true"></i></strong>
+      </article>
+      <article class="accounts-summary-card">
+        <span>Active in 30 days</span>
+        <strong id="summary-active"><i class="sg-skeleton accounts-summary-skeleton" aria-hidden="true"></i></strong>
+      </article>
+      <article class="accounts-summary-card">
+        <span>Host pages</span>
+        <strong id="summary-hosts"><i class="sg-skeleton accounts-summary-skeleton" aria-hidden="true"></i></strong>
+      </article>
+      <article class="accounts-summary-card">
+        <span>Suspended</span>
+        <strong id="summary-suspended"><i class="sg-skeleton accounts-summary-skeleton" aria-hidden="true"></i></strong>
+      </article>
+    </section>
+
+    <section class="accounts-directory" aria-labelledby="account-directory-title">
+      <div class="accounts-section-head">
+        <div>
+          <h2 id="account-directory-title">People</h2>
+          <p>Search by name, user ID, email, or phone.</p>
+        </div>
+        <span class="accounts-result-count" id="accounts-result-count" aria-live="polite"></span>
+      </div>
+
+      <div class="accounts-filters" role="search">
+        <label class="accounts-search-field" for="account-search">
+          <span class="sr-only">Search accounts</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+          <input class="sg-input" id="account-search" type="search" placeholder="Search people" autocomplete="off" disabled>
+        </label>
+        <label class="accounts-filter-field" for="account-kind">
+          <span>Account type</span>
+          <select class="sg-select" id="account-kind" disabled>
+            <option value="">Everyone</option>
+            <option value="host">Hosts</option>
+            <option value="guest">Guests</option>
+            <option value="admin">Administrators</option>
+          </select>
+        </label>
+        <label class="accounts-filter-field" for="account-status">
+          <span>Status</span>
+          <select class="sg-select" id="account-status" disabled>
+            <option value="">Any status</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="accounts-list-head" aria-hidden="true">
+        <span>Person</span><span>Account</span><span>Activity</span><span>Property</span><span>Status</span><span></span>
+      </div>
+      <div class="accounts-list admin-skeleton-stack" id="accounts-list" aria-busy="true">
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      </div>
+      <div class="accounts-empty" id="accounts-empty" hidden>
+        <h3>No accounts found</h3>
+        <p>Try a different name, email, phone number, or filter.</p>
+      </div>
+      <button class="sg-btn sg-btn-ghost accounts-load-more" id="accounts-load-more" type="button" hidden>Load more</button>
+    </section>
+  </main>
+
+  <dialog class="accounts-detail-dialog" id="account-detail-dialog" aria-labelledby="account-detail-title">
+    <article class="accounts-detail-card">
+      <header class="accounts-detail-header">
+        <button class="accounts-icon-button accounts-detail-back" id="close-account-detail" type="button" aria-label="Close account details">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 18-6-6 6-6"></path></svg>
+        </button>
+        <div class="accounts-detail-title-wrap">
+          <p class="accounts-detail-kicker" id="account-detail-kicker">Account support</p>
+          <h2 id="account-detail-title">Account</h2>
+          <p id="account-detail-meta"></p>
+        </div>
+        <span class="accounts-status-badge" id="account-detail-status">Active</span>
+      </header>
+
+      <div class="accounts-detail-loading" id="account-detail-loading" aria-live="polite">
+        <span class="sg-skeleton accounts-detail-loading-title" aria-hidden="true"></span>
+        <span class="sg-skeleton accounts-detail-loading-line" aria-hidden="true"></span>
+        <span class="sg-skeleton accounts-detail-loading-block" aria-hidden="true"></span>
+      </div>
+      <div class="accounts-detail-error" id="account-detail-error" hidden></div>
+
+      <div class="accounts-detail-body" id="account-detail-body" hidden>
+        <section class="accounts-detail-section" aria-labelledby="account-details-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="account-details-title">Account details</h3><p>Correct the person’s display name without changing their verified sign-in methods.</p></div>
+          </div>
+          <form class="accounts-account-profile-form" id="account-profile-form">
+            <div class="sg-field">
+              <label for="account-display-name">Display name</label>
+              <input class="sg-input" id="account-display-name" maxlength="120" required>
+            </div>
+            <div class="sg-field">
+              <label for="account-profile-reason">Reason for change</label>
+              <input class="sg-input" id="account-profile-reason" minlength="8" maxlength="500" placeholder="Requested by the account owner" required>
+            </div>
+            <div class="accounts-inline-actions">
+              <button class="sg-btn sg-btn-ghost" id="save-account-profile" type="submit">Save display name</button>
+              <p class="accounts-action-status" id="account-profile-status" role="status"></p>
+            </div>
+          </form>
+        </section>
+
+        <section class="accounts-detail-section" aria-labelledby="identities-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="identities-title">Sign-in &amp; recovery</h3><p>Verified ways this person can access the account.</p></div>
+          </div>
+          <div class="accounts-identity-list" id="account-identities"></div>
+        </section>
+
+        <section class="accounts-detail-section" aria-labelledby="ownership-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="ownership-title">Owned property</h3><p>What remains connected to this permanent user ID.</p></div>
+          </div>
+          <div class="accounts-property-grid" id="account-property"></div>
+          <details class="accounts-profile-details" id="host-profile-details" hidden>
+            <summary>Edit public Host Page</summary>
+            <form id="host-profile-form">
+              <div class="accounts-profile-grid">
+                <div class="sg-field"><label for="host-profile-name">Host name</label><input class="sg-input" id="host-profile-name" maxlength="100"></div>
+                <div class="sg-field"><label for="host-profile-website">Website URL</label><input class="sg-input" id="host-profile-website" type="url" maxlength="500"></div>
+                <div class="sg-field accounts-wide"><label for="host-profile-bio">Bio</label><textarea class="sg-textarea" id="host-profile-bio" maxlength="500"></textarea></div>
+                <div class="sg-field"><label for="host-profile-instagram">Instagram</label><input class="sg-input" id="host-profile-instagram" maxlength="500" placeholder="@handle"></div>
+              </div>
+              <div class="accounts-inline-actions">
+                <button class="sg-btn sg-btn-ghost" id="save-host-profile" type="submit">Save public profile</button>
+                <p class="accounts-action-status" id="host-profile-status" role="status"></p>
+              </div>
+            </form>
+          </details>
+        </section>
+
+        <section class="accounts-detail-section" aria-labelledby="support-actions-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="support-actions-title">Support actions</h3><p>These actions never reveal credentials or sign you in as the user.</p></div>
+          </div>
+          <div class="accounts-support-actions">
+            <button class="sg-btn sg-btn-ghost" id="account-sign-out-all" type="button">Sign out everywhere</button>
+            <button class="sg-btn sg-btn-danger" id="account-status-action" type="button">Suspend account</button>
+          </div>
+        </section>
+
+        <section class="accounts-detail-section" aria-labelledby="support-notes-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="support-notes-title">Internal support notes</h3><p>Visible only to administrators and included in the account audit.</p></div>
+          </div>
+          <form class="accounts-note-form" id="account-note-form">
+            <label class="sr-only" for="account-note">Add an internal support note</label>
+            <textarea class="sg-textarea" id="account-note" minlength="3" maxlength="1000" placeholder="Add context for the next support person…" required></textarea>
+            <button class="sg-btn sg-btn-ghost" id="save-account-note" type="submit">Add note</button>
+          </form>
+          <div class="accounts-note-list" id="account-notes"></div>
+        </section>
+
+        <section class="accounts-detail-section" aria-labelledby="account-history-title">
+          <div class="accounts-section-heading-row">
+            <div><h3 id="account-history-title">Account history</h3><p>A permanent record of important support and identity activity.</p></div>
+          </div>
+          <ol class="accounts-timeline" id="account-audit"></ol>
+        </section>
+      </div>
+    </article>
+  </dialog>
+
+  <dialog class="accounts-action-dialog" id="support-action-dialog" aria-labelledby="support-action-title">
+    <form class="accounts-action-card" id="support-action-form" method="dialog">
+      <p class="accounts-eyebrow">Confirm support action</p>
+      <h2 id="support-action-title">Confirm action</h2>
+      <p class="accounts-action-description" id="support-action-description"></p>
+      <div class="sg-field">
+        <label for="support-action-reason">Reason</label>
+        <textarea class="sg-textarea" id="support-action-reason" minlength="8" maxlength="500" placeholder="Why is this action needed?" required></textarea>
+        <p class="accounts-field-help">Saved permanently in the account audit.</p>
+      </div>
+      <p class="accounts-form-error" id="support-action-error" role="alert"></p>
+      <div class="accounts-dialog-actions">
+        <button class="sg-btn sg-btn-ghost" id="cancel-support-action" type="button">Cancel</button>
+        <button class="sg-btn sg-btn-danger" id="confirm-support-action" type="submit">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="accounts-action-dialog" id="invitation-dialog" aria-labelledby="invitation-title">
+    <form class="accounts-action-card" id="invitation-form">
+      <p class="accounts-eyebrow">Account setup</p>
+      <h2 id="invitation-title">Invite someone to Silver Glider</h2>
+      <p class="accounts-action-description">They receive a secure link and must verify their own email before the account becomes active.</p>
+      <div class="sg-field">
+        <label for="invitation-name">Name</label>
+        <input class="sg-input" id="invitation-name" maxlength="120" autocomplete="name" required>
+      </div>
+      <div class="sg-field">
+        <label for="invitation-email">Email</label>
+        <input class="sg-input" id="invitation-email" type="email" maxlength="254" autocomplete="email" required>
+      </div>
+      <label class="accounts-check-row" for="invitation-host-page">
+        <input id="invitation-host-page" type="checkbox">
+        <span><strong>Prepare a Host Page</strong><small>Create an empty page for them to finish after claiming the account.</small></span>
+      </label>
+      <p class="accounts-form-error" id="invitation-error" role="alert"></p>
+      <div class="accounts-dialog-actions">
+        <button class="sg-btn sg-btn-ghost" id="cancel-invitation" type="button">Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="send-invitation" type="submit">Send secure invitation</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-accounts.js"></script>
+</body>
+</html>

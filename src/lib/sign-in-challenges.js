@@ -42,16 +42,20 @@ async function createSignInChallenge(db, {
   const hashedToken = tokenHash(token);
   const code = withCode ? newCode() : null;
   const requestToken = withCode ? crypto.randomBytes(24).toString('base64url') : null;
-  await db.query(
+  const inserted = await db.query(
     `INSERT INTO magic_link_tokens
        (token, email, expires_at, intent, target_organizer_id, phone_auth_challenge_id,
         requested_user_id, return_path, code_hash, request_hash)
-     VALUES ($1,$2,NOW() + make_interval(mins => $3),$4,$5,$6,$7,$8,$9,$10)`,
+     VALUES ($1,$2,NOW() + make_interval(mins => $3),$4,$5,$6,$7,$8,$9,$10)
+     RETURNING id`,
     [hashedToken, email, ttlMinutes, intent, targetOrganizerId, phoneAuthChallengeId,
      requestedUserId, returnPath || null, code ? codeHash(hashedToken, code) : null,
      requestToken ? tokenHash(requestToken) : null]
   );
-  return { token, code, requestToken, phoneAuthChallengeId, requestedUserId };
+  // PostgreSQL clients used by older unit tests may omit `rows`; callers that
+  // need the persisted id can resolve it by token hash as a compatibility path.
+  const id = inserted.rows?.[0]?.id || null;
+  return { id, token, code, requestToken, phoneAuthChallengeId, requestedUserId };
 }
 
 const PENDING_COLUMNS = 'id, email, intent, target_organizer_id, return_path, phone_auth_challenge_id, requested_user_id';

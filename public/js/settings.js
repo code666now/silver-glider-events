@@ -881,7 +881,7 @@ api('/api/auth/me').then(({ organizer }) => {
   if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
   if (organizer.is_admin) {
     const nav = document.querySelector('.sg-nav-links');
-    const adminLinks = [['/admin/line', 'The Line'], ['/admin/hosts', 'Hosts'], ['/admin/ticketing', 'Ticketing'], ['/admin/feedback', 'Feedback'], ['/admin/invitations', 'Invitations']];
+    const adminLinks = [['/admin/accounts', 'Accounts'], ['/admin/hosts', 'Hosts'], ['/admin/line', 'The Line'], ['/admin/ticketing', 'Ticketing'], ['/admin/feedback', 'Feedback'], ['/admin/invitations', 'Invitations']];
     nav.insertAdjacentHTML('beforeend', adminLinks.map(([href, label]) => `<a href="${href}">${label}</a>`).join(''));
   }
   loadSmsCredits().then(showCheckoutReturn);

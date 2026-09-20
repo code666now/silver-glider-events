@@ -349,7 +349,7 @@ function fillMenuSheet(sheet, organizer) {
   admin.hidden = !organizer.is_admin;
   // One row; the admin pages have their own section tabs.
   if (organizer.is_admin && !admin.children.length) {
-    admin.innerHTML = `<a class="sg-menu-row" href="/admin/hosts">${menuIcon('admin')}<span>Admin</span></a>`;
+    admin.innerHTML = `<a class="sg-menu-row" href="/admin/accounts">${menuIcon('admin')}<span>Admin</span></a>`;
   }
 }
 

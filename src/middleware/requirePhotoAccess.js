@@ -12,7 +12,14 @@ async function requirePhotoAccess(req, res, next) {
     if (!resolved.account) {
       const identityId = readPhotoAccess(req);
       if (identityId) {
-        const { rows } = await pool.query('SELECT * FROM organizers WHERE id=$1', [identityId]);
+        const { rows } = await pool.query(
+          `SELECT organizer.*
+             FROM organizers organizer
+             LEFT JOIN users canonical_user ON canonical_user.id=organizer.user_id
+            WHERE organizer.id=$1
+              AND (organizer.user_id IS NULL OR canonical_user.account_status='active')`,
+          [identityId]
+        );
         if (rows[0]) {
           req.organizer = rows[0];
           req.photoAccessOnly = true;

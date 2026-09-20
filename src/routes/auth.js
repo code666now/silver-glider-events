@@ -14,7 +14,8 @@ const {
   readGuestSession,
   revokeGuestSession,
   revokeIdentityGuestSessions,
-  setGuestSessionCookie
+  setGuestSessionCookie,
+  tokenHash
 } = require('../lib/guest-session');
 const { clearPhotoAccessCookie, setPhotoAccessCookie } = require('../lib/photo-access');
 const {
@@ -30,6 +31,7 @@ const {
 } = require('../lib/sign-in-challenges');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { esc } = require('../lib/public-html');
+const { slugify } = require('../lib/slug');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const {
@@ -390,10 +392,11 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           });
         }
         const { rows } = await client.query(
-          `SELECT account.id,account.is_admin
+          `SELECT account.id,account.is_admin,canonical_user.account_status
              FROM organizers account
+             JOIN users canonical_user ON canonical_user.id=account.user_id
             WHERE account.id=$1
-            FOR UPDATE`,
+            FOR UPDATE OF account,canonical_user`,
           [locked.organizer_id]
         );
         const account = rows[0];
@@ -410,6 +413,16 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           return res.status(403).json({
             error: 'email_sign_in_required',
             message: 'For account security, sign in with email.'
+          });
+        }
+        if (account.account_status === 'suspended') {
+          await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
+          await client.query('COMMIT');
+          clearPhoneAuthCookie(res);
+          res.setHeader('Cache-Control', 'private, no-store');
+          return res.status(403).json({
+            error: 'account_suspended',
+            message: 'This account is suspended. Contact Silver Glider support for help.'
           });
         }
         // Canonical identity is authoritative. Repair the legacy compatibility
@@ -533,6 +546,44 @@ function displayNameParts(value, email) {
   return { full, first: full.split(' ')[0].slice(0, 80) || 'there' };
 }
 
+async function assertEmailAccountActive(client, email) {
+  const { rows } = await client.query(
+    `SELECT canonical_user.account_status
+       FROM users canonical_user
+       JOIN organizers account ON account.user_id=canonical_user.id
+      WHERE LOWER(BTRIM(account.email))=LOWER(BTRIM($1))
+         OR EXISTS (
+           SELECT 1 FROM user_identities identity
+            WHERE identity.user_id=canonical_user.id
+              AND identity.identity_type='email'
+              AND identity.normalized_value=LOWER(BTRIM($1))
+              AND identity.revoked_at IS NULL
+         )
+      ORDER BY canonical_user.id
+      LIMIT 1`,
+    [email]
+  );
+  if (rows[0]?.account_status === 'suspended') {
+    throw new CanonicalIdentityError(
+      'This account is suspended. Contact Silver Glider support for help.',
+      { code: 'account_suspended', status: 403 }
+    );
+  }
+}
+
+async function prepareClaimedHostPage(client, organizerId, name) {
+  const base = slugify(name).slice(0, 56) || 'host';
+  const publicSlug = `${base}-${organizerId}`.slice(0, 70);
+  await client.query(
+    `UPDATE organizers
+        SET org_name=COALESCE(org_name,$2),
+            public_slug=COALESCE(public_slug,$3),
+            updated_at=NOW()
+      WHERE id=$1`,
+    [organizerId, name, publicSlug]
+  );
+}
+
 // Finishes a consumed link or code. Database work happens on `client` inside
 // the caller's transaction; cookies are applied only after COMMIT through
 // `afterCommit(res)`.
@@ -541,6 +592,10 @@ async function completeChallenge(client, req, pending, {
   emailProofSource = 'email_link'
 } = {}) {
   const email = pending.email;
+
+  const establishesAccountSession = ['sign_in', 'follow_host', 'bind_phone', 'claim_account', 'add_photo'].includes(pending.intent) ||
+    (pending.intent === 'verify_guest' && globalizeTypedGuestCode);
+  if (establishesAccountSession) await assertEmailAccountActive(client, email);
 
   if (pending.intent === 'identity_step_up') {
     const requestedUserId = Number(pending.requested_user_id);
@@ -654,6 +709,13 @@ async function completeChallenge(client, req, pending, {
 
   const canonical = await resolveOrCreateOrganizerByEmail(client, {
     email,
+    name: pending.intent === 'claim_account'
+      ? (await client.query(
+          `SELECT name FROM admin_account_invitations
+            WHERE magic_link_token_id=$1`,
+          [pending.id]
+        )).rows[0]?.name
+      : null,
     accountVerification: {
       verifiedAt: new Date(),
       verificationSource: emailProofSource
@@ -662,6 +724,57 @@ async function completeChallenge(client, req, pending, {
   const organizer = (await client.query(
     'SELECT * FROM organizers WHERE id=$1', [canonical.user.id]
   )).rows[0];
+
+  if (pending.intent === 'claim_account') {
+    const { rows: invitations } = await client.query(
+      `SELECT * FROM admin_account_invitations
+        WHERE magic_link_token_id=$1
+        FOR UPDATE`,
+      [pending.id]
+    );
+    const invitation = invitations[0];
+    if (!invitation || !invitation.sent_at || invitation.revoked_at || invitation.delivery_failed_at ||
+        invitation.claimed_at || new Date(invitation.expires_at) <= new Date()) {
+      throw new CanonicalIdentityError('This account invitation is no longer available.', {
+        code: 'account_invitation_expired', status: 400
+      });
+    }
+    // A claim may race with an ordinary signup. Inbox proof still resolves to
+    // the same canonical user, but never overwrites an existing display name.
+    if (canonical.createdOrganizer) {
+      await client.query('UPDATE users SET name=$2,updated_at=NOW() WHERE id=$1', [organizer.id, invitation.name]);
+      await client.query('UPDATE organizers SET name=$2,updated_at=NOW() WHERE id=$1', [organizer.id, invitation.name]);
+      organizer.name = invitation.name;
+    }
+    if (invitation.prepare_host_page && !organizer.public_slug) {
+      await prepareClaimedHostPage(client, organizer.id, invitation.name);
+    }
+    await client.query(
+      `UPDATE admin_account_invitations
+          SET claimed_user_id=$2,claimed_at=NOW()
+        WHERE id=$1`,
+      [invitation.id, organizer.id]
+    );
+    await client.query(
+      `INSERT INTO admin_account_audit_log
+         (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
+          metadata,request_ip,user_agent)
+       VALUES ($1,$2,'account_claimed','Account invitation claimed',
+               $3::jsonb,$4::jsonb,$5::jsonb,$6,$7)`,
+      [
+        organizer.id,
+        organizer.id,
+        JSON.stringify({ invitationStatus: 'sent' }),
+        JSON.stringify({ invitationStatus: 'claimed', prepareHostPage: invitation.prepare_host_page }),
+        JSON.stringify({
+          invitationId: Number(invitation.id),
+          invitedByUserId: Number(invitation.created_by_user_id)
+        }),
+        String(req.ip || '').slice(0, 100) || null,
+        String(req.get('user-agent') || '').slice(0, 1000) || null
+      ]
+    );
+  }
 
   if (pending.intent === 'bind_phone') {
     if (!pending.phone_auth_challenge_id) {
@@ -729,6 +842,13 @@ function continuePageCopy(pending, hostName) {
       title: `Follow ${esc(hostName)}`,
       body: `Confirm it’s you (${masked}) to follow ${esc(hostName)} on Silver Glider Events.`,
       button: `Follow ${esc(hostName)}`
+    };
+  }
+  if (pending.intent === 'claim_account') {
+    return {
+      title: 'Claim your Silver Glider account',
+      body: `Confirm ${masked} to finish setting up your account.`,
+      button: 'Claim account'
     };
   }
   if (pending.intent === 'add_photo') {
@@ -820,7 +940,15 @@ router.post('/auth/verify', async (req, res, next) => {
     await client.query('BEGIN');
     const pending = await consumeLink(client, token);
     if (!pending) {
+      const usedClaim = token && token.length <= 200
+        ? (await client.query(
+            `SELECT 1 FROM magic_link_tokens
+              WHERE token=$1 AND intent='claim_account' LIMIT 1`,
+            [tokenHash(token)]
+          )).rows[0]
+        : null;
       await client.query('ROLLBACK');
+      if (usedClaim) return res.status(400).send('That account invitation has expired or was already used.');
       if (req.sessionAccount) return res.redirect(303, legacyNext || '/dashboard');
       return res.redirect(303, expiredRedirect(legacyNext));
     }
@@ -833,7 +961,13 @@ router.post('/auth/verify', async (req, res, next) => {
     const fallback = outcome.kind === 'guest' ? '/' : '/dashboard';
     res.redirect(303, outcome.redirect || legacyNext || fallback);
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended') {
+      // The account-status check runs before identity/session mutations. Keep
+      // the consumed bearer token consumed while denying the new session.
+      await client.query('COMMIT').catch(() => {});
+    } else {
+      await client.query('ROLLBACK').catch(() => {});
+    }
     if (!phoneError(res, err)) next(err);
   } finally {
     client.release();
@@ -884,7 +1018,11 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
       redirect: outcome.redirect || fallback
     });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended' && consumedPending) {
+      await client.query('COMMIT').catch(() => {});
+    } else {
+      await client.query('ROLLBACK').catch(() => {});
+    }
     if (err instanceof CanonicalIdentityConflictError && consumedPending?.intent === 'attach_email') {
       const candidateUserId = Number(consumedPending.requested_user_id);
       await recordOwnershipConflict(pool, {

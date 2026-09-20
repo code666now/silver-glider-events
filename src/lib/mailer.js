@@ -479,6 +479,32 @@ async function sendMagicLink({ to, link, code, followHostName }) {
   });
 }
 
+// Admin-created accounts are invitations, not pre-verified credentials. The
+// recipient becomes the account owner only after opening this single-use link.
+async function sendAccountClaimInvitation({ to, link, name }) {
+  const firstName = String(name || '').trim().split(/\s+/)[0];
+  if (!resend) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Account invitation email delivery is unavailable');
+    }
+    console.log(`[mailer:dev] ACCOUNT CLAIM for ${to}: ${link}`);
+    recordDevEmail({ to, kind: 'account_claim', link });
+    return { dev: true };
+  }
+  return send({
+    to,
+    subject: 'Claim your Silver Glider account',
+    html: layout({
+      kicker: 'Account invitation',
+      headline: firstName ? `${esc(firstName)}, your account is ready.` : 'Your account is ready.',
+      sub: 'Confirm this email to claim your Silver Glider account. The link expires in 7 days and works once.',
+      cta: 'Claim your account',
+      ctaUrl: link,
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t expect this invitation? You can safely ignore it. No account access is created until you claim it.</p>'
+    })
+  });
+}
+
 // Code-only email for confirming an RSVP identity on the event page.
 async function sendVerificationCode({ to, code }) {
   if (!resend) {
@@ -778,7 +804,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 
 module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode,
-  sendMagicLink, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
+  sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
