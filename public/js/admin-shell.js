@@ -7,6 +7,7 @@
     '/admin/accounts': 'accounts',
     '/admin/done-for-you': 'done-for-you',
     '/admin/hosts': 'hosts',
+    '/admin/events': 'events',
     '/admin/ticketing': 'ticketing',
     '/admin/feedback': 'feedback',
     '/admin/invitations': 'invitations',
@@ -17,6 +18,7 @@
     ['accounts', '/admin/accounts', 'Accounts'],
     ['done-for-you', '/admin/done-for-you', 'Done For You'],
     ['hosts', '/admin/hosts', 'Hosts'],
+    ['events', '/admin/events', 'Events'],
     ['ticketing', '/admin/ticketing', 'Ticketing'],
     ['feedback', '/admin/feedback', 'Feedback'],
     ['invitations', '/admin/invitations', 'Invitations'],
@@ -50,6 +52,12 @@
   });
   layout.append(sidebar, content);
   root.appendChild(layout);
+
+  if (window.matchMedia('(max-width: 960px)').matches) {
+    sidebar.querySelector('[aria-current="page"]')?.scrollIntoView({
+      block: 'nearest', inline: 'center', behavior: 'auto'
+    });
+  }
 
   const sessionRequest = typeof getAdminSession === 'function'
     ? getAdminSession()

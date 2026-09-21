@@ -55,7 +55,7 @@ Never use the Railway production database for development or tests.
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
 - Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and an event-specific, consent-aware automatic day-before reminder
 - Feedback reporting and super-admin feedback inbox
-- Personalized host invitations, a responsive Accounts & Support console, and a Done For You workspace for safe client-owned account, Host Page, and isolated event preparation and publishing
+- Personalized host invitations, a responsive Accounts & Support console, a platform-wide Admin Events directory, and a Done For You workspace for safe client-owned account, Host Page, and isolated event preparation and publishing
 - Privacy Policy and Terms available throughout the app
 - Output escaping, safe URL validation, and public RSVP/resend rate limiting
 
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 21, 2026, the suite contains 437 tests: 338 unit tests and 99 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim, isolated event-editor scope and publishing, settled loading states, concurrency, and cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
+As of September 21, 2026, the suite contains 442 tests: 342 unit tests and 100 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim, isolated event-editor scope and publishing, the protected Admin Events directory and filters, settled loading states, concurrency, and cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

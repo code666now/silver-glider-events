@@ -10,7 +10,7 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
   const shell = read('public/js/admin-shell.js');
   const api = read('public/js/api.js');
   const settings = read('public/js/settings.js');
-  const pages = ['accounts', 'hosts', 'ticketing', 'feedback', 'invitations'];
+  const pages = ['accounts', 'hosts', 'events', 'ticketing', 'feedback', 'invitations'];
 
   for (const page of pages) {
     const html = read(`src/views/admin-${page}.html`);
@@ -20,13 +20,14 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
     assert.doesNotMatch(html, />The Line</);
   }
 
-  for (const destination of ['/admin', '/admin/accounts', '/admin/done-for-you', '/admin/hosts', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
+  for (const destination of ['/admin', '/admin/accounts', '/admin/done-for-you', '/admin/hosts', '/admin/events', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
     assert.equal(shell.includes(`'${destination}'`), true, `${destination} should be in the workspace sidebar`);
   }
   assert.doesNotMatch(shell, /\/admin\/line/);
   assert.match(shell, /capabilities\.manageOperators === true/);
   assert.doesNotMatch(shell, /operator\.role === ['"]super_admin['"]/);
   assert.match(shell, /data-admin-link="team"[\s\S]*hidden/);
+  assert.match(shell, /aria-current="page"[\s\S]*scrollIntoView/);
 
   assert.match(api, /function getAdminSession/);
   assert.match(api, /function sgIsAdminPath/);
@@ -48,6 +49,7 @@ test('overview uses released account and operator endpoints only', () => {
   assert.match(script, /\/api\/admin\/operators\?limit=1/);
   assert.doesNotMatch(`${html}\n${script}`, /identity-changes|pending-verifications/);
   assert.match(html, /\/admin\/accounts\?type=host/);
+  assert.match(html, /href="\/admin\/events"/);
 });
 
 test('team controls use target-bound fresh verification and the operator roster API', () => {

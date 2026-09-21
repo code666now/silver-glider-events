@@ -198,6 +198,7 @@ app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAd
   return res.sendFile(path.join(VIEWS, 'admin-done-for-you-detail.html'));
 });
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
+app.get('/admin/events', requireAdmin, view('admin-events.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));

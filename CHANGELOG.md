@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.128
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Admin Events workspace
+
+* Dedicated Support and Super Admin operators can now see every event across the platform at `/admin/events`, search by event or Host Page, and filter by host, live/draft status, upcoming/past timing, visibility, admission, and archive state. Each result includes its confirmed RSVP count and opens a focused responsive detail view.
+* Safe links reuse the existing Preview, Host Page, Accounts & Support, and isolated Done For You draft-editor flows. Ordinary customer events remain read-only to administrators, and no duplicate editor or customer impersonation path was added.
+* The API is admin-session protected, paginated, includes cancelled and archived records intentionally, and returns only operational event fields—never attendee contact data, Secret Show credentials, or media bearer tokens. The full 442-test release suite contains 342 unit tests and 100 HTTP/PostgreSQL integration tests.
+
 ## 1.0.127
 
 Released September 21, 2026. Built and deployed by Codex.

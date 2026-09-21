@@ -4631,6 +4631,130 @@ test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only
   assert.ok(hosts.guestIdentityCount >= 1);
 });
 
+test('Admin Events securely searches and filters every host event while reusing only eligible draft workspaces', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('events-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const signedOutPage = await fetch(`${baseUrl}/admin/events`, { redirect: 'manual' });
+  assert.equal(signedOutPage.status, 302);
+  assert.match(signedOutPage.headers.get('location') || '', /^\/admin\/login/);
+  const signedOutApi = await fetch(`${baseUrl}/api/admin/events`);
+  assert.equal(signedOutApi.status, 401);
+  const customerApi = await fetch(`${baseUrl}/api/admin/events`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(customerApi.status, 403);
+  const page = await fetch(`${baseUrl}/admin/events`, { headers: { cookie: adminCookie } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /data-admin-section="events"/);
+
+  await pool.query(
+    `UPDATE organizers SET name='Harbor Host',org_name='Harbor House',public_slug='harbor-house'
+      WHERE id=$1`,
+    [organizerId]
+  );
+  const secondHost = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug,last_login_at)
+     VALUES ('north-star@example.test','Nora Star','North Star Studio','north-star-studio',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  secondHost.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [secondHost.id]
+  )).rows[0].user_id;
+  const insertEvent = async (hostId, values) => (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,timezone,venue_name,visibility,
+        secret_show_enabled,admission_type,status,archived_at)
+     VALUES ($1,$2,$3,$4,$5,'America/Los_Angeles',$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [hostId, values.slug, values.title, values.date, values.time || '19:00', values.venue || 'Main Hall',
+      values.visibility || 'public', Boolean(values.secret), values.admission || 'free_rsvp',
+      values.status || 'published', values.archived || null]
+  )).rows[0];
+
+  const live = await insertEvent(organizerId, {
+    slug: 'admin-events-live', title: 'Harbor Future', date: '2099-06-10'
+  });
+  const ownerDraft = await insertEvent(organizerId, {
+    slug: 'admin-events-owner-draft', title: 'Owner Draft', date: '2099-07-10', status: 'draft'
+  });
+  await insertEvent(organizerId, {
+    slug: 'admin-events-past', title: 'Harbor Archive Night', date: '2001-04-12',
+    visibility: 'private', admission: 'paid'
+  });
+  await insertEvent(organizerId, {
+    slug: 'admin-events-archived', title: 'Cancelled Archive', date: '2099-08-10',
+    admission: 'external_tickets', status: 'cancelled', archived: '2026-09-01T12:00:00Z'
+  });
+  await insertEvent(secondHost.id, {
+    slug: 'admin-events-secret', title: 'North Star Secret', date: '2099-09-10',
+    visibility: 'private', secret: true
+  });
+  const dfyDraft = await insertEvent(secondHost.id, {
+    slug: 'admin-events-dfy-draft', title: 'North Star Draft', date: '2099-10-10',
+    visibility: 'private', admission: 'silver_glider_tickets', status: 'draft'
+  });
+  const marker = (await pool.query(
+    `INSERT INTO admin_done_for_you_clients (target_user_id,created_by_admin_operator_id)
+     VALUES ($1,$2) RETURNING id`,
+    [secondHost.user_id, operator.id]
+  )).rows[0];
+  await createRsvp(live.id, { email: 'confirmed-admin-events@example.test', status: 'confirmed' });
+  await createRsvp(live.id, { email: 'cancelled-admin-events@example.test', status: 'cancelled' });
+
+  const load = async query => {
+    const response = await fetch(`${baseUrl}/api/admin/events${query || ''}`, {
+      headers: { cookie: adminCookie }
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const all = await load();
+  assert.equal(all.pagination.total, 6, 'default includes drafts, cancelled, past, and archived events');
+  assert.equal(all.events.length, 6);
+  assert.equal(all.events.find(event => event.id === live.id).rsvp_count, 1,
+    'only confirmed RSVP records are counted');
+  assert.equal(all.events.find(event => event.id === ownerDraft.id).done_for_you_client_id, null,
+    'ordinary owner drafts are never granted an admin editor workspace');
+  assert.equal(all.events.find(event => event.id === dfyDraft.id).done_for_you_client_id, Number(marker.id));
+  assert.equal(all.events.find(event => event.slug === 'admin-events-secret').done_for_you_client_id, null,
+    'published Done For You events remain outside the draft editor');
+  assert.ok(all.hosts.some(host => host.id === Number(secondHost.id) && host.event_count === 2));
+  const serialized = JSON.stringify(all);
+  for (const forbidden of ['photo_upload_token', 'photo_short_token', 'secret_show_code_hash',
+    'confirmed-admin-events@example.test', 'cancelled-admin-events@example.test']) {
+    assert.equal(serialized.includes(forbidden), false, `${forbidden} must stay out of the directory response`);
+  }
+
+  assert.equal((await load('?status=published')).pagination.total, 3);
+  assert.equal((await load('?status=draft')).pagination.total, 2);
+  assert.equal((await load('?status=cancelled')).pagination.total, 1);
+  assert.equal((await load('?timing=past')).pagination.total, 1);
+  assert.equal((await load('?timing=upcoming')).pagination.total, 5);
+  assert.equal((await load('?visibility=public')).pagination.total, 3);
+  assert.equal((await load('?visibility=private')).pagination.total, 2);
+  assert.equal((await load('?visibility=secret')).pagination.total, 1);
+  assert.equal((await load('?admission=external_tickets')).pagination.total, 2,
+    'legacy paid events normalize into the external-ticket filter');
+  assert.equal((await load('?archived=archived')).pagination.total, 1);
+  assert.equal((await load(`?host=${secondHost.id}`)).pagination.total, 2);
+  assert.equal((await load('?q=north%20star')).pagination.total, 2);
+  assert.equal((await load(`?host=${secondHost.id}&status=published&timing=upcoming&visibility=secret`)).pagination.total, 1);
+  const secondPage = await load('?per_page=2&page=2');
+  assert.deepEqual({ page: secondPage.pagination.page, pages: secondPage.pagination.pages,
+    count: secondPage.events.length }, { page: 2, pages: 3, count: 2 });
+
+  const invalid = await fetch(`${baseUrl}/api/admin/events?visibility=members-only`, {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error, 'invalid_event_filter');
+
+  const opened = await openDoneForYouEditor(adminCookie, marker.id, dfyDraft.id);
+  assert.equal(opened.body.workspace.eventId, Number(dfyDraft.id));
+  assert.match(opened.body.redirect, new RegExp(`id=${dfyDraft.id}`));
+});
+
 test('upcoming events offer every past guest once as a face and invite them without leaving the event', async () => {
   const cookie = `sge_session=${signSession(organizerId)}`;
   const target = await createEvent({ slug: 'people-halloween', title: 'Halloween at Corbett', event_date: '2030-10-30' });
