@@ -232,18 +232,19 @@ test('mobile quick create restores only its unfinished form and clears recovery 
 
   assert.match(client, /const QUICK_CREATE_DRAFT_PREFIX = 'sge-quick-create-draft:'/);
   assert.match(client, /const draftStorageKey = `\$\{QUICK_CREATE_DRAFT_PREFIX\}\$\{window\.location\.pathname\}`/);
-  assert.match(client, /function persistQuickCreateDraft\(\) \{\s*if \(!mobileFlowEnabled\(\)\) return;/);
+  assert.match(client, /function persistQuickCreateDraft\(\) \{\s*if \(adminEditorMode\) return;\s*if \(!mobileFlowEnabled\(\)\) return;/);
   assert.match(client, /title: \$\('create-title'\)\.value/);
   assert.match(client, /eventDate: \$\('create-date'\)\.value/);
   assert.match(client, /startTime: \$\('create-start-time'\)\.value/);
   assert.match(client, /locationSearch: \$\('create-location-search'\)\.value/);
   assert.match(client, /step: mobileStep/);
   assert.match(client, /window\.sessionStorage\.setItem\(draftStorageKey, JSON\.stringify\(draft\)\)/);
-  assert.match(client, /function restoreQuickCreateDraft\(\) \{\s*if \(!mobileFlowEnabled\(\)\) return;/);
+  assert.match(client, /function restoreQuickCreateDraft\(\)[\s\S]{0,240}if \(!mobileFlowEnabled\(\)\) return;/);
   assert.match(client, /safeText\(draft\.title, 140\)/);
   assert.match(client, /mobileStep = boundedMobileStep\(draft\.step\)/);
   assert.match(client, /window\.sessionStorage\.removeItem\(draftStorageKey\)/);
-  assert.match(client, /\}\);\s*clearQuickCreateDraft\(\);\s*sessionStorage\.setItem\('sge-owner-editor-reopen'/);
+  assert.match(client, /clearQuickCreateDraft\(\);\s*if \(adminEditorMode\)/);
+  assert.match(client, /else \{\s*sessionStorage\.setItem\('sge-owner-editor-reopen'/);
 });
 
 test('quick create keeps empty iOS date and time controls as tall as mobile text inputs', () => {

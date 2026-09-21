@@ -1,19 +1,39 @@
 /* Shared fetch helper + app shell for organizer pages */
 
+function sgIsAdminEditorPath(pathname = location.pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return normalized === '/admin-editor' || normalized.startsWith('/admin-editor/');
+}
+
 function sgIsAdminPath(pathname = location.pathname) {
   const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
-  return normalized === '/admin' || normalized.startsWith('/admin/') ||
-    normalized === '/admin-editor' || normalized.startsWith('/admin-editor/');
+  return normalized === '/admin' || normalized.startsWith('/admin/') || sgIsAdminEditorPath(normalized);
+}
+
+function sgRequestPath(path) {
+  if (!sgIsAdminEditorPath() || typeof path !== 'string' || !path.startsWith('/api/')) return path;
+  return `/admin-editor${path}`;
+}
+
+function sgAdminEditorRecoveryPath() {
+  return '/admin/done-for-you';
 }
 
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(sgRequestPath(path), {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined
   });
   if (res.status === 401) {
+    if (sgIsAdminEditorPath()) {
+      window.location.replace(sgAdminEditorRecoveryPath());
+      const error = new Error('Admin editor workspace is no longer available');
+      error.status = 401;
+      error.code = 'admin_editor_workspace_unavailable';
+      throw error;
+    }
     const returnTo = `${location.pathname}${location.search}`;
     const login = sgIsAdminPath() ? '/admin/login' : '/login';
     window.location.href = `${login}?next=${encodeURIComponent(returnTo)}`;
@@ -137,6 +157,10 @@ function updateNavAccount(organizer) {
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
+  if (sgIsAdminEditorPath()) {
+    renderAdminEditorNav(el);
+    return;
+  }
   if (sgIsAdminPath()) {
     renderAdminNav(el);
     return;
@@ -242,6 +266,65 @@ function renderNav(active) {
   // create, edit, manage, and Settings detail screens reuse the same nav key
   // but keep their own back navigation and bottom action docks.
   if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
+}
+
+async function sgExitAdminEditorWorkspace() {
+  const beforeExit = new CustomEvent('sg:admin-editor-before-exit', { cancelable: true });
+  if (!document.dispatchEvent(beforeExit)) return false;
+  try {
+    const result = await api('/admin-editor/api/workspace/exit', { method: 'POST' });
+    window.location.href = result.redirect || sgAdminEditorRecoveryPath();
+    return true;
+  } catch (error) {
+    if ([401, 403, 404, 409].includes(error.status)) {
+      window.location.replace(sgAdminEditorRecoveryPath());
+      return true;
+    }
+    throw error;
+  }
+}
+
+function renderAdminEditorNav(el) {
+  el.className = 'sg-nav sg-admin-editor-nav';
+  document.body.classList.add('sg-app-page', 'sg-admin-page', 'sg-admin-editor-page');
+  el.innerHTML = `
+    <span class="sg-nav-brand">Silver Glider <span>Admin</span></span>
+    <div class="sg-nav-actions">
+      <span class="sg-admin-operator" data-admin-editor-context>Done For You event</span>
+      <button class="sg-btn sg-btn-ghost sg-admin-signout" type="button" data-admin-editor-exit>Exit setup</button>
+    </div>`;
+
+  const exitButton = el.querySelector('[data-admin-editor-exit]');
+  exitButton.addEventListener('click', async () => {
+    exitButton.disabled = true;
+    exitButton.textContent = 'Exiting…';
+    try {
+      const exiting = await sgExitAdminEditorWorkspace();
+      if (exiting === false) {
+        exitButton.disabled = false;
+        exitButton.textContent = 'Exit setup';
+      }
+    } catch (error) {
+      exitButton.disabled = false;
+      exitButton.textContent = 'Exit setup';
+      if (error.status !== 401) toast(error.message || 'Could not exit event setup');
+    }
+  });
+
+  const paintMobileContext = text => {
+    document.querySelectorAll('[data-admin-editor-mobile-context]').forEach(context => {
+      context.textContent = text;
+      context.hidden = false;
+    });
+  };
+  paintMobileContext('Done For You');
+  api('/admin-editor/api/workspace').then(({ host }) => {
+    const hostName = String(host?.name || host?.org_name || '').trim();
+    if (hostName) {
+      el.querySelector('[data-admin-editor-context]').textContent = `Done For You · ${hostName}`;
+      paintMobileContext(`For ${hostName}`);
+    }
+  }).catch(() => {});
 }
 
 function renderAdminNav(el) {
@@ -489,6 +572,7 @@ function toast(msg) {
 }
 
 function mountFeedbackBubble() {
+  if (sgIsAdminEditorPath()) return;
   if (document.getElementById('feedback-bubble')) return;
   const draftKey = 'sge_feedback_draft';
   const root = document.createElement('div');

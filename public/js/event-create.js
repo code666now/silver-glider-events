@@ -2,6 +2,7 @@
   const form = document.getElementById('quick-create-form');
   if (!form) return;
   renderNav('events');
+  const adminEditorMode = sgIsAdminEditorPath();
 
   const $ = id => document.getElementById(id);
   const LocationUtils = window.SGLocation;
@@ -24,6 +25,7 @@
   let placesLoader;
   let mobileStep = 0;
   let mobileHistoryReady = false;
+  let quickCreateDirty = false;
 
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -58,6 +60,7 @@
     };
   }
   function persistQuickCreateDraft() {
+    if (adminEditorMode) return;
     if (!mobileFlowEnabled()) return;
     const draft = {
       title: $('create-title').value,
@@ -86,6 +89,10 @@
     }
   }
   function restoreQuickCreateDraft() {
+    if (adminEditorMode) {
+      try { window.sessionStorage.removeItem(draftStorageKey); } catch (_) {}
+      return;
+    }
     if (!mobileFlowEnabled()) return;
     let draft;
     try {
@@ -152,7 +159,15 @@
     persistQuickCreateDraft();
     renderMobileFlow({ focus: true });
   }
-  function leaveQuickCreate() {
+  async function leaveQuickCreate() {
+    if (adminEditorMode) {
+      try {
+        await sgExitAdminEditorWorkspace();
+      } catch (error) {
+        $('quick-create-error').textContent = error.message || 'Could not exit event setup.';
+      }
+      return;
+    }
     try {
       const referrer = new URL(document.referrer);
       if (referrer.origin === window.location.origin && referrer.pathname === '/events' && window.history.length > 1) {
@@ -183,7 +198,9 @@
     document.body.classList.toggle('quick-create-mobile-flow', enabled);
     mobileSteps.forEach((step, index) => { step.hidden = enabled && index !== mobileStep; });
     if (mobileProgress) mobileProgress.textContent = `Step ${mobileStep + 1} of ${mobileSteps.length}`;
-    if (mobileBack) mobileBack.setAttribute('aria-label', mobileStep > 0 ? 'Back to previous step' : 'Back to My Events');
+    if (mobileBack) mobileBack.setAttribute('aria-label', mobileStep > 0
+      ? 'Back to previous step'
+      : (adminEditorMode ? 'Exit event setup' : 'Back to My Events'));
     if (footnote) footnote.hidden = enabled && mobileStep < mobileSteps.length - 1;
     if (!submitButton.disabled) submitButton.textContent = submitLabel();
     if (enabled && focus) {
@@ -356,8 +373,22 @@
   if (mobileFlowQuery.addEventListener) mobileFlowQuery.addEventListener('change', handleMobileBreakpoint);
   else mobileFlowQuery.addListener(handleMobileBreakpoint);
 
-  form.addEventListener('input', persistQuickCreateDraft);
-  form.addEventListener('change', persistQuickCreateDraft);
+  document.addEventListener('sg:admin-editor-before-exit', event => {
+    if (!adminEditorMode) return;
+    if (quickCreateDirty && !window.confirm('Discard this unfinished event setup?')) {
+      event.preventDefault();
+      return;
+    }
+    clearQuickCreateDraft();
+  });
+  form.addEventListener('input', () => {
+    quickCreateDirty = true;
+    persistQuickCreateDraft();
+  });
+  form.addEventListener('change', () => {
+    quickCreateDirty = true;
+    persistQuickCreateDraft();
+  });
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -394,8 +425,12 @@
         }
       });
       clearQuickCreateDraft();
-      sessionStorage.setItem('sge-owner-editor-reopen', created.slug);
-      window.location.assign(`/e/${encodeURIComponent(created.slug)}?edit=appearance`);
+      if (adminEditorMode) {
+        window.location.assign(`/admin-editor/events/new?id=${encodeURIComponent(created.id)}&advanced=1`);
+      } else {
+        sessionStorage.setItem('sge-owner-editor-reopen', created.slug);
+        window.location.assign(`/e/${encodeURIComponent(created.slug)}?edit=appearance`);
+      }
     } catch (requestError) {
       error.textContent = requestError.message || 'The draft could not be created.';
       button.disabled = false;

@@ -10,7 +10,7 @@ test('day-before texting automation is additive, event-scoped, and off by defaul
   const migration = read('src/db/migrations/034_texting_fulfillment_v1.sql');
   const form = read('src/views/event-form.html');
   const formClient = read('public/js/event-form.js');
-  const events = read('src/routes/events.js');
+  const events = read('src/lib/event-editor.js');
 
   assert.match(migration, /sms_reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE/);
   assert.match(migration, /access_token_expires_at TIMESTAMPTZ/);

@@ -79,7 +79,11 @@ test('client detail clearly separates account trust, public Host Page data, clai
   assert.match(script, /\['orgName', 'org_name'\]/);
   assert.doesNotMatch(script, /dfyDetailState\.host\s*=\s*\{\s*\.\.\.dfyDetailState\.host,\s*\.\.\.data\.(?:host|organizer)/);
   assert.match(script, /No events belong to this Host Page yet/);
-  assert.doesNotMatch(`${html}\n${script}`, /Create event|\/events\/new|impersonat|customer session/i);
+  assert.match(html, /id="create-client-event"[^>]*>Create event</);
+  assert.match(script, /data-event-id=/);
+  assert.match(script, />Continue setup<\/button>/);
+  assert.match(script, /\/editor-workspaces/);
+  assert.doesNotMatch(`${html}\n${script}`, /(?:href|location(?:\.href|\.assign)?)\s*=\s*["'`]\/events\/new|impersonat|customer session/i);
 });
 
 test('Done For You layout keeps touch targets and responsive single-column detail flows', () => {

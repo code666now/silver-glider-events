@@ -109,7 +109,7 @@ test('commerce waitlist stays one coherent coming-soon choice in both event edit
   );
   assert.match(
     eventClient,
-    /const showWaitlist = commerceConfigLoaded && !commerceEnabled && !commerceEventId;[\s\S]*classList\.toggle\('has-waitlist', showWaitlist\)/
+    /const showWaitlist = !adminEditorMode && commerceConfigLoaded && !commerceEnabled && !commerceEventId;[\s\S]*classList\.toggle\('has-waitlist', showWaitlist\)/
   );
   assert.match(
     eventForm,

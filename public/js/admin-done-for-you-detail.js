@@ -240,16 +240,48 @@ function dfyDetailRenderEvents() {
     return;
   }
   list.innerHTML = dfyDetailState.events.map(event => {
-    const status = String(dfyDetailFirst(event, ['status'], 'draft'));
+    const status = String(dfyDetailFirst(event, ['status'], 'draft')).toLowerCase();
     const title = dfyDetailFirst(event, ['title'], 'Untitled event');
     const date = dfyDetailFirst(event, ['eventDate', 'event_date', 'date']);
     const venue = dfyDetailFirst(event, ['venueName', 'venue_name'], 'Location not added');
     const slug = dfyDetailFirst(event, ['slug']);
-    const open = status === 'published' && slug
-      ? `<a href="/e/${encodeURIComponent(slug)}" target="_blank" rel="noopener">Open event</a>`
-      : '';
-    return `<article class="dfy-event-row"><div><h3>${dfyDetailEsc(title)}</h3><p>${dfyDetailEsc(`${dfyDetailFormatDate(date)} · ${venue} · ${status}`)}</p></div>${open}</article>`;
+    const eventId = dfyDetailFirst(event, ['id', 'eventId', 'event_id']);
+    const action = status === 'draft' && eventId
+      ? `<button class="sg-btn sg-btn-ghost dfy-event-setup" type="button" data-event-id="${dfyDetailEsc(eventId)}">Continue setup</button>`
+      : status === 'published' && slug
+        ? `<a href="/e/${encodeURIComponent(slug)}" target="_blank" rel="noopener">Open event</a>`
+        : '';
+    return `<article class="dfy-event-row"><div><h3>${dfyDetailEsc(title)}</h3><p>${dfyDetailEsc(`${dfyDetailFormatDate(date)} · ${venue} · ${status}`)}</p></div>${action}</article>`;
   }).join('');
+}
+
+function dfyDetailEditorAvailable() {
+  return Boolean(dfyDetailUserId() && dfyDetailHostId() && dfyDetailAccountStatus() === 'active');
+}
+
+async function dfyDetailOpenEventWorkspace(eventId, button) {
+  const status = document.getElementById('event-workspace-status');
+  if (!dfyDetailEditorAvailable()) {
+    status.className = 'dfy-action-status error';
+    status.textContent = 'An active owner and Host Page are required before preparing an event.';
+    return;
+  }
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = eventId ? 'Opening…' : 'Starting…';
+  status.className = 'dfy-action-status';
+  status.textContent = '';
+  try {
+    const data = await api(`/api/admin/done-for-you/${encodeURIComponent(dfyDetailState.id)}/editor-workspaces`, {
+      method: 'POST', body: eventId ? { eventId } : {}
+    });
+    window.location.assign(data.redirect);
+  } catch (error) {
+    status.className = 'dfy-action-status error';
+    status.textContent = error.message;
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 function dfyDetailRender() {
@@ -299,6 +331,11 @@ function dfyDetailRender() {
   const actions = [];
   if (hostSlug) actions.push(`<a class="sg-btn sg-btn-ghost" href="/h/${encodeURIComponent(hostSlug)}" target="_blank" rel="noopener">Preview Host Page</a>`);
   document.getElementById('detail-head-actions').innerHTML = actions.join('');
+  const createEventButton = document.getElementById('create-client-event');
+  createEventButton.disabled = !dfyDetailEditorAvailable();
+  createEventButton.title = createEventButton.disabled
+    ? 'An active owner and Host Page are required.'
+    : 'Prepare a new event for this client';
   dfyDetailRenderEvents();
 }
 
@@ -427,6 +464,14 @@ document.getElementById('upload-logo-button').addEventListener('click', () => do
 document.getElementById('upload-header-button').addEventListener('click', () => document.getElementById('upload-header-input').click());
 document.getElementById('upload-logo-input').addEventListener('change', () => dfyDetailUpload('logo'));
 document.getElementById('upload-header-input').addEventListener('change', () => dfyDetailUpload('header'));
+document.getElementById('create-client-event').addEventListener('click', event => {
+  dfyDetailOpenEventWorkspace(null, event.currentTarget);
+});
+document.getElementById('client-events').addEventListener('click', event => {
+  const button = event.target.closest('[data-event-id]');
+  if (!button) return;
+  dfyDetailOpenEventWorkspace(Number(button.dataset.eventId), button);
+});
 document.getElementById('retry-client-detail').addEventListener('click', dfyDetailLoad);
 
 window.adminShellSession.then(session => {

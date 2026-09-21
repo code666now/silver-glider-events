@@ -1,6 +1,7 @@
 renderNav('events');
 
 const editId = new URLSearchParams(location.search).get('id');
+const adminEditorMode = sgIsAdminEditorPath();
 let visibility = 'public';
 let admissionType = 'free_rsvp';
 let commerceEnabled = false;
@@ -104,6 +105,11 @@ function mobileFlowHasChanges() {
   return mobileFlowDirty || (mobileFlowBaseline !== null && mobileFlowBaseline !== mobileFlowStateSignature());
 }
 
+document.addEventListener('sg:admin-editor-before-exit', event => {
+  if (!adminEditorMode || !mobileFlowHasChanges()) return;
+  if (!window.confirm('Discard your unsaved changes?')) event.preventDefault();
+});
+
 function cleanInstagramHandleInput(value) {
   let raw = String(value ?? '').trim();
   if (!raw) return { value: null, error: null };
@@ -182,9 +188,14 @@ function finishEditLoading() {
 }
 
 function showEditLoadError() {
+  if (adminEditorMode) {
+    window.location.replace(sgAdminEditorRecoveryPath());
+    return;
+  }
   $('event-form').setAttribute('aria-busy', 'false');
   $('event-edit-skeleton').removeAttribute('aria-label');
-  $('event-edit-skeleton').innerHTML = `<div class="event-edit-load-error"><h2>We couldn't load this event.</h2><p>Your event has not been changed. Try loading the editor again.</p><a class="sg-btn sg-btn-ghost" href="/events/${encodeURIComponent(editId)}/edit">Try again</a></div>`;
+  const retryPath = `/events/${encodeURIComponent(editId)}/edit`;
+  $('event-edit-skeleton').innerHTML = `<div class="event-edit-load-error"><h2>We couldn't load this event.</h2><p>Your event has not been changed. Try loading the editor again.</p><a class="sg-btn sg-btn-ghost" href="${retryPath}">Try again</a></div>`;
 }
 
 function setSecondVibeVisible(visible) {
@@ -264,7 +275,7 @@ async function uploadVibePhoto(index, file) {
   button.setAttribute('aria-busy', 'true');
   status.textContent = 'Uploading photo…';
   try {
-    const response = await fetch('/api/uploads/vibe-photo', { method: 'POST', body });
+    const response = await fetch(sgRequestPath('/api/uploads/vibe-photo'), { method: 'POST', body, credentials: 'same-origin' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Upload failed');
     setVibePhoto(index, data.url);
@@ -401,6 +412,12 @@ function applyOrganizerProfile(organizer) {
   const help = $('presenter-help');
   input.value = organizer.org_name || '';
 
+  if (adminEditorMode) {
+    input.readOnly = true;
+    help.textContent = 'Host identity is managed from the Done For You client record.';
+    return;
+  }
+
   if (organizer.public_slug) {
     input.readOnly = true;
     help.innerHTML = `Used across your events · <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View host page</a> · <a href="/settings">Manage in Settings</a>`;
@@ -417,7 +434,7 @@ const organizerProfileReady = api('/api/auth/me')
 function renderCommerceInterest() {
   const panel = $('commerce-interest');
   const button = $('commerce-interest-toggle');
-  const showWaitlist = commerceConfigLoaded && !commerceEnabled && !commerceEventId;
+  const showWaitlist = !adminEditorMode && commerceConfigLoaded && !commerceEnabled && !commerceEventId;
   panel.hidden = !showWaitlist;
   $('admission-commerce').classList.toggle('has-waitlist', showWaitlist);
   panel.classList.toggle('is-confirmed', commerceInterested);
@@ -434,7 +451,9 @@ function focusCommerceInterestConfirmation() {
   confirmation.focus({ preventScroll: true });
 }
 
-const commerceConfigReady = api('/api/commerce/config')
+const commerceConfigReady = (adminEditorMode
+  ? Promise.resolve({ enabled: false, interest: null })
+  : api('/api/commerce/config'))
   .then(({ enabled, interest }) => {
     commerceEnabled = enabled === true;
     commerceConfigLoaded = true;
@@ -450,6 +469,7 @@ const commerceConfigReady = api('/api/commerce/config')
   .catch(() => {});
 
 $('commerce-interest-toggle').addEventListener('click', async event => {
+  if (adminEditorMode) return;
   const button = event.currentTarget;
   const nextInterested = !commerceInterested;
   button.disabled = true;
@@ -970,7 +990,7 @@ function uploadCover(file) {
   const form = new FormData();
   form.append('image', file);
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/uploads/cover');
+  xhr.open('POST', sgRequestPath('/api/uploads/cover'));
   xhr.upload.onprogress = e => {
     if (e.lengthComputable) progress.style.width = `${Math.round((e.loaded / e.total) * 90)}%`;
   };
@@ -1019,7 +1039,7 @@ function uploadFlyer(file) {
   const form = new FormData();
   form.append('image', file);
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/uploads/flyer');
+  xhr.open('POST', sgRequestPath('/api/uploads/flyer'));
   xhr.upload.onprogress = e => {
     if (e.lengthComputable) progress.style.width = `${Math.round((e.loaded / e.total) * 90)}%`;
   };
@@ -1399,12 +1419,22 @@ function revealMobileFlowError(message) {
 function updateMobilePreviewAvailability() {
   const preview = $('event-mobile-flow-preview');
   if (!preview) return;
+  preview.hidden = adminEditorMode;
+  if (adminEditorMode) return;
   const available = Boolean(savedEventDetails?.slug);
   preview.disabled = !available;
   preview.setAttribute('aria-label', available ? 'Preview event in a new tab' : 'Preview is available after the event is saved');
 }
 
-function leaveMobileEventEditor() {
+async function leaveMobileEventEditor() {
+  if (adminEditorMode) {
+    try {
+      await sgExitAdminEditorWorkspace();
+    } catch (error) {
+      showError(error.message || 'Could not exit event setup.');
+    }
+    return;
+  }
   if (mobileFlowHasChanges() && !window.confirm('Discard your unsaved changes?')) return;
   window.location.href = editId ? `/events/${encodeURIComponent(editId)}/manage` : '/events';
 }
@@ -1483,6 +1513,7 @@ function initMobileEventFlow() {
     setTimeout(refreshMobileFlowHub, 0);
   });
   $('event-mobile-flow-preview').addEventListener('click', () => {
+    if (adminEditorMode) return;
     if (!savedEventDetails?.slug) return;
     window.open(`/e/${encodeURIComponent(savedEventDetails.slug)}`, '_blank', 'noopener');
   });
@@ -1594,10 +1625,12 @@ function collect() {
 
 // Edit mode — prefill
 if (editId) {
-  document.title = 'Music & Advanced Settings — Silver Glider Events';
-  $('page-title').textContent = 'Music & advanced settings';
-  document.querySelector('.sg-page-sub').textContent = 'Fine-tune the optional parts of your event.';
-  $('publish-btn').textContent = 'Save Changes';
+  document.title = adminEditorMode ? 'Prepare Event — Silver Glider Admin' : 'Music & Advanced Settings — Silver Glider Events';
+  $('page-title').textContent = adminEditorMode ? 'Prepare event' : 'Music & advanced settings';
+  document.querySelector('.sg-page-sub').textContent = adminEditorMode
+    ? 'Review the event, then publish it for this client.'
+    : 'Fine-tune the optional parts of your event.';
+  $('publish-btn').textContent = adminEditorMode ? 'Publish event' : 'Save Changes';
   $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {
     savedEventDetails = event;
@@ -1668,7 +1701,7 @@ $('event-form').addEventListener('submit', async e => {
   if (!validateRequiredFields()) return;
   const btn = $('publish-btn');
   btn.disabled = true;
-  btn.textContent = editId ? 'Saving…' : 'Publishing…';
+  btn.textContent = adminEditorMode ? 'Saving draft…' : (editId ? 'Saving…' : 'Publishing…');
   try {
     await organizerProfileReady;
     await commerceConfigReady;
@@ -1677,7 +1710,7 @@ $('event-form').addEventListener('submit', async e => {
     }
     await refreshActiveArtworkAccent();
     const body = collect();
-    if (editId && savedEventDetails && savedRsvpCount > 0) {
+    if (!adminEditorMode && editId && savedEventDetails && savedRsvpCount > 0) {
       const changes = window.SGEEventChanges.compare(savedEventDetails, body);
       if (changes.length) {
         btn.textContent = 'Review changes…';
@@ -1694,6 +1727,12 @@ $('event-form').addEventListener('submit', async e => {
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })
       : await api('/api/events', { method: 'POST', body });
+    if (adminEditorMode) {
+      btn.textContent = 'Publishing…';
+      const published = await api(`/api/events/${data.event.id}/publish`, { method: 'POST' });
+      window.location.href = published.redirect || '/admin/done-for-you';
+      return;
+    }
     if (data.notification?.queued) {
       sessionStorage.setItem('sge-manage-message', `Event updated. We’re notifying ${data.notification.queued} ${data.notification.queued === 1 ? 'guest' : 'guests'}.`);
     } else if (editId) {
@@ -1703,7 +1742,7 @@ $('event-form').addEventListener('submit', async e => {
   } catch (err) {
     showError(err.message);
     btn.disabled = false;
-    btn.textContent = editId ? 'Save Changes' : 'Publish Event';
+    btn.textContent = adminEditorMode ? 'Publish event' : (editId ? 'Save Changes' : 'Publish Event');
   }
 });
 

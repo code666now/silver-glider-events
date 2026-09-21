@@ -53,12 +53,12 @@ test('migration keeps Secret Show off by default and credentials separate', () =
 });
 
 test('server prevents Secret Show on public events and never returns a code hash', () => {
-  const eventsRoute = source('src/routes/events.js');
+  const eventsRoute = source('src/lib/event-editor.js');
   assert.match(eventsRoute, /secretShowEnabled && out\.visibility !== 'private'/);
   assert.match(eventsRoute, /secretShowEnabled && effectiveVisibility !== 'private'/);
   assert.match(eventsRoute, /INSERT INTO event_secret_codes/);
   assert.match(eventsRoute, /DELETE FROM event_secret_codes WHERE event_id=\$1/);
-  assert.doesNotMatch(eventsRoute, /res\.json\([^\n]*code_hash/);
+  assert.doesNotMatch(eventsRoute, /toEditorEventDto\([^)]*code_hash/);
 });
 
 test('locked Secret Shows render no private event details before unlock', () => {
@@ -94,7 +94,7 @@ test('existing private features remain on the normal event page after unlock', (
     assert.match(getEvent, new RegExp(feature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 
-  const eventsRoute = source('src/routes/events.js');
-  assert.match(eventsRoute, /secretShowEnabled = req\.body\.secret_show_enabled === undefined/);
+  const eventsRoute = source('src/lib/event-editor.js');
+  assert.match(eventsRoute, /secretShowEnabled = body\?\.secret_show_enabled === undefined/);
   assert.match(eventsRoute, /else if \(!secretShowEnabled\)|else if \(!secretShowEnabled\)/);
 });

@@ -52,6 +52,7 @@ const adminAccountsRoutes = require('../../src/routes/admin-accounts');
 const adminAuthRoutes = require('../../src/routes/admin-auth');
 const adminIdentityChangeRoutes = require('../../src/routes/admin-identity-changes');
 const adminDoneForYouRoutes = require('../../src/routes/admin-done-for-you');
+const adminEditorRoutes = require('../../src/routes/admin-editor');
 const uploadRoutes = require('../../src/routes/uploads');
 const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
 
@@ -101,6 +102,12 @@ function resetRateLimits() {
   adminIdentityChangeRoutes.resetRateLimitsForTests();
   adminDoneForYouRoutes.resetRateLimitsForTests();
   adminDoneForYouRoutes.setClaimSenderForTests();
+  adminEditorRoutes.setEventUploadsForTests({
+    configured: false,
+    cover: require('../../src/lib/cloudinary').uploadCover,
+    flyer: require('../../src/lib/cloudinary').uploadFlyer,
+    vibe: require('../../src/lib/cloudinary').uploadVibePhoto
+  });
   uploadRoutes.setAdminHostUploadsForTests();
 }
 
@@ -370,6 +377,22 @@ async function createDoneForYouClient(sessionCookie, input) {
   });
   assert.ok([200, 201].includes(provisioned.status));
   return { preview, response: provisioned, client: (await provisioned.json()).client };
+}
+
+async function openDoneForYouEditor(sessionCookie, markerId, eventId = null) {
+  const response = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${markerId}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: sessionCookie },
+      body: JSON.stringify(eventId == null ? {} : { eventId })
+    }
+  );
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  const editorCookie = responseCookie(response, 'sge_admin_editor');
+  assert.ok(editorCookie);
+  return { response, body, editorCookie };
 }
 
 async function waitUntilOutboundLockHeld(userId) {
@@ -8423,6 +8446,19 @@ test('Done For You editor workspaces are operator-bound, expiring, audited, and 
     { redirect: 'manual', headers: { cookie: adminSession } }
   );
   assert.equal(editorLoginReturn.headers.get('location'), '/admin-editor/events/new');
+  const missingWorkspacePage = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual',
+    headers: { cookie: adminSession, accept: 'text/html' }
+  });
+  assert.equal(missingWorkspacePage.status, 302);
+  assert.equal(missingWorkspacePage.headers.get('location'),
+    '/admin/done-for-you?editor=expired');
+  const missingWorkspaceApi = await fetch(`${baseUrl}/admin-editor/api/workspace`, {
+    redirect: 'manual', headers: { cookie: adminSession, accept: 'text/html' }
+  });
+  assert.equal(missingWorkspaceApi.status, 401,
+    'editor APIs keep structured JSON errors even when the caller accepts HTML');
+  assert.equal((await missingWorkspaceApi.json()).error, 'admin_editor_workspace_required');
   for (const hostileNext of [
     'https://evil.example/admin-editor/events/new',
     '//evil.example/admin-editor/events/new',
@@ -8619,6 +8655,16 @@ test('Done For You editor workspaces are operator-bound, expiring, audited, and 
         AND (after_state->>'workspaceId')::bigint=$2`,
     [operator.id, replacedBoundBody.workspace.id]
   )).rows[0].count, 1, 'automatic expiration is audited once');
+  const expiredWorkspacePage = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual',
+    headers: {
+      cookie: cookieHeader(adminSession, boundCookie),
+      accept: 'text/html'
+    }
+  });
+  assert.equal(expiredWorkspacePage.status, 302);
+  assert.equal(expiredWorkspacePage.headers.get('location'),
+    '/admin/done-for-you?editor=expired');
 
   const targetState = await start(adminSession);
   assert.equal(targetState.status, 201);
@@ -8943,5 +8989,406 @@ test('Done For You editor workspaces are operator-bound, expiring, audited, and 
     const serialized = JSON.stringify(entry);
     assert.doesNotMatch(serialized, /@|email|phone/i,
       'workspace lifecycle audit metadata contains identifiers, not contact PII');
+  }
+});
+
+test('Done For You admin editor creates one scoped draft, returns a safe DTO, and publishes atomically', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-editor-support@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Stage Two Host',
+    contactName: 'Stage Two Client',
+    email: 'stage-two-client@example.test'
+  });
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+
+  const context = await fetch(`${baseUrl}/admin-editor/api/workspace`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(context.status, 200);
+  const contextBody = await context.json();
+  assert.equal(contextBody.workspace.eventId, null);
+  assert.equal(contextBody.host.id, prepared.client.organizerId);
+  assert.equal(contextBody.host.name, 'Stage Two Host');
+  assert.doesNotMatch(JSON.stringify(contextBody), /stage-two-client@example\.test/i,
+    'the editor context does not expose account contact identities');
+
+  const customerCookie = `sge_session=${signSession(prepared.client.organizerId)}`;
+  const customerAttempt = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(customerCookie, opened.editorCookie)
+    },
+    body: JSON.stringify({})
+  });
+  assert.equal(customerAttempt.status, 403,
+    'a customer session cannot substitute for the dedicated administrator session');
+
+  const presenterRejected = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Should not be created', event_date: '2033-04-12', start_time: '19:30',
+      venue_name: 'Stage Hall', presenter_name: 'Overwrite Host'
+    })
+  });
+  assert.equal(presenterRejected.status, 400);
+  assert.equal((await presenterRejected.json()).error, 'admin_editor_presenter_immutable');
+  assert.equal((await pool.query(
+    'SELECT org_name FROM organizers WHERE id=$1',
+    [prepared.client.organizerId]
+  )).rows[0].org_name, 'Stage Two Host');
+
+  const created = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Admin Prepared Night',
+      description: 'A client-ready event draft.',
+      event_date: '2033-04-12',
+      start_time: '19:30',
+      venue_name: 'Stage Hall',
+      venue_address: '12 Stage Way',
+      visibility: 'private',
+      admission_type: 'free_rsvp',
+      status: 'published'
+    })
+  });
+  assert.equal(created.status, 201);
+  assert.doesNotMatch(created.headers.get('set-cookie') || '', /sge_session=/,
+    'admin event creation never creates a customer session');
+  const createdBody = await created.json();
+  const eventId = Number(createdBody.event.id);
+  assert.equal(createdBody.event.status, 'draft', 'the admin quick-create always forces a draft');
+  assert.equal(Number(createdBody.event.organizer_id), prepared.client.organizerId);
+  const storedWorkspace = (await pool.query(
+    'SELECT event_id,status FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0];
+  assert.equal(Number(storedWorkspace.event_id), eventId);
+  assert.equal(storedWorkspace.status, 'active');
+
+  await pool.query(
+    `UPDATE events
+        SET photo_upload_token='admin-editor-secret-upload',
+            photo_short_token='admin-editor-secret-short'
+      WHERE id=$1`,
+    [eventId]
+  );
+  const read = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(read.status, 200);
+  const readBody = await read.json();
+  assert.equal(readBody.event.title, 'Admin Prepared Night');
+  assert.equal(Object.hasOwn(readBody.event, 'photo_upload_token'), false);
+  assert.equal(Object.hasOwn(readBody.event, 'photo_short_token'), false);
+  assert.equal(Object.hasOwn(readBody.event, 'email'), false);
+
+  const wrongEvent = await createEvent({
+    slug: 'admin-editor-out-of-scope',
+    title: 'Out Of Scope',
+    status: 'draft'
+  });
+  const wrongRead = await fetch(`${baseUrl}/admin-editor/api/events/${wrongEvent.id}`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(wrongRead.status, 404);
+
+  await createRsvp(eventId, { email: 'admin-editor-guest@example.test' });
+  const updated = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Admin Prepared Night Updated',
+      description: 'The private draft is ready.',
+      notify_attendees: true,
+      status: 'published',
+      presenter_name: 'Ignored Presenter'
+    })
+  });
+  assert.equal(updated.status, 200);
+  const updatedBody = await updated.json();
+  assert.equal(updatedBody.event.status, 'draft');
+  assert.equal(updatedBody.notification, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM event_notification_batches WHERE event_id=$1',
+    [eventId]
+  )).rows[0].count, 0, 'administrator edits never queue attendee notifications');
+  const updateAudit = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE action_type='done_for_you_event_draft_updated'
+        AND target_user_id=$1
+      ORDER BY id DESC LIMIT 1`,
+    [prepared.client.userId]
+  )).rows[0];
+  assert.deepEqual(updateAudit.metadata.changedFields, ['description', 'title']);
+  assert.doesNotMatch(JSON.stringify(updateAudit), /Admin Prepared|private draft/i,
+    'immutable audit records field names, not customer event content');
+
+  const published = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: '{}'
+  });
+  assert.equal(published.status, 200);
+  const publishedBody = await published.json();
+  assert.equal(publishedBody.event.status, 'published');
+  assert.equal(publishedBody.alreadyPublished, false);
+  assert.equal(publishedBody.redirect, `/admin/done-for-you/${prepared.client.id}`);
+  const publishCookies = published.headers.get('set-cookie') || '';
+  assert.match(publishCookies, /sge_admin_editor=;/);
+  assert.doesNotMatch(publishCookies, /sge_session=/);
+  const completed = (await pool.query(
+    'SELECT status,closed_at FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0];
+  assert.equal(completed.status, 'completed');
+  assert.ok(completed.closed_at);
+  const actions = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN (
+          'done_for_you_event_draft_created',
+          'done_for_you_event_draft_updated',
+          'done_for_you_event_published',
+          'done_for_you_event_workspace_completed'
+        )
+      ORDER BY id`,
+    [prepared.client.userId]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(actions, [
+    'done_for_you_event_draft_created',
+    'done_for_you_event_draft_updated',
+    'done_for_you_event_published',
+    'done_for_you_event_workspace_completed'
+  ]);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    headers: { cookie: editorSession }
+  })).status, 401, 'the completed workspace cannot be replayed');
+});
+
+test('Done For You quick-create binds exactly one concurrent draft and event uploads stay scoped', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-concurrency@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Concurrent Editor Host',
+    contactName: 'Concurrent Editor Client',
+    email: 'concurrent-editor@example.test'
+  });
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+
+  const unboundUpload = new FormData();
+  unboundUpload.set('image', new Blob([Buffer.from('before-bind')], { type: 'image/png' }), 'cover.png');
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/uploads/cover`, {
+    method: 'POST', headers: { cookie: editorSession }, body: unboundUpload
+  })).status, 409);
+
+  const createBody = {
+    title: 'Exactly One Draft',
+    event_date: '2034-05-13',
+    start_time: '20:00',
+    venue_name: 'Concurrency Hall',
+    visibility: 'public',
+    admission_type: 'free_rsvp'
+  };
+  const makeRequest = () => fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify(createBody)
+  });
+  const concurrent = await Promise.all([makeRequest(), makeRequest()]);
+  assert.deepEqual(concurrent.map(response => response.status).sort(), [201, 409]);
+  const successful = concurrent.find(response => response.status === 201);
+  const eventId = Number((await successful.json()).event.id);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM events
+      WHERE organizer_id=$1 AND title='Exactly One Draft'`,
+    [prepared.client.organizerId]
+  )).rows[0].count, 1);
+  assert.equal(Number((await pool.query(
+    'SELECT event_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0].event_id), eventId);
+
+  const coverUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/covers/admin-editor.png';
+  adminEditorRoutes.setEventUploadsForTests({
+    configured: true,
+    cover: async () => ({ secure_url: coverUrl, colors: [['#20c7c7', 1]] })
+  });
+  t.after(() => adminEditorRoutes.setEventUploadsForTests({ configured: false }));
+  const coverUpload = new FormData();
+  coverUpload.set('image', new Blob([Buffer.from('after-bind')], { type: 'image/png' }), 'cover.png');
+  const uploaded = await fetch(`${baseUrl}/admin-editor/api/uploads/cover`, {
+    method: 'POST', headers: { cookie: editorSession }, body: coverUpload
+  });
+  assert.equal(uploaded.status, 200);
+  assert.equal((await uploaded.json()).url, coverUrl);
+  assert.equal((await pool.query(
+    'SELECT cover_image_url FROM events WHERE id=$1',
+    [eventId]
+  )).rows[0].cover_image_url, null,
+  'uploading returns a managed candidate URL but cannot mutate another field or event');
+});
+
+test('Done For You publish validation rolls back the event, audit, workspace, and cookie together', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-rollback@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Rollback Editor Host',
+    contactName: 'Rollback Editor Client',
+    email: 'rollback-editor@example.test'
+  });
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'stage2-invalid-draft','','2035-06-14','18:00','Rollback Hall','private','draft')
+     RETURNING id`,
+    [prepared.client.organizerId]
+  )).rows[0];
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id, draft.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+  const failed = await fetch(`${baseUrl}/admin-editor/api/events/${draft.id}/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: '{}'
+  });
+  assert.equal(failed.status, 400);
+  assert.equal((await failed.json()).error, 'event_incomplete');
+  assert.doesNotMatch(failed.headers.get('set-cookie') || '', /sge_admin_editor=;/,
+    'a failed publish keeps the editor grant available for correction');
+  assert.equal((await pool.query(
+    'SELECT status FROM events WHERE id=$1', [draft.id]
+  )).rows[0].status, 'draft');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0].status, 'active');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='done_for_you_event_published'`,
+    [prepared.client.userId]
+  )).rows[0].count, 0);
+
+  await pool.query(
+    `UPDATE users SET account_status='suspended',suspended_at=NOW(),
+                      suspension_reason='Stage 2 scope test'
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const suspendedEdit = await fetch(`${baseUrl}/admin-editor/api/events/${draft.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({ title: 'Must not be written' })
+  });
+  assert.equal(suspendedEdit.status, 403);
+  assert.equal((await pool.query(
+    'SELECT title FROM events WHERE id=$1', [draft.id]
+  )).rows[0].title, '');
+});
+
+test('Done For You event mutation serializes behind permanent account deletion', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-delete-race@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Delete Race Editor Host',
+    contactName: 'Delete Race Editor Client',
+    email: 'delete-race-editor@example.test'
+  });
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'stage2-delete-race','Delete Race Draft','2036-07-15','19:00',
+             'Delete Race Hall','private','draft')
+     RETURNING id`,
+    [prepared.client.organizerId]
+  )).rows[0];
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id, draft.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+  const deletionCookie = await adminDeletionProof(adminSession, prepared.client.userId);
+
+  const blocker = await pool.connect();
+  await blocker.query('BEGIN');
+  await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [prepared.client.userId]);
+  try {
+    const deletion = fetch(`${baseUrl}/api/admin/accounts/${prepared.client.userId}/delete-account`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: deletionCookie },
+      body: JSON.stringify({
+        reason: 'Verify scoped editor deletion serialization',
+        confirmation: `DELETE USER ${prepared.client.userId}`
+      })
+    });
+    await waitUntilOutboundLockHeld(prepared.client.userId);
+    let updateSettled = false;
+    const update = fetch(`${baseUrl}/admin-editor/api/events/${draft.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: editorSession },
+      body: JSON.stringify({ title: 'Must Never Survive Deletion' })
+    }).then(response => {
+      updateSettled = true;
+      return response;
+    });
+    let exitSettled = false;
+    const exit = fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: editorSession },
+      body: '{}'
+    }).then(response => {
+      exitSettled = true;
+      return response;
+    });
+    let logoutSettled = false;
+    const logout = fetch(`${baseUrl}/api/admin/auth/logout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminSession },
+      body: '{}'
+    }).then(response => {
+      logoutSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(updateSettled, false,
+      'the editor mutation waits behind the same outbound-account deletion boundary');
+    assert.equal(exitSettled, false,
+      'workspace exit does not hold the operator row while waiting behind account deletion');
+    assert.equal(logoutSettled, false,
+      'operator logout discovers workspace targets before taking its operator row');
+    await blocker.query('COMMIT');
+    const [deleted, attemptedUpdate, attemptedExit, attemptedLogout] = await Promise.all([
+      deletion, update, exit, logout
+    ]);
+    assert.equal(deleted.status, 200);
+    assert.ok([401, 403, 409].includes(attemptedUpdate.status),
+      `the editor mutation safely loses the delete/logout race without a server error (${attemptedUpdate.status})`);
+    assert.ok([401, 403, 409].includes(attemptedExit.status),
+      `workspace exit safely loses the delete race without a server error (${attemptedExit.status})`);
+    assert.equal(attemptedLogout.status, 200,
+      'operator logout safely completes after the target account deletion');
+    assert.equal((await pool.query(
+      'SELECT account_status FROM users WHERE id=$1', [prepared.client.userId]
+    )).rows[0].account_status, 'deleted');
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM events WHERE id=$1', [draft.id]
+    )).rows[0].count, 0);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+        WHERE target_user_id=$1
+          AND action_type='done_for_you_event_draft_updated'
+          AND metadata->'changedFields' ? 'title'`,
+      [prepared.client.userId]
+    )).rows[0].count, 0,
+    'the losing editor request neither writes nor audits a post-delete change');
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    blocker.release();
   }
 });

@@ -2,7 +2,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLES = new Set(['super_admin', 'support']);
 const STATUSES = new Set(['active', 'disabled']);
 const ROSTER_LOCK = 'silver-glider-admin-operator-roster';
-const { invalidateAdminOperatorAccessInTransaction } = require('./admin-editor-workspace');
+const {
+  invalidateAdminOperatorAccessInTransaction,
+  lockAdminEditorWorkspaceAccountsInTransaction
+} = require('./admin-editor-workspace');
 
 class AdminOperatorError extends Error {
   constructor(code, message, status = 400) {
@@ -279,6 +282,9 @@ async function updateAdminOperator(db, {
   }
 
   return inTransaction(db, async client => {
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId: id
+    });
     const actor = await lockRoster(client, actorId);
     const { rows } = await client.query(
       `SELECT id,email,role,status,last_login_at,created_at,updated_at
@@ -384,6 +390,9 @@ async function revokeAdminOperatorSessions(db, {
   }
 
   return inTransaction(db, async client => {
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId: id
+    });
     const actor = await lockRoster(client, actorId);
     const { rows } = await client.query(
       `SELECT id,email,role,status,sessions_valid_after,last_login_at,created_at,updated_at

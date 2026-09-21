@@ -67,6 +67,21 @@ test('admin editor scope never creates or borrows a customer session', () => {
   assert.doesNotMatch(combined, /setSessionCookie|signSession|sge_session|req\.organizer\s*=/);
 });
 
+test('admin editor document failures recover to Done For You while API failures stay JSON', () => {
+  const middleware = read('src/middleware/requireAdminEditorWorkspace.js');
+
+  assert.match(middleware, /EDITOR_RECOVERY_PATH = '\/admin\/done-for-you\?editor=expired'/);
+  assert.match(
+    middleware,
+    /method !== 'GET' && method !== 'HEAD'[\s\S]*!requestPath\.startsWith\('\/admin-editor\/api\/'\)/
+  );
+  assert.match(
+    middleware,
+    /if \(isAdminEditorDocumentRequest\(req\)\) \{[\s\S]*res\.redirect\(302, EDITOR_RECOVERY_PATH\)/
+  );
+  assert.match(middleware, /return res\.status\(status\)\.json\(\{ error, message \}\)/);
+});
+
 test('workspace start and exit are scoped, audited, and clear on admin logout', () => {
   const service = read('src/lib/admin-editor-workspace.js');
   const editorRoute = read('src/routes/admin-editor.js');
@@ -109,10 +124,12 @@ test('admin login and shared API redirects recognize only the two admin realms',
   assert.match(middleware, /path === '\/admin-editor'/);
 });
 
-test('credential invalidation uses the operator-first lock order and audits each active workspace once', () => {
+test('credential invalidation locks workspace accounts before the operator and audits each active workspace once', () => {
   const service = read('src/lib/admin-editor-workspace.js');
+  const logoutStart = service.indexOf('async function revokeAdminEditorWorkspacesForOperator');
   const start = service.indexOf('async function invalidateAdminOperatorAccessInTransaction');
   const end = service.indexOf('\nmodule.exports', start);
+  const logout = service.slice(logoutStart, start);
   const invalidation = service.slice(start, end);
   const operatorLock = invalidation.indexOf('FROM admin_operators');
   const workspaceLock = invalidation.indexOf('FROM admin_event_editor_workspaces workspace');
@@ -123,6 +140,7 @@ test('credential invalidation uses the operator-first lock order and audits each
   const proofs = invalidation.indexOf('UPDATE admin_action_proofs');
   assert.ok(operatorLock >= 0 && workspaceLock > operatorLock && update > workspaceLock &&
     audit > update && epoch > audit && challenges > epoch && proofs > challenges);
+  assert.match(logout, /lockAdminEditorWorkspaceAccountsInTransaction[\s\S]*invalidateAdminOperatorAccessInTransaction/);
   assert.match(invalidation, /WHERE workspace\.actor_admin_operator_id=\$1 AND workspace\.status='active'/);
   assert.match(invalidation, /actorAdminOperatorId/);
 });

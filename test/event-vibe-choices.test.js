@@ -9,7 +9,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 test('Event Vibe progressively supports three artists with optional managed photos', () => {
   const migration = read('src/db/migrations/019_event_vibe_choices.sql');
   const photoMigration = read('src/db/migrations/038_event_vibe_artist_photos.sql');
-  const events = read('src/routes/events.js');
+  const events = read('src/lib/event-editor.js');
   const form = read('src/views/event-form.html');
   const formClient = read('public/js/event-form.js');
   const uploads = read('src/routes/uploads.js');
@@ -27,7 +27,7 @@ test('Event Vibe progressively supports three artists with optional managed phot
   assert.match(events, /event_vibe_url_2: cleanVibeUrl/);
   assert.match(events, /event_vibe_url_3: cleanVibeUrl/);
   assert.match(events, /event_vibe_image_url_3: cleanVibeImageUrl/);
-  assert.match(events, /e\.event_vibe_url_3 \|\| null, e\.event_vibe_label_3 \|\| null, e\.event_vibe_image_url_3 \|\| null/);
+  assert.match(events, /out\.event_vibe_url_3 \|\| null, out\.event_vibe_label_3 \|\| null, out\.event_vibe_image_url_3 \|\| null/);
   assert.match(form, /id="add-vibe-choice"[^>]*>\+ Add another artist</);
   assert.match(form, /id="add-third-vibe-choice"[^>]*>\+ Add a third artist</);
   assert.match(form, /id="event_vibe_label" maxlength="80"/);
@@ -42,7 +42,7 @@ test('Event Vibe progressively supports three artists with optional managed phot
   assert.match(formClient, /function setSecondVibeVisible\(visible\)/);
   assert.match(formClient, /function setThirdVibeVisible\(visible\)/);
   assert.match(formClient, /event_vibe_url_3: hasThirdVibe/);
-  assert.match(formClient, /fetch\('\/api\/uploads\/vibe-photo'/);
+  assert.match(formClient, /fetch\(sgRequestPath\('\/api\/uploads\/vibe-photo'\)/);
   assert.match(formClient, /VIBE_PHOTO_MAX_BYTES = 5 \* 1024 \* 1024/);
   assert.match(formClient, /dropzone\.addEventListener\('dragover'/);
   assert.match(formClient, /dropzone\.addEventListener\('drop'/);

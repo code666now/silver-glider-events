@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { readCookie } = require('./private-events');
+const { outboundDeliveryLockKey } = require('./outbound-account-status');
 
 const COOKIE_NAME = 'sge_admin_editor';
 const MAX_AGE_SECONDS = 2 * 60 * 60;
@@ -48,6 +49,39 @@ function safeWorkspace(row) {
     status: row.status,
     expiresAt: row.expires_at
   };
+}
+
+function operatorWorkspaceLockKey(operatorId) {
+  return `admin-editor-operator:${Number(operatorId)}`;
+}
+
+async function lockAdminEditorWorkspaceAccountsInTransaction(client, {
+  actorAdminOperatorId,
+  additionalTargetUserIds = []
+}) {
+  // Coordinate lifecycle discovery without taking the operator row. Permanent
+  // account deletion owns each target boundary first and only then references
+  // the operator from its audit row, so every lifecycle path must do the same.
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+    operatorWorkspaceLockKey(actorAdminOperatorId)
+  ]);
+  const activeTargets = (await client.query(
+    `SELECT target_user_id
+       FROM admin_event_editor_workspaces
+      WHERE actor_admin_operator_id=$1 AND status='active'`,
+    [actorAdminOperatorId]
+  )).rows.map(row => row.target_user_id);
+  const targetUserIds = [...new Set([
+    ...activeTargets,
+    ...additionalTargetUserIds
+  ].map(Number).filter(id => Number.isSafeInteger(id) && id > 0))]
+    .sort((left, right) => left - right);
+  for (const userId of targetUserIds) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      outboundDeliveryLockKey(userId)
+    ]);
+  }
+  return targetUserIds;
 }
 
 async function writeAudit(db, {
@@ -122,6 +156,85 @@ async function writeLifecycleAudit(db, workspace, {
   });
 }
 
+// Event mutations already own a transaction and the globally ordered
+// operator/account/workspace locks. Keep the event write, workspace lifecycle,
+// and immutable support history in that same transaction rather than opening a
+// second connection that could commit only half of the operation.
+async function bindAdminEditorWorkspaceEventInTransaction(db, {
+  workspaceId,
+  actorAdminOperatorId,
+  eventId,
+  requestIp = null,
+  userAgent = null
+}) {
+  const workspace = (await db.query(
+    `UPDATE admin_event_editor_workspaces
+        SET event_id=$3
+      WHERE id=$1 AND actor_admin_operator_id=$2
+        AND status='active' AND event_id IS NULL AND expires_at>NOW()
+      RETURNING *`,
+    [workspaceId, actorAdminOperatorId, eventId]
+  )).rows[0];
+  if (!workspace) {
+    throw new AdminEditorWorkspaceError(
+      'admin_editor_workspace_already_bound',
+      'This editor workspace is already connected to an event.',
+      409
+    );
+  }
+  await writeAudit(db, {
+    operatorId: actorAdminOperatorId,
+    targetUserId: workspace.target_user_id,
+    actionType: 'done_for_you_event_draft_created',
+    reason: 'Administrator created a draft in a scoped Done For You event workspace',
+    beforeState: { eventId: null, status: null },
+    afterState: { eventId: Number(eventId), status: 'draft' },
+    metadata: {
+      workspaceId: Number(workspace.id),
+      doneForYouClientId: Number(workspace.done_for_you_client_id),
+      organizerId: Number(workspace.organizer_id)
+    },
+    requestIp,
+    userAgent
+  });
+  return safeWorkspace(workspace);
+}
+
+async function completeAdminEditorWorkspaceInTransaction(db, {
+  workspaceId,
+  actorAdminOperatorId,
+  requestIp = null,
+  userAgent = null
+}) {
+  const workspace = (await db.query(
+    `SELECT * FROM admin_event_editor_workspaces
+      WHERE id=$1 AND actor_admin_operator_id=$2
+      FOR UPDATE`,
+    [workspaceId, actorAdminOperatorId]
+  )).rows[0];
+  if (!workspace || workspace.status !== 'active') {
+    throw new AdminEditorWorkspaceError(
+      'admin_editor_workspace_inactive',
+      'This editor workspace is no longer active.',
+      409
+    );
+  }
+  await db.query(
+    `UPDATE admin_event_editor_workspaces
+        SET status='completed',closed_at=NOW()
+      WHERE id=$1`,
+    [workspace.id]
+  );
+  await writeLifecycleAudit(db, workspace, {
+    status: 'completed',
+    cause: 'event_published',
+    actorAdminOperatorId,
+    requestIp,
+    userAgent
+  });
+  return true;
+}
+
 async function openAdminEditorWorkspace(db, {
   doneForYouClientId,
   actorAdminOperatorId,
@@ -134,9 +247,26 @@ async function openAdminEditorWorkspace(db, {
   try {
     await client.query('BEGIN');
 
-    // Lock the operator first so two starts by one operator cannot race the
-    // one-active-workspace constraint. This also rechecks active status in the
-    // same transaction that creates the grant.
+    const prospectiveMarker = (await client.query(
+      `SELECT id,target_user_id
+         FROM admin_done_for_you_clients
+        WHERE id=$1`,
+      [doneForYouClientId]
+    )).rows[0];
+    if (!prospectiveMarker) {
+      throw new AdminEditorWorkspaceError(
+        'done_for_you_client_not_found',
+        'Done For You client not found.',
+        404
+      );
+    }
+    // Discover the prospective target without a row lock, then serialize
+    // starts and take every affected account boundary before the operator row.
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId,
+      additionalTargetUserIds: [prospectiveMarker.target_user_id]
+    });
+
     const operator = (await client.query(
       `SELECT id,sessions_valid_after FROM admin_operators
         WHERE id=$1 AND status='active'
@@ -181,11 +311,11 @@ async function openAdminEditorWorkspace(db, {
         FOR UPDATE`,
       [doneForYouClientId]
     )).rows[0];
-    if (!marker) {
+    if (!marker || Number(marker.target_user_id) !== Number(prospectiveMarker.target_user_id)) {
       throw new AdminEditorWorkspaceError(
-        'done_for_you_client_not_found',
-        'Done For You client not found.',
-        404
+        'done_for_you_scope_changed',
+        'This Done For You client changed while the editor was opening. Try again.',
+        409
       );
     }
 
@@ -337,8 +467,16 @@ async function closeWorkspace(db, {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    // Every workspace lifecycle transaction uses the same operator ->
-    // workspace lock order as open and logout.
+    const prospective = (await client.query(
+      `SELECT target_user_id
+         FROM admin_event_editor_workspaces
+        WHERE id=$1 AND actor_admin_operator_id=$2`,
+      [workspaceId, actorAdminOperatorId]
+    )).rows[0];
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId,
+      additionalTargetUserIds: prospective ? [prospective.target_user_id] : []
+    });
     await client.query(
       'SELECT id FROM admin_operators WHERE id=$1 FOR UPDATE',
       [actorAdminOperatorId]
@@ -349,6 +487,14 @@ async function closeWorkspace(db, {
         FOR UPDATE`,
       [workspaceId, actorAdminOperatorId]
     )).rows[0];
+    if (workspace && prospective &&
+        Number(workspace.target_user_id) !== Number(prospective.target_user_id)) {
+      throw new AdminEditorWorkspaceError(
+        'admin_editor_scope_changed',
+        'This editor workspace changed while it was closing.',
+        409
+      );
+    }
     if (!workspace || workspace.status !== 'active') {
       await client.query('COMMIT');
       return false;
@@ -381,6 +527,16 @@ async function exitAdminEditorWorkspace(db, {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    const prospective = (await client.query(
+      `SELECT target_user_id
+         FROM admin_event_editor_workspaces
+        WHERE id=$1 AND actor_admin_operator_id=$2`,
+      [workspaceId, actorAdminOperatorId]
+    )).rows[0];
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId,
+      additionalTargetUserIds: prospective ? [prospective.target_user_id] : []
+    });
     const operator = (await client.query(
       `SELECT id FROM admin_operators
         WHERE id=$1 AND status='active'
@@ -401,6 +557,14 @@ async function exitAdminEditorWorkspace(db, {
         FOR UPDATE OF workspace`,
       [workspaceId, actorAdminOperatorId]
     )).rows[0];
+    if (workspace && prospective &&
+        Number(workspace.target_user_id) !== Number(prospective.target_user_id)) {
+      throw new AdminEditorWorkspaceError(
+        'admin_editor_scope_changed',
+        'This editor workspace changed while it was closing.',
+        409
+      );
+    }
     if (!workspace || workspace.status !== 'active') {
       throw new AdminEditorWorkspaceError(
         'admin_editor_workspace_inactive',
@@ -470,6 +634,9 @@ async function revokeAdminEditorWorkspacesForOperator(db, {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await lockAdminEditorWorkspaceAccountsInTransaction(client, {
+      actorAdminOperatorId
+    });
     const invalidated = await invalidateAdminOperatorAccessInTransaction(client, {
       operatorId: actorAdminOperatorId,
       sessionIssuedAt,
@@ -489,9 +656,10 @@ async function revokeAdminEditorWorkspacesForOperator(db, {
   }
 }
 
-// The caller owns the transaction. Every credential lifecycle path takes the
-// operator lock before its workspace rows, advances the credential epoch, and
-// consumes pending challenges/proofs in that same transaction.
+// The caller owns the transaction and must first call
+// lockAdminEditorWorkspaceAccountsInTransaction. After those account
+// boundaries are held, this locks the operator then its workspace rows,
+// advances the credential epoch, and consumes pending challenges/proofs.
 async function invalidateAdminOperatorAccessInTransaction(client, {
   operatorId,
   sessionIssuedAt = null,
@@ -571,15 +739,19 @@ module.exports = {
   AdminEditorWorkspaceError,
   COOKIE_NAME,
   MAX_AGE_SECONDS,
+  bindAdminEditorWorkspaceEventInTransaction,
   clearAdminEditorCookie,
   closeWorkspace,
+  completeAdminEditorWorkspaceInTransaction,
   exitAdminEditorWorkspace,
   invalidateAdminOperatorAccessInTransaction,
+  lockAdminEditorWorkspaceAccountsInTransaction,
   openAdminEditorWorkspace,
   readAdminEditorCookie,
   readAdminEditorWorkspace,
   revokeAdminEditorWorkspacesForOperator,
   safeWorkspace,
   setAdminEditorCookie,
-  tokenHash
+  tokenHash,
+  writeAdminEditorAudit: writeAudit
 };

@@ -1,5 +1,7 @@
 (function mountLegalFooter() {
   function mount() {
+    const path = String(location.pathname || '').replace(/\/+$/, '') || '/';
+    if (path === '/admin-editor' || path.startsWith('/admin-editor/')) return;
     if (document.querySelector('[data-sg-legal-footer]')) return;
     const eventPageMount = document.querySelector('#event-data')
       ? (document.querySelector('.col-details .wrap') || document.querySelector('.flyer-details'))
