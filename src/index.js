@@ -189,6 +189,7 @@ async function start() {
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
+  require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();
   return server;
 }
 

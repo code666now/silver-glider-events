@@ -9,7 +9,10 @@ const state = {
   detail: null,
   nextCursor: null,
   requestId: 0,
-  action: null
+  action: null,
+  deletion: null,
+  deleteRequest: null,
+  deleteMode: null
 };
 
 const list = document.getElementById('accounts-list');
@@ -17,6 +20,7 @@ const empty = document.getElementById('accounts-empty');
 const detailDialog = document.getElementById('account-detail-dialog');
 const actionDialog = document.getElementById('support-action-dialog');
 const invitationDialog = document.getElementById('invitation-dialog');
+const deleteDialog = document.getElementById('delete-account-dialog');
 const search = document.getElementById('account-search');
 const kindFilter = document.getElementById('account-kind');
 const statusFilter = document.getElementById('account-status');
@@ -347,6 +351,126 @@ function renderAudit(audit) {
   }).join('') : '<li class="accounts-muted-empty">No support actions have been recorded yet.</li>';
 }
 
+function deletionAllowed(deletion) {
+  return Boolean(firstValue(deletion, ['allowed', 'eligible', 'canDelete', 'can_delete'], false));
+}
+
+function deletionCanMark(deletion) {
+  return Boolean(firstValue(deletion, ['canMarkTestAccount', 'can_mark_test_account'], false));
+}
+
+function deletionIsTestAccount(deletion) {
+  return Boolean(firstValue(deletion, ['isTestAccount', 'is_test_account'], false));
+}
+
+function deletionConfirmation(deletion) {
+  return String(firstValue(
+    deletion,
+    ['confirmationText', 'confirmation_text'],
+    `DELETE USER ${state.selectedId}`
+  )).trim();
+}
+
+function designationConfirmation(deletion) {
+  return String(firstValue(
+    deletion,
+    ['designationConfirmationText', 'designation_confirmation_text'],
+    `MARK TEST USER ${state.selectedId}`
+  )).trim();
+}
+
+function deletionBlockerLabel(blocker) {
+  if (typeof blocker === 'string') return blocker;
+  const label = firstValue(blocker, ['label', 'message', 'description', 'code'], 'Deletion is blocked');
+  const count = Number(firstValue(blocker, ['count'], 0));
+  return count > 0 && !String(label).includes(String(count)) ? `${label} (${count})` : String(label);
+}
+
+function deletionSummaryEntries(summary) {
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return [];
+  const labels = {
+    events: 'Hosted events', event_count: 'Hosted events', eventCount: 'Hosted events',
+    rsvps: 'RSVPs', rsvp_count: 'RSVPs', rsvpCount: 'RSVPs',
+    identities: 'Sign-in methods', identity_count: 'Sign-in methods', identityCount: 'Sign-in methods',
+    follows: 'Host follows', follow_count: 'Host follows', followCount: 'Host follows', following: 'Host follows',
+    followers: 'Followers', follower_count: 'Followers', followerCount: 'Followers',
+    photos: 'Photos', photo_count: 'Photos', photoCount: 'Photos',
+    sessions: 'Sessions', session_count: 'Sessions', sessionCount: 'Sessions'
+  };
+  const seen = new Set();
+  return Object.entries(summary).flatMap(([key, value]) => {
+    if (!['string', 'number'].includes(typeof value) || value === '') return [];
+    const label = labels[key] || String(key).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/^./, letter => letter.toUpperCase());
+    const normalized = label.toLowerCase();
+    if (seen.has(normalized)) return [];
+    seen.add(normalized);
+    return [{ label, value }];
+  }).slice(0, 8);
+}
+
+function deletionSummaryMarkup(summary) {
+  const entries = deletionSummaryEntries(summary);
+  return entries.length ? entries.map(item => `<span><strong>${esc(item.value)}</strong>${esc(item.label)}</span>`).join('') : '';
+}
+
+function renderDeletion(deletion) {
+  const zone = document.getElementById('account-delete-zone');
+  state.deletion = deletion && typeof deletion === 'object' ? deletion : null;
+  if (!state.deletion) {
+    zone.hidden = true;
+    return;
+  }
+
+  zone.hidden = false;
+  const allowed = deletionAllowed(state.deletion);
+  const canMark = deletionCanMark(state.deletion);
+  const isTestAccount = deletionIsTestAccount(state.deletion);
+  const title = document.getElementById('account-delete-title');
+  const description = document.getElementById('account-delete-description');
+  const blockers = asArray(firstValue(state.deletion, ['blockers', 'blockingReasons', 'blocking_reasons'], []));
+  const summary = firstValue(state.deletion, ['summary', 'counts', 'deleteSummary', 'delete_summary'], {});
+  const readiness = document.getElementById('account-delete-readiness');
+  readiness.className = `accounts-delete-readiness ${allowed || canMark ? 'eligible' : 'blocked'}`;
+  readiness.innerHTML = allowed
+    ? '<strong>Eligible designated test account</strong><span>Automated checks found no protected customer, billing, messaging, or shared data.</span>'
+    : canMark
+      ? '<strong>Ready for test designation</strong><span>First save a permanent, audited test-account designation. Deletion remains a separate confirmed action.</span>'
+      : `<strong>Deletion unavailable</strong><span>${isTestAccount ? 'This designated test account has protected data or activity that must be resolved first.' : 'This account has protected data or activity and cannot be designated as disposable test data.'}</span>`;
+
+  const summaryElement = document.getElementById('account-delete-summary');
+  summaryElement.innerHTML = deletionSummaryMarkup(summary);
+  summaryElement.hidden = !summaryElement.innerHTML;
+
+  const blockerList = document.getElementById('account-delete-blockers');
+  blockerList.innerHTML = blockers.map(blocker => `<li>${esc(deletionBlockerLabel(blocker))}</li>`).join('');
+  blockerList.hidden = blockers.length === 0;
+
+  const verificationNote = document.getElementById('account-delete-verification-note');
+  const requiresFreshVerification = Boolean(firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], false));
+  title.textContent = allowed ? 'Delete test account' : (canMark ? 'Mark test account' : 'Test-account deletion');
+  description.textContent = allowed
+    ? 'This permanently removes eligible test data. Real, paid, or operational accounts are blocked automatically.'
+    : canMark
+      ? 'This saves an audited test-data designation. Nothing is deleted in this step.'
+      : isTestAccount
+        ? 'This designated test account has protected data or activity and cannot be permanently deleted.'
+        : 'Permanent deletion is available only for confirmed test accounts with no protected data or activity.';
+  verificationNote.textContent = allowed || isTestAccount
+    ? 'A fresh email confirmation is required before deletion.'
+    : 'A fresh email confirmation is required before saving the test designation.';
+  verificationNote.hidden = !requiresFreshVerification || !(allowed || canMark);
+
+  const button = document.getElementById('delete-test-account');
+  button.disabled = !(allowed || canMark);
+  button.textContent = allowed ? 'Delete test account permanently' : 'Mark as test account';
+  button.className = `sg-btn ${allowed ? 'sg-btn-danger' : 'sg-btn-ghost'} accounts-delete-button`;
+  button.setAttribute('aria-describedby', [
+    'account-delete-readiness',
+    blockers.length ? 'account-delete-blockers' : '',
+    requiresFreshVerification ? 'account-delete-verification-note' : ''
+  ].filter(Boolean).join(' '));
+}
+
 function detailCollections(data, account) {
   const ownership = { ...(data.ownership || data.property || data.owned || {}) };
   const sessions = asArray(data.sessions || data.active_sessions);
@@ -376,6 +500,7 @@ function renderDetail(data) {
   renderOwnership(collections.ownership, account);
   renderNotes(collections.notes);
   renderAudit(collections.audit);
+  renderDeletion(data.deletion || null);
   document.getElementById('account-display-name').value = accountName(account);
   document.getElementById('account-profile-reason').value = '';
   document.getElementById('account-profile-status').textContent = '';
@@ -486,6 +611,219 @@ async function submitSupportAction(event) {
     button.disabled = false;
     button.textContent = original;
   }
+}
+
+function resetDeleteDialog() {
+  document.getElementById('delete-account-form').reset();
+  document.getElementById('delete-account-step-up-form').reset();
+  document.getElementById('delete-account-review').hidden = false;
+  document.getElementById('delete-account-step-up').hidden = true;
+  document.getElementById('delete-account-code-help').textContent = 'Sending a fresh code…';
+  setFormError('delete-account-error', '');
+  setFormError('delete-account-step-up-error', '');
+  deleteDialog.setAttribute('aria-labelledby', 'delete-account-title');
+  deleteDialog.setAttribute('aria-describedby', 'delete-account-description');
+  state.deleteRequest = null;
+  state.deleteMode = null;
+}
+
+function openDeleteAccount(trigger) {
+  if (!state.selectedId || !state.deletion) return;
+  const mode = deletionAllowed(state.deletion)
+    ? 'delete'
+    : (deletionCanMark(state.deletion) ? 'designate' : null);
+  if (!mode) return;
+  resetDeleteDialog();
+  state.deleteMode = mode;
+  const name = accountName(state.selected || {});
+  const confirmation = mode === 'delete'
+    ? deletionConfirmation(state.deletion)
+    : designationConfirmation(state.deletion);
+  const summary = firstValue(state.deletion, ['summary', 'counts', 'deleteSummary', 'delete_summary'], {});
+  const requiresFreshVerification = Boolean(firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], false));
+  document.getElementById('delete-account-kicker').textContent = mode === 'delete' ? 'Permanent deletion' : 'Test-account designation';
+  document.getElementById('delete-account-title').textContent = mode === 'delete'
+    ? 'Delete this test account?'
+    : 'Mark this as a test account?';
+  document.getElementById('delete-account-description').textContent = mode === 'delete'
+    ? `${name} and the eligible test data attached to User ID ${state.selectedId} will be permanently removed. A minimal audit record keeps the user ID, administrator, date, and reason.${requiresFreshVerification ? ' You will confirm your identity by email before deletion.' : ''}`
+    : `${name} will receive a permanent, audited test-data designation. Nothing is deleted in this step.${requiresFreshVerification ? ' You will confirm your identity by email before saving it.' : ''}`;
+  document.getElementById('delete-account-attestation-title').textContent = mode === 'delete'
+    ? 'I confirm this is test data'
+    : 'I confirm this account contains test data only';
+  document.getElementById('delete-account-attestation-help').textContent = mode === 'delete'
+    ? 'Do not continue for a real customer, paid account, or account with records that must be retained.'
+    : 'This permanent designation is required before deletion can be considered.';
+  document.getElementById('delete-account-reason-label').textContent = mode === 'delete'
+    ? 'Reason for deletion'
+    : 'Reason for test designation';
+  document.getElementById('delete-account-reason').placeholder = mode === 'delete'
+    ? 'Why is this test account being removed?'
+    : 'Why is this account confirmed as test data?';
+  document.getElementById('delete-account-required-text').textContent = confirmation;
+  const confirmButton = document.getElementById('confirm-delete-test-account');
+  confirmButton.textContent = mode === 'delete' ? 'Delete permanently' : 'Mark as test account';
+  confirmButton.setAttribute('aria-label', mode === 'delete' ? 'Delete test account permanently' : 'Mark account as test data');
+  confirmButton.className = `sg-btn ${mode === 'delete' ? 'sg-btn-danger' : 'sg-btn-primary'}`;
+  document.getElementById('verify-delete-account').setAttribute(
+    'aria-label',
+    mode === 'delete' ? 'Verify and delete test account' : 'Verify and mark account as test data'
+  );
+  const dialogSummary = document.getElementById('delete-account-dialog-summary');
+  dialogSummary.innerHTML = deletionSummaryMarkup(summary);
+  dialogSummary.hidden = !dialogSummary.innerHTML;
+  showDialog(deleteDialog, trigger);
+  requestAnimationFrame(() => document.getElementById('delete-account-test-confirmed').focus());
+}
+
+function deleteRequestBody() {
+  return {
+    reason: document.getElementById('delete-account-reason').value.trim(),
+    confirmation: document.getElementById('delete-account-confirmation').value.trim(),
+    testAccountConfirmed: true
+  };
+}
+
+function setDeleteButtonsBusy(busy, label = '') {
+  const confirm = document.getElementById('confirm-delete-test-account');
+  const verify = document.getElementById('verify-delete-account');
+  const cancel = document.getElementById('cancel-delete-account');
+  const cancelStepUp = document.getElementById('cancel-delete-step-up');
+  [confirm, verify, cancel, cancelStepUp].forEach(button => { button.disabled = busy; });
+  const isDelete = state.deleteMode === 'delete';
+  confirm.textContent = busy && label ? label : (isDelete ? 'Delete permanently' : 'Mark as test account');
+  verify.textContent = busy && label ? label : (isDelete ? 'Verify and delete' : 'Verify and mark');
+}
+
+async function startDeleteStepUp() {
+  setDeleteButtonsBusy(true, 'Sending code…');
+  setFormError('delete-account-error', '');
+  try {
+    const result = await api('/api/me/identities/step-up/start', { method:'POST' });
+    const destination = firstValue(result, ['maskedEmail', 'masked_email'], 'your primary email');
+    document.getElementById('delete-account-review').hidden = true;
+    document.getElementById('delete-account-step-up').hidden = false;
+    deleteDialog.setAttribute('aria-labelledby', 'delete-account-step-up-title');
+    deleteDialog.setAttribute('aria-describedby', 'delete-account-step-up-description delete-account-code-help');
+    document.getElementById('delete-account-code-help').textContent = `We sent a code to ${destination}.`;
+    document.getElementById('delete-account-step-up-description').textContent = state.deleteMode === 'delete'
+      ? 'Enter the six-digit code sent to your primary email before deleting this account.'
+      : 'Enter the six-digit code sent to your primary email before marking this as a test account.';
+    requestAnimationFrame(() => document.getElementById('delete-account-code').focus());
+  } catch (error) {
+    setFormError('delete-account-error', error.message || 'A confirmation code could not be sent.');
+  } finally {
+    setDeleteButtonsBusy(false);
+  }
+}
+
+async function finishAccountDeletion() {
+  const mode = state.deleteMode;
+  const deletedName = accountName(state.selected || {});
+  if (deleteDialog.open) deleteDialog.close();
+  if (mode === 'designate') {
+    toast(`${deletedName} marked as a test account`);
+    renderDetail(await fetchAccount(state.selectedId));
+    return;
+  }
+  if (detailDialog.open) detailDialog.close();
+  state.selectedId = null;
+  state.selected = null;
+  state.detail = null;
+  state.deletion = null;
+  state.deleteRequest = null;
+  await loadAccounts();
+  toast(`${deletedName} test account deleted`);
+  if (search?.isConnected) requestAnimationFrame(() => search.focus());
+}
+
+async function performAccountDeletion({ allowStepUp = true } = {}) {
+  if (!state.selectedId || !state.deleteRequest) return;
+  const mode = state.deleteMode;
+  if (!['delete', 'designate'].includes(mode)) return;
+  setDeleteButtonsBusy(true, mode === 'delete' ? 'Deleting…' : 'Saving…');
+  setFormError('delete-account-error', '');
+  setFormError('delete-account-step-up-error', '');
+  try {
+    const endpoint = mode === 'delete' ? 'delete-test-account' : 'mark-test-account';
+    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${endpoint}`, {
+      method:'POST',
+      body:state.deleteRequest
+    });
+    await finishAccountDeletion();
+  } catch (error) {
+    if (allowStepUp && error.code === 'identity_step_up_required') {
+      setDeleteButtonsBusy(false);
+      await startDeleteStepUp();
+      return;
+    }
+    const changedDeletion = error.data?.deletion || (Array.isArray(error.data?.blockers)
+      ? { ...state.deletion, allowed:false, blockers:error.data.blockers }
+      : null);
+    if (changedDeletion) {
+      renderDeletion(changedDeletion);
+      if (!(deletionAllowed(changedDeletion) || deletionCanMark(changedDeletion))) deleteDialog.close();
+    }
+    const errorTarget = document.getElementById('delete-account-step-up').hidden
+      ? 'delete-account-error'
+      : 'delete-account-step-up-error';
+    setFormError(errorTarget, error.message || 'This account could not be deleted.');
+  } finally {
+    setDeleteButtonsBusy(false);
+  }
+}
+
+async function submitDeleteAccount(event) {
+  event.preventDefault();
+  if (!state.deletion || !['delete', 'designate'].includes(state.deleteMode)) return;
+  if (state.deleteMode === 'delete' && !deletionAllowed(state.deletion)) return;
+  if (state.deleteMode === 'designate' && !deletionCanMark(state.deletion)) return;
+  const checked = document.getElementById('delete-account-test-confirmed').checked;
+  const reason = document.getElementById('delete-account-reason').value.trim();
+  const confirmation = document.getElementById('delete-account-confirmation').value.trim();
+  const requiredConfirmation = state.deleteMode === 'delete'
+    ? deletionConfirmation(state.deletion)
+    : designationConfirmation(state.deletion);
+  setFormError('delete-account-error', '');
+  if (!checked) {
+    setFormError('delete-account-error', 'Confirm that this account contains test data only.');
+    document.getElementById('delete-account-test-confirmed').focus();
+    return;
+  }
+  if (reason.length < 8) {
+    setFormError('delete-account-error', 'Add a reason of at least 8 characters for the permanent audit record.');
+    document.getElementById('delete-account-reason').focus();
+    return;
+  }
+  if (confirmation !== requiredConfirmation) {
+    setFormError('delete-account-error', `Type ${requiredConfirmation} exactly to continue.`);
+    document.getElementById('delete-account-confirmation').focus();
+    return;
+  }
+  state.deleteRequest = deleteRequestBody();
+  await performAccountDeletion();
+}
+
+async function submitDeleteStepUp(event) {
+  event.preventDefault();
+  const codeField = document.getElementById('delete-account-code');
+  const code = codeField.value.trim();
+  setFormError('delete-account-step-up-error', '');
+  if (!/^\d{6}$/.test(code)) {
+    setFormError('delete-account-step-up-error', 'Enter the 6-digit code.');
+    codeField.focus();
+    return;
+  }
+  setDeleteButtonsBusy(true, 'Verifying…');
+  try {
+    const result = await api('/api/auth/verify-code', { method:'POST', body:{ code } });
+    if (result.kind !== 'identity_step_up') throw new Error('Account confirmation could not be completed.');
+  } catch (error) {
+    setFormError('delete-account-step-up-error', error.message || 'That code could not be verified.');
+    setDeleteButtonsBusy(false);
+    return;
+  }
+  await performAccountDeletion({ allowStepUp:false });
 }
 
 async function submitNote(event) {
@@ -614,17 +952,24 @@ document.getElementById('invitation-form').addEventListener('submit', submitInvi
 document.getElementById('close-account-detail').addEventListener('click', closeDetail);
 document.getElementById('account-sign-out-all').addEventListener('click', () => openSupportAction('signOut'));
 document.getElementById('account-status-action').addEventListener('click', event => openSupportAction(event.currentTarget.dataset.action));
+document.getElementById('delete-test-account').addEventListener('click', event => openDeleteAccount(event.currentTarget));
 document.getElementById('cancel-support-action').addEventListener('click', () => actionDialog.close());
 document.getElementById('support-action-form').addEventListener('submit', submitSupportAction);
+document.getElementById('cancel-delete-account').addEventListener('click', () => deleteDialog.close());
+document.getElementById('cancel-delete-step-up').addEventListener('click', () => deleteDialog.close());
+document.getElementById('delete-account-form').addEventListener('submit', submitDeleteAccount);
+document.getElementById('delete-account-step-up-form').addEventListener('submit', submitDeleteStepUp);
 document.getElementById('account-note-form').addEventListener('submit', submitNote);
 document.getElementById('account-profile-form').addEventListener('submit', submitAccountProfile);
 document.getElementById('host-profile-form').addEventListener('submit', submitHostProfile);
 
-[detailDialog, actionDialog, invitationDialog].forEach(dialog => {
+[detailDialog, actionDialog, invitationDialog, deleteDialog].forEach(dialog => {
   dialog.addEventListener('click', event => {
     if (event.target === dialog) dialog.close();
   });
   dialog.addEventListener('close', () => restoreDialogFocus(dialog));
 });
+
+deleteDialog.addEventListener('close', resetDeleteDialog);
 
 loadAccounts();

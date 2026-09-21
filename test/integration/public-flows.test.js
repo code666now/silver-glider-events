@@ -14,8 +14,11 @@ process.env.APP_URL = 'http://127.0.0.1';
 process.env.NODE_ENV = 'development';
 process.env.REMINDERS_ENABLED = 'false';
 process.env.COMMERCE_ENABLED = 'false';
+process.env.CLOUDINARY_CLOUD_NAME = 'integration-cloud';
 delete process.env.COMMERCE_API_BASE_URL;
 delete process.env.RESEND_API_KEY;
+delete process.env.CLOUDINARY_API_KEY;
+delete process.env.CLOUDINARY_API_SECRET;
 
 const pool = require('../../src/config/db');
 const migrate = require('../../src/db/migrate');
@@ -24,6 +27,8 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
+const { signIdentityStepUp } = require('../../src/lib/identity-step-up');
+const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
 const sms = require('../../src/lib/sms');
 const phoneVerification = require('../../src/lib/phone-verification');
@@ -4812,6 +4817,16 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   assert.ok(detailPayload.identities.every(identity => !('value' in identity) && !('normalizedValue' in identity)));
   assert.ok(!JSON.stringify(detailPayload).includes('rsvp-only-support@example.test'));
   assert.ok(!JSON.stringify(detailPayload).includes('+14155550129'));
+  assert.equal(typeof detailPayload.deletion.allowed, 'boolean');
+  assert.ok(Array.isArray(detailPayload.deletion.blockers));
+  assert.equal(detailPayload.deletion.confirmationText, `DELETE USER ${guest.user_id}`);
+  assert.equal(detailPayload.deletion.designationConfirmationText, `MARK TEST USER ${guest.user_id}`);
+  assert.equal(detailPayload.deletion.isTestAccount, false);
+  assert.equal(typeof detailPayload.deletion.canMarkTestAccount, 'boolean');
+  assert.equal(detailPayload.deletion.requiresFreshVerification, true);
+  for (const key of ['events', 'rsvps', 'following', 'followers', 'identities']) {
+    assert.equal(typeof detailPayload.deletion.summary[key], 'number', `missing deletion summary: ${key}`);
+  }
 
   const profileWithoutReason = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/profile`, {
     method: 'PATCH', headers: { 'content-type': 'application/json', cookie: adminCookie },
@@ -4900,6 +4915,12 @@ test('admin suspension is audited, revokes access, preserves public property, an
 
   const adminCookie = `sge_session=${signSession(admin.id)}`;
   const oldTargetCookie = `sge_session=${signSession(target.id, Date.now() - 5000)}`;
+  const oldPhotoCookie = `sge_photo=${signPhotoAccess(target.id)}`;
+  const photoScopeBeforeSuspension = await fetch(`${baseUrl}/api/me`, {
+    headers: { cookie: oldPhotoCookie }
+  });
+  assert.equal(photoScopeBeforeSuspension.status, 200);
+  assert.equal((await photoScopeBeforeSuspension.json()).scope, 'photo');
 
   const preexistingLogin = await fetch(`${baseUrl}/api/auth/magic-link`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -4942,6 +4963,9 @@ test('admin suspension is audited, revokes access, preserves public property, an
   assert.equal(blockedDashboard.headers.get('location'), '/login');
   assert.match(blockedDashboard.headers.get('set-cookie') || '', /sge_session=;/);
   assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: oldTargetCookie } })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/me`, {
+    headers: { cookie: oldPhotoCookie }
+  })).status, 401, 'suspension immediately revokes a previously issued photo-only grant');
 
   const invalidatedCode = await fetch(`${baseUrl}/api/auth/verify-code`, {
     method: 'POST',
@@ -4986,6 +5010,571 @@ test('admin suspension is audited, revokes access, preserves public property, an
       WHERE target_user_id=$1 ORDER BY id`, [target.user_id]
   )).rows.map(row => row.action_type);
   assert.deepEqual(actions, ['account_suspended', 'account_reactivated']);
+});
+
+test('permanent test-account deletion requires admin auth, fresh proof, and every exact confirmation guard', async () => {
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('delete-guard-admin@example.test','Delete Guard Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('delete-guard-target@example.test','Delete Guard Target',NOW()) RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const otherAdmin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('delete-other-admin@example.test','Other Delete Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  otherAdmin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [otherAdmin.id]
+  )).rows[0].user_id;
+
+  const adminSession = `sge_session=${signSession(admin.id)}`;
+  const freshAdmin = cookieHeader(
+    adminSession,
+    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
+  );
+  const validBody = id => ({
+    reason: 'Remove a disposable integration-test account',
+    testAccountConfirmed: true,
+    confirmation: `DELETE USER ${id}`
+  });
+  const requestDelete = (id, { cookie = freshAdmin, body = validBody(id), headers = {} } = {}) => fetch(
+    `${baseUrl}/api/admin/accounts/${id}/delete-test-account`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: JSON.stringify(body)
+    }
+  );
+  const validMarkBody = id => ({
+    reason: 'Confirmed disposable integration-test account',
+    testAccountConfirmed: true,
+    confirmation: `MARK TEST USER ${id}`
+  });
+  const requestMark = (id, { cookie = freshAdmin, body = validMarkBody(id), headers = {} } = {}) => fetch(
+    `${baseUrl}/api/admin/accounts/${id}/mark-test-account`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: JSON.stringify(body)
+    }
+  );
+
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    method: 'DELETE', headers: { cookie: freshAdmin }
+  })).status, 404, 'the generic account DELETE endpoint stays absent');
+  assert.equal((await requestDelete(target.user_id, { cookie: '' })).status, 401);
+  assert.equal((await requestDelete(target.user_id, {
+    cookie: `sge_session=${signSession(organizerId)}`
+  })).status, 403);
+
+  const unmarkedDelete = await requestDelete(target.user_id);
+  assert.equal(unmarkedDelete.status, 409);
+  const unmarkedPayload = await unmarkedDelete.json();
+  assert.equal(unmarkedPayload.error, 'account_not_deletable');
+  assert.equal(unmarkedPayload.deletion.isTestAccount, false);
+  assert.equal(unmarkedPayload.deletion.canMarkTestAccount, true);
+  assert.ok(unmarkedPayload.deletion.blockers.some(blocker => blocker.code === 'not_designated_test_account'));
+
+  const markWithoutFreshProof = await requestMark(target.user_id, { cookie: adminSession });
+  assert.equal(markWithoutFreshProof.status, 403);
+  assert.equal((await markWithoutFreshProof.json()).error, 'identity_step_up_required');
+  const markWrongPhrase = await requestMark(target.user_id, {
+    body: { ...validMarkBody(target.user_id), confirmation: `MARK TEST USER ${target.user_id + 1}` }
+  });
+  assert.equal(markWrongPhrase.status, 400);
+  const markUnchecked = await requestMark(target.user_id, {
+    body: { ...validMarkBody(target.user_id), testAccountConfirmed: false }
+  });
+  assert.equal(markUnchecked.status, 400);
+  const marked = await requestMark(target.user_id);
+  assert.equal(marked.status, 200);
+  assert.deepEqual(await marked.json(), { ok: true, isTestAccount: true });
+  const durableDesignation = (await pool.query(
+    `SELECT is_test_account,test_account_marked_at,test_account_marked_by_user_id,
+            test_account_mark_reason
+       FROM users WHERE id=$1`, [target.user_id]
+  )).rows[0];
+  assert.equal(durableDesignation.is_test_account, true);
+  assert.ok(durableDesignation.test_account_marked_at);
+  assert.equal(durableDesignation.test_account_marked_by_user_id, admin.user_id);
+  assert.equal(durableDesignation.test_account_mark_reason, validMarkBody(target.user_id).reason);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='test_account_designated'`, [target.user_id]
+  )).rows[0].count, 1);
+
+  const withoutFreshProof = await requestDelete(target.user_id, { cookie: adminSession });
+  assert.equal(withoutFreshProof.status, 403);
+  assert.equal((await withoutFreshProof.json()).error, 'identity_step_up_required');
+
+  const wrongPhrase = await requestDelete(target.user_id, {
+    body: { ...validBody(target.user_id), confirmation: `DELETE USER ${target.user_id + 1}` }
+  });
+  assert.equal(wrongPhrase.status, 400);
+  const unchecked = await requestDelete(target.user_id, {
+    body: { ...validBody(target.user_id), testAccountConfirmed: false }
+  });
+  assert.equal(unchecked.status, 400);
+  const shortReason = await requestDelete(target.user_id, {
+    body: { ...validBody(target.user_id), reason: 'testing' }
+  });
+  assert.equal(shortReason.status, 400);
+  assert.equal((await requestDelete(target.user_id, {
+    headers: { origin: 'https://attacker.example' }
+  })).status, 403);
+
+  const selfDelete = await requestDelete(admin.user_id, { body: validBody(admin.user_id) });
+  assert.ok([400, 409].includes(selfDelete.status));
+  const adminDelete = await requestDelete(otherAdmin.user_id, { body: validBody(otherAdmin.user_id) });
+  assert.ok([400, 409].includes(adminDelete.status));
+
+  assert.deepEqual((await pool.query(
+    'SELECT account_status,name,is_test_account FROM users WHERE id=$1', [target.user_id]
+  )).rows[0], { account_status: 'active', name: 'Delete Guard Target', is_test_account: true });
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
+  )).rows[0].count, 0, 'failed guard checks never create a deletion audit');
+});
+
+test('test-account deletion recomputes every protected-property blocker on the server', async () => {
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('delete-blocker-admin@example.test','Delete Blocker Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const target = (await pool.query(
+    `INSERT INTO organizers
+       (email,name,org_name,public_slug,plan,sms_credits,last_login_at)
+     VALUES ('delete-blocked@example.test','Blocked Test Account','Blocked Test Account',
+             'blocked-test-account','pro',9,NOW()) RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `UPDATE users
+        SET is_test_account=TRUE,test_account_marked_at=NOW(),
+            test_account_marked_by_user_id=$2,
+            test_account_mark_reason='Protected-data integration test'
+      WHERE id=$1`,
+    [target.user_id, admin.user_id]
+  );
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary,revoked_at)
+     VALUES ($1,'email','old-delete-blocked@example.test','old-delete-blocked@example.test',
+             NOW(),'account','integration_test',FALSE,NOW())`,
+    [target.user_id]
+  );
+  await pool.query(
+    `INSERT INTO account_phone_credentials
+       (organizer_id,phone_e164,verified_at,revoked_at)
+     VALUES ($1,'+14155550991',NOW(),NOW())`,
+    [target.id]
+  );
+  await pool.query(
+    `INSERT INTO follower_optouts (organizer_id,email)
+     VALUES ($1,'delete-blocked@example.test')`,
+    [organizerId]
+  );
+
+  const commerceEvent = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,
+        admission_type,status,commerce_event_id)
+     VALUES ($1,'blocked-commerce-event','Blocked Commerce Event','2031-02-03','20:00',
+             'Commerce Hall','public','silver_glider_tickets','published','commerce_blocked_123')
+     RETURNING id`, [target.id]
+  )).rows[0];
+  const purchase = (await pool.query(
+    `INSERT INTO sms_credit_purchases
+       (reference,organizer_id,pack_key,credits,amount_cents,status,completed_at)
+     VALUES ('blocked-delete-purchase',$1,'starter',100,500,'completed',NOW()) RETURNING id`,
+    [target.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO sms_credit_transactions
+       (organizer_id,purchase_id,kind,credits_delta,balance_after,amount_cents_delta,
+        currency,provider,external_key)
+     VALUES ($1,$2,'purchase',100,100,500,'USD','paypal','blocked-delete-ledger')`,
+    [target.id, purchase.id]
+  );
+  await pool.query(
+    `INSERT INTO sms_notification_batches
+       (event_id,organizer_id,kind,message_body,segment_count,recipient_count,
+        credit_cost,status)
+     VALUES ($1,$2,'event_tomorrow','Blocked SMS history',1,1,1,'sent')`,
+    [commerceEvent.id, target.id]
+  );
+  await pool.query(
+    `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,follower_user_id)
+     VALUES ($1,$2,$3)`, [organizerId, target.id, organizerId]
+  );
+  await pool.query(
+    `INSERT INTO user_identity_conflicts
+       (identity_type,normalized_value,candidate_user_id,conflicting_user_id,
+        verification_source,source_record_id,reason)
+     VALUES ('email','delete-blocked@example.test',$1,$2,'integration_test',991,'already_claimed')`,
+    [target.user_id, admin.user_id]
+  );
+  await pool.query(
+    `INSERT INTO admin_account_support_notes (target_user_id,author_user_id,note)
+     VALUES ($1,$2,'Keep this account for a real support investigation')`,
+    [target.user_id, admin.user_id]
+  );
+  const externalEvent = await createEvent({
+    slug: 'external-contributed-photo-blocker',
+    title: 'External Contributed Photo Blocker'
+  });
+  const externalRsvp = await createRsvp(externalEvent.id, {
+    first_name: 'Blocked', last_name: 'Legacy RSVP',
+    email: 'delete-blocked@example.test', account_id: null, user_id: null
+  });
+  const externalSession = (await pool.query(
+    `INSERT INTO guest_sessions
+       (identity_id,user_id,token_hash,display_first_name,display_name,verified_at,
+        verified_event_id,expires_at)
+     VALUES ($1,NULL,'blocked-external-session','Blocked','Blocked Test Account',NOW(),$2,
+             NOW() + INTERVAL '1 day') RETURNING id`,
+    [target.id, externalEvent.id]
+  )).rows[0];
+  const externalMessage = (await pool.query(
+    `INSERT INTO message_log
+       (event_id,recipient,recipient_user_id,message_type,channel,status)
+     VALUES ($1,'delete-blocked@example.test',NULL,'previous_guest_invite','email','pending')
+     RETURNING id`,
+    [externalEvent.id]
+  )).rows[0];
+  const externalInvitation = (await pool.query(
+    `INSERT INTO guest_invitation_tokens
+       (message_log_id,target_event_id,identity_id,user_id,token_hash)
+     VALUES ($1,$2,$3,NULL,'blocked-external-invitation') RETURNING id`,
+    [externalMessage.id, externalEvent.id, target.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO event_photos
+       (event_id,cloudinary_id,image_url,contributor_name,uploader_user_id)
+     VALUES ($1,'blocked-external-photo','https://images.example.test/blocked.jpg',
+             'Blocked Test Account',$2)`,
+    [externalEvent.id, target.user_id]
+  );
+
+  const cookie = cookieHeader(
+    `sge_session=${signSession(admin.id)}`,
+    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
+  );
+  const blocked = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({
+      reason: 'This request must be blocked by protected account history',
+      testAccountConfirmed: true,
+      confirmation: `DELETE USER ${target.user_id}`
+    })
+  });
+  assert.equal(blocked.status, 409);
+  const payload = await blocked.json();
+  assert.equal(payload.error, 'account_not_deletable');
+  assert.equal(payload.deletion.allowed, false);
+  assert.equal(payload.deletion.confirmationText, `DELETE USER ${target.user_id}`);
+  assert.equal(payload.deletion.requiresFreshVerification, true);
+  const blockers = payload.deletion.blockers.map(item => typeof item === 'string' ? item : item.code);
+  for (const expected of [
+    'non_free_plan',
+    'sms_credit_balance',
+    'sms_financial_history',
+    'sms_delivery_history',
+    'commerce_events',
+    'active_followers',
+    'unresolved_identity_conflicts',
+    'support_notes',
+    'external_contributed_photos',
+    'historical_identities',
+    'external_optout_history',
+    'external_event_relationships',
+    'external_delivery_history'
+  ]) assert.ok(blockers.includes(expected), `missing deletion blocker: ${expected}`);
+
+  assert.deepEqual((await pool.query(
+    'SELECT account_status,name FROM users WHERE id=$1', [target.user_id]
+  )).rows[0], { account_status: 'active', name: 'Blocked Test Account' });
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
+  )).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [externalRsvp.id])).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_sessions WHERE id=$1', [externalSession.id])).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_invitation_tokens WHERE id=$1', [externalInvitation.id])).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM message_log WHERE id=$1', [externalMessage.id])).rows[0].count, 1);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2', [organizerId, 'delete-blocked@example.test'])).rows[0].count, 1);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
+  )).rows[0].count, 0);
+});
+
+test('eligible test-account deletion purges disposable property and leaves only an audited canonical tombstone', async () => {
+  resetRateLimits();
+  const admin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('delete-success-admin@example.test','Delete Success Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  admin.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  )).rows[0].user_id;
+  const targetEmail = 'disposable-test-account@example.test';
+  const target = (await pool.query(
+    `INSERT INTO organizers
+       (email,name,org_name,public_slug,bio,plan,sms_credits,last_login_at)
+     VALUES ($1,'Disposable Test Account','Disposable Test Host','disposable-test-host',
+             'Temporary profile data','free',0,NOW()) RETURNING id`, [targetEmail]
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'email',$2,$2,NOW(),'account','integration_test',TRUE),
+            ($1,'phone','+14155550171','+14155550171',NOW(),
+             'account','integration_test',TRUE)`,
+    [target.user_id, targetEmail]
+  );
+
+  const ownedEvent = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,cover_image_url,
+        admission_type,status)
+     VALUES ($1,'disposable-owned-event','Disposable Owned Event','2031-03-04','19:00',
+             'Test Hall','public',
+             'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/event-photos/shared-public-id.jpg',
+             'free_rsvp','published') RETURNING id`,
+    [target.id]
+  )).rows[0];
+  const ownedRsvp = await createRsvp(ownedEvent.id, {
+    first_name: 'Disposable', last_name: 'Account', email: targetEmail,
+    account_id: target.id, user_id: target.user_id
+  });
+  const survivingSharedReference = await createEvent({
+    slug: 'surviving-shared-media-reference', title: 'Surviving Shared Media Reference',
+    cover_image_url: 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/event-photos/shared-public-id.jpg'
+  });
+  await pool.query(
+    `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,follower_user_id)
+     VALUES ($1,$2,$3)`, [target.id, organizerId, target.user_id]
+  );
+  await pool.query(
+    `INSERT INTO event_photos
+       (event_id,cloudinary_id,image_url,contributor_name,uploader_user_id)
+     VALUES ($1,'sg-events-dev/event-photos/shared-public-id',
+             'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/event-photos/shared-public-id.jpg',
+             'Disposable Test Account',$2),
+            ($1,'sg-events-dev/event-photos/disposable-unique-photo',
+             'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/event-photos/disposable-unique-photo.jpg',
+             'Disposable Test Account',$2)`,
+    [ownedEvent.id, target.user_id]
+  );
+
+  const pendingLogin = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: targetEmail, next: '/dashboard' })
+  });
+  assert.equal(pendingLogin.status, 200);
+  const pendingToken = tokenFromLink(lastDevEmail(targetEmail, 'magic_link').link);
+  await pool.query(
+    `UPDATE magic_link_tokens SET target_organizer_id=$2
+      WHERE id=(SELECT id FROM magic_link_tokens WHERE LOWER(email)=$1 ORDER BY id DESC LIMIT 1)`,
+    [targetEmail, target.id]
+  );
+  const oldSession = `sge_session=${signSession(target.id, Date.now() - 5000)}`;
+  const oldPhotoGrant = `sge_photo=${signPhotoAccess(target.id)}`;
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: oldSession }
+  })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/me`, {
+    headers: { cookie: oldPhotoGrant }
+  })).status, 200);
+
+  const reason = 'Remove the completed disposable integration-test account';
+  const adminCookie = cookieHeader(
+    `sge_session=${signSession(admin.id)}`,
+    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
+  );
+  const beforeDesignation = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(beforeDesignation.status, 200);
+  const beforeDesignationState = (await beforeDesignation.json()).deletion;
+  assert.equal(beforeDesignationState.allowed, false);
+  assert.equal(beforeDesignationState.isTestAccount, false);
+  assert.equal(beforeDesignationState.canMarkTestAccount, true, JSON.stringify(beforeDesignationState.blockers));
+  assert.equal(beforeDesignationState.designationConfirmationText, `MARK TEST USER ${target.user_id}`);
+
+  const designationReason = 'Confirmed disposable integration fixture';
+  const designated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/mark-test-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({
+      reason: designationReason,
+      testAccountConfirmed: true,
+      confirmation: `MARK TEST USER ${target.user_id}`
+    })
+  });
+  assert.equal(designated.status, 200);
+  assert.deepEqual(await designated.json(), { ok: true, isTestAccount: true });
+  assert.deepEqual((await pool.query(
+    `SELECT is_test_account,test_account_marked_by_user_id,test_account_mark_reason
+       FROM users WHERE id=$1`, [target.user_id]
+  )).rows[0], {
+    is_test_account: true,
+    test_account_marked_by_user_id: admin.user_id,
+    test_account_mark_reason: designationReason
+  });
+
+  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', cookie: adminCookie,
+      'user-agent': 'Silver Glider Test Deletion Integration'
+    },
+    body: JSON.stringify({
+      reason,
+      testAccountConfirmed: true,
+      confirmation: `DELETE USER ${target.user_id}`
+    })
+  });
+  assert.equal(deleted.status, 200);
+  const deletedPayload = await deleted.json();
+  assert.equal(deletedPayload.ok, true);
+  assert.equal(deletedPayload.deletedUserId, Number(target.user_id));
+  assert.equal(deletedPayload.mediaCleanupQueued, 1);
+
+  const tombstone = (await pool.query(
+    `SELECT id,name,account_status,deleted_at,deleted_by_user_id,deletion_reason
+       FROM users WHERE id=$1`, [target.user_id]
+  )).rows[0];
+  assert.equal(tombstone.id, target.user_id);
+  assert.equal(tombstone.name, null);
+  assert.equal(tombstone.account_status, 'deleted');
+  assert.ok(tombstone.deleted_at);
+  assert.equal(tombstone.deleted_by_user_id, admin.user_id);
+  assert.equal(tombstone.deletion_reason, reason);
+
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM user_identities WHERE user_id=$1', [target.user_id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM magic_link_tokens WHERE LOWER(email)=$1', [targetEmail]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM rsvps
+      WHERE id=$1 OR account_id=$2 OR user_id=$3`,
+    [ownedRsvp.id, target.id, target.user_id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_follows
+      WHERE follower_organizer_id=$1 OR host_organizer_id=$1 OR follower_user_id=$2`,
+    [target.id, target.user_id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM event_photos
+      WHERE event_id=$1 OR uploader_user_id=$2`, [ownedEvent.id, target.user_id]
+  )).rows[0].count, 0);
+  const mediaJobs = (await pool.query(
+    `SELECT public_id,status,source_kind,source_user_id
+       FROM managed_media_deletion_jobs
+      WHERE source_user_id=$1 ORDER BY public_id`,
+    [target.user_id]
+  )).rows;
+  assert.deepEqual(mediaJobs, [{
+    public_id: 'sg-events-dev/event-photos/disposable-unique-photo',
+    status: 'pending',
+    source_kind: 'test_account_deletion',
+    source_user_id: target.user_id
+  }]);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM managed_media_deletion_jobs
+      WHERE source_user_id=$1 AND public_id='sg-events-dev/event-photos/shared-public-id'`,
+    [target.user_id]
+  )).rows[0].count, 0, 'a public ID still referenced by another account is never queued');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM events
+      WHERE id=$1 AND cover_image_url LIKE '%/shared-public-id.jpg'`,
+    [survivingSharedReference.id]
+  )).rows[0].count, 1, 'the other account retains its shared media reference');
+
+  assert.equal((await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: oldSession }
+  })).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/me`, {
+    headers: { cookie: oldPhotoGrant }
+  })).status, 401);
+  const oldLink = await fetch(`${baseUrl}/auth/verify?token=${pendingToken}`, { redirect: 'manual' });
+  assert.equal(oldLink.status, 302);
+  assert.match(oldLink.headers.get('location') || '', /(?:error=expired|expired=1)/);
+
+  const hiddenFromList = await fetch(
+    `${baseUrl}/api/admin/accounts?q=${encodeURIComponent(targetEmail)}`,
+    { headers: { cookie: adminCookie } }
+  );
+  assert.equal(hiddenFromList.status, 200);
+  assert.deepEqual((await hiddenFromList.json()).accounts, []);
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: adminCookie }
+  })).status, 404);
+
+  const actionHistory = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE target_user_id=$1 ORDER BY id`, [target.user_id]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(actionHistory, ['test_account_designated', 'test_account_deleted']);
+  const audits = (await pool.query(
+    `SELECT actor_user_id,target_user_id,action_type,reason,before_state,after_state,
+            metadata,user_agent
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+    [target.user_id]
+  )).rows;
+  assert.equal(audits.length, 1);
+  assert.equal(audits[0].actor_user_id, admin.user_id);
+  assert.equal(audits[0].reason, reason);
+  assert.equal(audits[0].after_state.status, 'deleted');
+  assert.equal(audits[0].user_agent, 'Silver Glider Test Deletion Integration');
+  const recordedAudit = JSON.stringify(audits[0]);
+  assert.ok(!recordedAudit.includes(targetEmail));
+  assert.ok(!recordedAudit.includes('+14155550171'));
+  assert.ok(!recordedAudit.includes(pendingToken));
+  await assert.rejects(
+    pool.query(
+      `UPDATE admin_account_audit_log SET reason='tampered'
+        WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+      [target.user_id]
+    ),
+    /append-only|immutable|cannot be updated/i
+  );
+  assert.equal((await pool.query(
+    `SELECT reason FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+    [target.user_id]
+  )).rows[0].reason, reason);
 });
 
 test('admin account invitations create no identity until the recipient claims the one-use link', async () => {

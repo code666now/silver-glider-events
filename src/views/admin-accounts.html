@@ -203,6 +203,21 @@
           </div>
           <ol class="accounts-timeline" id="account-audit"></ol>
         </section>
+
+        <section class="accounts-detail-section accounts-danger-zone" id="account-delete-zone" aria-labelledby="account-delete-title" hidden>
+          <div class="accounts-section-heading-row">
+            <div>
+              <p class="accounts-danger-kicker">Danger zone</p>
+              <h3 id="account-delete-title">Delete test account</h3>
+              <p id="account-delete-description">This permanently removes eligible test data. Real, paid, or operational accounts are blocked automatically.</p>
+            </div>
+          </div>
+          <div class="accounts-delete-readiness" id="account-delete-readiness" role="status"></div>
+          <div class="accounts-delete-summary" id="account-delete-summary" aria-label="Data that will be deleted"></div>
+          <ul class="accounts-delete-blockers" id="account-delete-blockers" aria-label="Reasons deletion is unavailable" hidden></ul>
+          <p class="accounts-delete-verification-note" id="account-delete-verification-note" hidden>A fresh email confirmation is required before deletion.</p>
+          <button class="sg-btn sg-btn-danger accounts-delete-button" id="delete-test-account" type="button">Delete test account permanently</button>
+        </section>
       </div>
     </article>
   </dialog>
@@ -248,6 +263,55 @@
         <button class="sg-btn sg-btn-primary" id="send-invitation" type="submit">Send secure invitation</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="accounts-action-dialog accounts-delete-dialog" id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description">
+    <article class="accounts-action-card accounts-delete-card">
+      <div id="delete-account-review">
+        <p class="accounts-eyebrow accounts-danger-kicker" id="delete-account-kicker">Permanent deletion</p>
+        <h2 id="delete-account-title">Delete this test account?</h2>
+        <p class="accounts-action-description" id="delete-account-description">The account and its eligible test data will be removed. A minimal audit record keeps the user ID, administrator, date, and reason.</p>
+        <div class="accounts-delete-dialog-summary" id="delete-account-dialog-summary"></div>
+        <form id="delete-account-form">
+          <label class="accounts-check-row accounts-delete-confirm-row" for="delete-account-test-confirmed">
+            <input id="delete-account-test-confirmed" type="checkbox" required>
+            <span><strong id="delete-account-attestation-title">I confirm this is test data</strong><small id="delete-account-attestation-help">Do not continue for a real customer, paid account, or account with records that must be retained.</small></span>
+          </label>
+          <div class="sg-field">
+            <label for="delete-account-reason" id="delete-account-reason-label">Reason for deletion</label>
+            <textarea class="sg-textarea" id="delete-account-reason" minlength="8" maxlength="500" placeholder="Why is this test account being removed?" required></textarea>
+            <p class="accounts-field-help">Saved permanently in the minimal audit record.</p>
+          </div>
+          <div class="sg-field">
+            <label for="delete-account-confirmation">Type <code id="delete-account-required-text">DELETE USER</code> to confirm</label>
+            <input class="sg-input accounts-delete-confirmation-input" id="delete-account-confirmation" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+          </div>
+          <p class="accounts-form-error" id="delete-account-error" role="alert"></p>
+          <div class="accounts-dialog-actions">
+            <button class="sg-btn sg-btn-ghost" id="cancel-delete-account" type="button">Cancel</button>
+            <button class="sg-btn sg-btn-danger" id="confirm-delete-test-account" type="submit">Delete permanently</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="delete-account-step-up" hidden>
+        <p class="accounts-eyebrow">Security check</p>
+        <h2 id="delete-account-step-up-title">Confirm it’s you</h2>
+        <p class="accounts-action-description" id="delete-account-step-up-description">Enter the six-digit code sent to your primary email before deleting this account.</p>
+        <form id="delete-account-step-up-form">
+          <div class="sg-field">
+            <label for="delete-account-code">Confirmation code</label>
+            <input class="sg-input accounts-delete-code" id="delete-account-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" aria-describedby="delete-account-code-help" required>
+            <p class="accounts-field-help" id="delete-account-code-help">Sending a fresh code…</p>
+          </div>
+          <p class="accounts-form-error" id="delete-account-step-up-error" role="alert"></p>
+          <div class="accounts-dialog-actions">
+            <button class="sg-btn sg-btn-ghost" id="cancel-delete-step-up" type="button">Cancel</button>
+            <button class="sg-btn sg-btn-danger" id="verify-delete-account" type="submit">Verify and delete</button>
+          </div>
+        </form>
+      </div>
+    </article>
   </dialog>
 
   <script src="/js/api.js"></script>

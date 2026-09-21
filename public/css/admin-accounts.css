@@ -113,6 +113,28 @@
 .accounts-timeline-item p { color:var(--sg-text-faint);font-size:10px;line-height:1.55; }
 .accounts-muted-empty { padding:16px;border:1px dashed var(--sg-border);border-radius:14px;color:var(--sg-text-faint);font-size:11px;text-align:center; }
 
+.accounts-danger-zone { margin-top:28px;padding:22px;border:1px solid rgba(224,82,82,.3);border-radius:18px;background:rgba(224,82,82,.035); }
+.accounts-danger-zone.accounts-detail-section { border-bottom:1px solid rgba(224,82,82,.3); }
+.accounts-danger-kicker { margin:0 0 6px;color:#ef7777;font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase; }
+.accounts-delete-readiness { display:grid;gap:3px;margin-bottom:14px;padding:13px 14px;border:1px solid var(--sg-border-soft);border-radius:14px;background:rgba(255,255,255,.015); }
+.accounts-delete-readiness strong,.accounts-delete-readiness span { display:block; }
+.accounts-delete-readiness strong { font-size:12px; }
+.accounts-delete-readiness span { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
+.accounts-delete-readiness.eligible { border-color:rgba(121,201,138,.24); }
+.accounts-delete-readiness.eligible strong { color:#86d496; }
+.accounts-delete-readiness.blocked { border-color:rgba(224,82,82,.26); }
+.accounts-delete-readiness.blocked strong { color:#ef7777; }
+.accounts-delete-summary,.accounts-delete-dialog-summary { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px; }
+.accounts-delete-summary[hidden],.accounts-delete-dialog-summary[hidden] { display:none; }
+.accounts-delete-summary > span,.accounts-delete-dialog-summary > span { min-width:0;padding:10px;border:1px solid var(--sg-border-soft);border-radius:12px;color:var(--sg-text-faint);font-size:9px;line-height:1.35;text-align:center; }
+.accounts-delete-summary strong,.accounts-delete-dialog-summary strong { display:block;margin-bottom:2px;color:var(--sg-text);font-size:13px;overflow-wrap:anywhere; }
+.accounts-delete-blockers { display:grid;gap:7px;margin:0 0 16px;padding:13px 15px 13px 31px;border:1px solid rgba(224,82,82,.2);border-radius:14px;color:var(--sg-text-dim);font-size:10px;line-height:1.5; }
+.accounts-delete-blockers[hidden] { display:none; }
+.accounts-delete-verification-note { margin:0 0 14px;color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
+.accounts-delete-verification-note[hidden] { display:none; }
+.accounts-delete-button { min-height:44px;padding:10px 17px;font-size:12px; }
+.accounts-delete-button:disabled { border-color:var(--sg-border);color:var(--sg-text-faint);background:transparent;cursor:not-allowed;opacity:.72; }
+
 .accounts-action-dialog { width:min(520px,calc(100vw - 32px));margin:auto; }
 .accounts-action-card { padding:26px;border:1px solid var(--sg-border);border-radius:22px;background:#151517;box-shadow:var(--sg-shadow); }
 .accounts-action-card h2 { margin-bottom:8px;font-size:26px; }
@@ -129,6 +151,15 @@
 .accounts-check-row strong,.accounts-check-row small { display:block; }
 .accounts-check-row strong { margin-bottom:2px;font-size:12px; }
 .accounts-check-row small { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
+.accounts-delete-dialog { width:min(580px,calc(100vw - 32px)); }
+.accounts-delete-card { max-height:min(90dvh,800px);overflow:auto;overscroll-behavior:contain; }
+.accounts-delete-card .accounts-delete-dialog-summary { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.accounts-delete-confirm-row { border-color:rgba(224,82,82,.25);background:rgba(224,82,82,.025); }
+.accounts-delete-confirm-row input { accent-color:#df5c5c; }
+.accounts-delete-card code { padding:2px 5px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--sg-text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;overflow-wrap:anywhere; }
+.accounts-delete-confirmation-input,.accounts-delete-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.025em; }
+.accounts-delete-code { font-size:21px;letter-spacing:.18em; }
+.accounts-delete-card [hidden] { display:none; }
 
 @media (max-width:900px) {
   .accounts-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -160,6 +191,8 @@
   .accounts-identity-row { min-height:74px;padding:14px 15px; }
   .accounts-support-actions { display:grid; }
   .accounts-support-actions .sg-btn { min-height:52px;width:100%; }
+  .accounts-danger-zone { padding:20px; }
+  .accounts-delete-button { min-height:52px;width:100%; }
 }
 
 @media (max-width:560px) {
@@ -186,9 +219,12 @@
   .accounts-detail-header .accounts-status-badge { max-width:90px;overflow:hidden;text-overflow:ellipsis; }
   .accounts-action-dialog { inset:auto 0 0;width:100%;margin:auto 0 0; }
   .accounts-action-card { padding:24px 22px calc(22px + env(safe-area-inset-bottom));border-width:1px 0 0;border-radius:24px 24px 0 0; }
+  #delete-account-dialog .accounts-delete-card { max-height:calc(100dvh - env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom)); }
+  .accounts-delete-summary,.accounts-delete-dialog-summary,.accounts-delete-card .accounts-delete-dialog-summary { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .accounts-dialog-actions { display:grid;grid-template-columns:1fr; }
   .accounts-dialog-actions .sg-btn { min-height:52px;width:100%; }
   .accounts-dialog-actions .sg-btn-primary,.accounts-dialog-actions .sg-btn-danger { grid-row:1; }
+  #confirm-delete-test-account { min-height:52px; }
 }
 
 @media (prefers-reduced-motion:reduce) {

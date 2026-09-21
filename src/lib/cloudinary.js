@@ -1,7 +1,8 @@
 const cloudinary = require('cloudinary').v2;
 const { Readable } = require('stream');
 
-const configured = !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
+const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+const configured = !!(cloudName && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 const coverFolder = process.env.CLOUDINARY_COVER_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/covers' : 'sg-events-dev/covers');
 const flyerFolder = process.env.CLOUDINARY_FLYER_FOLDER ||
@@ -159,7 +160,56 @@ async function deleteEventPhoto(publicId) {
   await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
 }
 
+const managedFolders = [
+  coverFolder,
+  flyerFolder,
+  hostLogoFolder,
+  hostHeaderFolder,
+  accountAvatarFolder,
+  eventPhotoFolder,
+  vibePhotoFolder
+].map(folder => String(folder || '').replace(/^\/+|\/+$/g, '')).filter(Boolean);
+
+function managedPublicIdFromUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:' || url.hostname !== 'res.cloudinary.com') return null;
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (!cloudName || decodeURIComponent(segments[0] || '') !== cloudName) return null;
+    if (segments[1] !== 'image') return null;
+    const uploadIndex = segments.indexOf('upload');
+    if (uploadIndex < 0) return null;
+    const afterUpload = segments.slice(uploadIndex + 1);
+    const versionIndex = afterUpload.findIndex(segment => /^v\d+$/.test(segment));
+    const assetSegments = versionIndex >= 0 ? afterUpload.slice(versionIndex + 1) : afterUpload;
+    const decoded = assetSegments.map(segment => decodeURIComponent(segment)).join('/');
+    const publicId = decoded.replace(/\.[^/.]+$/, '');
+    return isManagedPublicId(publicId) ? publicId : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function isManagedPublicId(value) {
+  const publicId = String(value || '').replace(/^\/+|\/+$/g, '');
+  if (!publicId || publicId.includes('..') || /[\\?#]/.test(publicId)) return false;
+  return managedFolders.some(folder => publicId.startsWith(`${folder}/`));
+}
+
+async function deleteManagedPublicId(value) {
+  const publicId = String(value || '').replace(/^\/+|\/+$/g, '');
+  if (!configured || !isManagedPublicId(publicId)) return false;
+  await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+  return true;
+}
+
+async function deleteManagedImageUrl(value) {
+  const publicId = managedPublicIdFromUrl(value);
+  return deleteManagedPublicId(publicId);
+}
+
 module.exports = {
   uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar,
-  uploadEventPhoto, uploadVibePhoto, deleteEventPhoto, isManagedFlyerUrl, isManagedVibePhotoUrl, configured
+  uploadEventPhoto, uploadVibePhoto, deleteEventPhoto, deleteManagedImageUrl, deleteManagedPublicId,
+  isManagedFlyerUrl, isManagedVibePhotoUrl, isManagedPublicId, managedPublicIdFromUrl, configured
 };

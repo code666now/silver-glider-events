@@ -2,6 +2,17 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.121
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Guarded test-account deletion
+
+* The Accounts & Support console now offers permanent deletion only after a separate, audited test-account designation and only for narrowly eligible free test accounts. Self-deletion, administrators, paid or SMS-funded accounts, financial or delivery history, active followers or text consent, unresolved identity conflicts, support history, third-party event activity, and contributed content all block the action.
+* Designation and deletion each require fresh administrator email verification, an explicit test-data attestation, a reason, and an exact account-specific confirmation phrase. Eligibility is recomputed under serializable database locks immediately before each change so a stale browser cannot bypass a new blocker.
+* Eligible account-owned events, RSVPs, follows, sessions, verified identities, and scoped tokens are removed. Managed media is committed to a durable retry queue and rechecked for surviving references before remote deletion. The canonical user becomes a PII-minimized, non-sign-in tombstone retaining only the numeric user ID, operator, date, and reason required for the permanent audit trail.
+* Deleted accounts disappear from normal support search and detail responses. The responsive Danger Zone explains blockers before confirmation and becomes an accessible bottom sheet on phones.
+
 ## 1.0.120
 
 Released September 20, 2026. Built and deployed by Codex.
