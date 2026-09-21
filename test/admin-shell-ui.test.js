@@ -20,7 +20,7 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
     assert.doesNotMatch(html, />The Line</);
   }
 
-  for (const destination of ['/admin', '/admin/accounts', '/admin/hosts', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
+  for (const destination of ['/admin', '/admin/accounts', '/admin/done-for-you', '/admin/hosts', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
     assert.equal(shell.includes(`'${destination}'`), true, `${destination} should be in the workspace sidebar`);
   }
   assert.doesNotMatch(shell, /\/admin\/line/);

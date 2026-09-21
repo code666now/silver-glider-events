@@ -48,3 +48,8 @@ async function loadTeamMetric() {
 Promise.allSettled([loadAccountMetrics(), loadTeamMetric()]).then(() => {
   overview.metrics.setAttribute('aria-busy', 'false');
 });
+
+window.adminShellSession.then(session => {
+  const shortcut = document.getElementById('overview-done-for-you');
+  if (shortcut) shortcut.hidden = session?.capabilities?.manageDoneForYou !== true;
+}).catch(() => {});

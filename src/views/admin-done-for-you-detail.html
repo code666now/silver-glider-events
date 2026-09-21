@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Client — Done For You — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-done-for-you.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="done-for-you">
+  <main class="sg-shell dfy-shell" data-admin-section="done-for-you">
+    <nav id="nav"></nav>
+
+    <a class="dfy-back-link" href="/admin/done-for-you" aria-label="Back to Done For You clients"><span aria-hidden="true">←</span> Clients</a>
+
+    <div id="client-detail-loading" class="dfy-detail-loading" aria-busy="true">
+      <span class="sg-skeleton dfy-detail-title-skeleton" aria-hidden="true"></span>
+      <span class="sg-skeleton dfy-detail-copy-skeleton" aria-hidden="true"></span>
+      <div class="admin-skeleton-card dfy-detail-card-skeleton" aria-hidden="true"></div>
+    </div>
+
+    <div id="client-detail" hidden>
+      <header class="dfy-detail-head">
+        <div>
+          <p class="dfy-eyebrow">Done For You client</p>
+          <div class="dfy-title-row">
+            <h1 class="sg-page-title" id="detail-host-name">Host Page</h1>
+            <span class="dfy-status-pill" id="detail-claim-badge">Unclaimed</span>
+          </div>
+          <p class="sg-page-sub" id="detail-owner-summary"></p>
+        </div>
+        <div class="dfy-detail-head-actions" id="detail-head-actions"></div>
+      </header>
+
+      <section class="dfy-detail-grid">
+        <article class="dfy-panel dfy-owner-panel" aria-labelledby="owner-title">
+          <div class="dfy-panel-head">
+            <div><p class="dfy-eyebrow">Ownership</p><h2 id="owner-title">Account owner</h2></div>
+            <a class="dfy-text-link" id="open-account-link" href="/admin/accounts">Open account</a>
+          </div>
+          <dl class="dfy-facts" id="owner-facts"></dl>
+          <div class="dfy-contact-list" id="owner-contacts" aria-label="Account contacts"></div>
+        </article>
+
+        <article class="dfy-panel dfy-claim-panel" aria-labelledby="claim-title">
+          <div class="dfy-panel-head">
+            <div><p class="dfy-eyebrow">Recipient handoff</p><h2 id="claim-title">Claim access</h2></div>
+          </div>
+          <div id="claim-state"></div>
+          <p class="dfy-action-status" id="claim-status" role="status" aria-live="polite"></p>
+        </article>
+      </section>
+
+      <section class="dfy-panel dfy-profile-panel" aria-labelledby="host-profile-title">
+        <div class="dfy-panel-head">
+          <div>
+            <p class="dfy-eyebrow">Public presence</p>
+            <h2 id="host-profile-title">Host Page</h2>
+            <p>Support can prepare the public profile. This does not verify the owner’s email or mobile number.</p>
+          </div>
+          <a class="dfy-text-link" id="open-host-page" href="#" target="_blank" rel="noopener" hidden>View Host Page</a>
+        </div>
+
+        <div class="dfy-media-grid">
+          <article class="dfy-media-card">
+            <div class="dfy-media-preview dfy-logo-preview" id="host-logo-preview"><span>No logo</span></div>
+            <div><strong>Host logo</strong><p>Square artwork works best.</p></div>
+            <button class="sg-btn sg-btn-ghost" id="upload-logo-button" type="button">Upload logo</button>
+            <input id="upload-logo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+          </article>
+          <article class="dfy-media-card">
+            <div class="dfy-media-preview dfy-header-preview" id="host-header-preview"><span>No header</span></div>
+            <div><strong>Header image</strong><p>Use a wide event or brand image.</p></div>
+            <button class="sg-btn sg-btn-ghost" id="upload-header-button" type="button">Upload header</button>
+            <input id="upload-header-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+          </article>
+        </div>
+        <p class="dfy-action-status" id="media-status" role="status" aria-live="polite"></p>
+
+        <form id="host-profile-form" class="dfy-profile-form">
+          <div class="sg-field">
+            <label for="host-name">Host name</label>
+            <input class="sg-input" id="host-name" maxlength="100" required>
+          </div>
+          <div class="sg-field">
+            <label for="host-website">Website</label>
+            <input class="sg-input" id="host-website" type="url" maxlength="500" placeholder="https://">
+          </div>
+          <div class="sg-field">
+            <label for="host-instagram">Instagram</label>
+            <input class="sg-input" id="host-instagram" maxlength="500" placeholder="@handle">
+          </div>
+          <div class="sg-field">
+            <label for="host-contact-email">Public contact email <span>Optional</span></label>
+            <input class="sg-input" id="host-contact-email" type="email" maxlength="254" autocomplete="off">
+            <p class="dfy-field-help">Shown on the Host Page. This is separate from the owner’s private sign-in email and is never copied automatically.</p>
+          </div>
+          <div class="sg-field dfy-wide">
+            <label for="host-bio">Bio</label>
+            <textarea class="sg-textarea" id="host-bio" maxlength="500" rows="4"></textarea>
+          </div>
+          <div class="dfy-form-footer dfy-wide">
+            <p class="dfy-action-status" id="profile-status" role="status" aria-live="polite"></p>
+            <button class="sg-btn sg-btn-primary" id="save-host-profile" type="submit">Save Host Page</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="dfy-panel dfy-events-panel" aria-labelledby="client-events-title">
+        <div class="dfy-panel-head">
+          <div>
+            <p class="dfy-eyebrow">Owned property</p>
+            <h2 id="client-events-title">Events</h2>
+            <p>Events remain owned by this client’s global User ID.</p>
+          </div>
+        </div>
+        <div id="client-events" class="dfy-event-list"></div>
+      </section>
+    </div>
+
+    <div class="admin-load-error" id="client-detail-error" hidden>
+      <strong>We couldn’t load this client.</strong>
+      <p id="client-detail-error-copy"></p>
+      <button class="sg-btn sg-btn-ghost" id="retry-client-detail" type="button">Try again</button>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-done-for-you-detail.js"></script>
+</body>
+</html>

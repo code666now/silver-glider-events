@@ -5,6 +5,7 @@
   const sectionByPath = {
     '/admin': 'overview',
     '/admin/accounts': 'accounts',
+    '/admin/done-for-you': 'done-for-you',
     '/admin/hosts': 'hosts',
     '/admin/ticketing': 'ticketing',
     '/admin/feedback': 'feedback',
@@ -14,6 +15,7 @@
   const links = [
     ['overview', '/admin', 'Overview'],
     ['accounts', '/admin/accounts', 'Accounts'],
+    ['done-for-you', '/admin/done-for-you', 'Done For You'],
     ['hosts', '/admin/hosts', 'Hosts'],
     ['ticketing', '/admin/ticketing', 'Ticketing'],
     ['feedback', '/admin/feedback', 'Feedback'],
@@ -37,7 +39,7 @@
   sidebar.innerHTML = `
     <span class="admin-sidebar-label">Workspace</span>
     <nav class="admin-sidebar-links">
-      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${key === 'team' ? ' hidden' : ''}>${label}</a>`).join('')}
+      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${key === 'team' || key === 'done-for-you' ? ' hidden' : ''}>${label}</a>`).join('')}
     </nav>`;
 
   const content = document.createElement('div');
@@ -58,7 +60,10 @@
     const canManageOperators = capabilities.manageOperators === true;
     const teamLink = sidebar.querySelector('[data-admin-link="team"]');
     if (teamLink) teamLink.hidden = !canManageOperators;
-    const detail = { data, operator, capabilities: { ...capabilities, manageOperators: canManageOperators } };
+    const canManageDoneForYou = capabilities.manageDoneForYou === true;
+    const doneForYouLink = sidebar.querySelector('[data-admin-link="done-for-you"]');
+    if (doneForYouLink) doneForYouLink.hidden = !canManageDoneForYou;
+    const detail = { data, operator, capabilities: { ...capabilities, manageOperators: canManageOperators, manageDoneForYou: canManageDoneForYou } };
     window.dispatchEvent(new CustomEvent('admin-shell:ready', { detail }));
     return detail;
   }).catch(error => {
