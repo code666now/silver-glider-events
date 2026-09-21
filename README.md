@@ -55,7 +55,7 @@ Never use the Railway production database for development or tests.
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
 - Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and an event-specific, consent-aware automatic day-before reminder
 - Feedback reporting and super-admin feedback inbox
-- Personalized host invitations, a responsive Accounts & Support console, and a Done For You workspace for safe client-owned account and Host Page preparation
+- Personalized host invitations, a responsive Accounts & Support console, and a Done For You workspace for safe client-owned account, Host Page, and isolated event preparation and publishing
 - Privacy Policy and Terms available throughout the app
 - Output escaping, safe URL validation, and public RSVP/resend rate limiting
 
@@ -78,7 +78,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, scheduled email jobs
-src/db/migrations/           numbered SQL migrations (currently 001–052)
+src/db/migrations/           numbered SQL migrations (currently 001–056)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
@@ -102,7 +102,7 @@ test/                        focused Node test suite
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
 - **Event Vibe:** hosts can progressively add up to three labeled artists, each with a managed photo, a supported music/media link, or both. Audio links place the photo above the player; YouTube uses it as a play-to-load poster. Standard and Flyer pages show compact accessible tabs above one active artist unit, and inactive embeds are not loaded.
 - **Admission:** `free_rsvp` keeps the established guest flow, `external_tickets` keeps the existing displayed-price and outbound-link behavior, and `silver_glider_tickets` stores only a `commerce_event_id`. Commerce remains authoritative for price, inventory, availability, checkout, orders, and issued tickets.
-- **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited. Dedicated operator identities and cookies keep staff access separate from customer ownership. Accounts & Support truthfully distinguishes verified sign-in methods from unverified contact data and records every support mutation. Suspension leaves owned events and public Host Pages intact. Permanent deletion requires a dedicated Super Admin, an impact review, a reason, an exact account-specific confirmation, and a fresh one-time operator passcode; retained compliance records are anonymized instead of becoming artificial deletion blockers.
+- **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited. Dedicated operator identities and cookies keep staff access separate from customer ownership. Accounts & Support truthfully distinguishes verified sign-in methods from unverified contact data and records every support mutation. Suspension leaves owned events and public Host Pages intact. Permanent deletion requires a dedicated Super Admin, an impact review, a reason, an exact account-specific confirmation, and a fresh one-time operator passcode; retained compliance records are anonymized instead of becoming artificial deletion blockers. Done For You event preparation uses a separate short-lived, operator-bound editor workspace scoped to one exact client, Host Page, and draft; it never creates or borrows a customer session.
 
 ## Tests
 
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 21, 2026, the suite contains 410 tests: 316 unit tests and 94 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim/concurrency/cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
+As of September 21, 2026, the suite contains 436 tests: 337 unit tests and 99 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim, isolated event-editor scope and publishing, concurrency, and cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
@@ -141,7 +141,7 @@ Create later staff identities explicitly in PostgreSQL, then use:
 - `/admin/feedback`
 - `/admin/invitations`
 
-`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows verified sign-in and contact-only identities with explicit labels, and keeps every support mutation audited. `support` operators can handle normal support work; `super_admin` is required for permanent account deletion and other explicitly high-impact actions. Account deletion also requires a one-time, target/action-bound email proof that is consumed atomically with the deletion transaction. `/admin/done-for-you` uses exact contact matching to reuse or create a client-owned global User ID, prepares its Host Page, and sends a target-bound recipient claim invitation without giving the administrator a customer session. Account merging and customer impersonation remain intentionally unavailable.
+`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows verified sign-in and contact-only identities with explicit labels, and keeps every support mutation audited. `support` operators can handle normal support work; `super_admin` is required for permanent account deletion and other explicitly high-impact actions. Account deletion also requires a one-time, target/action-bound email proof that is consumed atomically with the deletion transaction. `/admin/done-for-you` uses exact contact matching to reuse or create a client-owned global User ID, prepares its Host Page, and sends a target-bound recipient claim invitation without giving the administrator a customer session. From the client detail page, dedicated operators can open a short-lived `/admin-editor` workspace to create, finish, and publish an event for that exact Host Page without impersonation. Account merging and customer impersonation remain intentionally unavailable.
 
 ```sql
 INSERT INTO admin_operators (email, role, status)

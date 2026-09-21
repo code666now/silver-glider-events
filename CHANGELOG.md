@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.126
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Isolated Done For You event editor
+
+* Dedicated Support and Super Admin operators can now create an event—or continue an existing draft—from a Done For You client detail page, reuse the established quick-create and advanced editor, publish the finished event, and return directly to that client. The shared customer editor remains unchanged.
+* Event setup runs under `/admin-editor` with a separate, short-lived, operator-bound workspace cookie scoped to one exact Done For You client, global User ID, Host Page, and optional draft. It never creates or borrows a customer session, cannot be retargeted, forces new events to begin as drafts, and rejects events outside the bound Host Page.
+* The focused admin shell preserves Host Page context while removing customer-only Preview, Commerce waitlist, Feedback, legal, settings, and public-page controls. Unsaved exits require confirmation, stale or expired document links recover to Done For You, and scoped API failures remain structured JSON.
+
+### Transaction and release safety
+
+* Draft creation, updates, uploads, and publishing reuse the existing event validation and media boundaries while remaining workspace-scoped. Publishing completes the workspace atomically, administrator edits never send attendee-change notices, and immutable audit entries record identifiers and changed field names without retaining event content or client contact details.
+* Workspace expiry, operator access changes, account suspension/deletion, concurrent creation, replay, and cross-client draft recovery are fail-closed and covered by the release suite. The full 436-test release suite contains 337 unit tests and 99 HTTP/PostgreSQL integration tests.
+
 ## 1.0.125
 
 Released September 21, 2026. Built and deployed by Codex.
