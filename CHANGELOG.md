@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.125
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Done For You client setup
+
+* Dedicated Support and Super Admin operators can now find an exact existing owner—or safely create an unclaimed canonical user—and prepare that client’s Host Page from `/admin/done-for-you`. The permanent global User ID owns the Host Page and events; the administrator session never becomes the customer and never receives a customer session cookie.
+* The client detail workspace shows complete, truthfully labeled verified and unverified contact values, claimed state, owned events, and public Host Page information. Staff can prepare the Host Page profile, logo, and header while preserving existing client values.
+* A recipient can receive a target-bound claim invitation and prove ownership of the exact attached email. Opening the link is scanner-safe, successful proof claims the existing User ID rather than creating another account, and other attached phone or contact values remain unverified until their owners separately prove them.
+
+### Identity and operational safety
+
+* Exact email and verified-phone matches are used for ownership; RSVP data, names, and fuzzy matching never select or merge an account. Split owners, legacy projection drift, unverified-phone ambiguity, and a changed account after preview stop the workflow for review.
+* Provisioning, claim, profile/media support, suspension, sign-out-everywhere, and deletion share deterministic account locking. Stale, replaced, replayed, inactive, or mismatched claim links become terminal, while deletion removes the Done For You marker and its pending claim credentials.
+* Immutable audits identify the dedicated operator and affected record without retaining raw claim tokens or unnecessary profile/contact data. The full 410-test release suite covers concurrency, account boundaries, cleanup, public ownership, and existing organizer/guest behavior.
+
 ## 1.0.124
 
 Released September 21, 2026. Built and deployed by Codex.

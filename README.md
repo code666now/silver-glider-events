@@ -55,7 +55,7 @@ Never use the Railway production database for development or tests.
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
 - Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and an event-specific, consent-aware automatic day-before reminder
 - Feedback reporting and super-admin feedback inbox
-- Personalized host invitations plus a responsive Accounts & Support console for safe, audited support and direct Super Admin account control
+- Personalized host invitations, a responsive Accounts & Support console, and a Done For You workspace for safe client-owned account and Host Page preparation
 - Privacy Policy and Terms available throughout the app
 - Output escaping, safe URL validation, and public RSVP/resend rate limiting
 
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 20, 2026, the suite contains 375 tests: 298 unit tests and 77 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity proof and conflict boundaries, canonical RSVP/session/invitation/follow/photo/delivery relationships, changed-email RSVP reuse, Familiar Faces alias dedupe, Follow-announcement dedupe, authentication, dual-proof creator phone binding, recovery revocation, dedicated admin-operator passcodes and session boundaries, operator disable/re-enable revocation, centralized same-origin admin mutations, Accounts & Support identity labels, audited support mutations, suspension and reactivation, session revocation, safe account-claim invitations, direct audited account deletion, invitation concurrency and delivery recovery, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, compact phone guest grids and invitation controls, Event Vibe photos, one-time Add Photo authentication, Stripe and legacy PayPal boundaries, protected Settings destinations, event management, admission modes, Commerce launch interest, owner-side editing, private draft-link entropy, the three-step mobile creator journey, browser-history navigation and Quick Create session recovery, focused mobile editor, management, and Settings task flows, exact five-destination phone tab routing, full-screen phone-menu focus behavior, authenticated Profile statistics, consistent phone location switching, My Events tab precedence and local-date boundaries, stale-response protection, mobile support access and focus return, browser/app metadata, clear Review-versus-Save semantics, compact mobile title hierarchy, direct mobile Event actions, visible Settings save feedback, consistent phone control geometry and 44px touch targets, accessibility states, desktop/mobile breakpoint isolation, mobile Safari sizing, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 21, 2026, the suite contains 410 tests: 316 unit tests and 94 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim/concurrency/cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
@@ -134,13 +134,14 @@ one-time admin action proofs at the database boundary.
 Create later staff identities explicitly in PostgreSQL, then use:
 
 - `/admin/accounts`
+- `/admin/done-for-you`
 - `/admin/line`
 - `/admin/hosts`
 - `/admin/ticketing`
 - `/admin/feedback`
 - `/admin/invitations`
 
-`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows verified sign-in and contact-only identities with explicit labels, and keeps every support mutation audited. `support` operators can handle normal support work; `super_admin` is required for permanent account deletion and other explicitly high-impact actions. Account deletion also requires a one-time, target/action-bound email proof that is consumed atomically with the deletion transaction. Impersonation, direct credential editing, and account merging remain intentionally unavailable.
+`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows verified sign-in and contact-only identities with explicit labels, and keeps every support mutation audited. `support` operators can handle normal support work; `super_admin` is required for permanent account deletion and other explicitly high-impact actions. Account deletion also requires a one-time, target/action-bound email proof that is consumed atomically with the deletion transaction. `/admin/done-for-you` uses exact contact matching to reuse or create a client-owned global User ID, prepares its Host Page, and sends a target-bound recipient claim invitation without giving the administrator a customer session. Account merging and customer impersonation remain intentionally unavailable.
 
 ```sql
 INSERT INTO admin_operators (email, role, status)
