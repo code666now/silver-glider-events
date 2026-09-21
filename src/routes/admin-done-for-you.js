@@ -15,6 +15,11 @@ const {
   provisionDoneForYouClient,
   readDoneForYouClient
 } = require('../lib/admin-done-for-you');
+const {
+  AdminEditorWorkspaceError,
+  openAdminEditorWorkspace,
+  setAdminEditorCookie
+} = require('../lib/admin-editor-workspace');
 
 const router = express.Router();
 const CLAIM_TTL_MINUTES = 7 * 24 * 60;
@@ -157,6 +162,41 @@ router.post('/api/admin/done-for-you', async (req, res, next) => {
     });
     res.status(client.noOp ? 200 : 201).json({ client });
   } catch (error) { handleDoneForYouError(error, res, next); }
+});
+
+router.post('/api/admin/done-for-you/:id/editor-workspaces', async (req, res, next) => {
+  const doneForYouClientId = positiveId(req.params.id);
+  if (!doneForYouClientId) {
+    return res.status(404).json({ error: 'done_for_you_client_not_found' });
+  }
+  const hasEventId = Object.prototype.hasOwnProperty.call(req.body || {}, 'eventId');
+  const eventId = hasEventId ? positiveId(req.body.eventId) : null;
+  if (hasEventId && !eventId) {
+    return res.status(400).json({
+      error: 'invalid_event_id',
+      message: 'Choose a valid draft event.'
+    });
+  }
+  try {
+    const opened = await openAdminEditorWorkspace(pool, {
+      doneForYouClientId,
+      actorAdminOperatorId: req.adminOperator.id,
+      sessionIssuedAt: req.adminSession.issuedAt,
+      eventId,
+      ...requestContext(req)
+    });
+    setAdminEditorCookie(res, opened.token);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(201).json({
+      workspace: opened.workspace,
+      redirect: eventId == null
+        ? '/admin-editor/events/new'
+        : `/admin-editor/events/new?id=${eventId}&advanced=1`
+    });
+  } catch (error) {
+    if (!(error instanceof AdminEditorWorkspaceError)) return next(error);
+    res.status(error.status).json({ error: error.code, message: error.message });
+  }
 });
 
 router.get('/api/admin/done-for-you/:id', async (req, res, next) => {

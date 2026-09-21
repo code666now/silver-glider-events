@@ -2,7 +2,8 @@
 
 function sgIsAdminPath(pathname = location.pathname) {
   const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
-  return normalized === '/admin' || normalized.startsWith('/admin/');
+  return normalized === '/admin' || normalized.startsWith('/admin/') ||
+    normalized === '/admin-editor' || normalized.startsWith('/admin-editor/');
 }
 
 async function api(path, opts = {}) {

@@ -17,8 +17,15 @@ const PORT = process.env.PORT || 3100;
 const VIEWS = path.join(__dirname, 'views');
 const view = name => (req, res) => res.sendFile(path.join(VIEWS, name));
 const safeNext = value => {
-  const next = String(value || '').trim();
-  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+  const next = String(value || '').trim().slice(0, 700);
+  if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || /%5c/i.test(next)) return '';
+  try {
+    const parsed = new URL(next, 'http://silver-glider.local');
+    if (parsed.origin !== 'http://silver-glider.local') return '';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch (_) {
+    return '';
+  }
 };
 
 // Payment signature verification needs the unmodified request bytes. Keep both
@@ -44,6 +51,7 @@ app.use(require('./routes/auth'));
 app.use(require('./routes/admin-auth'));
 app.use(require('./routes/admin-operators'));
 app.use(require('./routes/admin-done-for-you'));
+app.use('/admin-editor', require('./routes/admin-editor'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
@@ -90,8 +98,9 @@ app.get('/admin/login', async (req, res, next) => {
   try {
     const requested = safeNext(req.query.next);
     const requestedPath = requested ? new URL(requested, 'http://localhost').pathname : '';
-    const destination = (requestedPath === '/admin' || requestedPath.startsWith('/admin/')) &&
-      requestedPath !== '/admin/login'
+    const adminDestination = requestedPath === '/admin' || requestedPath.startsWith('/admin/');
+    const editorDestination = requestedPath === '/admin-editor' || requestedPath.startsWith('/admin-editor/');
+    const destination = (adminDestination || editorDestination) && requestedPath !== '/admin/login'
       ? requested
       : '/admin';
     const dedicated = await loadAdminOperator(pool, req);

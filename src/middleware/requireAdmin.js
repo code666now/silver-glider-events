@@ -12,6 +12,12 @@ function isApi(req) {
   return req.path.startsWith('/api/') || req.baseUrl.startsWith('/api/');
 }
 
+function isAdminRealmPath(value) {
+  const path = String(value || '');
+  return path === '/admin' || path.startsWith('/admin/') ||
+    path === '/admin-editor' || path.startsWith('/admin-editor/');
+}
+
 function reject(req, res, status = 401) {
   if (isApi(req)) {
     return res.status(status).json({
@@ -19,7 +25,7 @@ function reject(req, res, status = 401) {
       message: status === 403 ? 'Administrator access is required.' : 'Sign in as an administrator.'
     });
   }
-  const next = req.originalUrl && req.originalUrl.startsWith('/admin')
+  const next = isAdminRealmPath(req.originalUrl?.split('?')[0])
     ? `?next=${encodeURIComponent(req.originalUrl)}`
     : '';
   return res.redirect(`/admin/login${next}`);
@@ -83,7 +89,7 @@ function requireDedicatedAdmin(req, res, next) {
       message: 'Sign in through the dedicated admin login.'
     });
   }
-  const nextPath = req.originalUrl && req.originalUrl.startsWith('/admin')
+  const nextPath = isAdminRealmPath(req.originalUrl?.split('?')[0])
     ? `&next=${encodeURIComponent(req.originalUrl)}`
     : '';
   return res.redirect(`/admin/login?dedicated=1${nextPath}`);
@@ -98,6 +104,7 @@ async function requireAdmin(req, res, next) {
         setAdminSessionCookie(res, dedicated.operator.id, dedicated.session.issuedAt);
       }
       req.adminOperator = dedicated.operator;
+      req.adminSession = dedicated.session;
       req.adminActor = {
         type: 'admin_operator',
         operatorId: Number(dedicated.operator.id),
@@ -107,6 +114,7 @@ async function requireAdmin(req, res, next) {
       return continueAuthenticated(req, res, next);
     }
     req.adminOperator = null;
+    req.adminSession = null;
     if (dedicated.stale) clearAdminSessionCookie(res);
 
     if (!legacyFallbackEnabled()) return reject(req, res);

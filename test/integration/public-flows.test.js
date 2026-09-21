@@ -31,6 +31,11 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
+const { parseAdminSession } = require('../../src/lib/admin-session');
+const {
+  AdminEditorWorkspaceError,
+  openAdminEditorWorkspace
+} = require('../../src/lib/admin-editor-workspace');
 const { signIdentityStepUp } = require('../../src/lib/identity-step-up');
 const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
@@ -8397,4 +8402,546 @@ test('a target-bound Done For You claim is terminal after its exact email is rea
     body: new URLSearchParams({ token })
   });
   assert.equal(replay.status, 400);
+});
+
+test('Done For You editor workspaces are operator-bound, expiring, audited, and never customer sessions', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('editor-support@example.test', 'super_admin');
+  const otherOperator = await createAdminOperator('other-editor-support@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const parsedAdminSession = parseAdminSession(adminSession.slice('sge_admin_session='.length));
+  assert.ok(parsedAdminSession);
+  const otherAdminSession = await signInAdminOperator(otherOperator.email);
+  const signedOutEditor = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual'
+  });
+  assert.equal(signedOutEditor.status, 302);
+  assert.equal(signedOutEditor.headers.get('location'),
+    '/admin/login?next=%2Fadmin-editor%2Fevents%2Fnew');
+  const editorLoginReturn = await fetch(
+    `${baseUrl}/admin/login?next=%2Fadmin-editor%2Fevents%2Fnew`,
+    { redirect: 'manual', headers: { cookie: adminSession } }
+  );
+  assert.equal(editorLoginReturn.headers.get('location'), '/admin-editor/events/new');
+  for (const hostileNext of [
+    'https://evil.example/admin-editor/events/new',
+    '//evil.example/admin-editor/events/new',
+    '/\\evil.example/admin-editor/events/new',
+    '/%5Cevil.example/admin-editor/events/new'
+  ]) {
+    const rejectedNext = await fetch(
+      `${baseUrl}/admin/login?next=${encodeURIComponent(hostileNext)}`,
+      { redirect: 'manual', headers: { cookie: adminSession } }
+    );
+    assert.equal(rejectedNext.headers.get('location'), '/admin',
+      `admin login rejects external return URL ${hostileNext}`);
+  }
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Scoped Editor Host',
+    contactName: 'Scoped Editor Client',
+    email: 'scoped-editor-client@example.test'
+  });
+  const markerId = prepared.client.id;
+  const organizerId = prepared.client.organizerId;
+
+  const start = (cookie, body = {}) => fetch(
+    `${baseUrl}/api/admin/done-for-you/${markerId}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify(body)
+    }
+  );
+
+  const customerOnly = await start(`sge_session=${signSession(organizerId)}`);
+  assert.equal(customerOnly.status, 403,
+    'a customer account cannot enter the independent admin editor realm');
+
+  const opened = await start(adminSession);
+  assert.equal(opened.status, 201);
+  const openedBody = await opened.json();
+  assert.equal(openedBody.redirect, '/admin-editor/events/new');
+  assert.equal(openedBody.workspace.doneForYouClientId, Number(markerId));
+  assert.equal(openedBody.workspace.organizerId, Number(organizerId));
+  assert.equal(openedBody.workspace.eventId, null);
+  const openedSetCookie = opened.headers.get('set-cookie') || '';
+  assert.match(openedSetCookie, /sge_admin_editor=/);
+  assert.match(openedSetCookie, /Path=\/admin-editor/);
+  assert.match(openedSetCookie, /HttpOnly/i);
+  assert.match(openedSetCookie, /SameSite=Strict/i);
+  assert.doesNotMatch(openedSetCookie, /sge_session=/,
+    'opening an editor workspace never issues a customer session');
+  const editorCookie = responseCookie(opened, 'sge_admin_editor');
+  assert.ok(editorCookie);
+  const rawEditorToken = editorCookie.slice('sge_admin_editor='.length);
+  const stored = (await pool.query(
+    `SELECT token_hash,status,actor_admin_operator_id
+       FROM admin_event_editor_workspaces WHERE id=$1`,
+    [openedBody.workspace.id]
+  )).rows[0];
+  assert.notEqual(stored.token_hash, rawEditorToken);
+  assert.equal(stored.token_hash.length, 64);
+  assert.equal(stored.status, 'active');
+  assert.equal(Number(stored.actor_admin_operator_id), Number(operator.id));
+
+  const noAdminSession = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: editorCookie }, body: '{}'
+  });
+  assert.equal(noAdminSession.status, 401);
+  const wrongOperator = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(otherAdminSession, editorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(wrongOperator.status, 403);
+  assert.equal((await wrongOperator.json()).error, 'admin_editor_operator_mismatch');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [openedBody.workspace.id]
+  )).rows[0].status, 'active', 'a mismatched operator cannot revoke another operator’s grant');
+
+  const exited = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, editorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(exited.status, 200);
+  assert.deepEqual(await exited.json(), {
+    ok: true,
+    redirect: `/admin/done-for-you/${markerId}`
+  });
+  assert.match(exited.headers.get('set-cookie') || '', /sge_admin_editor=;/);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [openedBody.workspace.id]
+  )).rows[0].status, 'exited');
+  const audit = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1 AND target_user_id=$2
+        AND action_type LIKE 'done_for_you_event_workspace_%'
+      ORDER BY id`,
+    [operator.id, prepared.client.userId]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(audit, [
+    'done_for_you_event_workspace_opened',
+    'done_for_you_event_workspace_exited'
+  ]);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, editorCookie)
+    },
+    body: '{}'
+  })).status, 401, 'an exited grant cannot be replayed');
+
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'admin-editor-draft','Admin Editor Draft','2031-01-02','19:00',
+             'Scoped Hall','private','draft')
+     RETURNING id`,
+    [organizerId]
+  )).rows[0];
+  const bound = await start(adminSession, { eventId: draft.id });
+  assert.equal(bound.status, 201);
+  const boundBody = await bound.json();
+  assert.equal(boundBody.redirect, `/admin-editor/events/new?id=${draft.id}&advanced=1`);
+  assert.equal(boundBody.workspace.eventId, Number(draft.id));
+  assert.doesNotMatch(bound.headers.get('set-cookie') || '', /sge_session=/);
+  const replacedBound = await start(adminSession, { eventId: draft.id });
+  assert.equal(replacedBound.status, 201,
+    'the same operator can rotate its token when reopening the same draft');
+  const replacedBoundBody = await replacedBound.json();
+  const boundCookie = responseCookie(replacedBound, 'sge_admin_editor');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [boundBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='replacement'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, boundBody.workspace.id]
+  )).rows[0].count, 1, 'same-operator replacement is audited once');
+
+  const otherHost = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('different-editor-host@example.test','Other Host','Other Host','other-editor-host')
+     RETURNING id`
+  )).rows[0];
+  const otherDraft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'other-editor-draft','Other Draft','2031-02-03','20:00',
+             'Other Hall','private','draft')
+     RETURNING id`,
+    [otherHost.id]
+  )).rows[0];
+  const wrongDraft = await start(adminSession, { eventId: otherDraft.id });
+  assert.equal(wrongDraft.status, 409);
+  assert.equal((await wrongDraft.json()).error, 'admin_editor_draft_not_available');
+
+  await pool.query(
+    `UPDATE admin_event_editor_workspaces
+        SET created_at=NOW() - INTERVAL '3 hours',
+            expires_at=NOW() - INTERVAL '1 hour'
+      WHERE id=$1`,
+    [replacedBoundBody.workspace.id]
+  );
+  const expired = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, boundCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(expired.status, 401);
+  assert.equal((await expired.json()).error, 'admin_editor_workspace_expired');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [replacedBoundBody.workspace.id]
+  )).rows[0].status, 'expired');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_expired'
+        AND metadata->>'cause'='ttl'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, replacedBoundBody.workspace.id]
+  )).rows[0].count, 1, 'automatic expiration is audited once');
+
+  const targetState = await start(adminSession);
+  assert.equal(targetState.status, 201);
+  const targetStateBody = await targetState.json();
+  const targetStateCookie = responseCookie(targetState, 'sge_admin_editor');
+  await pool.query(
+    `UPDATE users
+        SET account_status='suspended',suspended_at=NOW(),
+            suspension_reason='Integration target-state check'
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const suspended = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, targetStateCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(suspended.status, 403);
+  assert.equal((await suspended.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [targetStateBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='scope_unavailable'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, targetStateBody.workspace.id]
+  )).rows[0].count, 1, 'target-state revocation is audited once');
+
+  await pool.query(
+    `UPDATE users
+        SET account_status='active',suspended_at=NULL,suspension_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+
+  const ownershipDrift = await start(adminSession);
+  assert.equal(ownershipDrift.status, 201);
+  const ownershipDriftBody = await ownershipDrift.json();
+  const ownershipDriftCookie = responseCookie(ownershipDrift, 'sge_admin_editor');
+  const driftUser = (await pool.query(
+    `INSERT INTO users (name) VALUES ('Drift Owner') RETURNING id`
+  )).rows[0];
+  const driftOwner = (await pool.query(
+    `INSERT INTO organizers (id,user_id,email,name,org_name,public_slug)
+     VALUES ($1,$1,'drift-owner@example.test','Drift Owner','Drift Owner','drift-owner')
+     RETURNING id,user_id`,
+    [driftUser.id]
+  )).rows[0];
+  await pool.query(
+    'UPDATE admin_done_for_you_clients SET target_user_id=$2 WHERE id=$1',
+    [markerId, driftOwner.user_id]
+  );
+  const drifted = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, ownershipDriftCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(drifted.status, 403);
+  assert.equal((await drifted.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status,target_user_id,organizer_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [ownershipDriftBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal(Number((await pool.query(
+    'SELECT target_user_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [ownershipDriftBody.workspace.id]
+  )).rows[0].target_user_id), Number(prepared.client.userId),
+  'the immutable workspace snapshot never follows marker ownership drift');
+  await pool.query(
+    'UPDATE admin_done_for_you_clients SET target_user_id=$2 WHERE id=$1',
+    [markerId, prepared.client.userId]
+  );
+
+  const forLogout = await start(adminSession);
+  assert.equal(forLogout.status, 201);
+  const forLogoutBody = await forLogout.json();
+  const forLogoutCookie = responseCookie(forLogout, 'sge_admin_editor');
+  const pendingLogin = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: operator.email })
+  });
+  assert.equal(pendingLogin.status, 200);
+  await adminAuthRoutes.settleBackgroundWork();
+  const pendingLoginChallengeId = (await pool.query(
+    `SELECT id FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' AND used_at IS NULL
+      ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].id;
+  const logoutProofCookie = await adminOperatorProof(
+    adminSession,
+    `operator:${otherOperator.id}`
+  );
+  const pendingActionProofId = (await pool.query(
+    `SELECT id FROM admin_action_proofs
+      WHERE operator_id=$1 AND consumed_at IS NULL
+      ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].id;
+  const cutoffBeforeLogout = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1',
+    [operator.id]
+  )).rows[0].sessions_valid_after;
+  const logout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(logoutProofCookie, forLogoutCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(logout.status, 200);
+  const logoutCookies = logout.headers.get('set-cookie') || '';
+  assert.match(logoutCookies, /sge_admin_session=;/);
+  assert.match(logoutCookies, /sge_admin_editor=;/);
+  assert.match(logoutCookies, /Path=\/admin-editor/);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [forLogoutBody.workspace.id]
+  )).rows[0].status, 'revoked', 'admin logout revokes its active DB workspace');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='admin_logout'`,
+    [operator.id]
+  )).rows[0].count, 1);
+  const invalidatedOperator = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1',
+    [operator.id]
+  )).rows[0];
+  assert.ok(invalidatedOperator.sessions_valid_after > cutoffBeforeLogout,
+    'normal logout advances the dedicated administrator credential epoch');
+  assert.ok((await pool.query(
+    'SELECT used_at FROM admin_auth_challenges WHERE id=$1',
+    [pendingLoginChallengeId]
+  )).rows[0].used_at, 'normal logout consumes pending administrator challenges');
+  assert.ok((await pool.query(
+    'SELECT consumed_at FROM admin_action_proofs WHERE id=$1',
+    [pendingActionProofId]
+  )).rows[0].consumed_at, 'normal logout consumes pending administrator action proofs');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: adminSession }
+  })).status, 401, 'a logged-out dedicated administrator session cannot be replayed');
+  await assert.rejects(
+    openAdminEditorWorkspace(pool, {
+      doneForYouClientId: markerId,
+      actorAdminOperatorId: operator.id,
+      sessionIssuedAt: parsedAdminSession.issuedAt
+    }),
+    error => error instanceof AdminEditorWorkspaceError &&
+      error.code === 'admin_editor_admin_session_revoked',
+    'a request authenticated before logout cannot generate a workspace after the credential epoch advances'
+  );
+
+  const freshAdminSession = await signInAdminOperator(operator.email);
+  const deletedTargetWorkspace = await start(freshAdminSession);
+  assert.equal(deletedTargetWorkspace.status, 201);
+  const deletedTargetBody = await deletedTargetWorkspace.json();
+  const deletedTargetCookie = responseCookie(deletedTargetWorkspace, 'sge_admin_editor');
+  await pool.query(
+    `UPDATE users
+        SET name=NULL,account_status='deleted',deleted_at=NOW(),
+            deletion_reason='Integration unavailable-target check',
+            suspended_at=NULL,suspended_by_user_id=NULL,
+            suspended_by_admin_operator_id=NULL,suspension_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const deletedTarget = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(freshAdminSession, deletedTargetCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(deletedTarget.status, 403);
+  assert.equal((await deletedTarget.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [deletedTargetBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  await pool.query(
+    `UPDATE users
+        SET name='Scoped Editor Client',account_status='active',deleted_at=NULL,
+            deleted_by_user_id=NULL,deleted_by_admin_operator_id=NULL,deletion_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+
+  const deletable = await createDoneForYouClient(freshAdminSession, {
+    hostName: 'Disposable Workspace Host',
+    contactName: 'Disposable Workspace Client',
+    email: 'disposable-workspace@example.test'
+  });
+  const deletableOpened = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${deletable.client.id}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: freshAdminSession },
+      body: '{}'
+    }
+  );
+  assert.equal(deletableOpened.status, 201);
+  const deletableBody = await deletableOpened.json();
+  const deletableCookie = responseCookie(deletableOpened, 'sge_admin_editor');
+  await pool.query('DELETE FROM organizers WHERE id=$1', [deletable.client.organizerId]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_event_editor_workspaces WHERE id=$1',
+    [deletableBody.workspace.id]
+  )).rows[0].count, 0, 'Host deletion cascades through the scoped workspace instead of being blocked');
+  const staleAfterHostDelete = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(freshAdminSession, deletableCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(staleAfterHostDelete.status, 401);
+  assert.equal((await staleAfterHostDelete.json()).error, 'admin_editor_workspace_required');
+
+  const disabledOperatorWorkspace = await start(otherAdminSession);
+  assert.equal(disabledOperatorWorkspace.status, 201);
+  const disabledOperatorBody = await disabledOperatorWorkspace.json();
+  const disabledOperatorCookie = responseCookie(disabledOperatorWorkspace, 'sge_admin_editor');
+  const disableProof = await adminOperatorProof(
+    freshAdminSession,
+    `operator:${otherOperator.id}`
+  );
+  const disableOperator = await fetch(`${baseUrl}/api/admin/operators/${otherOperator.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: disableProof },
+    body: JSON.stringify({
+      status: 'disabled',
+      reason: 'End the scoped editor access for lifecycle testing'
+    })
+  });
+  assert.equal(disableOperator.status, 200);
+  assert.equal((await disableOperator.json()).operator.status, 'disabled');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [disabledOperatorBody.workspace.id]
+  )).rows[0].status, 'revoked', 'disabling an operator closes the workspace atomically');
+  const disabledAudit = (await pool.query(
+    `SELECT actor_admin_operator_id,metadata
+       FROM admin_account_audit_log
+      WHERE action_type='done_for_you_event_workspace_revoked'
+        AND (after_state->>'workspaceId')::bigint=$1`,
+    [disabledOperatorBody.workspace.id]
+  )).rows[0];
+  assert.equal(Number(disabledAudit.actor_admin_operator_id), Number(operator.id),
+    'the Super Admin who disabled access is the lifecycle audit actor');
+  assert.equal(disabledAudit.metadata.cause, 'operator_disabled');
+  assert.equal(Number(disabledAudit.metadata.workspaceOperatorId), Number(otherOperator.id));
+  const disabledOperatorRequest = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(otherAdminSession, disabledOperatorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(disabledOperatorRequest.status, 401,
+    'a disabled operator cannot use an otherwise unexpired editor grant');
+  resetRateLimits();
+  const enableProof = await adminOperatorProof(
+    freshAdminSession,
+    `operator:${otherOperator.id}`
+  );
+  const enableOperator = await fetch(`${baseUrl}/api/admin/operators/${otherOperator.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: enableProof },
+    body: JSON.stringify({
+      status: 'active',
+      reason: 'Restore access after lifecycle testing'
+    })
+  });
+  assert.equal(enableOperator.status, 200);
+  const reenabledOtherSession = await signInAdminOperator(otherOperator.email);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(reenabledOtherSession, disabledOperatorCookie)
+    },
+    body: '{}'
+  })).status, 401, 're-enabling an operator never resurrects its revoked workspace cookie');
+  const directCutoffWorkspace = await start(reenabledOtherSession);
+  assert.equal(directCutoffWorkspace.status, 201);
+  const directCutoffBody = await directCutoffWorkspace.json();
+  await pool.query(
+    `UPDATE admin_operators
+        SET sessions_valid_after=clock_timestamp(),updated_at=clock_timestamp()
+      WHERE id=$1`,
+    [otherOperator.id]
+  );
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [directCutoffBody.workspace.id]
+  )).rows[0].status, 'revoked',
+  'direct credential revocation remains a fail-closed safety boundary for editor workspaces');
+
+  const lifecycleAudits = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE action_type LIKE 'done_for_you_event_workspace_%'`
+  )).rows;
+  for (const entry of lifecycleAudits) {
+    const serialized = JSON.stringify(entry);
+    assert.doesNotMatch(serialized, /@|email|phone/i,
+      'workspace lifecycle audit metadata contains identifiers, not contact PII');
+  }
 });

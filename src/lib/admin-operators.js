@@ -2,6 +2,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ROLES = new Set(['super_admin', 'support']);
 const STATUSES = new Set(['active', 'disabled']);
 const ROSTER_LOCK = 'silver-glider-admin-operator-roster';
+const { invalidateAdminOperatorAccessInTransaction } = require('./admin-editor-workspace');
 
 class AdminOperatorError extends Error {
   constructor(code, message, status = 400) {
@@ -333,6 +334,17 @@ async function updateAdminOperator(db, {
       );
     }
     const before = operatorState(target);
+    await invalidateAdminOperatorAccessInTransaction(client, {
+      operatorId: id,
+      cause: target.status !== 'disabled' && nextStatus === 'disabled'
+        ? 'operator_disabled'
+        : nextRole !== target.role
+          ? 'operator_role_changed'
+          : 'operator_reenabled',
+      actorAdminOperatorId: actor.id,
+      requestIp,
+      userAgent
+    });
     const updated = (await client.query(
       `UPDATE admin_operators
           SET role=$2,status=$3,updated_at=NOW()
@@ -397,25 +409,15 @@ async function revokeAdminOperatorSessions(db, {
         403
       );
     }
-    const updated = (await client.query(
-      `UPDATE admin_operators
-          SET sessions_valid_after=clock_timestamp(),updated_at=clock_timestamp()
-        WHERE id=$1
-        RETURNING id,email,role,status,sessions_valid_after,
-                  last_login_at,created_at,updated_at`,
-      [id]
-    )).rows[0];
-    const invalidatedAt = updated.sessions_valid_after;
-    await client.query(
-      `UPDATE admin_auth_challenges SET used_at=$2
-        WHERE operator_id=$1 AND used_at IS NULL`,
-      [id, invalidatedAt]
-    );
-    await client.query(
-      `UPDATE admin_action_proofs SET consumed_at=$2
-        WHERE operator_id=$1 AND consumed_at IS NULL`,
-      [id, invalidatedAt]
-    );
+    const invalidated = await invalidateAdminOperatorAccessInTransaction(client, {
+      operatorId: id,
+      cause: 'operator_sessions_revoked',
+      actorAdminOperatorId: actor.id,
+      requestIp,
+      userAgent
+    });
+    const updated = invalidated.operator;
+    const invalidatedAt = invalidated.invalidatedAt;
     await writeAudit(client, {
       actor,
       target: updated,

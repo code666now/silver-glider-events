@@ -8,8 +8,13 @@ const { tokenHash } = require('../lib/guest-session');
 const { readCookie } = require('../lib/private-events');
 const {
   clearAdminSessionCookie,
+  loadAdminOperator,
   setAdminSessionCookie
 } = require('../lib/admin-session');
+const {
+  clearAdminEditorCookie,
+  revokeAdminEditorWorkspacesForOperator
+} = require('../lib/admin-editor-workspace');
 const { sendAdminPasscode } = require('../lib/mailer');
 const { canonicalOperatorTargetKey } = require('../lib/admin-operators');
 
@@ -291,12 +296,37 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
   });
 });
 
-router.post('/api/admin/auth/logout', (req, res) => {
+router.post('/api/admin/auth/logout', async (req, res, next) => {
   if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    // The editor cookie is scoped to /admin-editor and is therefore not sent
+    // here. Resolve the independent admin session before clearing it, then
+    // revoke every active workspace owned by that exact operator.
+    const dedicated = await loadAdminOperator(pool, req);
+    if (dedicated.operator) {
+      await revokeAdminEditorWorkspacesForOperator(pool, {
+        actorAdminOperatorId: dedicated.operator.id,
+        sessionIssuedAt: dedicated.session.issuedAt,
+        requestIp: String(clientIp(req) || '').slice(0, 100) || null,
+        userAgent: String(req.get('user-agent') || '').slice(0, 1000) || null
+      });
+    }
+  } catch (error) {
+    console.error('[admin-auth] failed to revoke editor workspaces on logout', {
+      error: error.message
+    });
+    clearAdminSessionCookie(res);
+    clearOpaqueCookie(res, LOGIN_REQUEST_COOKIE);
+    clearOpaqueCookie(res, STEP_UP_REQUEST_COOKIE);
+    clearOpaqueCookie(res, ACTION_PROOF_COOKIE);
+    clearAdminEditorCookie(res);
+    return next(error);
+  }
   clearAdminSessionCookie(res);
   clearOpaqueCookie(res, LOGIN_REQUEST_COOKIE);
   clearOpaqueCookie(res, STEP_UP_REQUEST_COOKIE);
   clearOpaqueCookie(res, ACTION_PROOF_COOKIE);
+  clearAdminEditorCookie(res);
   res.json({ ok: true });
 });
 

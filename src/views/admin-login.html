@@ -69,11 +69,23 @@
   <script>
     const params = new URLSearchParams(location.search);
     const candidateNext = params.get('next') || '';
-    let candidatePath = '';
-    try { candidatePath = new URL(candidateNext, location.origin).pathname; } catch (_) {}
-    const next = (candidatePath === '/admin' || candidatePath.startsWith('/admin/')) && candidatePath !== '/admin/login'
-      ? candidateNext
-      : '/admin';
+    function safeAdminNext(value) {
+      const relative = String(value || '').trim();
+      if (!relative.startsWith('/') || relative.startsWith('//') || relative.includes('\\') || /%5c/i.test(relative)) {
+        return '/admin';
+      }
+      try {
+        const parsed = new URL(relative, location.origin);
+        if (parsed.origin !== location.origin) return '/admin';
+        const adminNext = parsed.pathname === '/admin' || parsed.pathname.startsWith('/admin/');
+        const editorNext = parsed.pathname === '/admin-editor' || parsed.pathname.startsWith('/admin-editor/');
+        if ((!adminNext && !editorNext) || parsed.pathname === '/admin/login') return '/admin';
+        return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      } catch (_) {
+        return '/admin';
+      }
+    }
+    const next = safeAdminNext(candidateNext);
     const emailState = document.getElementById('email-state');
     const codeState = document.getElementById('code-state');
     const email = document.getElementById('admin-email');
