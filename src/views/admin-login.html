@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <title>Admin sign in — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <style>
+    body { min-height:100vh;min-height:100dvh; }
+    .admin-auth-shell { width:min(100%,430px);margin:0 auto;padding:12vh 24px 48px; }
+    .admin-auth-brand { margin-bottom:64px;color:var(--sg-text-faint);font-size:12px;font-weight:800;letter-spacing:.15em;text-transform:uppercase; }
+    .admin-auth-eyebrow { margin-bottom:10px;color:var(--sg-accent);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase; }
+    .admin-auth-title { margin:0 0 12px;font-size:36px;line-height:1.08; }
+    .admin-auth-copy { margin:0 0 28px;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
+    .admin-auth-error { min-height:21px;margin:0 0 12px;color:var(--sg-danger);font-size:13px;line-height:1.45; }
+    .admin-auth-code { text-align:center;font-size:24px;letter-spacing:.32em;font-variant-numeric:tabular-nums; }
+    .admin-auth-secondary { width:100%;min-height:44px;margin-top:10px;border:0;background:transparent;color:var(--sg-text-dim);font:700 13px var(--sg-font-body);text-decoration:underline;text-underline-offset:4px;cursor:pointer; }
+    @media (hover:hover) { .admin-auth-secondary:hover { color:var(--sg-text); } }
+    @media (max-width:879px) {
+      .admin-auth-shell { width:100%;min-height:100vh;min-height:100dvh;padding:calc(42px + env(safe-area-inset-top)) 22px calc(34px + env(safe-area-inset-bottom)); }
+      .admin-auth-brand { margin-bottom:clamp(58px,12vh,100px);font-size:13px; }
+      .admin-auth-title { font-size:34px; }
+      .admin-auth-copy { font-size:15px;line-height:1.5; }
+      .sg-input,.sg-btn { min-height:60px;border-radius:18px;font-size:16px; }
+      .sg-btn { font-size:17px; }
+      .admin-auth-code { font-size:24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
+  <main class="admin-auth-shell">
+    <p class="admin-auth-brand">Silver Glider Events</p>
+
+    <section id="email-state">
+      <p class="admin-auth-eyebrow">Admin workspace</p>
+      <h1 class="admin-auth-title">Operator sign in</h1>
+      <p class="admin-auth-copy">Enter your operator email. If it is active, we’ll send a six-digit passcode.</p>
+      <p class="admin-auth-error" id="email-error" role="alert"></p>
+      <form id="email-form">
+        <div class="sg-field">
+          <label for="admin-email">Operator email</label>
+          <input class="sg-input" id="admin-email" type="email" autocomplete="email" maxlength="320" required placeholder="you@example.com">
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="email-submit" type="submit">Send passcode</button>
+      </form>
+    </section>
+
+    <section id="code-state" hidden>
+      <p class="admin-auth-eyebrow">Admin security</p>
+      <h1 class="admin-auth-title">Enter your code</h1>
+      <p class="admin-auth-copy">Enter the six-digit passcode sent to the operator email. It expires in 10 minutes.</p>
+      <p class="admin-auth-error" id="code-error" role="alert"></p>
+      <form id="code-form" novalidate>
+        <div class="sg-field">
+          <label for="admin-code">Passcode</label>
+          <input class="sg-input admin-auth-code" id="admin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required>
+        </div>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="code-submit" type="submit">Sign in</button>
+      </form>
+      <button class="admin-auth-secondary" id="different-email" type="button">Use a different email</button>
+    </section>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const candidateNext = params.get('next') || '';
+    const next = candidateNext.startsWith('/admin/') && candidateNext !== '/admin/login'
+      ? candidateNext
+      : '/admin/accounts';
+    const emailState = document.getElementById('email-state');
+    const codeState = document.getElementById('code-state');
+    const email = document.getElementById('admin-email');
+    const code = document.getElementById('admin-code');
+
+    async function post(path, body) {
+      const response = await fetch(path, {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{ 'Content-Type':'application/json' },
+        body:JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || data.error || 'Request failed');
+      return data;
+    }
+
+    function busy(button, value, label) {
+      button.disabled = value;
+      button.textContent = value ? label : button.dataset.label;
+    }
+
+    document.getElementById('email-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('email-submit');
+      button.dataset.label = 'Send passcode';
+      document.getElementById('email-error').textContent = '';
+      busy(button, true, 'Sending…');
+      try {
+        await post('/api/admin/auth/start', { email:email.value.trim() });
+        emailState.hidden = true;
+        codeState.hidden = false;
+        code.value = '';
+        requestAnimationFrame(() => code.focus());
+      } catch (error) {
+        document.getElementById('email-error').textContent = error.message;
+      } finally { busy(button, false); }
+    });
+
+    document.getElementById('code-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('code-submit');
+      button.dataset.label = 'Sign in';
+      const value = code.value.replace(/\D/g, '').slice(0, 6);
+      document.getElementById('code-error').textContent = '';
+      if (value.length !== 6) {
+        document.getElementById('code-error').textContent = 'Enter the six-digit passcode.';
+        return code.focus();
+      }
+      busy(button, true, 'Signing in…');
+      try {
+        await post('/api/admin/auth/verify', { code:value });
+        location.assign(next);
+      } catch (error) {
+        document.getElementById('code-error').textContent = error.message;
+        code.select();
+      } finally { busy(button, false); }
+    });
+
+    document.getElementById('different-email').addEventListener('click', () => {
+      codeState.hidden = true;
+      emailState.hidden = false;
+      document.getElementById('code-error').textContent = '';
+      requestAnimationFrame(() => email.focus());
+    });
+  </script>
+</body>
+</html>

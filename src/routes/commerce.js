@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
+const { requireSuperAdmin } = require('../middleware/requireAdmin');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { sendCommerceLaunch } = require('../lib/mailer');
 
@@ -94,16 +95,17 @@ router.get('/api/admin/commerce-interest', requireAdmin, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
-router.post('/api/admin/commerce-interest/test', requireAdmin, async (req, res, next) => {
+router.post('/api/admin/commerce-interest/test', requireAdmin, requireSuperAdmin, async (req, res, next) => {
   try {
-    await sendCommerceLaunch({ to: req.organizer.email, isTest: true });
-    res.json({ sent: true, recipient: req.organizer.email });
+    const recipient = req.adminOperator?.email || req.adminActor.email;
+    await sendCommerceLaunch({ to: recipient, isTest: true });
+    res.json({ sent: true, recipient });
   } catch (err) { next(err); }
 });
 
 // The feature flag and explicit confirmation protect this one-time bulk send.
 // Atomic claims plus launch_sent_at make retries safe across multiple instances.
-router.post('/api/admin/commerce-interest/send', requireAdmin, async (req, res, next) => {
+router.post('/api/admin/commerce-interest/send', requireAdmin, requireSuperAdmin, async (req, res, next) => {
   try {
     if (!commerceAdmissionEnabled()) {
       return res.status(409).json({ error: 'Enable the Commerce integration before sending the launch email' });

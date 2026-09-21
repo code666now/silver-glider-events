@@ -15,6 +15,10 @@ process.env.NODE_ENV = 'development';
 process.env.REMINDERS_ENABLED = 'false';
 process.env.COMMERCE_ENABLED = 'false';
 process.env.CLOUDINARY_CLOUD_NAME = 'integration-cloud';
+// Most pre-operator regression cases exercise the explicitly controlled
+// rollback path. Dedicated-boundary tests below turn this off and prove the
+// production default rejects customer/organizer sessions.
+process.env.LEGACY_ADMIN_AUTH_ENABLED = 'true';
 delete process.env.COMMERCE_API_BASE_URL;
 delete process.env.RESEND_API_KEY;
 delete process.env.CLOUDINARY_API_KEY;
@@ -40,6 +44,7 @@ const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
 const adminAccountsRoutes = require('../../src/routes/admin-accounts');
+const adminAuthRoutes = require('../../src/routes/admin-auth');
 
 let server;
 let baseUrl;
@@ -83,10 +88,11 @@ function resetRateLimits() {
   publicRoutes.resetRateLimitsForTests();
   adminAccountsRoutes.resetRateLimitsForTests();
   adminAccountsRoutes.setAccountClaimSenderForTests();
+  adminAuthRoutes.resetRateLimitsForTests();
 }
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -211,6 +217,62 @@ async function signInAccount(email, next = '/settings/account') {
   };
 }
 
+async function createAdminOperator(email, role = 'super_admin', status = 'active') {
+  return (await pool.query(
+    `INSERT INTO admin_operators (email,role,status)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [email, role, status]
+  )).rows[0];
+}
+
+async function signInAdminOperator(email) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  assert.equal(started.status, 200);
+  const requestCookie = responseCookie(started, 'sge_admin_sign_in');
+  assert.ok(requestCookie);
+  await adminAuthRoutes.settleBackgroundWork();
+  const { code } = lastDevEmail(email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const sessionCookie = responseCookie(completed, 'sge_admin_session');
+  assert.ok(sessionCookie);
+  return sessionCookie;
+}
+
+async function adminDeletionProof(sessionCookie, targetUserId) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/step-up/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ action: 'account_delete', targetUserId })
+  });
+  assert.equal(started.status, 200);
+  const requestCookie = responseCookie(started, 'sge_admin_step_up');
+  assert.ok(requestCookie);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  const operator = (await me.json()).operator;
+  const { code } = lastDevEmail(operator.email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/step-up/complete`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(sessionCookie, requestCookie)
+    },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const proofCookie = responseCookie(completed, 'sge_admin_action');
+  assert.ok(proofCookie);
+  return cookieHeader(sessionCookie, proofCookie);
+}
+
 test.before(async () => {
   await migrate();
   await resetDatabase();
@@ -224,12 +286,14 @@ test.before(async () => {
 // it finish so it can't deadlock with the TRUNCATE.
 test.beforeEach(async () => {
   await publicRoutes.settleBackgroundWork();
+  await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   await resetDatabase();
 });
 
 test.after(async () => {
   await publicRoutes.settleBackgroundWork();
+  await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
@@ -4744,6 +4808,392 @@ test('profile stats count past events attended elsewhere and past events hosted'
   assert.equal((await fetch(`${baseUrl}/api/me/stats`)).status, 401);
 });
 
+test('admin login returns while passcode delivery is still pending', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('nonblocking-admin@example.test', 'super_admin');
+  let releaseDelivery;
+  let deliveryStarted = false;
+  let deliveryFinished = false;
+  const deliveryGate = new Promise(resolve => { releaseDelivery = resolve; });
+  adminAuthRoutes.setAdminPasscodeSenderForTests(async () => {
+    deliveryStarted = true;
+    await deliveryGate;
+    deliveryFinished = true;
+  });
+
+  let timeout;
+  try {
+    const response = await Promise.race([
+      fetch(`${baseUrl}/api/admin/auth/start`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: operator.email })
+      }),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('login waited for the email provider')), 2500);
+      })
+    ]);
+    clearTimeout(timeout);
+    assert.equal(response.status, 200);
+    assert.equal(deliveryStarted, true);
+    assert.equal(deliveryFinished, false, 'provider completion is outside the response path');
+  } finally {
+    clearTimeout(timeout);
+    releaseDelivery();
+    await adminAuthRoutes.settleBackgroundWork();
+    adminAuthRoutes.setAdminPasscodeSenderForTests();
+  }
+});
+
+test('dedicated admin operators sign in without enumerating unknown or disabled emails', async () => {
+  resetRateLimits();
+  const activeEmail = 'dedicated-admin@example.test';
+  const disabledEmail = 'disabled-admin@example.test';
+  const operator = await createAdminOperator(activeEmail, 'super_admin');
+  await createAdminOperator(disabledEmail, 'support', 'disabled');
+  const legacyAdmin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('legacy-boundary-admin@example.test','Legacy Boundary Admin',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  process.env.LEGACY_ADMIN_AUTH_ENABLED = 'false';
+  try {
+    const legacyApi = await fetch(`${baseUrl}/api/admin/accounts`, {
+      headers: { cookie: `sge_session=${signSession(legacyAdmin.id)}` }
+    });
+    assert.equal(legacyApi.status, 401);
+    const legacyPage = await fetch(`${baseUrl}/admin/accounts`, {
+      redirect: 'manual',
+      headers: { cookie: `sge_session=${signSession(legacyAdmin.id)}` }
+    });
+    assert.equal(legacyPage.status, 302);
+    assert.equal(legacyPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
+  } finally {
+    process.env.LEGACY_ADMIN_AUTH_ENABLED = 'true';
+  }
+  const outboxBefore = mailer.devOutbox.length;
+
+  const unknown = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'unknown-admin@example.test' })
+  });
+  assert.equal(unknown.status, 200);
+  const unknownBody = await unknown.json();
+  assert.deepEqual(unknownBody, { ok: true, codeLength: 6 });
+  const unknownRequestCookie = responseCookie(unknown, 'sge_admin_sign_in');
+  assert.ok(unknownRequestCookie);
+  assert.equal(mailer.devOutbox.length, outboxBefore);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_operators
+      WHERE email='unknown-admin@example.test'`
+  )).rows[0].count, 0, 'an unknown admin email is never provisioned');
+
+  const disabled = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: disabledEmail })
+  });
+  assert.equal(disabled.status, 200);
+  assert.deepEqual(await disabled.json(), unknownBody);
+  assert.equal(mailer.devOutbox.length, outboxBefore);
+
+  const started = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: activeEmail })
+  });
+  assert.equal(started.status, 200);
+  assert.deepEqual(await started.json(), unknownBody);
+  const requestCookie = responseCookie(started, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const code = lastDevEmail(activeEmail, 'admin_passcode').code;
+  const unknownVerify = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: unknownRequestCookie },
+    body: JSON.stringify({ code: '000000' })
+  });
+  const knownWrongVerify = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code: code === '000000' ? '111111' : '000000' })
+  });
+  assert.equal(unknownVerify.status, 400);
+  assert.equal(knownWrongVerify.status, unknownVerify.status);
+  assert.deepEqual(await knownWrongVerify.json(), await unknownVerify.json(),
+    'verification cannot turn the generic login start into an email-enumeration oracle');
+  const verified = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(verified.status, 200);
+  const setCookie = verified.headers.get('set-cookie') || '';
+  assert.match(setCookie, /sge_admin_session=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+  const sessionCookie = responseCookie(verified, 'sge_admin_session');
+  assert.equal((await fetch(`${baseUrl}/admin/accounts`, {
+    redirect: 'manual'
+  })).headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
+  assert.equal((await fetch(`${baseUrl}/admin/accounts`, {
+    headers: { cookie: sessionCookie }
+  })).status, 200);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.deepEqual(await me.json(), {
+    operator: {
+      id: Number(operator.id), email: activeEmail, role: 'super_admin', status: 'active', legacy: false
+    }
+  });
+
+  const proofTarget = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('operator-proof-target@example.test','Operator Proof Target',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  proofTarget.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [proofTarget.id]
+  )).rows[0].user_id;
+  const deletionCookie = await adminDeletionProof(sessionCookie, proofTarget.user_id);
+
+  const proofClient = await pool.connect();
+  try {
+    await proofClient.query('BEGIN');
+    assert.equal(await adminAuthRoutes.consumeAdminActionProof(
+      proofClient,
+      { headers: { cookie: deletionCookie } },
+      { operatorId: operator.id, action: 'account_delete', targetUserId: proofTarget.user_id }
+    ), true);
+    await proofClient.query('ROLLBACK');
+  } finally {
+    proofClient.release();
+  }
+  assert.equal((await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].consumed_at, null, 'rolling back the destructive transaction restores the proof');
+
+  const pendingLogin = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: activeEmail })
+  });
+  assert.equal(pendingLogin.status, 200);
+  const pendingRequestCookie = responseCookie(pendingLogin, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const pendingCode = lastDevEmail(activeEmail, 'admin_passcode').code;
+  const beforeDisable = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1', [operator.id]
+  )).rows[0].sessions_valid_after;
+
+  const disabledOperator = (await pool.query(
+    `UPDATE admin_operators SET status='disabled' WHERE id=$1
+     RETURNING status,sessions_valid_after`,
+    [operator.id]
+  )).rows[0];
+  assert.equal(disabledOperator.status, 'disabled');
+  assert.ok(disabledOperator.sessions_valid_after > beforeDisable);
+  assert.ok((await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].consumed_at, 'disabling consumes pending destructive-action proofs');
+  assert.ok((await pool.query(
+    `SELECT used_at FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].used_at, 'disabling invalidates pending passcode challenges');
+
+  const disabledSession = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(disabledSession.status, 401);
+  assert.match(disabledSession.headers.get('set-cookie') || '', /sge_admin_session=;/);
+
+  const reenabled = (await pool.query(
+    `UPDATE admin_operators SET status='active' WHERE id=$1
+     RETURNING sessions_valid_after`,
+    [operator.id]
+  )).rows[0];
+  assert.ok(reenabled.sessions_valid_after > disabledOperator.sessions_valid_after,
+    're-enabling advances the credential cutoff again');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: sessionCookie }
+  })).status, 401, 're-enabling never resurrects a disabled session');
+
+  const invalidatedChallenge = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: pendingRequestCookie },
+    body: JSON.stringify({ code: pendingCode })
+  });
+  assert.equal(invalidatedChallenge.status, 400);
+
+  const freshSession = await signInAdminOperator(activeEmail);
+  const actionProofCookie = deletionCookie.split('; ')
+    .find(cookie => cookie.startsWith('sge_admin_action='));
+  const invalidatedProof = await fetch(
+    `${baseUrl}/api/admin/accounts/${proofTarget.user_id}/delete-account`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookieHeader(freshSession, actionProofCookie)
+      },
+      body: JSON.stringify({
+        reason: 'This disabled operator proof must remain revoked',
+        confirmation: `DELETE USER ${proofTarget.user_id}`
+      })
+    }
+  );
+  assert.equal(invalidatedProof.status, 403);
+  assert.equal((await invalidatedProof.json()).error, 'admin_step_up_required');
+});
+
+test('dedicated admin mutations enforce same-origin and retain the operator audit actor', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('audited-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('operator-audit-target@example.test','Operator Audit Target',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+
+  const crossOriginLogout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: { cookie: adminSession, origin: 'https://attacker.example' }
+  });
+  assert.equal(crossOriginLogout.status, 403);
+  assert.doesNotMatch(crossOriginLogout.headers.get('set-cookie') || '', /sge_admin_session=;/);
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: adminSession }
+  })).status, 200, 'a rejected logout leaves the valid operator session intact');
+
+  const crossOriginInvitation = await fetch(`${baseUrl}/api/admin/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: adminSession,
+      'sec-fetch-site': 'same-site'
+    },
+    body: JSON.stringify({
+      host_name: 'Cross Origin Host',
+      personal_note: 'This request must be rejected before mutation.'
+    })
+  });
+  assert.equal(crossOriginInvitation.status, 403);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_invitations
+      WHERE host_name='Cross Origin Host'`
+  )).rows[0].count, 0);
+
+  const hostInvitation = await fetch(`${baseUrl}/api/admin/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: adminSession,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: JSON.stringify({
+      host_name: 'Dedicated Operator Host',
+      personal_note: 'Invited after a direct conversation with the host.'
+    })
+  });
+  assert.equal(hostInvitation.status, 201);
+  const hostInvitationId = (await hostInvitation.json()).invitation.id;
+  assert.deepEqual((await pool.query(
+    `SELECT created_by_organizer_id,created_by_admin_operator_id
+       FROM host_invitations WHERE id=$1`,
+    [hostInvitationId]
+  )).rows[0], {
+    created_by_organizer_id: null,
+    created_by_admin_operator_id: operator.id
+  });
+
+  const suspended = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ reason: 'Dedicated operator security review' })
+  });
+  assert.equal(suspended.status, 200);
+  assert.deepEqual((await pool.query(
+    `SELECT suspended_by_user_id,suspended_by_admin_operator_id
+       FROM users WHERE id=$1`,
+    [target.user_id]
+  )).rows[0], {
+    suspended_by_user_id: null,
+    suspended_by_admin_operator_id: operator.id
+  });
+
+  const reactivated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/reactivate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ reason: 'Dedicated operator review completed' })
+  });
+  assert.equal(reactivated.status, 200);
+
+  const note = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/notes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ note: 'Reviewed with the account owner.' })
+  });
+  assert.equal(note.status, 201);
+  assert.deepEqual((await pool.query(
+    `SELECT author_user_id,author_admin_operator_id
+       FROM admin_account_support_notes WHERE target_user_id=$1`,
+    [target.user_id]
+  )).rows[0], {
+    author_user_id: null,
+    author_admin_operator_id: operator.id
+  });
+
+  const accountInvitation = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({
+      name: 'Dedicated Invitee',
+      email: 'dedicated-invitee@example.test',
+      prepareHostPage: true
+    })
+  });
+  assert.equal(accountInvitation.status, 201);
+  assert.deepEqual((await pool.query(
+    `SELECT created_by_user_id,created_by_admin_operator_id
+       FROM admin_account_invitations WHERE email='dedicated-invitee@example.test'`
+  )).rows[0], {
+    created_by_user_id: null,
+    created_by_admin_operator_id: operator.id
+  });
+
+  const audits = (await pool.query(
+    `SELECT actor_user_id,actor_admin_operator_id,action_type
+       FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+      ORDER BY id`,
+    [operator.id]
+  )).rows;
+  assert.deepEqual(audits.map(row => row.action_type), [
+    'account_suspended',
+    'account_reactivated',
+    'support_note_added',
+    'account_invitation_created',
+    'account_invitation_sent'
+  ]);
+  assert.ok(audits.every(row => row.actor_user_id === null));
+  assert.ok(audits.every(row => row.actor_admin_operator_id === operator.id));
+
+  const logout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: { cookie: adminSession, origin: baseUrl, 'sec-fetch-site': 'same-origin' }
+  });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie') || '', /sge_admin_session=;/);
+});
+
 test('Accounts & Support returns complete verified and contact-only identity data to admins', async () => {
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
@@ -4833,8 +5283,11 @@ test('Accounts & Support returns complete verified and contact-only identity dat
   assert.equal(detailPayload.contactSummary.email.value, 'rsvp-only-support@example.test');
   assert.equal(detailPayload.contactSummary.email.verifiedForSignIn, true);
   assert.equal(detailPayload.contactSummary.phone.value, '+14155550129');
-  assert.equal(detailPayload.deletion.allowed, true);
-  assert.deepEqual(detailPayload.deletion.blockers, []);
+  assert.equal(detailPayload.deletion.allowed, false);
+  assert.deepEqual(
+    detailPayload.deletion.blockers.map(blocker => blocker.code),
+    ['dedicated_super_admin_session']
+  );
   assert.ok(Array.isArray(detailPayload.deletion.warnings));
   assert.equal(detailPayload.deletion.confirmationText, `DELETE USER ${guest.user_id}`);
   assert.equal(detailPayload.deletion.requiresFreshVerification, true);
@@ -5029,6 +5482,7 @@ test('admin suspension is audited, revokes access, preserves public property, an
 });
 
 test('permanent account deletion requires admin auth, fresh proof, and exact confirmation', async () => {
+  resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-guard-admin@example.test','Delete Guard Admin',TRUE,NOW()) RETURNING id`
@@ -5051,16 +5505,29 @@ test('permanent account deletion requires admin auth, fresh proof, and exact con
     'SELECT user_id FROM organizers WHERE id=$1', [otherAdmin.id]
   )).rows[0].user_id;
 
-  const adminSession = `sge_session=${signSession(admin.id)}`;
-  const freshAdmin = cookieHeader(
-    adminSession,
+  const operator = await createAdminOperator('delete-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const support = await createAdminOperator('delete-support@example.test', 'support');
+  const supportSession = await signInAdminOperator(support.email);
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: supportSession }
+  })).status, 200, 'support operators retain read-only support access');
+  const supportSms = await fetch(`${baseUrl}/api/admin/sms/test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: supportSession },
+    body: JSON.stringify({ confirm: 'SEND_TEST_SMS', to: '+14155551234' })
+  });
+  assert.equal(supportSms.status, 403);
+  assert.equal((await supportSms.json()).error, 'super_admin_required');
+  const legacyAdminSession = cookieHeader(
+    `sge_session=${signSession(admin.id)}`,
     `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
   );
   const validBody = id => ({
     reason: 'Owner requested permanent account deletion',
     confirmation: `DELETE USER ${id}`
   });
-  const requestDelete = (id, { cookie = freshAdmin, body = validBody(id), headers = {} } = {}) => fetch(
+  const requestDelete = (id, { cookie = adminSession, body = validBody(id), headers = {} } = {}) => fetch(
     `${baseUrl}/api/admin/accounts/${id}/delete-account`,
     {
       method: 'POST',
@@ -5069,16 +5536,23 @@ test('permanent account deletion requires admin auth, fresh proof, and exact con
     }
   );
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    method: 'DELETE', headers: { cookie: freshAdmin }
+    method: 'DELETE', headers: { cookie: adminSession }
   })).status, 404, 'the generic account DELETE endpoint stays absent');
   assert.equal((await requestDelete(target.user_id, { cookie: '' })).status, 401);
   assert.equal((await requestDelete(target.user_id, {
     cookie: `sge_session=${signSession(organizerId)}`
   })).status, 403);
 
-  const withoutFreshProof = await requestDelete(target.user_id, { cookie: adminSession });
+  const legacyAttempt = await requestDelete(target.user_id, { cookie: legacyAdminSession });
+  assert.equal(legacyAttempt.status, 403);
+  assert.equal((await legacyAttempt.json()).error, 'dedicated_super_admin_required');
+  const supportAttempt = await requestDelete(target.user_id, { cookie: supportSession });
+  assert.equal(supportAttempt.status, 403);
+  assert.equal((await supportAttempt.json()).error, 'dedicated_super_admin_required');
+
+  const withoutFreshProof = await requestDelete(target.user_id);
   assert.equal(withoutFreshProof.status, 403);
-  assert.equal((await withoutFreshProof.json()).error, 'identity_step_up_required');
+  assert.equal((await withoutFreshProof.json()).error, 'admin_step_up_required');
 
   const wrongPhrase = await requestDelete(target.user_id, {
     body: { ...validBody(target.user_id), confirmation: `DELETE USER ${target.user_id + 1}` }
@@ -5107,6 +5581,7 @@ test('permanent account deletion requires admin auth, fresh proof, and exact con
 });
 
 test('ordinary account history becomes deletion warnings instead of eligibility blockers', async () => {
+  resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-blocker-admin@example.test','Delete Blocker Admin',TRUE,NOW()) RETURNING id`
@@ -5267,12 +5742,10 @@ test('ordinary account history becomes deletion warnings instead of eligibility 
     [externalEvent.id, target.user_id]
   );
 
-  const cookie = cookieHeader(
-    `sge_session=${signSession(admin.id)}`,
-    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
-  );
+  const operator = await createAdminOperator('delete-history-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
   const impact = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    headers: { cookie }
+    headers: { cookie: adminSession }
   });
   assert.equal(impact.status, 200);
   const impactState = (await impact.json()).deletion;
@@ -5305,9 +5778,10 @@ test('ordinary account history becomes deletion warnings instead of eligibility 
   assert.equal(impactState.summary.ownedEventPhotos, 1);
   assert.equal(impactState.summary.ownedEventRecipients, 1);
 
+  const deletionCookie = await adminDeletionProof(adminSession, target.user_id);
   const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
     body: JSON.stringify({
       reason: 'Owner requested deletion despite retained transaction history',
       confirmation: `DELETE USER ${target.user_id}`
@@ -5458,12 +5932,10 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   })).status, 200);
 
   const reason = 'Owner requested permanent removal of this completed account';
-  const adminCookie = cookieHeader(
-    `sge_session=${signSession(admin.id)}`,
-    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
-  );
+  const operator = await createAdminOperator('delete-success-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
   const beforeDeletion = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    headers: { cookie: adminCookie }
+    headers: { cookie: adminSession }
   });
   assert.equal(beforeDeletion.status, 200);
   const beforeDeletionState = (await beforeDeletion.json()).deletion;
@@ -5471,10 +5943,29 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   assert.deepEqual(beforeDeletionState.blockers, []);
   assert.equal(beforeDeletionState.confirmationText, `DELETE USER ${target.user_id}`);
 
+  const deletionCookie = await adminDeletionProof(adminSession, target.user_id);
+  const otherTarget = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('other-proof-target@example.test','Other Proof Target',NOW()) RETURNING id,user_id`
+  )).rows[0];
+  otherTarget.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [otherTarget.id]
+  )).rows[0].user_id;
+  const wrongTarget = await fetch(`${baseUrl}/api/admin/accounts/${otherTarget.user_id}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
+    body: JSON.stringify({
+      reason: 'This proof belongs to a different account',
+      confirmation: `DELETE USER ${otherTarget.user_id}`
+    })
+  });
+  assert.equal(wrongTarget.status, 403);
+  assert.equal((await wrongTarget.json()).error, 'admin_step_up_required');
+
   const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
     headers: {
-      'content-type': 'application/json', cookie: adminCookie,
+      'content-type': 'application/json', cookie: deletionCookie,
       'user-agent': 'Silver Glider Account Deletion Integration'
     },
     body: JSON.stringify({
@@ -5487,16 +5978,37 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   assert.equal(deletedPayload.ok, true);
   assert.equal(deletedPayload.deletedUserId, Number(target.user_id));
   assert.equal(deletedPayload.mediaCleanupQueued, 1);
+  const proof = (await pool.query(
+    `SELECT action,target_user_id,consumed_at
+       FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0];
+  assert.equal(proof.action, 'account_delete');
+  assert.equal(proof.target_user_id, target.user_id);
+  assert.ok(proof.consumed_at, 'the proof commits as consumed with the deletion');
+  const reusedProof = await fetch(`${baseUrl}/api/admin/accounts/${otherTarget.user_id}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
+    body: JSON.stringify({
+      reason: 'A consumed proof must not delete another account',
+      confirmation: `DELETE USER ${otherTarget.user_id}`
+    })
+  });
+  assert.equal(reusedProof.status, 403);
+  assert.equal((await reusedProof.json()).error, 'admin_step_up_required');
 
   const tombstone = (await pool.query(
-    `SELECT id,name,account_status,deleted_at,deleted_by_user_id,deletion_reason
+    `SELECT id,name,account_status,deleted_at,deleted_by_user_id,
+            deleted_by_admin_operator_id,deletion_reason
        FROM users WHERE id=$1`, [target.user_id]
   )).rows[0];
   assert.equal(tombstone.id, target.user_id);
   assert.equal(tombstone.name, null);
   assert.equal(tombstone.account_status, 'deleted');
   assert.ok(tombstone.deleted_at);
-  assert.equal(tombstone.deleted_by_user_id, admin.user_id);
+  assert.equal(tombstone.deleted_by_user_id, null);
+  assert.equal(tombstone.deleted_by_admin_operator_id, operator.id);
   assert.equal(tombstone.deletion_reason, reason);
 
   assert.equal((await pool.query(
@@ -5568,12 +6080,12 @@ test('direct account deletion purges property, revokes access, and leaves an aud
 
   const hiddenFromList = await fetch(
     `${baseUrl}/api/admin/accounts?q=${encodeURIComponent(targetEmail)}`,
-    { headers: { cookie: adminCookie } }
+    { headers: { cookie: adminSession } }
   );
   assert.equal(hiddenFromList.status, 200);
   assert.deepEqual((await hiddenFromList.json()).accounts, []);
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    headers: { cookie: adminCookie }
+    headers: { cookie: adminSession }
   })).status, 404);
 
   const actionHistory = (await pool.query(
@@ -5582,14 +6094,15 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   )).rows.map(row => row.action_type);
   assert.deepEqual(actionHistory, ['account_deleted']);
   const audits = (await pool.query(
-    `SELECT actor_user_id,target_user_id,action_type,reason,before_state,after_state,
-            metadata,user_agent
+    `SELECT actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+            before_state,after_state,metadata,user_agent
        FROM admin_account_audit_log
       WHERE target_user_id=$1 AND action_type='account_deleted'`,
     [target.user_id]
   )).rows;
   assert.equal(audits.length, 1);
-  assert.equal(audits[0].actor_user_id, admin.user_id);
+  assert.equal(audits[0].actor_user_id, null);
+  assert.equal(audits[0].actor_admin_operator_id, operator.id);
   assert.equal(audits[0].reason, reason);
   assert.equal(audits[0].after_state.status, 'deleted');
   assert.equal(audits[0].user_agent, 'Silver Glider Account Deletion Integration');

@@ -768,7 +768,12 @@ async function completeChallenge(client, req, pending, {
         JSON.stringify({ invitationStatus: 'claimed', prepareHostPage: invitation.prepare_host_page }),
         JSON.stringify({
           invitationId: Number(invitation.id),
-          invitedByUserId: Number(invitation.created_by_user_id)
+          invitedByUserId: invitation.created_by_user_id
+            ? Number(invitation.created_by_user_id)
+            : null,
+          invitedByAdminOperatorId: invitation.created_by_admin_operator_id
+            ? Number(invitation.created_by_admin_operator_id)
+            : null
         }),
         String(req.ip || '').slice(0, 100) || null,
         String(req.get('user-agent') || '').slice(0, 1000) || null

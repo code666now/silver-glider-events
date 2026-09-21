@@ -1,27 +1,24 @@
 const express = require('express');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
+const { actorIds, isDedicatedSuperAdmin } = require('../middleware/requireAdmin');
 const { createSignInChallenge } = require('../lib/sign-in-challenges');
 const { sendAccountClaimInvitation } = require('../lib/mailer');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const { tokenHash } = require('../lib/guest-session');
-const { hasIdentityStepUp } = require('../lib/identity-step-up');
 const { isManagedPublicId, managedPublicIdFromUrl } = require('../lib/cloudinary');
 const { queueManagedMediaDeletionJobs } = require('../jobs/managed-media-deletions');
 const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
+const {
+  clearAdminActionProofCookie,
+  consumeAdminActionProof
+} = require('./admin-auth');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCOUNT_INVITE_TTL_MINUTES = 7 * 24 * 60;
 const ACCOUNT_INVITE_STALE_MINUTES = 5;
 let deliverAccountClaimInvitation = sendAccountClaimInvitation;
-const legacyAccountDeletionProofVerifier = async ({ req, actorUserId }) => (
-  hasIdentityStepUp(req, actorUserId)
-);
-// This seam is deliberately target/action-aware so the dedicated admin-auth
-// milestone can replace the legacy identity step-up with an atomic, one-time
-// proof without changing the destructive route or its callers.
-let verifyAccountDeletionActionProof = legacyAccountDeletionProofVerifier;
 
 router.use('/api/admin/accounts', requireAdmin);
 
@@ -62,35 +59,6 @@ function maskEmail(value) {
   return `${local.slice(0, 1)}${local.length > 1 ? '•••' : ''}@${domain}`;
 }
 
-function sameOriginMutation(req, res, next) {
-  const site = req.get('sec-fetch-site');
-  if (site && site !== 'same-origin' && site !== 'none') {
-    return res.status(403).json({ error: 'forbidden' });
-  }
-  if (!site) {
-    const origin = req.get('origin');
-    if (origin && origin !== 'null') {
-      let originHost;
-      try { originHost = new URL(origin).host; } catch (_) {
-        return res.status(403).json({ error: 'forbidden' });
-      }
-      const allowed = [req.get('host'), req.get('x-forwarded-host')];
-      try { allowed.push(new URL(process.env.APP_URL).host); } catch (_) {}
-      if (!allowed.filter(Boolean).includes(originHost)) {
-        return res.status(403).json({ error: 'forbidden' });
-      }
-    }
-  }
-  next();
-}
-
-router.use('/api/admin/accounts', (req, res, next) => {
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
-    return sameOriginMutation(req, res, next);
-  }
-  next();
-});
-
 function auditContext(req) {
   return {
     requestIp: String(clientIp(req) || '').slice(0, 100) || null,
@@ -107,13 +75,15 @@ async function writeAudit(client, req, {
   metadata = {}
 }) {
   const context = auditContext(req);
+  const actor = actorIds(req);
   await client.query(
     `INSERT INTO admin_account_audit_log
-       (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
-        metadata,request_ip,user_agent)
-     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`,
+       (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+        before_state,after_state,metadata,request_ip,user_agent)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10)`,
     [
-      Number(req.organizer.user_id || req.organizer.id),
+      actor.actorUserId,
+      actor.actorAdminOperatorId,
       targetUserId,
       actionType,
       reason,
@@ -342,7 +312,12 @@ async function forfeitSmsCreditBalance(client, { organizerId, userId, balance })
   );
 }
 
-async function getAccountDeletionState(client, { userId, actorUserId, account }) {
+async function getAccountDeletionState(client, {
+  userId,
+  actorUserId,
+  account,
+  canDelete = true
+}) {
   const organizerId = Number(account.organizer_id || userId);
   const { rows } = await client.query(
     `WITH owned_events AS (
@@ -408,6 +383,12 @@ async function getAccountDeletionState(client, { userId, actorUserId, account })
   );
   const counts = rows[0];
   const blockers = [];
+  if (!canDelete) {
+    blockers.push(deletionNotice(
+      'dedicated_super_admin_session',
+      'Sign in through the dedicated admin login as a Super Admin to delete accounts.'
+    ));
+  }
   if (Number(userId) === Number(actorUserId)) {
     blockers.push(deletionNotice('self_account', 'You cannot delete the account you are using.'));
   }
@@ -672,9 +653,11 @@ router.get('/api/admin/accounts/invitations', async (req, res, next) => {
       `SELECT invitation.id,invitation.email,invitation.name,invitation.prepare_host_page,
               invitation.created_at,invitation.expires_at,invitation.sent_at,invitation.claimed_at,
               invitation.revoked_at,invitation.delivery_failed_at,invitation.claimed_user_id,
-              creator.name AS created_by_name
+              COALESCE(creator.name,operator.email,'Administrator') AS created_by_name
          FROM admin_account_invitations invitation
-         JOIN users creator ON creator.id=invitation.created_by_user_id
+         LEFT JOIN users creator ON creator.id=invitation.created_by_user_id
+         LEFT JOIN admin_operators operator
+           ON operator.id=invitation.created_by_admin_operator_id
         ORDER BY invitation.created_at DESC
         LIMIT 100`
     );
@@ -712,7 +695,7 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
     const row = accountResult.rows[0];
     if (!row) return res.status(404).json({ error: 'Account not found' });
 
-    const actorUserId = Number(req.organizer.user_id || req.organizer.id);
+    const { actorUserId } = actorIds(req);
     const [identityResult, contactResult, ownershipResult, eventResult, notesResult, auditResult, conflictResult, deletionState] = await Promise.all([
       pool.query(
         `SELECT id,identity_type,value,verified_at,verification_scope,is_primary,
@@ -748,9 +731,12 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
       ),
       pool.query(
         `SELECT note.id,note.note,note.created_at,author.id AS author_user_id,
-                author.name AS actor_name
+                operator.id AS author_admin_operator_id,
+                COALESCE(author.name,operator.email,'Administrator') AS actor_name
            FROM admin_account_support_notes note
-           JOIN users author ON author.id=note.author_user_id
+           LEFT JOIN users author ON author.id=note.author_user_id
+           LEFT JOIN admin_operators operator
+             ON operator.id=note.author_admin_operator_id
           WHERE note.target_user_id=$1
           ORDER BY note.created_at DESC,note.id DESC LIMIT 100`,
         [userId]
@@ -758,9 +744,12 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
       pool.query(
         `SELECT audit.id,audit.action_type,audit.action_type AS action,audit.reason,audit.before_state,
                 audit.after_state,audit.metadata,audit.created_at,
-                actor.id AS actor_user_id,actor.name AS actor_name
+                actor.id AS actor_user_id,operator.id AS actor_admin_operator_id,
+                COALESCE(actor.name,operator.email,'Administrator') AS actor_name
            FROM admin_account_audit_log audit
-           JOIN users actor ON actor.id=audit.actor_user_id
+           LEFT JOIN users actor ON actor.id=audit.actor_user_id
+           LEFT JOIN admin_operators operator
+             ON operator.id=audit.actor_admin_operator_id
           WHERE audit.target_user_id=$1
           ORDER BY audit.created_at DESC,audit.id DESC LIMIT 100`,
         [userId]
@@ -775,7 +764,12 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
               AND (c.first_candidate_user_id=$1 OR c.second_candidate_user_id=$1))::int AS relationship_conflicts`,
         [userId]
       ),
-      getAccountDeletionState(pool, { userId, actorUserId, account: row })
+      getAccountDeletionState(pool, {
+        userId,
+        actorUserId,
+        account: row,
+        canDelete: isDedicatedSuperAdmin(req)
+      })
     ]);
 
     const preferredContacts = preferredAccountContacts(row);
@@ -890,7 +884,7 @@ router.patch('/api/admin/accounts/:id/profile', async (req, res, next) => {
 
 router.post('/api/admin/accounts/:id/sign-out-all', async (req, res, next) => {
   const userId = positiveId(req.params.id);
-  const actorUserId = Number(req.organizer.user_id || req.organizer.id);
+  const { actorUserId } = actorIds(req);
   const reason = cleanReason(req.body?.reason);
   if (!userId) return res.status(404).json({ error: 'Account not found' });
   if (userId === actorUserId) {
@@ -923,7 +917,8 @@ router.post('/api/admin/accounts/:id/sign-out-all', async (req, res, next) => {
 
 router.post('/api/admin/accounts/:id/suspend', async (req, res, next) => {
   const userId = positiveId(req.params.id);
-  const actorUserId = Number(req.organizer.user_id || req.organizer.id);
+  const actor = actorIds(req);
+  const { actorUserId, actorAdminOperatorId } = actor;
   const reason = cleanReason(req.body?.reason);
   if (!userId) return res.status(404).json({ error: 'Account not found' });
   if (userId === actorUserId) return res.status(400).json({ error: 'You cannot suspend your own account' });
@@ -960,9 +955,10 @@ router.post('/api/admin/accounts/:id/suspend', async (req, res, next) => {
     await client.query(
       `UPDATE users
           SET account_status='suspended',suspended_at=$2,
-              suspended_by_user_id=$3,suspension_reason=$4,updated_at=NOW()
+              suspended_by_user_id=$3,suspended_by_admin_operator_id=$4,
+              suspension_reason=$5,updated_at=NOW()
         WHERE id=$1`,
-      [userId, suspendedAt, actorUserId, reason]
+      [userId, suspendedAt, actorUserId, actorAdminOperatorId, reason]
     );
     const access = await invalidateAccountAccess(client, userId, account.organizer_id);
     await writeAudit(client, req, {
@@ -1000,6 +996,7 @@ router.post('/api/admin/accounts/:id/reactivate', async (req, res, next) => {
     await client.query(
       `UPDATE users
           SET account_status='active',suspended_at=NULL,suspended_by_user_id=NULL,
+              suspended_by_admin_operator_id=NULL,
               suspension_reason=NULL,updated_at=NOW()
         WHERE id=$1`,
       [userId]
@@ -1023,16 +1020,22 @@ router.post('/api/admin/accounts/:id/reactivate', async (req, res, next) => {
   } finally { client.release(); }
 });
 
-// Permanent deletion is a direct Super Admin action. The proof check is routed
-// through an action/target-aware seam pending dedicated one-time admin proofs.
-// Ordinary account history is an impact warning, not an artificial eligibility
-// blocker. Profile and contact columns are anonymized; immutable operator-entered
-// support/audit history and anonymized financial records remain for integrity.
+// Permanent deletion requires an independent Super Admin session plus a fresh
+// target/action-bound proof. The proof is consumed inside the same serializable
+// transaction, so a rollback preserves it and a committed deletion cannot
+// reuse it. Ordinary history remains an impact warning rather than a blocker.
 router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => {
   const userId = positiveId(req.params.id);
-  const actorUserId = Number(req.organizer.user_id || req.organizer.id);
+  const actor = actorIds(req);
+  const { actorUserId, actorAdminOperatorId } = actor;
   const reason = cleanReason(req.body?.reason);
   const confirmation = String(req.body?.confirmation || '').trim();
+  if (!isDedicatedSuperAdmin(req)) {
+    return res.status(403).json({
+      error: 'dedicated_super_admin_required',
+      message: 'Sign in through the dedicated admin login as a Super Admin to delete accounts.'
+    });
+  }
   if (!userId) return res.status(404).json({ error: 'Account not found' });
   if (!reason || reason.length < 8) {
     return res.status(400).json({
@@ -1046,24 +1049,6 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
       message: `Type DELETE USER ${userId} exactly.`
     });
   }
-  let actionProofAccepted;
-  try {
-    actionProofAccepted = await verifyAccountDeletionActionProof({
-      req,
-      action: 'account_delete',
-      actorUserId,
-      targetUserId: userId
-    });
-  } catch (error) {
-    return next(error);
-  }
-  if (!actionProofAccepted) {
-    return res.status(403).json({
-      error: 'identity_step_up_required',
-      message: 'Confirm this administrator account before permanently deleting the target account.'
-    });
-  }
-
   const client = await pool.connect();
   let mediaJobIds = [];
   let mediaCleanupQueued = 0;
@@ -1088,7 +1073,8 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
     const deletionState = await getAccountDeletionState(client, {
       userId,
       actorUserId,
-      account
+      account,
+      canDelete: true
     });
     if (!deletionState.public.allowed) {
       await client.query('ROLLBACK');
@@ -1096,6 +1082,18 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
         error: 'account_not_deletable',
         message: deletionState.public.blockers[0]?.message || 'This account cannot be deleted.',
         deletion: deletionState.public
+      });
+    }
+    const actionProofAccepted = await consumeAdminActionProof(client, req, {
+      operatorId: actorAdminOperatorId,
+      action: 'account_delete',
+      targetUserId: userId
+    });
+    if (!actionProofAccepted) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: 'admin_step_up_required',
+        message: 'Enter a fresh administrator passcode for this account deletion.'
       });
     }
 
@@ -1332,10 +1330,12 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
     await client.query(
       `UPDATE users
           SET name=NULL,account_status='deleted',
-              suspended_at=NULL,suspended_by_user_id=NULL,suspension_reason=NULL,
-              deleted_at=NOW(),deleted_by_user_id=$2,deletion_reason=$3,updated_at=NOW()
+              suspended_at=NULL,suspended_by_user_id=NULL,
+              suspended_by_admin_operator_id=NULL,suspension_reason=NULL,
+              deleted_at=NOW(),deleted_by_user_id=$2,
+              deleted_by_admin_operator_id=$3,deletion_reason=$4,updated_at=NOW()
         WHERE id=$1`,
-      [userId, actorUserId, reason]
+      [userId, actorUserId, actorAdminOperatorId, reason]
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -1350,6 +1350,7 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
   } finally { client.release(); }
 
   queueManagedMediaDeletionJobs(mediaJobIds);
+  clearAdminActionProofCookie(res);
   res.json({
     ok: true,
     deletedUserId: userId,
@@ -1363,7 +1364,7 @@ router.post('/api/admin/accounts/:id/notes', async (req, res, next) => {
   const note = String(req.body?.note || '').trim().replace(/\r\n?/g, '\n').slice(0, 2000);
   if (!userId) return res.status(404).json({ error: 'Account not found' });
   if (note.length < 2) return res.status(400).json({ error: 'Enter a support note' });
-  const actorUserId = Number(req.organizer.user_id || req.organizer.id);
+  const actor = actorIds(req);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1373,10 +1374,11 @@ router.post('/api/admin/accounts/:id/notes', async (req, res, next) => {
       return res.status(404).json({ error: 'Account not found' });
     }
     const { rows } = await client.query(
-      `INSERT INTO admin_account_support_notes (target_user_id,author_user_id,note)
-       VALUES ($1,$2,$3)
-       RETURNING id,target_user_id,author_user_id,note,created_at`,
-      [userId, actorUserId, note]
+      `INSERT INTO admin_account_support_notes
+         (target_user_id,author_user_id,author_admin_operator_id,note)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id,target_user_id,author_user_id,author_admin_operator_id,note,created_at`,
+      [userId, actor.actorUserId, actor.actorAdminOperatorId, note]
     );
     await writeAudit(client, req, {
       targetUserId: userId,
@@ -1399,7 +1401,7 @@ router.post('/api/admin/accounts/invitations', async (req, res, next) => {
   if (name.length < 2) return res.status(400).json({ error: 'Enter the person’s name' });
   if (!email) return res.status(400).json({ error: 'Enter a valid email' });
   const rate = inviteLimiter.consume({
-    adminId: String(req.organizer.user_id || req.organizer.id),
+    adminId: `${req.adminActor.type}:${req.adminActor.operatorId || req.adminActor.userId}`,
     ip: clientIp(req)
   });
   if (!rate.allowed) {
@@ -1474,10 +1476,12 @@ router.post('/api/admin/accounts/invitations', async (req, res, next) => {
     }
     const inserted = await client.query(
       `INSERT INTO admin_account_invitations
-         (email,name,prepare_host_page,magic_link_token_id,created_by_user_id,expires_at)
-       VALUES ($1,$2,$3,$4,$5,NOW() + INTERVAL '7 days')
+         (email,name,prepare_host_page,magic_link_token_id,created_by_user_id,
+          created_by_admin_operator_id,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW() + INTERVAL '7 days')
        RETURNING id,email,name,prepare_host_page,created_at,expires_at`,
-      [email, name, prepareHostPage, tokenId, Number(req.organizer.user_id || req.organizer.id)]
+      [email, name, prepareHostPage, tokenId,
+       actorIds(req).actorUserId, actorIds(req).actorAdminOperatorId]
     );
     invitation = inserted.rows[0];
     await writeAudit(client, req, {
@@ -1556,14 +1560,8 @@ router.setAccountClaimSenderForTests = sender => {
     ? sender
     : sendAccountClaimInvitation;
 };
-router.setAccountDeletionProofVerifierForTests = verifier => {
-  verifyAccountDeletionActionProof = typeof verifier === 'function'
-    ? verifier
-    : legacyAccountDeletionProofVerifier;
-};
 router.resetRateLimitsForTests = () => {
   inviteLimiter.reset();
-  verifyAccountDeletionActionProof = legacyAccountDeletionProofVerifier;
 };
 
 module.exports = router;

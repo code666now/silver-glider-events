@@ -41,6 +41,7 @@ app.use(require('./lib/session').sessionMiddleware(pool));
 
 // Routes
 app.use(require('./routes/auth'));
+app.use(require('./routes/admin-auth'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
@@ -62,6 +63,7 @@ const requireOrganizer = require('./middleware/requireOrganizer');
 const requireAdmin = require('./middleware/requireAdmin');
 const requirePhotoAccess = require('./middleware/requirePhotoAccess');
 const { clearSessionCookie } = require('./lib/session');
+const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-session');
 
 // Public pages
 app.get('/', view('index.html'));
@@ -74,6 +76,21 @@ app.get('/login', (req, res) => {
   if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');
   if (req.sessionStale) clearSessionCookie(res);
   res.sendFile(path.join(VIEWS, 'login.html'));
+});
+app.get('/admin/login', async (req, res, next) => {
+  try {
+    const requested = safeNext(req.query.next);
+    const destination = requested.startsWith('/admin/') && requested !== '/admin/login'
+      ? requested
+      : '/admin/accounts';
+    const dedicated = await loadAdminOperator(pool, req);
+    if (dedicated.operator) return res.redirect(destination);
+    if (dedicated.stale) clearAdminSessionCookie(res);
+    if (req.sessionAccount?.is_admin && requireAdmin.legacyFallbackEnabled()) {
+      return res.redirect(destination);
+    }
+    res.sendFile(path.join(VIEWS, 'admin-login.html'));
+  } catch (error) { next(error); }
 });
 
 // Protected app pages — logged-out users are redirected to /login before the page loads

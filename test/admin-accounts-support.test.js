@@ -31,11 +31,82 @@ test('account support schema keeps status canonical and history append-only', ()
   assert.match(migration, /'claim_account'/);
 });
 
+test('dedicated admin operators are independent principals with isolated passcodes and sessions', () => {
+  const migration = read('src/db/migrations/051_admin_operator_auth.sql');
+  const invalidationMigration = read('src/db/migrations/052_admin_operator_credential_invalidation.sql');
+  const migrations = fs.readdirSync(path.join(root, 'src/db/migrations')).filter(file => file.endsWith('.sql')).sort();
+  const session = read('src/lib/admin-session.js');
+  const middleware = read('src/middleware/requireAdmin.js');
+  const auth = read('src/routes/admin-auth.js');
+  const adminRoutes = read('src/routes/admin.js');
+  const commerceRoutes = read('src/routes/commerce.js');
+  const feedbackRoutes = read('src/routes/feedback.js');
+  const index = read('src/index.js');
+  const login = read('src/views/admin-login.html');
+  const operatorTable = migration.slice(
+    migration.indexOf('CREATE TABLE IF NOT EXISTS admin_operators'),
+    migration.indexOf('CREATE INDEX IF NOT EXISTS admin_operators_status_idx')
+  );
+
+  assert.ok(migrations.indexOf('051_admin_operator_auth.sql') > migrations.indexOf('050_direct_admin_account_deletion.sql'));
+  assert.ok(migrations.indexOf('052_admin_operator_credential_invalidation.sql') > migrations.indexOf('051_admin_operator_auth.sql'));
+  assert.match(operatorTable, /email\s+TEXT NOT NULL UNIQUE/);
+  assert.match(operatorTable, /role IN \('super_admin','support'\)/);
+  assert.match(operatorTable, /status IN \('active','disabled'\)/);
+  assert.doesNotMatch(operatorTable, /REFERENCES (?:users|organizers)/);
+  assert.match(migration, /SELECT DISTINCT LOWER\(BTRIM\(organizer\.email\)\),'super_admin','active'/);
+  assert.match(migration, /organizer\.is_admin=TRUE/);
+  assert.match(migration, /canonical_user\.account_status='active'/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS admin_auth_challenges/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS admin_action_proofs/);
+  assert.match(migration, /actor_admin_operator_id/);
+  assert.match(invalidationMigration, /BEFORE UPDATE OF status ON admin_operators/);
+  assert.match(invalidationMigration, /sessions_valid_after := GREATEST/);
+  assert.match(invalidationMigration, /UPDATE admin_auth_challenges[\s\S]*used_at=invalidated_at/);
+  assert.match(invalidationMigration, /UPDATE admin_action_proofs[\s\S]*consumed_at=invalidated_at/);
+
+  assert.match(session, /COOKIE_NAME = 'sge_admin_session'/);
+  assert.match(session, /HttpOnly; SameSite=Strict/);
+  assert.match(session, /NODE_ENV === 'production' \? '; Secure'/);
+  assert.match(session, /status='active'/);
+  assert.match(session, /sessions_valid_after/);
+  assert.match(middleware, /req\.adminOperator = dedicated\.operator/);
+  assert.match(middleware, /req\.adminActor = \{/);
+  assert.match(middleware, /LEGACY_ADMIN_AUTH_ENABLED \|\| 'false'/);
+  assert.match(middleware, /function requireSuperAdmin/);
+  assert.match(middleware, /error: 'super_admin_required'/);
+  assert.match(middleware, /function sameOriginMutation/);
+  assert.match(middleware, /continueAuthenticated\(req, res, next\)/);
+  assert.match(middleware, /res\.redirect\(`\/admin\/login/);
+
+  assert.match(auth, /router\.post\('\/api\/admin\/auth\/start'/);
+  assert.match(auth, /router\.post\('\/api\/admin\/auth\/verify'/);
+  assert.match(auth, /router\.get\('\/api\/admin\/auth\/me'/);
+  assert.match(auth, /router\.post\('\/api\/admin\/auth\/logout'/);
+  assert.match(auth, /SELECT id,email FROM admin_operators[\s\S]*status='active'/);
+  assert.doesNotMatch(auth, /INSERT INTO admin_operators/);
+  assert.match(auth, /Always set a same-shaped browser token/);
+  assert.match(auth, /ACTION_PROOF_COOKIE = 'sge_admin_action'/);
+  assert.match(auth, /runInBackground\(async \(\) =>/);
+  assert.match(auth, /router\.post\('\/api\/admin\/auth\/logout'[\s\S]*sameOriginMutation/);
+  assert.match(auth, /UPDATE admin_action_proofs[\s\S]*operator_id=\$2[\s\S]*action=\$3[\s\S]*target_user_id=\$4[\s\S]*consumed_at IS NULL/);
+  assert.match(adminRoutes, /events\/:id\/collect-photos', requireSuperAdmin/);
+  assert.match(adminRoutes, /admin\/sms\/test', requireSuperAdmin/);
+  assert.match(commerceRoutes, /commerce-interest\/send', requireAdmin, requireSuperAdmin/);
+  assert.match(feedbackRoutes, /delete\('\/api\/admin\/feedback\/:id', requireAdmin, requireSuperAdmin/);
+  assert.match(index, /app\.use\(require\('\.\/routes\/admin-auth'\)\)/);
+  assert.match(index, /app\.get\('\/admin\/login'/);
+  assert.match(login, /Operator sign in/);
+  assert.match(login, /autocomplete="one-time-code"/);
+});
+
 test('account support APIs are admin-only, audited, and label complete identity data accurately', () => {
   const route = read('src/routes/admin-accounts.js');
+  const middleware = read('src/middleware/requireAdmin.js');
 
   assert.match(route, /router\.use\('\/api\/admin\/accounts', requireAdmin\)/);
-  assert.match(route, /sameOriginMutation/);
+  assert.doesNotMatch(route, /function sameOriginMutation/);
+  assert.match(middleware, /\['POST', 'PUT', 'PATCH', 'DELETE'\][\s\S]*sameOriginMutation/);
   assert.match(route, /router\.get\('\/api\/admin\/accounts'/);
   assert.match(route, /router\.get\('\/api\/admin\/accounts\/:id'/);
   assert.match(route, /identity_type='email'/);
@@ -143,10 +214,11 @@ test('direct Super Admin deletion keeps a tombstone without the test-account blo
   assert.doesNotMatch(route, /delete-test-account|mark-test-account/);
   assert.doesNotMatch(route, /router\.delete\('\/api\/admin\/accounts\/:id'/,
     'the generic account DELETE surface must remain absent');
-  assert.match(route, /legacyAccountDeletionProofVerifier[\s\S]*hasIdentityStepUp\(req,\s*actorUserId\)/);
-  assert.match(route, /verifyAccountDeletionActionProof/);
-  assert.match(route, /action:\s*'account_delete'[\s\S]*targetUserId:\s*userId/);
-  assert.match(route, /identity_step_up_required/);
+  assert.match(route, /isDedicatedSuperAdmin\(req\)/);
+  assert.match(route, /consumeAdminActionProof\(client, req/);
+  assert.match(route, /operatorId:\s*actorAdminOperatorId[\s\S]*action:\s*'account_delete'[\s\S]*targetUserId:\s*userId/);
+  assert.match(route, /admin_step_up_required/);
+  assert.doesNotMatch(route, /hasIdentityStepUp|identity_step_up_required/);
   assert.match(route, /DELETE USER/);
   assert.match(route, /reason\.length\s*<\s*8/);
   assert.match(route, /Number\(userId\) === Number\(actorUserId\)/);
@@ -227,9 +299,9 @@ test('account deletion uses one accessible mobile danger flow with fresh email p
   assert.match(script, /DELETE USER \$\{state\.selectedId\}/);
   assert.match(script, /\/delete-account`/);
   assert.doesNotMatch(script, /delete-test-account|mark-test-account|testAccountConfirmed|deletionCanMark|deleteMode/);
-  assert.match(script, /identity_step_up_required/);
-  assert.match(script, /\/api\/me\/identities\/step-up\/start/);
-  assert.match(script, /\/api\/auth\/verify-code/);
+  assert.match(script, /admin_step_up_required/);
+  assert.match(script, /\/api\/admin\/auth\/step-up\/start/);
+  assert.match(script, /\/api\/admin\/auth\/step-up\/complete/);
   assert.match(script, /Continue to email confirmation/);
   assert.match(script, /Verify and delete/);
   assert.match(script, /was permanently deleted/);

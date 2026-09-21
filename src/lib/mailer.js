@@ -554,6 +554,32 @@ async function sendAccountVerificationCode({ to, code, purpose = 'creator_setup'
   });
 }
 
+// Dedicated staff authentication never shares customer magic-link state. The
+// caller has already resolved an active admin operator and sends only a code.
+async function sendAdminPasscode({ to, code, purpose = 'login' }) {
+  if (!resend) {
+    console.log(`[mailer:dev] ADMIN PASSCODE for ${to}: ${code}`);
+    recordDevEmail({ to, kind: 'admin_passcode', purpose, code });
+    return { dev: true };
+  }
+  const deletion = purpose === 'account_delete';
+  return send({
+    to,
+    subject: deletion
+      ? `Confirm account deletion: ${code}`
+      : `Your Silver Glider admin code: ${code}`,
+    html: layout({
+      kicker: 'Admin security',
+      headline: deletion ? 'Confirm account deletion' : 'Your admin sign-in code',
+      sub: deletion
+        ? 'Enter this code in the admin workspace to confirm the selected account deletion. It expires in 10 minutes.'
+        : 'Enter this code on the Silver Glider admin sign-in page. It expires in 10 minutes.',
+      bodyHtml: signInCodeBlock(code),
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
+    })
+  });
+}
+
 function confirmationPhotoOpportunity(addPhotoUrl, theme) {
   const url = safeHttpUrl(addPhotoUrl);
   if (!url) return '';
@@ -803,7 +829,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 }
 
 module.exports = {
-  devOutbox, sendVerificationCode, sendAccountVerificationCode,
+  devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,

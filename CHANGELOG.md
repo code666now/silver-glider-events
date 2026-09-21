@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.122
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Independent administrator access
+
+* Administrators now sign in at `/admin/login` with an operator email and a six-digit passcode. The short-lived admin cookie is separate from every customer session, and an operator does not own a Host Page, event, RSVP, or other customer property.
+* Independent `super_admin` and `support` roles replace customer-account administrator access by default. Existing active administrator emails are copied into the new operator realm during migration, while the old organizer-admin path is available only through an explicit emergency environment switch.
+* Unknown and disabled operator emails receive the same response, codes expire and lock after repeated failures, operator sessions can be revoked, and destructive account deletion requires a fresh one-time proof bound to that exact operator, action, and user.
+* Passcode delivery is tracked outside login-response timing, every authenticated admin write uses one same-origin guard, and changing an operator between active and disabled database-invalidates prior sessions, pending passcodes, and one-time action proofs.
+
+### Direct, audited account deletion
+
+* Super Admins can now delete an ordinary customer account after reviewing the exact impact, entering a support reason, typing the account-specific confirmation, and completing the fresh operator passcode. The previous test-account designation and artificial activity blockers have been removed.
+* The deletion transaction revokes authentication, removes or anonymizes customer-owned data, forfeits any remaining SMS balance, cancels queued outbound work, and records the accountable operator. Genuine protections remain for the active administrator and administrator identities.
+* Verified sign-in methods, unverified contact details, and unavailable values are now labeled truthfully. Race-safe delivery checks prevent queued emails or texts from escaping after suspension or deletion, and managed-media cleanup remains durable and reference-safe.
+
 ## 1.0.121
 
 Released September 20, 2026. Built and deployed by Codex.

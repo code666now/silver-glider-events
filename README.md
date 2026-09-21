@@ -55,7 +55,7 @@ Never use the Railway production database for development or tests.
 - Follow Host V1 with email-only magic-link verification, immediate signed-in follows, unfollow, and a lightweight `/following` list
 - Twilio Messaging Service delivery plus a paid Host Settings wallet with fixed Stripe Checkout SMS credit packs and an event-specific, consent-aware automatic day-before reminder
 - Feedback reporting and super-admin feedback inbox
-- Personalized host invitations plus a responsive Accounts & Support console for safe, audited super-admin assistance and tightly guarded test-account cleanup
+- Personalized host invitations plus a responsive Accounts & Support console for safe, audited support and direct Super Admin account control
 - Privacy Policy and Terms available throughout the app
 - Output escaping, safe URL validation, and public RSVP/resend rate limiting
 
@@ -78,7 +78,7 @@ RSVP confirmations use a separate, table-based 620px email layout in `src/lib/ma
 
 ```text
 src/index.js                 bootstrap, routes, health check, scheduled email jobs
-src/db/migrations/           numbered SQL migrations (currently 001–047)
+src/db/migrations/           numbered SQL migrations (currently 001–052)
 src/routes/                  auth, organizer events, public events/hosts, uploads, photos, admin
 src/lib/                     mailer (including adaptive RSVP confirmations), sessions, calendar, CSV, Cloudinary, Unsplash, escaping
 src/jobs/                     reminders, critical event notices, and previous-guest invitation delivery
@@ -102,7 +102,7 @@ test/                        focused Node test suite
 - **Privacy:** private and Secret Show events are excluded from public host pages and promotion surfaces. Secret Show details are not rendered before unlock.
 - **Event Vibe:** hosts can progressively add up to three labeled artists, each with a managed photo, a supported music/media link, or both. Audio links place the photo above the player; YouTube uses it as a play-to-load poster. Standard and Flyer pages show compact accessible tabs above one active artist unit, and inactive embeds are not loaded.
 - **Admission:** `free_rsvp` keeps the established guest flow, `external_tickets` keeps the existing displayed-price and outbound-link behavior, and `silver_glider_tickets` stores only a `commerce_event_id`. Commerce remains authoritative for price, inventory, availability, checkout, orders, and issued tickets.
-- **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited. Accounts & Support reveals only masked identities and records every support mutation. It permits no impersonation, administrator promotion, direct verified-credential edit, or account merge; suspending access leaves owned events and public Host Pages intact. Permanent deletion is restricted to durably designated free test accounts with no protected commercial, messaging, support, third-party, or consent history, requires fresh administrator verification and exact confirmation, and retains only a PII-minimized audit tombstone.
+- **Security:** host/admin output is escaped, executable URL schemes are rejected, and public RSVP/resend endpoints are rate-limited. Dedicated operator identities and cookies keep staff access separate from customer ownership. Accounts & Support truthfully distinguishes verified sign-in methods from unverified contact data and records every support mutation. Suspension leaves owned events and public Host Pages intact. Permanent deletion requires a dedicated Super Admin, an impact review, a reason, an exact account-specific confirmation, and a fresh one-time operator passcode; retained compliance records are anonymized instead of becoming artificial deletion blockers.
 
 ## Tests
 
@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 20, 2026, the suite contains 366 tests: 292 unit tests and 74 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity proof and conflict boundaries, canonical RSVP/session/invitation/follow/photo/delivery relationships, changed-email RSVP reuse, Familiar Faces alias dedupe, Follow-announcement dedupe, authentication, dual-proof creator phone binding, recovery revocation, admin email-only boundaries, masked Accounts & Support search/detail responses, audited support mutations, suspension and reactivation, session revocation, safe account-claim invitations, guarded test-account deletion and PII-minimized audit tombstones, invitation concurrency and delivery recovery, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, compact phone guest grids and invitation controls, Event Vibe photos, one-time Add Photo authentication, Stripe and legacy PayPal boundaries, protected Settings destinations, event management, admission modes, Commerce launch interest, owner-side editing, private draft-link entropy, the three-step mobile creator journey, browser-history navigation and Quick Create session recovery, focused mobile editor, management, and Settings task flows, exact five-destination phone tab routing, full-screen phone-menu focus behavior, authenticated Profile statistics, consistent phone location switching, My Events tab precedence and local-date boundaries, stale-response protection, mobile support access and focus return, browser/app metadata, clear Review-versus-Save semantics, compact mobile title hierarchy, direct mobile Event actions, visible Settings save feedback, consistent phone control geometry and 44px touch targets, accessibility states, desktop/mobile breakpoint isolation, mobile Safari sizing, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
+As of September 20, 2026, the suite contains 375 tests: 298 unit tests and 77 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity proof and conflict boundaries, canonical RSVP/session/invitation/follow/photo/delivery relationships, changed-email RSVP reuse, Familiar Faces alias dedupe, Follow-announcement dedupe, authentication, dual-proof creator phone binding, recovery revocation, dedicated admin-operator passcodes and session boundaries, operator disable/re-enable revocation, centralized same-origin admin mutations, Accounts & Support identity labels, audited support mutations, suspension and reactivation, session revocation, safe account-claim invitations, direct audited account deletion, invitation concurrency and delivery recovery, RSVP privacy and event-specific SMS consent, automatic day-before fulfillment, compact phone guest grids and invitation controls, Event Vibe photos, one-time Add Photo authentication, Stripe and legacy PayPal boundaries, protected Settings destinations, event management, admission modes, Commerce launch interest, owner-side editing, private draft-link entropy, the three-step mobile creator journey, browser-history navigation and Quick Create session recovery, focused mobile editor, management, and Settings task flows, exact five-destination phone tab routing, full-screen phone-menu focus behavior, authenticated Profile statistics, consistent phone location switching, My Events tab precedence and local-date boundaries, stale-response protection, mobile support access and focus return, browser/app metadata, clear Review-versus-Save semantics, compact mobile title hierarchy, direct mobile Event actions, visible Settings save feedback, consistent phone control geometry and 44px touch targets, accessibility states, desktop/mobile breakpoint isolation, mobile Safari sizing, and duplicate-event behavior against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 
@@ -123,7 +123,15 @@ For a release, update the package version and changelog, run `npm run check`, co
 
 ## Admin
 
-Set `is_admin=TRUE` on the organizer row, then use:
+Admin access uses an independent `admin_operators` identity and a dedicated
+email-passcode session at `/admin/login`. Operator rows do not own or reference
+customer users, organizers, or events. Existing active `organizers.is_admin`
+emails are copied once as `super_admin` operators by migration 051 so the
+transition does not lock out current staff. Migration 052 makes every
+active/disabled transition revoke existing sessions, pending passcodes, and
+one-time admin action proofs at the database boundary.
+
+Create later staff identities explicitly in PostgreSQL, then use:
 
 - `/admin/accounts`
 - `/admin/line`
@@ -132,11 +140,16 @@ Set `is_admin=TRUE` on the organizer row, then use:
 - `/admin/feedback`
 - `/admin/invitations`
 
-`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows masked verified identities and ownership, and keeps every support mutation audited. Admins may send an account-claim invitation, correct a display name, edit an existing Host Page, sign out all devices, suspend/reactivate access, or permanently delete a durably designated, narrowly eligible free test account through the separately verified Danger Zone. Suspension preserves events and public content. Deletion is blocked by protected commercial, messaging, support, third-party, contribution, consent, or conflict history; it purges owned data and authentication while retaining a PII-minimized audit tombstone. Impersonation, role promotion, direct credential editing, and account merging remain intentionally unavailable.
+`/admin/accounts` is the canonical Accounts & Support workspace. It searches hosts and RSVP-only people, shows verified sign-in and contact-only identities with explicit labels, and keeps every support mutation audited. `support` operators can handle normal support work; `super_admin` is required for permanent account deletion and other explicitly high-impact actions. Account deletion also requires a one-time, target/action-bound email proof that is consumed atomically with the deletion transaction. Impersonation, direct credential editing, and account merging remain intentionally unavailable.
 
 ```sql
-UPDATE organizers SET is_admin=TRUE WHERE email='you@example.com';
+INSERT INTO admin_operators (email, role, status)
+VALUES ('you@example.com', 'super_admin', 'active');
 ```
+
+`LEGACY_ADMIN_AUTH_ENABLED` defaults to `false`. Set it to `true` only as a
+short-lived emergency rollback measure; an ordinary organizer session is not
+an admin session by default.
 
 ## Deploy to Railway
 

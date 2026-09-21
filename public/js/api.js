@@ -9,7 +9,8 @@ async function api(path, opts = {}) {
   });
   if (res.status === 401) {
     const returnTo = `${location.pathname}${location.search}`;
-    window.location.href = `/login?next=${encodeURIComponent(returnTo)}`;
+    const login = location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
+    window.location.href = `${login}?next=${encodeURIComponent(returnTo)}`;
     throw new Error('Not signed in');
   }
   const data = await res.json().catch(() => ({}));
@@ -117,6 +118,10 @@ function updateNavAccount(organizer) {
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
+  if (window.location.pathname.startsWith('/admin')) {
+    renderAdminNav(el);
+    return;
+  }
   const links = [
     ['dashboard', '/dashboard', 'Home'],
     ['events', '/events', 'My Events'],
@@ -218,6 +223,26 @@ function renderNav(active) {
   // create, edit, manage, and Settings detail screens reuse the same nav key
   // but keep their own back navigation and bottom action docks.
   if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
+}
+
+function renderAdminNav(el) {
+  el.className = 'sg-nav';
+  document.body.classList.add('sg-app-page', 'sg-admin-page');
+  el.innerHTML = `
+    <a class="sg-nav-brand" href="/admin/accounts">Silver Glider <span>Admin</span></a>
+    <div class="sg-nav-actions">
+      <span class="sg-admin-operator" data-admin-operator>Admin operator</span>
+      <button class="sg-btn sg-btn-ghost sg-admin-signout" type="button">Sign out</button>
+    </div>`;
+  const label = el.querySelector('[data-admin-operator]');
+  el.querySelector('.sg-admin-signout').addEventListener('click', async () => {
+    try { await api('/api/admin/auth/logout', { method:'POST' }); } catch (_) {}
+    window.location.href = '/admin/login';
+  });
+  api('/api/admin/auth/me').then(({ operator }) => {
+    const role = operator.role === 'super_admin' ? 'Super Admin' : 'Support';
+    label.textContent = `${operator.email} · ${role}${operator.legacy ? ' · legacy session' : ''}`;
+  }).catch(() => {});
 }
 
 // Phones: Home, Events, Create, Hosts and You sit in a bottom tab bar, within

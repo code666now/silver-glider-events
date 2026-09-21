@@ -34,6 +34,15 @@
 .sg-nav-links a.active { color: var(--sg-accent); }
 .sg-nav-links .sg-nav-settings-link { display: none; }
 .sg-nav-actions { display: flex; align-items: center; gap: 10px; margin-left: 22px; }
+.sg-admin-operator {
+  max-width: min(34vw, 360px);
+  overflow: hidden;
+  color: var(--sg-text-dim);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sg-admin-signout { min-height: 40px; padding: 8px 14px; font-size: 11px; }
 .sg-account-menu { position: relative; }
 .sg-account-avatar {
   position: relative;
@@ -102,6 +111,12 @@
 @media (max-width: 1023px) {
   .sg-nav-links .sg-nav-settings-link { display: block; }
   .sg-nav-actions { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .sg-admin-page .sg-nav { align-items: flex-start; gap: 12px; }
+  .sg-admin-page .sg-nav-actions { flex-direction: column; align-items: flex-end; gap: 6px; }
+  .sg-admin-operator { max-width: 48vw; }
+  .sg-admin-signout { min-height: 44px; }
 }
 .sg-nav-toggle span {
   display: block;

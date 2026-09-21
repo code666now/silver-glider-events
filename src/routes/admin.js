@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
+const { actorIds, requireSuperAdmin } = require('../middleware/requireAdmin');
 const { normalizeHostProfile } = require('../lib/host-profile');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
@@ -20,18 +21,6 @@ const smsTestLimiter = createRateLimiter({
 function positiveId(value) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-function sameOriginMutation(req) {
-  const site = req.get('sec-fetch-site');
-  if (site) return site === 'same-origin' || site === 'none';
-  const origin = req.get('origin');
-  if (!origin || origin === 'null') return true;
-  let originHost;
-  try { originHost = new URL(origin).host; } catch (_) { return false; }
-  const allowed = [req.get('host'), req.get('x-forwarded-host')];
-  try { allowed.push(new URL(process.env.APP_URL).host); } catch (_) {}
-  return allowed.filter(Boolean).includes(originHost);
 }
 
 function slugify(value) {
@@ -121,7 +110,7 @@ router.get('/api/admin/hosts/:id', async (req, res, next) => {
 });
 
 // PATCH /api/admin/events/:id/collect-photos — isolated event-level beta flag.
-router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
+router.patch('/api/admin/events/:id/collect-photos', requireSuperAdmin, async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
     if (!id) return res.status(404).json({ error: 'Event not found' });
@@ -155,7 +144,6 @@ router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
 
 // PUT /api/admin/hosts/:id/profile — targeted public-profile editing only.
 router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
-  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
   let client;
   try {
     client = await pool.connect();
@@ -223,13 +211,16 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
         profile.websiteUrl, profile.instagramHandle, profile.contactEmail
       ]
     );
+    const actor = actorIds(req);
     await client.query(
       `INSERT INTO admin_account_audit_log
-         (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
-          request_ip,user_agent)
-       VALUES ($1,$2,'host_profile_updated','Admin Host Page update',$3::jsonb,$4::jsonb,$5,$6)`,
+         (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+          before_state,after_state,request_ip,user_agent)
+       VALUES ($1,$2,$3,'host_profile_updated','Admin Host Page update',
+               $4::jsonb,$5::jsonb,$6,$7)`,
       [
-        Number(req.organizer.user_id || req.organizer.id),
+        actor.actorUserId,
+        actor.actorAdminOperatorId,
         Number(current.user_id || current.id),
         JSON.stringify({
           orgName: current.org_name || null,
@@ -282,12 +273,18 @@ router.post('/api/admin/invitations', async (req, res, next) => {
     }
 
     const token = `${slugify(hostName)}-${crypto.randomBytes(8).toString('hex')}`;
+    const actor = actorIds(req);
+    const legacyOrganizerId = req.adminActor.type === 'legacy_user'
+      ? Number(req.organizer.id)
+      : null;
     const { rows } = await pool.query(
       `INSERT INTO host_invitations
-         (token, host_name, personal_note, created_by_organizer_id)
-       VALUES ($1,$2,$3,$4)
+         (token, host_name, personal_note, created_by_organizer_id,
+          created_by_admin_operator_id)
+       VALUES ($1,$2,$3,$4,$5)
        RETURNING *`,
-      [token, hostName, personalNote, req.organizer.id]
+      [token, hostName, personalNote,
+       legacyOrganizerId, actor.actorAdminOperatorId]
     );
     res.status(201).json({ invitation: { ...rows[0], path: `/i/${token}` } });
   } catch (err) { next(err); }
@@ -316,7 +313,7 @@ router.patch('/api/admin/invitations/:id', async (req, res, next) => {
 });
 
 // POST /api/admin/sms/test — one fixed, admin-only Messaging Service proof.
-router.post('/api/admin/sms/test', async (req, res, next) => {
+router.post('/api/admin/sms/test', requireSuperAdmin, async (req, res, next) => {
   let recipient = null;
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -325,7 +322,7 @@ router.post('/api/admin/sms/test', async (req, res, next) => {
     }
     recipient = sms.normalizeE164(req.body?.to);
     const limit = smsTestLimiter.consume({
-      organizerId: String(req.organizer.id),
+      organizerId: `${req.adminActor.type}:${req.adminActor.operatorId || req.adminActor.userId}`,
       ip: clientIp(req)
     });
     if (!limit.allowed) {

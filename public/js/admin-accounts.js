@@ -678,7 +678,10 @@ async function startDeleteStepUp() {
   setDeleteButtonsBusy(true, 'Sending code…');
   setFormError('delete-account-error', '');
   try {
-    const result = await api('/api/me/identities/step-up/start', { method:'POST' });
+    const result = await api('/api/admin/auth/step-up/start', {
+      method:'POST',
+      body:{ action:'account_delete', targetUserId:Number(state.selectedId) }
+    });
     const destination = firstValue(result, ['maskedEmail', 'masked_email'], 'your primary email');
     document.getElementById('delete-account-review').hidden = true;
     document.getElementById('delete-account-step-up').hidden = false;
@@ -721,7 +724,7 @@ async function performAccountDeletion({ allowStepUp = true } = {}) {
     });
     await finishAccountDeletion(result);
   } catch (error) {
-    if (allowStepUp && error.code === 'identity_step_up_required') {
+    if (allowStepUp && error.code === 'admin_step_up_required') {
       setDeleteButtonsBusy(false);
       await startDeleteStepUp();
       return;
@@ -777,8 +780,11 @@ async function submitDeleteStepUp(event) {
   }
   setDeleteButtonsBusy(true, 'Verifying…');
   try {
-    const result = await api('/api/auth/verify-code', { method:'POST', body:{ code } });
-    if (result.kind !== 'identity_step_up') throw new Error('Account confirmation could not be completed.');
+    const result = await api('/api/admin/auth/step-up/complete', { method:'POST',body:{ code } });
+    if (result.kind !== 'admin_action_proof' || result.action !== 'account_delete' ||
+        Number(result.targetUserId) !== Number(state.selectedId)) {
+      throw new Error('Account confirmation could not be completed.');
+    }
   } catch (error) {
     setFormError('delete-account-step-up-error', error.message || 'That code could not be verified.');
     setDeleteButtonsBusy(false);

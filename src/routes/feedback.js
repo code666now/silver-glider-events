@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
+const { requireSuperAdmin } = require('../middleware/requireAdmin');
 
 const router = express.Router();
 const TYPES = ['bug', 'suggestion', 'other'];
@@ -123,7 +124,7 @@ router.patch('/api/admin/feedback/:id', requireAdmin, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
-router.delete('/api/admin/feedback/:id', requireAdmin, async (req, res, next) => {
+router.delete('/api/admin/feedback/:id', requireAdmin, requireSuperAdmin, async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
     if (!id) return res.status(404).json({ error: 'Feedback not found' });
