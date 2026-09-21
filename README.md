@@ -111,7 +111,7 @@ npm test
 npm run check:static
 ```
 
-As of September 21, 2026, the suite contains 436 tests: 337 unit tests and 99 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim, isolated event-editor scope and publishing, concurrency, and cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
+As of September 21, 2026, the suite contains 437 tests: 338 unit tests and 99 HTTP/PostgreSQL integration tests. Focused coverage includes canonical identity and relationship boundaries, customer and dedicated-admin authentication, operator controls, complete support labels and recipient-verified identity changes, direct audited deletion, exact Done For You lookup/provisioning/claim, isolated event-editor scope and publishing, settled loading states, concurrency, and cleanup, Host Page profile and media support, RSVP and guest privacy, event creation/editing, Commerce and SMS boundaries, mobile-first interactions, accessibility, and desktop isolation against `postgresql://localhost:5432/sge_test`.
 
 Integration tests refuse to run against a database whose name is not `sge_test`. `npm run check:static` validates JavaScript syntax, local imports and assets, public-template placeholders, and browser event-data usage. Run the complete release check with `npm run check`.
 

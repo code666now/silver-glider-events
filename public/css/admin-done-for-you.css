@@ -128,6 +128,7 @@
 .dfy-events-panel #event-workspace-status:empty { display: none; }
 .dfy-events-empty { padding: 22px 3px 5px; color: var(--sg-text-dim); font-size: 11px; }
 .dfy-detail-loading { display: grid; gap: 10px; }
+.dfy-detail-loading[hidden] { display: none; }
 .dfy-detail-title-skeleton { width: min(420px, 72vw); height: 48px; }
 .dfy-detail-copy-skeleton { width: min(560px, 82vw); height: 18px; }
 .dfy-detail-card-skeleton { height: 290px; margin-top: 25px; }

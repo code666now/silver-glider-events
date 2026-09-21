@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.127
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Done For You loading recovery
+
+* The Done For You client detail loading skeleton now disappears as soon as the client request settles. Returning from event setup no longer leaves an animated placeholder covering the already-loaded account, Host Page, and event content.
+* Added focused regression coverage for the loader's hidden state. Account, ownership, Host Page, event, and publishing behavior are unchanged. The full 437-test release suite contains 338 unit tests and 99 HTTP/PostgreSQL integration tests.
+
 ## 1.0.126
 
 Released September 21, 2026. Built and deployed by Codex.

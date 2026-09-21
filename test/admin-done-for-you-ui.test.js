@@ -96,3 +96,11 @@ test('Done For You layout keeps touch targets and responsive single-column detai
   assert.match(css, /\.dfy-text-link \{ min-height: 44px/);
   assert.match(css, /prefers-reduced-motion: reduce/);
 });
+
+test('Done For You detail hides its loading skeleton after the client request settles', () => {
+  const css = read('public/css/admin-done-for-you.css');
+  const script = read('public/js/admin-done-for-you-detail.js');
+
+  assert.match(script, /finally \{[\s\S]*dfyDetailLoading\.hidden = true/);
+  assert.match(css, /\.dfy-detail-loading\[hidden\] \{ display: none; \}/);
+});
