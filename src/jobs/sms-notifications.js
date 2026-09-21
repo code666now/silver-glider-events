@@ -5,6 +5,12 @@ const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
 const { FOLLOW_SMS_CONSENT_VERSION } = require('../lib/follow-consent');
 const { refundSendCredits, SmsCreditError } = require('../lib/sms-credit-ledger');
 const {
+  HOST_ACCOUNT_DELETED,
+  HOST_ACCOUNT_INACTIVE,
+  HOST_ACCOUNT_SUSPENDED,
+  withActiveHostAccount
+} = require('../lib/outbound-account-status');
+const {
   createReminderBatch,
   eventForSms,
   makePreview
@@ -38,9 +44,10 @@ async function finalizeSmsBatch(batchId) {
               COUNT(*) FILTER (WHERE status IN ('pending','processing') OR
                 (status='failed' AND provider_message_sid IS NULL AND attempt_count < $3))::int AS outstanding,
               COALESCE(SUM(segment_count) FILTER (WHERE status='failed' AND
-                provider_message_sid IS NULL AND attempt_count >= $3),0)::int AS refundable
+                provider_message_sid IS NULL AND attempt_count >= $3
+                AND COALESCE(provider_error_code <> ALL($4::text[]),TRUE)),0)::int AS refundable
          FROM sms_notification_recipients WHERE batch_id=$1`,
-      [batchId, ACCEPTED_STATUSES, MAX_ATTEMPTS]
+      [batchId, ACCEPTED_STATUSES, MAX_ATTEMPTS, [HOST_ACCOUNT_DELETED, HOST_ACCOUNT_INACTIVE]]
     )).rows[0];
     const complete = Number(counts.outstanding) === 0;
     const accepted = Number(counts.accepted);
@@ -130,11 +137,27 @@ async function processSmsBatch(batchId) {
       continue;
     }
     try {
-      const result = await sms.sendSms({
+      const deliveryResult = await withActiveHostAccount(pool, batch.organizer_id, () => sms.sendSms({
         to: delivery.recipient,
         body: delivery.message_body || batch.message_body,
         statusCallback: callbackUrl(delivery.status_token)
-      });
+      }));
+      if (!deliveryResult.allowed) {
+        const inactiveCode = deliveryResult.accountStatus === 'suspended'
+          ? HOST_ACCOUNT_SUSPENDED
+          : deliveryResult.accountStatus === 'deleted'
+            ? HOST_ACCOUNT_DELETED
+            : HOST_ACCOUNT_INACTIVE;
+        await pool.query(
+          `UPDATE sms_notification_recipients
+              SET status='failed',attempt_count=$2,provider_error_code=$3,
+                  failed_at=NOW(),updated_at=NOW()
+            WHERE id=$1 AND provider_message_sid IS NULL`,
+          [delivery.id, MAX_ATTEMPTS, inactiveCode]
+        );
+        continue;
+      }
+      const result = deliveryResult.result;
       const providerStatus = ACCEPTED_STATUSES.includes(result.status) ? result.status : 'accepted';
       await pool.query(
         `UPDATE sms_notification_recipients

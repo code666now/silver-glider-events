@@ -4744,7 +4744,7 @@ test('profile stats count past events attended elsewhere and past events hosted'
   assert.equal((await fetch(`${baseUrl}/api/me/stats`)).status, 401);
 });
 
-test('Accounts & Support finds every canonical user but returns only masked identity data', async () => {
+test('Accounts & Support returns complete verified and contact-only identity data to admins', async () => {
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('accounts-admin@example.test','Accounts Admin',TRUE,NOW()) RETURNING id,user_id`
@@ -4753,8 +4753,9 @@ test('Accounts & Support finds every canonical user but returns only masked iden
     'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
   )).rows[0].user_id;
   const guest = (await pool.query(
-    `INSERT INTO organizers (email,name)
-     VALUES ('rsvp-only-support@example.test','RSVP Only Support') RETURNING id,user_id`
+    `INSERT INTO organizers (email,name,contact_email)
+     VALUES ('rsvp-only-support@example.test','RSVP Only Support','booking-support@example.test')
+     RETURNING id,user_id`
   )).rows[0];
   guest.user_id = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [guest.id]
@@ -4772,7 +4773,8 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   const attended = await createEvent({ slug: 'support-guest-rsvp', title: 'Support Guest RSVP' });
   await createRsvp(attended.id, {
     first_name: 'RSVP', last_name: 'Only Support',
-    email: 'rsvp-only-support@example.test', account_id: guest.id, user_id: guest.user_id
+    email: 'rsvp-contact@example.test', phone: '+14155550188',
+    account_id: guest.id, user_id: guest.user_id
   });
 
   const adminCookie = `sge_session=${signSession(admin.id)}`;
@@ -4796,10 +4798,11 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   assert.equal(searchPayload.accounts[0].id, Number(guest.user_id));
   assert.equal(searchPayload.accounts[0].kind, 'guest');
   assert.equal(searchPayload.accounts[0].rsvpCount, 1);
-  assert.equal(searchPayload.accounts[0].email, 'r•••@example.test');
-  assert.equal(searchPayload.accounts[0].phone, '••• ••• 0129');
-  assert.ok(!JSON.stringify(searchPayload).includes('rsvp-only-support@example.test'));
-  assert.ok(!JSON.stringify(searchPayload).includes('+14155550129'));
+  assert.equal(searchPayload.accounts[0].email, 'rsvp-only-support@example.test');
+  assert.equal(searchPayload.accounts[0].phone, '+14155550129');
+  assert.equal(searchPayload.accounts[0].emailLabel, 'Verified sign-in email');
+  assert.equal(searchPayload.accounts[0].phoneLabel, 'Verified sign-in phone');
+  assert.equal(searchPayload.accounts[0].contactEmail, 'booking-support@example.test');
 
   const detail = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}`, {
     headers: { cookie: adminCookie }
@@ -4808,23 +4811,36 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   assert.match(detail.headers.get('cache-control'), /no-store/);
   const detailPayload = await detail.json();
   assert.equal(detailPayload.account.id, Number(guest.user_id));
-  assert.equal(detailPayload.account.email, 'r•••@example.test');
-  assert.equal(detailPayload.account.phone, '••• ••• 0129');
+  assert.equal(detailPayload.account.email, 'rsvp-only-support@example.test');
+  assert.equal(detailPayload.account.phone, '+14155550129');
+  assert.equal(detailPayload.account.contactEmail, 'booking-support@example.test');
+  assert.equal(detailPayload.account.contactPhone, '+14155550188');
   assert.deepEqual(
-    detailPayload.identities.map(identity => [identity.type, identity.maskedValue]).sort(),
-    [['email', 'r•••@example.test'], ['phone', '••• ••• 0129']]
+    detailPayload.identities.map(identity => [identity.type, identity.value, identity.label]).sort(),
+    [
+      ['email', 'rsvp-only-support@example.test', 'Verified sign-in email'],
+      ['phone', '+14155550129', 'Verified sign-in phone']
+    ]
   );
-  assert.ok(detailPayload.identities.every(identity => !('value' in identity) && !('normalizedValue' in identity)));
-  assert.ok(!JSON.stringify(detailPayload).includes('rsvp-only-support@example.test'));
-  assert.ok(!JSON.stringify(detailPayload).includes('+14155550129'));
-  assert.equal(typeof detailPayload.deletion.allowed, 'boolean');
-  assert.ok(Array.isArray(detailPayload.deletion.blockers));
+  assert.deepEqual(
+    detailPayload.contactMethods.map(method => [method.type, method.value, method.label]),
+    [
+      ['email', 'booking-support@example.test', 'Contact email (not verified for sign-in)'],
+      ['email', 'rsvp-contact@example.test', 'RSVP email (not verified for sign-in)'],
+      ['phone', '+14155550188', 'RSVP phone (not verified for sign-in)']
+    ]
+  );
+  assert.equal(detailPayload.contactSummary.email.value, 'rsvp-only-support@example.test');
+  assert.equal(detailPayload.contactSummary.email.verifiedForSignIn, true);
+  assert.equal(detailPayload.contactSummary.phone.value, '+14155550129');
+  assert.equal(detailPayload.deletion.allowed, true);
+  assert.deepEqual(detailPayload.deletion.blockers, []);
+  assert.ok(Array.isArray(detailPayload.deletion.warnings));
   assert.equal(detailPayload.deletion.confirmationText, `DELETE USER ${guest.user_id}`);
-  assert.equal(detailPayload.deletion.designationConfirmationText, `MARK TEST USER ${guest.user_id}`);
-  assert.equal(detailPayload.deletion.isTestAccount, false);
-  assert.equal(typeof detailPayload.deletion.canMarkTestAccount, 'boolean');
   assert.equal(detailPayload.deletion.requiresFreshVerification, true);
-  for (const key of ['events', 'rsvps', 'following', 'followers', 'identities']) {
+  for (const key of ['events', 'rsvps', 'ownedEventRsvps', 'ownedEventGuestSessions',
+    'ownedEventInvitations', 'ownedEventComments', 'ownedEventMessages',
+    'ownedEventPhotos', 'ownedEventRecipients', 'following', 'followers', 'identities']) {
     assert.equal(typeof detailPayload.deletion.summary[key], 'number', `missing deletion summary: ${key}`);
   }
 
@@ -5012,7 +5028,7 @@ test('admin suspension is audited, revokes access, preserves public property, an
   assert.deepEqual(actions, ['account_suspended', 'account_reactivated']);
 });
 
-test('permanent test-account deletion requires admin auth, fresh proof, and every exact confirmation guard', async () => {
+test('permanent account deletion requires admin auth, fresh proof, and exact confirmation', async () => {
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-guard-admin@example.test','Delete Guard Admin',TRUE,NOW()) RETURNING id`
@@ -5041,32 +5057,17 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
     `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
   );
   const validBody = id => ({
-    reason: 'Remove a disposable integration-test account',
-    testAccountConfirmed: true,
+    reason: 'Owner requested permanent account deletion',
     confirmation: `DELETE USER ${id}`
   });
   const requestDelete = (id, { cookie = freshAdmin, body = validBody(id), headers = {} } = {}) => fetch(
-    `${baseUrl}/api/admin/accounts/${id}/delete-test-account`,
+    `${baseUrl}/api/admin/accounts/${id}/delete-account`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
       body: JSON.stringify(body)
     }
   );
-  const validMarkBody = id => ({
-    reason: 'Confirmed disposable integration-test account',
-    testAccountConfirmed: true,
-    confirmation: `MARK TEST USER ${id}`
-  });
-  const requestMark = (id, { cookie = freshAdmin, body = validMarkBody(id), headers = {} } = {}) => fetch(
-    `${baseUrl}/api/admin/accounts/${id}/mark-test-account`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
-      body: JSON.stringify(body)
-    }
-  );
-
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
     method: 'DELETE', headers: { cookie: freshAdmin }
   })).status, 404, 'the generic account DELETE endpoint stays absent');
@@ -5074,42 +5075,6 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
   assert.equal((await requestDelete(target.user_id, {
     cookie: `sge_session=${signSession(organizerId)}`
   })).status, 403);
-
-  const unmarkedDelete = await requestDelete(target.user_id);
-  assert.equal(unmarkedDelete.status, 409);
-  const unmarkedPayload = await unmarkedDelete.json();
-  assert.equal(unmarkedPayload.error, 'account_not_deletable');
-  assert.equal(unmarkedPayload.deletion.isTestAccount, false);
-  assert.equal(unmarkedPayload.deletion.canMarkTestAccount, true);
-  assert.ok(unmarkedPayload.deletion.blockers.some(blocker => blocker.code === 'not_designated_test_account'));
-
-  const markWithoutFreshProof = await requestMark(target.user_id, { cookie: adminSession });
-  assert.equal(markWithoutFreshProof.status, 403);
-  assert.equal((await markWithoutFreshProof.json()).error, 'identity_step_up_required');
-  const markWrongPhrase = await requestMark(target.user_id, {
-    body: { ...validMarkBody(target.user_id), confirmation: `MARK TEST USER ${target.user_id + 1}` }
-  });
-  assert.equal(markWrongPhrase.status, 400);
-  const markUnchecked = await requestMark(target.user_id, {
-    body: { ...validMarkBody(target.user_id), testAccountConfirmed: false }
-  });
-  assert.equal(markUnchecked.status, 400);
-  const marked = await requestMark(target.user_id);
-  assert.equal(marked.status, 200);
-  assert.deepEqual(await marked.json(), { ok: true, isTestAccount: true });
-  const durableDesignation = (await pool.query(
-    `SELECT is_test_account,test_account_marked_at,test_account_marked_by_user_id,
-            test_account_mark_reason
-       FROM users WHERE id=$1`, [target.user_id]
-  )).rows[0];
-  assert.equal(durableDesignation.is_test_account, true);
-  assert.ok(durableDesignation.test_account_marked_at);
-  assert.equal(durableDesignation.test_account_marked_by_user_id, admin.user_id);
-  assert.equal(durableDesignation.test_account_mark_reason, validMarkBody(target.user_id).reason);
-  assert.equal((await pool.query(
-    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_designated'`, [target.user_id]
-  )).rows[0].count, 1);
 
   const withoutFreshProof = await requestDelete(target.user_id, { cookie: adminSession });
   assert.equal(withoutFreshProof.status, 403);
@@ -5119,10 +5084,6 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
     body: { ...validBody(target.user_id), confirmation: `DELETE USER ${target.user_id + 1}` }
   });
   assert.equal(wrongPhrase.status, 400);
-  const unchecked = await requestDelete(target.user_id, {
-    body: { ...validBody(target.user_id), testAccountConfirmed: false }
-  });
-  assert.equal(unchecked.status, 400);
   const shortReason = await requestDelete(target.user_id, {
     body: { ...validBody(target.user_id), reason: 'testing' }
   });
@@ -5137,15 +5098,15 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
   assert.ok([400, 409].includes(adminDelete.status));
 
   assert.deepEqual((await pool.query(
-    'SELECT account_status,name,is_test_account FROM users WHERE id=$1', [target.user_id]
-  )).rows[0], { account_status: 'active', name: 'Delete Guard Target', is_test_account: true });
+    'SELECT account_status,name FROM users WHERE id=$1', [target.user_id]
+  )).rows[0], { account_status: 'active', name: 'Delete Guard Target' });
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
+      WHERE target_user_id=$1 AND action_type='account_deleted'`, [target.user_id]
   )).rows[0].count, 0, 'failed guard checks never create a deletion audit');
 });
 
-test('test-account deletion recomputes every protected-property blocker on the server', async () => {
+test('ordinary account history becomes deletion warnings instead of eligibility blockers', async () => {
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-blocker-admin@example.test','Delete Blocker Admin',TRUE,NOW()) RETURNING id`
@@ -5162,14 +5123,6 @@ test('test-account deletion recomputes every protected-property blocker on the s
   target.user_id = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [target.id]
   )).rows[0].user_id;
-  await pool.query(
-    `UPDATE users
-        SET is_test_account=TRUE,test_account_marked_at=NOW(),
-            test_account_marked_by_user_id=$2,
-            test_account_mark_reason='Protected-data integration test'
-      WHERE id=$1`,
-    [target.user_id, admin.user_id]
-  );
   await pool.query(
     `INSERT INTO user_identities
        (user_id,identity_type,value,normalized_value,verified_at,
@@ -5211,12 +5164,55 @@ test('test-account deletion recomputes every protected-property blocker on the s
      VALUES ($1,$2,'purchase',100,100,500,'USD','paypal','blocked-delete-ledger')`,
     [target.id, purchase.id]
   );
-  await pool.query(
+  const smsBatch = (await pool.query(
     `INSERT INTO sms_notification_batches
        (event_id,organizer_id,kind,message_body,segment_count,recipient_count,
         credit_cost,status)
-     VALUES ($1,$2,'event_tomorrow','Blocked SMS history',1,1,1,'sent')`,
+     VALUES ($1,$2,'event_tomorrow','Blocked SMS history',1,1,1,'sent')
+     RETURNING id`,
     [commerceEvent.id, target.id]
+  )).rows[0];
+  const ownedDependentRsvp = await createRsvp(commerceEvent.id, {
+    first_name: 'Owned', last_name: 'Dependent', email: 'owned-dependent@example.test'
+  });
+  const ownedDependentMessage = (await pool.query(
+    `INSERT INTO message_log
+       (rsvp_id,event_id,recipient,message_type,channel,status)
+     VALUES ($1,$2,'owned-dependent@example.test','announcement','email','pending')
+     RETURNING id`,
+    [ownedDependentRsvp.id, commerceEvent.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO guest_sessions
+       (identity_id,token_hash,display_first_name,display_name,verified_at,
+        verified_event_id,expires_at)
+     VALUES ($1,'owned-dependent-session','Owned','Owned Dependent',NOW(),$2,
+             NOW() + INTERVAL '1 day')`,
+    [target.id, commerceEvent.id]
+  );
+  await pool.query(
+    `INSERT INTO guest_invitation_tokens
+       (message_log_id,target_event_id,identity_id,token_hash)
+     VALUES ($1,$2,$3,'owned-dependent-invitation')`,
+    [ownedDependentMessage.id, commerceEvent.id, target.id]
+  );
+  await pool.query(
+    `INSERT INTO event_comments (event_id,rsvp_id,message)
+     VALUES ($1,$2,'Owned event comment')`,
+    [commerceEvent.id, ownedDependentRsvp.id]
+  );
+  await pool.query(
+    `INSERT INTO event_photos
+       (event_id,cloudinary_id,image_url,contributor_name)
+     VALUES ($1,'unmanaged-owned-dependent-photo',
+             'https://images.example.test/owned-dependent.jpg','Owned Dependent')`,
+    [commerceEvent.id]
+  );
+  await pool.query(
+    `INSERT INTO sms_notification_recipients
+       (batch_id,rsvp_id,recipient,recipient_name,segment_count,status)
+     VALUES ($1,$2,'+14155550888','Owned Dependent',1,'sent')`,
+    [smsBatch.id, ownedDependentRsvp.id]
   );
   await pool.query(
     `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,follower_user_id)
@@ -5275,56 +5271,110 @@ test('test-account deletion recomputes every protected-property blocker on the s
     `sge_session=${signSession(admin.id)}`,
     `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
   );
-  const blocked = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+  const impact = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie }
+  });
+  assert.equal(impact.status, 200);
+  const impactState = (await impact.json()).deletion;
+  assert.equal(impactState.allowed, true);
+  assert.deepEqual(impactState.blockers, []);
+  assert.equal(impactState.confirmationText, `DELETE USER ${target.user_id}`);
+  assert.equal(impactState.requiresFreshVerification, true);
+  const warnings = impactState.warnings.map(item => item.code);
+  for (const expected of [
+    'owned_events',
+    'owned_event_rsvps',
+    'owned_event_guest_sessions',
+    'owned_event_invitations',
+    'owned_event_comments',
+    'owned_event_messages',
+    'owned_event_photos',
+    'owned_event_recipients',
+    'followers',
+    'uploaded_photos',
+    'sms_credit_balance',
+    'financial_history_retained',
+    'support_history_retained',
+    'commerce_links'
+  ]) assert.ok(warnings.includes(expected), `missing deletion warning: ${expected}`);
+  assert.equal(impactState.summary.ownedEventRsvps, 1);
+  assert.equal(impactState.summary.ownedEventGuestSessions, 1);
+  assert.equal(impactState.summary.ownedEventInvitations, 1);
+  assert.equal(impactState.summary.ownedEventComments, 1);
+  assert.equal(impactState.summary.ownedEventMessages, 1);
+  assert.equal(impactState.summary.ownedEventPhotos, 1);
+  assert.equal(impactState.summary.ownedEventRecipients, 1);
+
+  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
     body: JSON.stringify({
-      reason: 'This request must be blocked by protected account history',
-      testAccountConfirmed: true,
+      reason: 'Owner requested deletion despite retained transaction history',
       confirmation: `DELETE USER ${target.user_id}`
     })
   });
-  assert.equal(blocked.status, 409);
-  const payload = await blocked.json();
-  assert.equal(payload.error, 'account_not_deletable');
-  assert.equal(payload.deletion.allowed, false);
-  assert.equal(payload.deletion.confirmationText, `DELETE USER ${target.user_id}`);
-  assert.equal(payload.deletion.requiresFreshVerification, true);
-  const blockers = payload.deletion.blockers.map(item => typeof item === 'string' ? item : item.code);
-  for (const expected of [
-    'non_free_plan',
-    'sms_credit_balance',
-    'sms_financial_history',
-    'sms_delivery_history',
-    'commerce_events',
-    'active_followers',
-    'unresolved_identity_conflicts',
-    'support_notes',
-    'external_contributed_photos',
-    'historical_identities',
-    'external_optout_history',
-    'external_event_relationships',
-    'external_delivery_history'
-  ]) assert.ok(blockers.includes(expected), `missing deletion blocker: ${expected}`);
+  assert.equal(deleted.status, 200);
+  assert.equal((await deleted.json()).ok, true);
 
   assert.deepEqual((await pool.query(
     'SELECT account_status,name FROM users WHERE id=$1', [target.user_id]
-  )).rows[0], { account_status: 'active', name: 'Blocked Test Account' });
+  )).rows[0], { account_status: 'deleted', name: null });
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [externalRsvp.id])).rows[0].count, 1,
+    'an unrelated RSVP snapshot with the same email is never a destructive match');
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_sessions WHERE id=$1', [externalSession.id])).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_invitation_tokens WHERE id=$1', [externalInvitation.id])).rows[0].count, 0);
+  const retainedMessage = (await pool.query(
+    'SELECT recipient,recipient_user_id FROM message_log WHERE id=$1', [externalMessage.id]
+  )).rows[0];
+  assert.equal(retainedMessage.recipient, 'delete-blocked@example.test',
+    'an unrelated delivery snapshot with the same email remains untouched');
+  assert.equal(retainedMessage.recipient_user_id, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2',
+    [organizerId, 'delete-blocked@example.test']
+  )).rows[0].count, 1, 'another host’s opt-out history is not matched by contact email');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM sms_credit_purchases WHERE id=$1 AND organizer_id=$2',
+    [purchase.id, target.id]
+  )).rows[0].count, 1, 'financial history remains attached to the anonymized organizer shell');
+  const organizerTombstone = (await pool.query(
+    `SELECT email,name,org_name,public_slug,plan,sms_credits,is_admin
+       FROM organizers WHERE id=$1`, [target.id]
+  )).rows[0];
+  assert.deepEqual(organizerTombstone, {
+    email: `deleted+${target.user_id}@example.invalid`,
+    name: null,
+    org_name: null,
+    public_slug: null,
+    plan: 'free',
+    sms_credits: 0,
+    is_admin: false
+  });
+  assert.deepEqual((await pool.query(
+    `SELECT kind,credits_delta,balance_after,external_key
+       FROM sms_credit_transactions
+      WHERE external_key=$1`,
+    [`account-deletion:${target.user_id}:sms-credit-forfeiture`]
+  )).rows, [{
+    kind: 'adjustment',
+    credits_delta: -9,
+    balance_after: 0,
+    external_key: `account-deletion:${target.user_id}:sms-credit-forfeiture`
+  }]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_support_notes WHERE target_user_id=$1',
+    [target.user_id]
   )).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [externalRsvp.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_sessions WHERE id=$1', [externalSession.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_invitation_tokens WHERE id=$1', [externalInvitation.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM message_log WHERE id=$1', [externalMessage.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2', [organizerId, 'delete-blocked@example.test'])).rows[0].count, 1);
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
-  )).rows[0].count, 0);
+      WHERE target_user_id=$1 AND action_type='account_deleted'`, [target.user_id]
+  )).rows[0].count, 1);
 });
 
-test('eligible test-account deletion purges disposable property and leaves only an audited canonical tombstone', async () => {
+test('direct account deletion purges property, revokes access, and leaves an audited tombstone', async () => {
   resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
@@ -5407,51 +5457,28 @@ test('eligible test-account deletion purges disposable property and leaves only 
     headers: { cookie: oldPhotoGrant }
   })).status, 200);
 
-  const reason = 'Remove the completed disposable integration-test account';
+  const reason = 'Owner requested permanent removal of this completed account';
   const adminCookie = cookieHeader(
     `sge_session=${signSession(admin.id)}`,
     `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
   );
-  const beforeDesignation = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+  const beforeDeletion = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
     headers: { cookie: adminCookie }
   });
-  assert.equal(beforeDesignation.status, 200);
-  const beforeDesignationState = (await beforeDesignation.json()).deletion;
-  assert.equal(beforeDesignationState.allowed, false);
-  assert.equal(beforeDesignationState.isTestAccount, false);
-  assert.equal(beforeDesignationState.canMarkTestAccount, true, JSON.stringify(beforeDesignationState.blockers));
-  assert.equal(beforeDesignationState.designationConfirmationText, `MARK TEST USER ${target.user_id}`);
+  assert.equal(beforeDeletion.status, 200);
+  const beforeDeletionState = (await beforeDeletion.json()).deletion;
+  assert.equal(beforeDeletionState.allowed, true);
+  assert.deepEqual(beforeDeletionState.blockers, []);
+  assert.equal(beforeDeletionState.confirmationText, `DELETE USER ${target.user_id}`);
 
-  const designationReason = 'Confirmed disposable integration fixture';
-  const designated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/mark-test-account`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: adminCookie },
-    body: JSON.stringify({
-      reason: designationReason,
-      testAccountConfirmed: true,
-      confirmation: `MARK TEST USER ${target.user_id}`
-    })
-  });
-  assert.equal(designated.status, 200);
-  assert.deepEqual(await designated.json(), { ok: true, isTestAccount: true });
-  assert.deepEqual((await pool.query(
-    `SELECT is_test_account,test_account_marked_by_user_id,test_account_mark_reason
-       FROM users WHERE id=$1`, [target.user_id]
-  )).rows[0], {
-    is_test_account: true,
-    test_account_marked_by_user_id: admin.user_id,
-    test_account_mark_reason: designationReason
-  });
-
-  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json', cookie: adminCookie,
-      'user-agent': 'Silver Glider Test Deletion Integration'
+      'user-agent': 'Silver Glider Account Deletion Integration'
     },
     body: JSON.stringify({
       reason,
-      testAccountConfirmed: true,
       confirmation: `DELETE USER ${target.user_id}`
     })
   });
@@ -5474,7 +5501,15 @@ test('eligible test-account deletion purges disposable property and leaves only 
 
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM organizers WHERE id=$1', [target.id]
-  )).rows[0].count, 0);
+  )).rows[0].count, 1, 'an anonymized organizer shell retains financial referential integrity');
+  assert.deepEqual((await pool.query(
+    'SELECT email,name,org_name,public_slug FROM organizers WHERE id=$1', [target.id]
+  )).rows[0], {
+    email: `deleted+${target.user_id}@example.invalid`,
+    name: null,
+    org_name: null,
+    public_slug: null
+  });
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM user_identities WHERE user_id=$1', [target.user_id]
   )).rows[0].count, 0);
@@ -5507,7 +5542,7 @@ test('eligible test-account deletion purges disposable property and leaves only 
   assert.deepEqual(mediaJobs, [{
     public_id: 'sg-events-dev/event-photos/disposable-unique-photo',
     status: 'pending',
-    source_kind: 'test_account_deletion',
+    source_kind: 'account_deletion',
     source_user_id: target.user_id
   }]);
   assert.equal((await pool.query(
@@ -5545,19 +5580,19 @@ test('eligible test-account deletion purges disposable property and leaves only 
     `SELECT action_type FROM admin_account_audit_log
       WHERE target_user_id=$1 ORDER BY id`, [target.user_id]
   )).rows.map(row => row.action_type);
-  assert.deepEqual(actionHistory, ['test_account_designated', 'test_account_deleted']);
+  assert.deepEqual(actionHistory, ['account_deleted']);
   const audits = (await pool.query(
     `SELECT actor_user_id,target_user_id,action_type,reason,before_state,after_state,
             metadata,user_agent
        FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+      WHERE target_user_id=$1 AND action_type='account_deleted'`,
     [target.user_id]
   )).rows;
   assert.equal(audits.length, 1);
   assert.equal(audits[0].actor_user_id, admin.user_id);
   assert.equal(audits[0].reason, reason);
   assert.equal(audits[0].after_state.status, 'deleted');
-  assert.equal(audits[0].user_agent, 'Silver Glider Test Deletion Integration');
+  assert.equal(audits[0].user_agent, 'Silver Glider Account Deletion Integration');
   const recordedAudit = JSON.stringify(audits[0]);
   assert.ok(!recordedAudit.includes(targetEmail));
   assert.ok(!recordedAudit.includes('+14155550171'));
@@ -5565,14 +5600,14 @@ test('eligible test-account deletion purges disposable property and leaves only 
   await assert.rejects(
     pool.query(
       `UPDATE admin_account_audit_log SET reason='tampered'
-        WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+        WHERE target_user_id=$1 AND action_type='account_deleted'`,
       [target.user_id]
     ),
     /append-only|immutable|cannot be updated/i
   );
   assert.equal((await pool.query(
     `SELECT reason FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+      WHERE target_user_id=$1 AND action_type='account_deleted'`,
     [target.user_id]
   )).rows[0].reason, reason);
 });
@@ -5608,7 +5643,7 @@ test('admin account invitations create no identity until the recipient claims th
   assert.equal(invited.status, 201);
   const invitedBody = await invited.json();
   const invitationPayload = invitedBody.invitation;
-  assert.equal(invitationPayload.email, 'f•••@example.test');
+  assert.equal(invitationPayload.email, invitedEmail);
   assert.equal(invitationPayload.status, 'sent');
   assert.ok(invitationPayload.sentAt);
   assert.equal(invitationPayload.prepareHostPage, true);
@@ -5735,6 +5770,9 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
   const shellDetailPayload = await shellDetailBeforeClaim.json();
   assert.equal(shellDetailPayload.account.email, null,
     'a legacy RSVP email is not presented as a verified sign-in method');
+  assert.equal(shellDetailPayload.account.contactEmail, invitedEmail);
+  assert.equal(shellDetailPayload.contactSummary.email.label,
+    'Contact email (not verified for sign-in)');
   assert.deepEqual(shellDetailPayload.identities, []);
 
   const invited = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
@@ -5746,7 +5784,7 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
   });
   assert.equal(invited.status, 201);
   const invitation = (await invited.json()).invitation;
-  assert.equal(invitation.email, 'r•••@example.test');
+  assert.equal(invitation.email, invitedEmail);
   assert.ok(!('claimUrl' in invitation));
   assert.ok(!('token' in invitation));
   assert.equal((await pool.query(

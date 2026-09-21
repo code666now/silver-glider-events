@@ -148,7 +148,7 @@
 
         <section class="accounts-detail-section" aria-labelledby="identities-title">
           <div class="accounts-section-heading-row">
-            <div><h3 id="identities-title">Sign-in &amp; recovery</h3><p>Verified ways this person can access the account.</p></div>
+            <div><h3 id="identities-title">Sign-in &amp; contact</h3><p>Verified sign-in methods and contact-only details are labeled separately.</p></div>
           </div>
           <div class="accounts-identity-list" id="account-identities"></div>
         </section>
@@ -208,15 +208,14 @@
           <div class="accounts-section-heading-row">
             <div>
               <p class="accounts-danger-kicker">Danger zone</p>
-              <h3 id="account-delete-title">Delete test account</h3>
-              <p id="account-delete-description">This permanently removes eligible test data. Real, paid, or operational accounts are blocked automatically.</p>
+              <h3 id="account-delete-title">Delete account</h3>
+              <p id="account-delete-description">Permanently remove this account and its owned data. Required financial and audit records may be anonymized and retained.</p>
             </div>
           </div>
-          <div class="accounts-delete-readiness" id="account-delete-readiness" role="status"></div>
           <div class="accounts-delete-summary" id="account-delete-summary" aria-label="Data that will be deleted"></div>
-          <ul class="accounts-delete-blockers" id="account-delete-blockers" aria-label="Reasons deletion is unavailable" hidden></ul>
-          <p class="accounts-delete-verification-note" id="account-delete-verification-note" hidden>A fresh email confirmation is required before deletion.</p>
-          <button class="sg-btn sg-btn-danger accounts-delete-button" id="delete-test-account" type="button">Delete test account permanently</button>
+          <ul class="accounts-delete-warnings" id="account-delete-warnings" aria-label="Deletion warnings" hidden></ul>
+          <p class="accounts-delete-verification-note" id="account-delete-verification-note" hidden>A fresh six-digit email passcode is required before deletion.</p>
+          <button class="sg-btn sg-btn-danger accounts-delete-button" id="delete-account-action" type="button">Delete account</button>
         </section>
       </div>
     </article>
@@ -268,18 +267,16 @@
   <dialog class="accounts-action-dialog accounts-delete-dialog" id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description">
     <article class="accounts-action-card accounts-delete-card">
       <div id="delete-account-review">
-        <p class="accounts-eyebrow accounts-danger-kicker" id="delete-account-kicker">Permanent deletion</p>
-        <h2 id="delete-account-title">Delete this test account?</h2>
-        <p class="accounts-action-description" id="delete-account-description">The account and its eligible test data will be removed. A minimal audit record keeps the user ID, administrator, date, and reason.</p>
+        <p class="accounts-eyebrow accounts-danger-kicker">Permanent deletion</p>
+        <h2 id="delete-account-title">Delete this account?</h2>
+        <p class="accounts-action-description" id="delete-account-description">The account and its owned data will be permanently removed. Required records may be anonymized and retained.</p>
+        <div class="accounts-delete-alert" role="note"><strong>This cannot be undone.</strong><span>Review the impact, give a reason, and type the exact confirmation.</span></div>
         <div class="accounts-delete-dialog-summary" id="delete-account-dialog-summary"></div>
+        <ul class="accounts-delete-warnings" id="delete-account-dialog-warnings" aria-label="Deletion warnings" hidden></ul>
         <form id="delete-account-form">
-          <label class="accounts-check-row accounts-delete-confirm-row" for="delete-account-test-confirmed">
-            <input id="delete-account-test-confirmed" type="checkbox" required>
-            <span><strong id="delete-account-attestation-title">I confirm this is test data</strong><small id="delete-account-attestation-help">Do not continue for a real customer, paid account, or account with records that must be retained.</small></span>
-          </label>
           <div class="sg-field">
-            <label for="delete-account-reason" id="delete-account-reason-label">Reason for deletion</label>
-            <textarea class="sg-textarea" id="delete-account-reason" minlength="8" maxlength="500" placeholder="Why is this test account being removed?" required></textarea>
+            <label for="delete-account-reason">Reason for deletion</label>
+            <textarea class="sg-textarea" id="delete-account-reason" minlength="8" maxlength="500" placeholder="Why is this account being removed?" required></textarea>
             <p class="accounts-field-help">Saved permanently in the minimal audit record.</p>
           </div>
           <div class="sg-field">
@@ -289,7 +286,7 @@
           <p class="accounts-form-error" id="delete-account-error" role="alert"></p>
           <div class="accounts-dialog-actions">
             <button class="sg-btn sg-btn-ghost" id="cancel-delete-account" type="button">Cancel</button>
-            <button class="sg-btn sg-btn-danger" id="confirm-delete-test-account" type="submit">Delete permanently</button>
+            <button class="sg-btn sg-btn-danger" id="submit-delete-account" type="submit">Continue to email confirmation</button>
           </div>
         </form>
       </div>
@@ -297,7 +294,7 @@
       <div id="delete-account-step-up" hidden>
         <p class="accounts-eyebrow">Security check</p>
         <h2 id="delete-account-step-up-title">Confirm it’s you</h2>
-        <p class="accounts-action-description" id="delete-account-step-up-description">Enter the six-digit code sent to your primary email before deleting this account.</p>
+        <p class="accounts-action-description" id="delete-account-step-up-description">Enter the six-digit code sent to your admin email before deleting this account.</p>
         <form id="delete-account-step-up-form">
           <div class="sg-field">
             <label for="delete-account-code">Confirmation code</label>

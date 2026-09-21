@@ -11,6 +11,7 @@ const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { esc, render404 } = require('../lib/public-html');
 const { guestVerifiedFor, readGuestSession } = require('../lib/guest-session');
 const { attendeeCookieName, readCookie } = require('../lib/private-events');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 const uploadTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-photo-upload.html'), 'utf8');
@@ -273,13 +274,17 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
         );
         if (!rows.length) continue;
         logId = rows[0].id;
-        const result = await sendPhotoRequest({
-          to: recipient.email,
-          event,
-          organizerLabel,
-          uploadUrl,
-          replyTo: req.organizer.email
-        });
+        const delivery = await withActiveHostAccount(pool, event.organizer_id, () => (
+          sendPhotoRequest({
+            to: recipient.email,
+            event,
+            organizerLabel,
+            uploadUrl,
+            replyTo: req.organizer.email
+          })
+        ));
+        if (!delivery.allowed) throw new Error(HOST_ACCOUNT_INACTIVE);
+        const result = delivery.result;
         await pool.query(
           `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,
           [logId, result?.id || null]

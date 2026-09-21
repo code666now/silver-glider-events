@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { sendPreviousGuestInvitation } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { createGuestInvitation } = require('../lib/guest-invitations');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
 const MAX_ATTEMPTS = 3;
 let running = false;
@@ -75,26 +76,35 @@ async function processPreviousGuestInvitationBatch(batchId) {
     try {
       const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${signOptout(event.host_id, delivery.recipient)}`;
-      const invitation = await createGuestInvitation(pool, {
-        messageLogId: delivery.log_id,
-        eventId: event.id,
-        eventDate: event.event_date,
-        email: delivery.recipient,
-        recipientName: delivery.recipient_name
+      const deliveryResult = await withActiveHostAccount(pool, event.organizer_id, async () => {
+        const invitation = await createGuestInvitation(pool, {
+          messageLogId: delivery.log_id,
+          eventId: event.id,
+          eventDate: event.event_date,
+          email: delivery.recipient,
+          recipientName: delivery.recipient_name
+        });
+        const invitationUrl = `${baseUrl}/g/${invitation.token}`;
+        return sendPreviousGuestInvitation({
+          to: delivery.recipient,
+          recipientName: delivery.recipient_name,
+          event,
+          organizerLabel: event.organizer_label,
+          sourceEventTitle: event.source_event_title,
+          unsubscribeUrl,
+          invitationUrl
+        });
       });
-      const invitationUrl = `${baseUrl}/g/${invitation.token}`;
-      const result = await sendPreviousGuestInvitation({
-        to: delivery.recipient,
-        recipientName: delivery.recipient_name,
-        event,
-        organizerLabel: event.organizer_label,
-        sourceEventTitle: event.source_event_title,
-        unsubscribeUrl,
-        invitationUrl
-      });
+      if (!deliveryResult.allowed) {
+        await pool.query(
+          `UPDATE message_log SET status='failed', attempt_count=$2, error=$3 WHERE id=$1`,
+          [delivery.log_id, MAX_ATTEMPTS, HOST_ACCOUNT_INACTIVE]
+        );
+        continue;
+      }
       await pool.query(
         `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,
-        [delivery.log_id, result?.id || null]
+        [delivery.log_id, deliveryResult.result?.id || null]
       );
     } catch (error) {
       console.error(`[previous-guest-invitations] invite to ${delivery.recipient} failed:`, error.message);

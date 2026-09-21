@@ -31,7 +31,7 @@ test('account support schema keeps status canonical and history append-only', ()
   assert.match(migration, /'claim_account'/);
 });
 
-test('account support APIs are admin-only, audited, and expose masked identity data', () => {
+test('account support APIs are admin-only, audited, and label complete identity data accurately', () => {
   const route = read('src/routes/admin-accounts.js');
 
   assert.match(route, /router\.use\('\/api\/admin\/accounts', requireAdmin\)/);
@@ -40,13 +40,19 @@ test('account support APIs are admin-only, audited, and expose masked identity d
   assert.match(route, /router\.get\('\/api\/admin\/accounts\/:id'/);
   assert.match(route, /identity_type='email'/);
   assert.match(route, /identity_type='phone'/);
-  assert.match(route, /maskEmail\(/);
-  assert.match(route, /maskPhone\(/);
-  assert.match(route, /maskedValue:/);
-  assert.doesNotMatch(route, /\n\s*value:\s*identity\.value/,
-    'detail responses must not return raw identity values');
-  assert.match(route, /email:\s*maskEmail\(row\.verified_email \|\| row\.email\)/);
-  assert.match(route, /phone:\s*row\.verified_phone \? maskPhone\(row\.verified_phone\) : null/);
+  assert.match(route, /value:\s*identity\.value/);
+  assert.doesNotMatch(route, /maskedValue:/);
+  assert.doesNotMatch(route, /function maskPhone/);
+  assert.match(route, /Verified sign-in email/);
+  assert.match(route, /Verified sign-in phone/);
+  assert.match(route, /Contact email \(not verified for sign-in\)/);
+  assert.match(route, /RSVP email \(not verified for sign-in\)/);
+  assert.match(route, /No email on file/);
+  assert.match(route, /No phone on file/);
+  assert.match(route, /contactMethods/);
+  assert.match(route, /contactSummary/);
+  assert.doesNotMatch(route, /router\.(?:post|put|patch)\([^\n]*identit/i,
+    'administrator account APIs must not mark contact data verified');
 
   for (const action of ['profile_name_updated', 'sessions_revoked', 'account_suspended',
     'account_reactivated', 'support_note_added', 'account_invitation_created',
@@ -96,10 +102,16 @@ test('Accounts & Support UI is mobile-safe and offers only explicit support acti
   assert.match(html, /id="account-note-form"/);
   assert.match(html, /id="account-audit"/);
   assert.match(html, /These actions never reveal credentials or sign you in as the user/);
+  assert.match(html, /Verified sign-in methods and contact-only details are labeled separately/);
 
   assert.match(script, /\/api\/admin\/accounts/);
-  assert.match(script, /maskEmail/);
-  assert.match(script, /maskPhone/);
+  assert.match(script, /contactMethods/);
+  assert.match(script, /contactSummary/);
+  assert.match(script, /Verified sign-in \$\{type\}/);
+  assert.match(script, /Contact\/RSVP \$\{type\} \(not verified for sign-in\)/);
+  assert.match(script, /No \$\{type\} on file/);
+  assert.doesNotMatch(script, /function\s+mask(?:Email|Phone)/);
+  assert.doesNotMatch(script, /No email[^\n]{0,120}Verified/);
   assert.match(script, /reason\.length < 8/);
   assert.match(script, /endpoint: 'sign-out-all'/);
   assert.match(script, /endpoint: 'suspend'/);
@@ -113,9 +125,10 @@ test('Accounts & Support UI is mobile-safe and offers only explicit support acti
   assert.match(css, /@media \(max-width:560px\)[\s\S]*\.accounts-dialog-actions \.sg-btn \{[^}]*min-height:52px/);
 });
 
-test('test-account deletion is an explicit guarded command that leaves a canonical tombstone', () => {
+test('direct Super Admin deletion keeps a tombstone without the test-account blocker maze', () => {
   const migrations = readMigrations();
   const safetyMigration = read('src/db/migrations/049_test_account_deletion_safety.sql');
+  const reconciliation = read('src/db/migrations/050_direct_admin_account_deletion.sql');
   const route = read('src/routes/admin-accounts.js');
   const worker = read('src/jobs/managed-media-deletions.js');
   const cloudinary = read('src/lib/cloudinary.js');
@@ -126,48 +139,43 @@ test('test-account deletion is an explicit guarded command that leaves a canonic
   assert.match(migrations, /deleted_by_user_id\s+INTEGER/);
   assert.match(migrations, /deletion_reason\s+TEXT/);
 
-  assert.match(route, /router\.post\('\/api\/admin\/accounts\/:id\/delete-test-account'/);
-  assert.match(route, /router\.post\('\/api\/admin\/accounts\/:id\/mark-test-account'/);
+  assert.match(route, /router\.post\('\/api\/admin\/accounts\/:id\/delete-account'/);
+  assert.doesNotMatch(route, /delete-test-account|mark-test-account/);
   assert.doesNotMatch(route, /router\.delete\('\/api\/admin\/accounts\/:id'/,
     'the generic account DELETE surface must remain absent');
-  assert.match(route, /hasIdentityStepUp\(req,\s*actorUserId\)/);
+  assert.match(route, /legacyAccountDeletionProofVerifier[\s\S]*hasIdentityStepUp\(req,\s*actorUserId\)/);
+  assert.match(route, /verifyAccountDeletionActionProof/);
+  assert.match(route, /action:\s*'account_delete'[\s\S]*targetUserId:\s*userId/);
   assert.match(route, /identity_step_up_required/);
-  assert.match(route, /testAccountConfirmed\s*=\s*req\.body\?\.testAccountConfirmed\s*===\s*true/);
-  assert.match(route, /if \(!testAccountConfirmed\)/);
   assert.match(route, /DELETE USER/);
-  assert.match(route, /MARK TEST USER/);
   assert.match(route, /reason\.length\s*<\s*8/);
-  assert.match(route, /userId\s*===\s*actorUserId/);
-  assert.match(route, /is_admin/);
-  assert.match(route, /account\.is_test_account/);
-  assert.match(route, /actionType:\s*'test_account_designated'/);
-
-  for (const blocker of [
-    'non_free_plan',
-    'sms_credit_balance',
-    'sms_financial_history',
-    'sms_delivery_history',
-    'commerce_events',
-    'active_followers',
-    'unresolved_identity_conflicts',
-    'support_notes',
-    'external_contributed_photos',
-    'historical_identities',
-    'external_optout_history',
-    'external_event_relationships',
-    'external_delivery_history',
-    'not_designated_test_account'
-  ]) {
-    assert.match(route, new RegExp(`['"]${blocker}['"]`));
+  assert.match(route, /Number\(userId\) === Number\(actorUserId\)/);
+  assert.match(route, /account\.is_admin/);
+  assert.match(route, /'self_account'/);
+  assert.match(route, /'administrator_account'/);
+  assert.doesNotMatch(route, /not_designated_test_account|non_free_plan|sms_financial_history|historical_identities/);
+  for (const warning of ['owned_events', 'owned_event_rsvps', 'owned_event_guest_sessions',
+    'owned_event_invitations', 'owned_event_comments', 'owned_event_messages',
+    'owned_event_photos', 'owned_event_recipients', 'linked_rsvps', 'sms_credit_balance',
+    'financial_history_retained', 'support_history_retained']) {
+    assert.match(route, new RegExp(`['"]${warning}['"]`));
   }
   assert.match(route, /account_not_deletable/);
-  assert.match(route, /actionType:\s*'test_account_deleted'/);
+  assert.match(route, /actionType:\s*'account_deleted'/);
   assert.match(route, /account_status='deleted'/);
   assert.match(route, /name=NULL/);
-  assert.match(route, /DELETE FROM organizers/);
+  assert.match(route, /UPDATE organizers/);
+  assert.doesNotMatch(route, /DELETE FROM organizers/);
   assert.match(route, /DELETE FROM user_identities/);
+  assert.match(route, /DELETE FROM account_phone_credentials/);
   assert.match(route, /DELETE FROM magic_link_tokens/);
+  assert.match(route, /account-deletion:\$\{userId\}:sms-credit-forfeiture/);
+  assert.match(route, /ON CONFLICT \(external_key\) DO NOTHING/);
+  assert.doesNotMatch(route, /WHERE organizer_id<>\$2 AND LOWER\(BTRIM\(email\)\)/);
+  assert.doesNotMatch(route, /DELETE FROM rsvps[\s\S]{0,220}LOWER\(BTRIM\(email\)\)/);
+  assert.doesNotMatch(route, /recipient\.recipient=ANY/);
   assert.match(route, /INSERT INTO managed_media_deletion_jobs/);
+  assert.match(route, /'account_deletion'/);
   assert.match(route, /await client\.query\('COMMIT'\)[\s\S]*queueManagedMediaDeletionJobs\(mediaJobIds\)/);
 
   assert.match(safetyMigration, /is_test_account BOOLEAN NOT NULL DEFAULT FALSE/);
@@ -178,6 +186,10 @@ test('test-account deletion is an explicit guarded command that leaves a canonic
   assert.match(safetyMigration, /status\s+TEXT NOT NULL DEFAULT 'pending'/);
   assert.match(safetyMigration, /UNIQUE \(source_kind, source_user_id, public_id\)/);
   assert.match(safetyMigration, /managed_media_deletion_jobs_pending_idx/);
+  assert.doesNotMatch(reconciliation, /DROP COLUMN IF EXISTS is_test_account/);
+  assert.doesNotMatch(reconciliation, /SET source_kind='account_deletion'/);
+  assert.match(reconciliation,
+    /CHECK \(source_kind IN \('test_account_deletion','account_deletion'\)\)/);
 
   assert.match(worker, /publicIdStillReferenced/);
   assert.match(worker, /status='processing',attempt_count=attempt_count\+1/);
@@ -194,35 +206,35 @@ test('test-account deletion is an explicit guarded command that leaves a canonic
   assert.match(cloudinary, /publicId\.startsWith\(`\$\{folder\}\//);
 });
 
-test('test-account deletion uses a dedicated accessible mobile danger flow', () => {
+test('account deletion uses one accessible mobile danger flow with fresh email proof', () => {
   const html = read('src/views/admin-accounts.html');
   const script = read('public/js/admin-accounts.js');
   const css = read('public/css/admin-accounts.css');
 
   assert.match(html, /id="account-delete-zone"/);
   assert.match(html, /Danger zone/);
-  assert.match(html, /id="delete-test-account"[^>]*>Delete test account permanently</);
+  assert.match(html, /id="delete-account-action"[^>]*>Delete account</);
   assert.match(html, /id="delete-account-dialog"[^>]*aria-labelledby="delete-account-title"[^>]*aria-describedby="delete-account-description"/);
+  assert.match(html, /This cannot be undone/);
+  assert.match(html, /id="account-delete-summary"/);
+  assert.match(html, /id="account-delete-warnings"/);
   assert.match(html, /id="delete-account-reason"[^>]*minlength="8"[^>]*required/);
   assert.match(html, /id="delete-account-confirmation"[^>]*required/);
-  assert.match(html, /id="delete-account-test-confirmed"[^>]*type="checkbox"[^>]*required/);
-  assert.match(html, /id="confirm-delete-test-account"[^>]*>Delete permanently</);
+  assert.match(html, /id="submit-delete-account"[^>]*>Continue to email confirmation</);
+  assert.doesNotMatch(html, /delete-account-test-confirmed/);
+  assert.doesNotMatch(html, /test[- ]account/i);
   assert.doesNotMatch(script, /window\.confirm\s*\(/);
   assert.match(script, /DELETE USER \$\{state\.selectedId\}/);
-  assert.match(script, /MARK TEST USER \$\{state\.selectedId\}/);
-  assert.match(script, /deletionCanMark/);
-  assert.match(script, /state\.deleteMode\s*=\s*mode/);
-  assert.match(script, /mode === 'delete' \? 'delete-test-account' : 'mark-test-account'/);
-  assert.match(script, /Nothing is deleted in this step/);
-  assert.match(script, /confirmButton\.setAttribute\('aria-label',[\s\S]*Mark account as test data/);
-  assert.match(script, /Verify and mark account as test data/);
-  assert.match(script, /testAccountConfirmed:\s*true/);
-  assert.match(script, /delete-test-account/);
+  assert.match(script, /\/delete-account`/);
+  assert.doesNotMatch(script, /delete-test-account|mark-test-account|testAccountConfirmed|deletionCanMark|deleteMode/);
   assert.match(script, /identity_step_up_required/);
   assert.match(script, /\/api\/me\/identities\/step-up\/start/);
   assert.match(script, /\/api\/auth\/verify-code/);
+  assert.match(script, /Continue to email confirmation/);
+  assert.match(script, /Verify and delete/);
+  assert.match(script, /was permanently deleted/);
   assert.match(script, /state\.selectedId\s*=\s*null/);
   assert.match(script, /search\.focus\(/);
-  assert.match(css, /@media \(max-width:560px\)[\s\S]*#confirm-delete-test-account[\s\S]*min-height:52px/);
+  assert.match(css, /@media \(max-width:560px\)[\s\S]*#submit-delete-account[\s\S]*min-height:52px/);
   assert.match(css, /@media \(max-width:560px\)[\s\S]*delete-account[\s\S]*safe-area-inset-bottom/);
 });

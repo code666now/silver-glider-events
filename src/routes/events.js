@@ -21,6 +21,7 @@ const {
   createFollowerAnnouncementBatch, makeFollowerAnnouncementPreview
 } = require('../lib/follow-announcement');
 const { queueSmsBatch } = require('../jobs/sms-notifications');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -1645,7 +1646,16 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
     for (const r of preview._emails) {
       const unsubscribeUrl = `${process.env.APP_URL}/unsubscribe?token=${signOptout(req.organizer.id, r.email)}`;
       try {
-        await sendEventAnnouncement({ to: r.email, event, organizerLabel, replyTo: req.organizer.email, unsubscribeUrl });
+        const delivery = await withActiveHostAccount(pool, event.organizer_id, () => (
+          sendEventAnnouncement({
+            to: r.email,
+            event,
+            organizerLabel,
+            replyTo: req.organizer.email,
+            unsubscribeUrl
+          })
+        ));
+        if (!delivery.allowed) throw new Error(HOST_ACCOUNT_INACTIVE);
         sent++;
         await pool.query(
           `INSERT INTO message_log

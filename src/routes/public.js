@@ -29,6 +29,7 @@ const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
 const { cleanInstagramHandle } = require('../lib/host-profile');
 const { isManagedVibePhotoUrl } = require('../lib/cloudinary');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const {
   SMS_CONSENT_DISCLOSURE,
   prepareRsvpSmsConsent,
@@ -1476,7 +1477,11 @@ async function deliverClaimedConfirmation(event, rsvp, logId) {
   try {
     const ics = buildIcs(event);
     const addPhotoUrl = await createAddPhotoMagicLink(event, rsvp);
-    const result = await sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics, addPhotoUrl });
+    const delivery = await withActiveHostAccount(pool, event.organizer_id, () => (
+      sendRsvpConfirmation({ to: rsvp.email, event, rsvp, icsContent: ics, addPhotoUrl })
+    ));
+    if (!delivery.allowed) throw new Error(HOST_ACCOUNT_INACTIVE);
+    const result = delivery.result;
     await pool.query(
       `UPDATE message_log
           SET status='sent', provider_id=$2, error=NULL, sent_at=NOW()

@@ -8,12 +8,20 @@ const { tokenHash } = require('../lib/guest-session');
 const { hasIdentityStepUp } = require('../lib/identity-step-up');
 const { isManagedPublicId, managedPublicIdFromUrl } = require('../lib/cloudinary');
 const { queueManagedMediaDeletionJobs } = require('../jobs/managed-media-deletions');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCOUNT_INVITE_TTL_MINUTES = 7 * 24 * 60;
 const ACCOUNT_INVITE_STALE_MINUTES = 5;
 let deliverAccountClaimInvitation = sendAccountClaimInvitation;
+const legacyAccountDeletionProofVerifier = async ({ req, actorUserId }) => (
+  hasIdentityStepUp(req, actorUserId)
+);
+// This seam is deliberately target/action-aware so the dedicated admin-auth
+// milestone can replace the legacy identity step-up with an atomic, one-time
+// proof without changing the destructive route or its callers.
+let verifyAccountDeletionActionProof = legacyAccountDeletionProofVerifier;
 
 router.use('/api/admin/accounts', requireAdmin);
 
@@ -52,15 +60,6 @@ function maskEmail(value) {
   const [local = '', domain = ''] = String(value || '').split('@');
   if (!domain) return '';
   return `${local.slice(0, 1)}${local.length > 1 ? '•••' : ''}@${domain}`;
-}
-
-function maskPhone(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : '••••';
-}
-
-function maskIdentity(type, value) {
-  return type === 'email' ? maskEmail(value) : (type === 'phone' ? maskPhone(value) : 'Connected');
 }
 
 function sameOriginMutation(req, res, next) {
@@ -255,7 +254,6 @@ async function markInvitationDeliveryFailed(invitation) {
 async function lockAccount(client, userId) {
   const { rows } = await client.query(
     `SELECT u.id,u.name,u.account_status,u.suspended_at,u.suspension_reason,
-            u.is_test_account,u.test_account_marked_at,u.test_account_mark_reason,
             o.id AS organizer_id,o.email,o.is_admin,o.plan,o.sms_credits,
             o.sessions_valid_after,o.org_name,o.public_slug,o.avatar_url,
             o.logo_url,o.header_image_url
@@ -268,7 +266,7 @@ async function lockAccount(client, userId) {
   return rows[0] || null;
 }
 
-async function invalidateAccountAccess(client, userId) {
+async function invalidateAccountAccess(client, userId, organizerId) {
   const now = new Date();
   await client.query(
     'UPDATE organizers SET sessions_valid_after=$2 WHERE user_id=$1',
@@ -277,7 +275,8 @@ async function invalidateAccountAccess(client, userId) {
   const identities = await client.query(
     `SELECT identity_type,value
        FROM user_identities
-      WHERE user_id=$1 AND revoked_at IS NULL`,
+      WHERE user_id=$1 AND revoked_at IS NULL
+        AND verification_scope='account' AND verified_at IS NOT NULL`,
     [userId]
   );
   const emails = identities.rows
@@ -298,300 +297,182 @@ async function invalidateAccountAccess(client, userId) {
         SET used_at=COALESCE(used_at,NOW())
       WHERE used_at IS NULL
         AND (organizer_id=$1 OR phone_e164=ANY($2::text[]))`,
-    [userId, phones]
+    [organizerId, phones]
   );
   const guestSessions = await client.query(
     `UPDATE guest_sessions
         SET revoked_at=COALESCE(revoked_at,NOW())
       WHERE revoked_at IS NULL
-        AND (user_id=$1 OR identity_id=$1)
+        AND (user_id=$1 OR identity_id=$2)
       RETURNING id`,
-    [userId]
+    [userId, organizerId]
   );
-  return { invalidatedAt: now.toISOString(), guestSessionsRevoked: guestSessions.rowCount || 0 };
+  return {
+    public: {
+      invalidatedAt: now.toISOString(),
+      guestSessionsRevoked: guestSessions.rowCount || 0
+    },
+    verifiedEmails: [...new Set(emails)],
+    verifiedPhones: [...new Set(phones)]
+  };
 }
 
-function deletionBlocker(code, message, count = 0) {
+function deletionNotice(code, message, count = 0) {
   return { code, message, count: Number(count || 0) };
 }
 
-async function getTestAccountDeletionState(client, { userId, actorUserId, account }) {
-  const organizerId = Number(account.organizer_id || userId);
-  const identityResult = await client.query(
-    `SELECT identity_type,normalized_value,revoked_at
-       FROM user_identities
-      WHERE user_id=$1`,
-    [userId]
+async function forfeitSmsCreditBalance(client, { organizerId, userId, balance }) {
+  const credits = Number(balance || 0);
+  if (!Number.isInteger(credits) || credits === 0) return;
+  await client.query(
+    `INSERT INTO sms_credit_transactions
+       (organizer_id,kind,credits_delta,balance_after,external_key,metadata)
+     VALUES ($1,'adjustment',$2,0,$3,$4::jsonb)
+     ON CONFLICT (external_key) DO NOTHING`,
+    [
+      organizerId,
+      -credits,
+      `account-deletion:${userId}:sms-credit-forfeiture`,
+      JSON.stringify({ reason: 'account_deletion', userId })
+    ]
   );
-  const phoneResult = await client.query(
-    `SELECT phone_e164,revoked_at
-       FROM account_phone_credentials
-      WHERE organizer_id=$1`,
+  await client.query(
+    'UPDATE organizers SET sms_credits=0,updated_at=NOW() WHERE id=$1',
     [organizerId]
   );
-  const emails = [...new Set([
-    ...identityResult.rows
-      .filter(row => row.identity_type === 'email' && !row.revoked_at)
-      .map(row => String(row.normalized_value || '').trim().toLowerCase()),
-    String(account.email || '').trim().toLowerCase()
-  ].filter(Boolean))];
-  const phones = [...new Set([
-    ...identityResult.rows
-      .filter(row => row.identity_type === 'phone' && !row.revoked_at)
-      .map(row => String(row.normalized_value || '').trim()),
-    ...phoneResult.rows
-      .filter(row => !row.revoked_at)
-      .map(row => String(row.phone_e164 || '').trim())
-  ].filter(Boolean))];
-  const historicalIdentityCount = identityResult.rows.filter(row => row.revoked_at).length +
-    phoneResult.rows.filter(row => row.revoked_at).length;
+}
 
+async function getAccountDeletionState(client, { userId, actorUserId, account }) {
+  const organizerId = Number(account.organizer_id || userId);
   const { rows } = await client.query(
-    `SELECT
-       (SELECT COUNT(*) FROM events e WHERE e.organizer_id=$2)::int AS events,
+    `WITH owned_events AS (
+       SELECT id FROM events WHERE organizer_id=$2
+     ), owned_rsvps AS (
+       SELECT id FROM rsvps WHERE event_id IN (SELECT id FROM owned_events)
+     ), owned_notification_batches AS (
+       SELECT id FROM event_notification_batches
+        WHERE event_id IN (SELECT id FROM owned_events)
+     ), owned_previous_invitation_batches AS (
+       SELECT id FROM previous_guest_invitation_batches
+        WHERE target_event_id IN (SELECT id FROM owned_events)
+     ), owned_messages AS (
+       SELECT id FROM message_log message
+        WHERE message.event_id IN (SELECT id FROM owned_events)
+           OR message.rsvp_id IN (SELECT id FROM owned_rsvps)
+           OR message.notification_batch_id IN (SELECT id FROM owned_notification_batches)
+           OR message.previous_guest_invitation_batch_id IN (
+                SELECT id FROM owned_previous_invitation_batches
+              )
+     )
+     SELECT
+       (SELECT COUNT(*) FROM owned_events)::int AS events,
        (SELECT COUNT(*) FROM rsvps r
-         WHERE r.user_id=$1 OR r.account_id=$2
-            OR (r.user_id IS NULL AND r.account_id IS NULL AND (
-              COALESCE(LOWER(BTRIM(r.email))=ANY($3::text[]),FALSE)
-              OR COALESCE(r.phone=ANY($4::text[]),FALSE)
-            )))::int AS rsvps,
+         WHERE r.user_id=$1 OR r.account_id=$2)::int AS rsvps,
+       (SELECT COUNT(*) FROM owned_rsvps)::int AS owned_event_rsvps,
+       (SELECT COUNT(*) FROM guest_sessions session
+         WHERE session.verified_event_id IN (SELECT id FROM owned_events))::int
+         AS owned_event_guest_sessions,
+       (SELECT COUNT(*) FROM guest_invitation_tokens invitation
+         WHERE invitation.target_event_id IN (SELECT id FROM owned_events)
+            OR invitation.message_log_id IN (SELECT id FROM owned_messages))::int
+         AS owned_event_invitations,
+       (SELECT COUNT(*) FROM event_comments comment
+         WHERE comment.event_id IN (SELECT id FROM owned_events))::int
+         AS owned_event_comments,
+       (SELECT COUNT(*) FROM owned_messages)::int AS owned_event_messages,
+       (SELECT COUNT(*) FROM event_photos photo
+         WHERE photo.event_id IN (SELECT id FROM owned_events))::int
+         AS owned_event_photos,
+       (SELECT COUNT(*) FROM sms_notification_recipients recipient
+         WHERE recipient.batch_id IN (
+           SELECT batch.id FROM sms_notification_batches batch
+            WHERE batch.event_id IN (SELECT id FROM owned_events)
+         ))::int AS owned_event_recipients,
        (SELECT COUNT(*) FROM host_follows f
          WHERE f.follower_user_id=$1 OR f.follower_organizer_id=$2)::int AS following,
        (SELECT COUNT(*) FROM host_follows f
          WHERE f.host_organizer_id=$2)::int AS followers,
        (SELECT COUNT(*) FROM user_identities i WHERE i.user_id=$1)::int AS identities,
-       (SELECT COUNT(*) FROM sms_credit_purchases p WHERE p.organizer_id=$2)::int AS sms_purchases,
-       (SELECT COUNT(*) FROM sms_credit_transactions t WHERE t.organizer_id=$2)::int AS sms_transactions,
-       (SELECT COUNT(*) FROM sms_notification_batches b
-         WHERE b.organizer_id=$2
-            OR b.event_id IN (SELECT id FROM events WHERE organizer_id=$2))::int AS sms_batches,
-       (SELECT COUNT(*) FROM sms_notification_recipients recipient
-         WHERE recipient.rsvp_id IN (
-                 SELECT r.id FROM rsvps r
-                  WHERE r.user_id=$1 OR r.account_id=$2
-                     OR LOWER(BTRIM(r.email))=ANY($3::text[])
-                     OR (r.phone IS NOT NULL AND r.phone=ANY($4::text[]))
-               )
-            OR recipient.host_follow_id IN (
-                 SELECT f.id FROM host_follows f
-                  WHERE f.follower_user_id=$1 OR f.follower_organizer_id=$2
-               ))::int AS sms_recipients,
-       (SELECT COUNT(*) FROM message_log m
-         WHERE m.channel='sms' AND (
-           m.recipient_user_id=$1
-           OR LOWER(BTRIM(m.recipient))=ANY($3::text[])
-           OR m.recipient=ANY($4::text[])
-           OR m.event_id IN (SELECT id FROM events WHERE organizer_id=$2)
-           OR m.rsvp_id IN (SELECT id FROM rsvps WHERE user_id=$1 OR account_id=$2)
-         ))::int AS sms_messages,
+       (SELECT COUNT(*) FROM sms_credit_purchases p WHERE p.organizer_id=$2)::int AS purchases,
        (SELECT COUNT(*) FROM events e
          WHERE e.organizer_id=$2 AND e.commerce_event_id IS NOT NULL)::int AS commerce_events,
-       (SELECT COUNT(*) FROM host_follows f
-         WHERE f.host_organizer_id=$2
-           AND (f.unsubscribed_at IS NULL
-                OR (f.sms_opted_in_at IS NOT NULL AND f.sms_opted_out_at IS NULL)))::int AS active_followers,
-       ((SELECT COUNT(*) FROM host_follows f WHERE f.host_organizer_id=$2)
-        +
-        (SELECT COUNT(*) FROM follower_optouts optout WHERE optout.organizer_id=$2))::int AS follower_consent_history,
-       (SELECT COUNT(*) FROM follower_optouts optout
-         WHERE optout.organizer_id<>$2
-           AND COALESCE(LOWER(BTRIM(optout.email))=ANY($3::text[]),FALSE))::int AS external_optout_history,
-       (SELECT COUNT(*) FROM host_follows follow
-         WHERE (follow.follower_user_id=$1 OR follow.follower_organizer_id=$2)
-           AND (follow.unsubscribed_at IS NOT NULL
-                OR follow.sms_opted_in_at IS NOT NULL
-                OR follow.sms_opted_out_at IS NOT NULL))::int AS external_follow_consent_history,
-       ((SELECT COUNT(*) FROM user_identity_conflicts c
-          WHERE c.resolved_at IS NULL
-            AND (c.candidate_user_id=$1 OR c.conflicting_user_id=$1))
-        +
-        (SELECT COUNT(*) FROM canonical_user_link_conflicts c
-          WHERE c.resolved_at IS NULL
-            AND (c.first_candidate_user_id=$1 OR c.second_candidate_user_id=$1)))::int AS unresolved_conflicts,
        (SELECT COUNT(*) FROM admin_account_support_notes n
-         WHERE n.target_user_id=$1 OR n.author_user_id=$1)::int AS support_notes,
+         WHERE n.target_user_id=$1)::int AS support_notes,
        (SELECT COUNT(*) FROM admin_account_audit_log audit
-         WHERE audit.target_user_id=$1
-           AND audit.action_type<>'test_account_designated')::int AS support_audit_history,
+         WHERE audit.target_user_id=$1)::int AS support_audit_history,
        (SELECT COUNT(*) FROM event_photos photo
-         JOIN events event ON event.id=photo.event_id
-        WHERE photo.uploader_user_id=$1 AND event.organizer_id<>$2)::int AS external_photos,
-       ((SELECT COUNT(*) FROM rsvps r
-          JOIN events event ON event.id=r.event_id
-         WHERE event.organizer_id<>$2
-           AND (r.user_id=$1 OR r.account_id=$2 OR (
-             r.user_id IS NULL AND r.account_id IS NULL AND (
-               COALESCE(LOWER(BTRIM(r.email))=ANY($3::text[]),FALSE)
-               OR COALESCE(r.phone=ANY($4::text[]),FALSE)
-             )
-           )))
-        +
-        (SELECT COUNT(*) FROM guest_sessions session
-          JOIN events event ON event.id=session.verified_event_id
-         WHERE event.organizer_id<>$2
-           AND (session.user_id=$1 OR session.identity_id=$2))
-        +
-        (SELECT COUNT(*) FROM guest_invitation_tokens invitation
-          JOIN events event ON event.id=invitation.target_event_id
-         WHERE event.organizer_id<>$2
-           AND (invitation.user_id=$1 OR invitation.identity_id=$2)))::int AS external_event_relationships,
+        WHERE photo.uploader_user_id=$1)::int AS uploaded_photos,
        (SELECT COUNT(*) FROM message_log message
-         LEFT JOIN events event ON event.id=message.event_id
-        WHERE (message.recipient_user_id=$1 OR (
-                 message.recipient_user_id IS NULL AND (
-                   COALESCE(LOWER(BTRIM(message.recipient))=ANY($3::text[]),FALSE)
-                   OR COALESCE(message.recipient=ANY($4::text[]),FALSE)
-                 )
-               ))
-          AND (event.organizer_id<>$2
-               OR (message.event_id IS NULL AND message.message_type<>'magic_link')))::int AS external_delivery_history,
-       ((SELECT COUNT(*) FROM rsvps r
-          JOIN events e ON e.id=r.event_id
-         WHERE e.organizer_id=$2
-           AND r.user_id IS DISTINCT FROM $1
-           AND r.account_id IS DISTINCT FROM $2)
-        +
-        (SELECT COUNT(*) FROM event_photos photo
-          JOIN events event ON event.id=photo.event_id
-         WHERE event.organizer_id=$2
-           AND photo.uploader_user_id IS DISTINCT FROM $1)
-        +
-        (SELECT COUNT(*) FROM guest_sessions session
-         WHERE session.verified_event_id IN (SELECT id FROM events WHERE organizer_id=$2)
-           AND session.user_id IS DISTINCT FROM $1
-           AND session.identity_id IS DISTINCT FROM $2)
-        +
-        (SELECT COUNT(*) FROM guest_invitation_tokens invitation
-         WHERE invitation.target_event_id IN (SELECT id FROM events WHERE organizer_id=$2)
-           AND invitation.user_id IS DISTINCT FROM $1
-           AND invitation.identity_id IS DISTINCT FROM $2))::int AS third_party_event_data,
-       (SELECT COUNT(*) FROM message_log m
-         WHERE m.event_id IN (SELECT id FROM events WHERE organizer_id=$2)
-           AND (m.status='sent' OR m.provider_id IS NOT NULL)
-           AND m.recipient_user_id IS DISTINCT FROM $1)::int AS third_party_deliveries,
-       (SELECT COUNT(*) FROM feedback_submissions feedback
-         WHERE feedback.submitted_by_organizer_id=$2
-            OR feedback.organizer_id=$2
-            OR feedback.event_id IN (SELECT id FROM events WHERE organizer_id=$2)
-            OR COALESCE(LOWER(BTRIM(feedback.user_email))=ANY($3::text[]),FALSE))::int AS feedback_history,
-       (SELECT COUNT(*) FROM host_invitations invitation
-         WHERE invitation.created_by_organizer_id=$2
-            OR invitation.joined_organizer_id=$2)::int AS host_invitation_history,
-       (SELECT COUNT(*) FROM admin_account_invitations invitation
-         WHERE invitation.claimed_user_id=$1
-            OR COALESCE(LOWER(BTRIM(invitation.email))=ANY($3::text[]),FALSE))::int AS account_invitation_history,
-       (SELECT COUNT(*) FROM magic_link_tokens token
-         WHERE token.requested_user_id IS NULL
-           AND token.target_organizer_id IS DISTINCT FROM $2
-           AND COALESCE(LOWER(BTRIM(token.email))=ANY($3::text[]),FALSE))::int AS ambiguous_identity_records`,
-    [userId, organizerId, emails, phones]
+        WHERE message.recipient_user_id=$1)::int AS messages`,
+    [userId, organizerId]
   );
   const counts = rows[0];
   const blockers = [];
   if (Number(userId) === Number(actorUserId)) {
-    blockers.push(deletionBlocker('self_account', 'You cannot delete the account you are using.'));
+    blockers.push(deletionNotice('self_account', 'You cannot delete the account you are using.'));
   }
   if (account.is_admin) {
-    blockers.push(deletionBlocker('administrator_account', 'Administrator accounts cannot be deleted here.'));
-  }
-  if (String(account.plan || 'free') !== 'free') {
-    blockers.push(deletionBlocker('non_free_plan', 'Move this account to the free plan first.'));
-  }
-  if (Number(account.sms_credits || 0) !== 0) {
-    blockers.push(deletionBlocker('sms_credit_balance', 'The account still has a text-credit balance.', account.sms_credits));
-  }
-  const financialHistory = Number(counts.sms_purchases || 0) + Number(counts.sms_transactions || 0);
-  if (financialHistory) {
-    blockers.push(deletionBlocker('sms_financial_history', 'Paid text-credit history must be retained.', financialHistory));
-  }
-  const smsHistory = Number(counts.sms_batches || 0) + Number(counts.sms_recipients || 0) + Number(counts.sms_messages || 0);
-  if (smsHistory) {
-    blockers.push(deletionBlocker('sms_delivery_history', 'Text-message delivery history must be retained.', smsHistory));
-  }
-  if (counts.commerce_events) {
-    blockers.push(deletionBlocker('commerce_events', 'An event is connected to ticket commerce.', counts.commerce_events));
-  }
-  if (counts.active_followers) {
-    blockers.push(deletionBlocker('active_followers', 'The Host Page still has active followers or text consent.', counts.active_followers));
-  }
-  if (counts.follower_consent_history) {
-    blockers.push(deletionBlocker('follower_consent_history', 'Follower or opt-out consent history must be retained.', counts.follower_consent_history));
-  }
-  if (counts.external_optout_history) {
-    blockers.push(deletionBlocker('external_optout_history', 'Another host’s unsubscribe record must be preserved.', counts.external_optout_history));
-  }
-  if (counts.external_follow_consent_history) {
-    blockers.push(deletionBlocker('external_follow_consent_history', 'Follow or text-consent history with another host must be preserved.', counts.external_follow_consent_history));
-  }
-  if (counts.unresolved_conflicts) {
-    blockers.push(deletionBlocker('unresolved_identity_conflicts', 'Resolve identity conflicts before deleting.', counts.unresolved_conflicts));
-  }
-  if (historicalIdentityCount) {
-    blockers.push(deletionBlocker('historical_identities', 'Accounts with replaced or revoked sign-in identities require manual privacy review.', historicalIdentityCount));
-  }
-  if (counts.support_notes) {
-    blockers.push(deletionBlocker('support_notes', 'Support-note history must be retained.', counts.support_notes));
-  }
-  if (counts.support_audit_history) {
-    blockers.push(deletionBlocker('support_audit_history', 'Existing support-action history requires manual privacy review.', counts.support_audit_history));
-  }
-  if (counts.external_photos) {
-    blockers.push(deletionBlocker('external_contributed_photos', 'Photos contributed to another host’s event must be handled first.', counts.external_photos));
-  }
-  if (counts.external_event_relationships) {
-    blockers.push(deletionBlocker('external_event_relationships', 'Another host’s RSVP or guest-access history must be preserved.', counts.external_event_relationships));
-  }
-  if (counts.external_delivery_history) {
-    blockers.push(deletionBlocker('external_delivery_history', 'Another host or platform delivery record must be preserved.', counts.external_delivery_history));
-  }
-  if (counts.third_party_event_data) {
-    blockers.push(deletionBlocker('third_party_event_data', 'Owned events contain another person’s RSVP, photo, or verified guest access.', counts.third_party_event_data));
-  }
-  if (counts.third_party_deliveries) {
-    blockers.push(deletionBlocker('third_party_delivery_history', 'Owned events have delivered messages to other people.', counts.third_party_deliveries));
-  }
-  if (counts.feedback_history) {
-    blockers.push(deletionBlocker('feedback_history', 'Feedback history is connected to this account.', counts.feedback_history));
-  }
-  if (counts.host_invitation_history) {
-    blockers.push(deletionBlocker('host_invitation_history', 'Host invitation history is connected to this account.', counts.host_invitation_history));
-  }
-  if (counts.account_invitation_history) {
-    blockers.push(deletionBlocker('account_invitation_history', 'Account-claim invitation history must be retained.', counts.account_invitation_history));
-  }
-  if (counts.ambiguous_identity_records) {
-    blockers.push(deletionBlocker('ambiguous_identity_records', 'Unlinked sign-in history needs manual privacy review.', counts.ambiguous_identity_records));
+    blockers.push(deletionNotice('administrator_account', 'Administrator accounts cannot be deleted.'));
   }
 
-  const designationAllowed = blockers.length === 0;
-  if (!account.is_test_account) {
-    blockers.push(deletionBlocker('not_designated_test_account', 'Mark this account as test data before permanent deletion.'));
+  const warnings = [];
+  if (counts.events) warnings.push(deletionNotice('owned_events', 'Owned events and their dependent guest data will be removed.', counts.events));
+  if (counts.owned_event_rsvps) warnings.push(deletionNotice('owned_event_rsvps', 'RSVPs on owned events will be removed.', counts.owned_event_rsvps));
+  if (counts.owned_event_guest_sessions) warnings.push(deletionNotice('owned_event_guest_sessions', 'Guest sessions scoped to owned events will be removed.', counts.owned_event_guest_sessions));
+  if (counts.owned_event_invitations) warnings.push(deletionNotice('owned_event_invitations', 'Guest invitations for owned events will be removed.', counts.owned_event_invitations));
+  if (counts.owned_event_comments) warnings.push(deletionNotice('owned_event_comments', 'Comments on owned events will be removed.', counts.owned_event_comments));
+  if (counts.owned_event_messages) warnings.push(deletionNotice('owned_event_messages', 'Queued and historical messages attached to owned events will be removed.', counts.owned_event_messages));
+  if (counts.owned_event_photos) warnings.push(deletionNotice('owned_event_photos', 'Photos attached to owned events will be removed.', counts.owned_event_photos));
+  if (counts.owned_event_recipients) warnings.push(deletionNotice('owned_event_recipients', 'Text recipients attached to owned events will be removed.', counts.owned_event_recipients));
+  if (counts.rsvps) warnings.push(deletionNotice('linked_rsvps', 'RSVP records linked to this account will be removed.', counts.rsvps));
+  if (counts.following) warnings.push(deletionNotice('following', 'Host follows created by this account will be removed.', counts.following));
+  if (counts.followers) warnings.push(deletionNotice('followers', 'Followers of this Host Page will be disconnected.', counts.followers));
+  if (counts.uploaded_photos) warnings.push(deletionNotice('uploaded_photos', 'Uploaded managed photos will be removed when no surviving record uses them.', counts.uploaded_photos));
+  if (counts.messages) warnings.push(deletionNotice('delivery_history', 'Delivery records will be anonymized or removed with owned content.', counts.messages));
+  if (Number(account.sms_credits || 0)) warnings.push(deletionNotice('sms_credit_balance', 'Unused text credits will be forfeited.', account.sms_credits));
+  if (counts.purchases) warnings.push(deletionNotice('financial_history_retained', 'Anonymized purchase and ledger history will be retained.', counts.purchases));
+  if (counts.support_notes || counts.support_audit_history) {
+    warnings.push(deletionNotice(
+      'support_history_retained',
+      'Operator-authored support notes and administrator audit history are retained and may still contain information staff entered.',
+      Number(counts.support_notes || 0) + Number(counts.support_audit_history || 0)
+    ));
   }
+  if (counts.commerce_events) warnings.push(deletionNotice('commerce_links', 'Owned Commerce-linked event records will be removed from Events.', counts.commerce_events));
 
   return {
     public: {
-      allowed: Boolean(account.is_test_account) && designationAllowed,
+      allowed: blockers.length === 0,
       blockers,
+      warnings,
       confirmationText: `DELETE USER ${userId}`,
-      designationConfirmationText: `MARK TEST USER ${userId}`,
-      isTestAccount: Boolean(account.is_test_account),
-      canMarkTestAccount: !account.is_test_account && designationAllowed,
       requiresFreshVerification: true,
       summary: {
         events: Number(counts.events || 0),
         rsvps: Number(counts.rsvps || 0),
+        ownedEventRsvps: Number(counts.owned_event_rsvps || 0),
+        ownedEventGuestSessions: Number(counts.owned_event_guest_sessions || 0),
+        ownedEventInvitations: Number(counts.owned_event_invitations || 0),
+        ownedEventComments: Number(counts.owned_event_comments || 0),
+        ownedEventMessages: Number(counts.owned_event_messages || 0),
+        ownedEventPhotos: Number(counts.owned_event_photos || 0),
+        ownedEventRecipients: Number(counts.owned_event_recipients || 0),
         following: Number(counts.following || 0),
         followers: Number(counts.followers || 0),
-        identities: Number(counts.identities || 0)
+        identities: Number(counts.identities || 0),
+        uploadedPhotos: Number(counts.uploaded_photos || 0),
+        messages: Number(counts.messages || 0),
+        purchases: Number(counts.purchases || 0),
+        smsCredits: Number(account.sms_credits || 0)
       }
     },
-    private: { organizerId, emails, phones, designationAllowed }
+    private: { organizerId }
   };
 }
 
 const accountListSelect = `
   SELECT u.id,u.name,u.account_status,u.suspended_at,u.suspension_reason,
-         u.created_at,u.updated_at,u.is_test_account,u.test_account_marked_at,
+         u.created_at,u.updated_at,
          o.id AS organizer_id,o.email,o.is_admin,o.plan,o.last_login_at,o.org_name,o.public_slug,
          o.bio,o.website_url,o.instagram_handle,o.contact_email,
          o.sms_credits,o.sessions_valid_after,
@@ -605,12 +486,67 @@ const accountListSelect = `
          (SELECT value FROM user_identities i
            WHERE i.user_id=u.id AND i.identity_type='phone' AND i.revoked_at IS NULL
              AND i.verification_scope='account' AND i.verified_at IS NOT NULL
-           ORDER BY i.is_primary DESC,i.id ASC LIMIT 1) AS verified_phone
+           ORDER BY i.is_primary DESC,i.id ASC LIMIT 1) AS verified_phone,
+         (SELECT r.email FROM rsvps r
+           WHERE r.user_id=u.id OR (r.user_id IS NULL AND r.account_id=o.id)
+           ORDER BY r.created_at DESC,r.id DESC LIMIT 1) AS rsvp_email,
+         (SELECT r.phone FROM rsvps r
+           WHERE (r.user_id=u.id OR (r.user_id IS NULL AND r.account_id=o.id))
+             AND NULLIF(BTRIM(r.phone),'') IS NOT NULL
+           ORDER BY r.created_at DESC,r.id DESC LIMIT 1) AS rsvp_phone
     FROM users u
     LEFT JOIN organizers o ON o.user_id=u.id`;
 
+function preferredAccountContacts(row) {
+  const verifiedEmail = String(row.verified_email || '').trim() || null;
+  const verifiedPhone = String(row.verified_phone || '').trim() || null;
+  const contactEmail = [row.contact_email, row.email, row.rsvp_email]
+    .map(value => String(value || '').trim())
+    .find(value => value && value.toLowerCase() !== String(verifiedEmail || '').toLowerCase()) || null;
+  const rsvpPhone = String(row.rsvp_phone || '').trim();
+  const contactPhone = rsvpPhone && rsvpPhone !== verifiedPhone ? rsvpPhone : null;
+  const email = verifiedEmail || contactEmail;
+  const phone = verifiedPhone || contactPhone;
+  const emailLabel = verifiedEmail
+    ? 'Verified sign-in email'
+    : (contactEmail
+      ? (String(row.rsvp_email || '').trim().toLowerCase() === contactEmail.toLowerCase() &&
+          ![row.contact_email, row.email].some(value => String(value || '').trim().toLowerCase() === contactEmail.toLowerCase())
+        ? 'RSVP email (not verified for sign-in)'
+        : 'Contact email (not verified for sign-in)')
+      : 'No email on file');
+  const phoneLabel = verifiedPhone
+    ? 'Verified sign-in phone'
+    : (contactPhone ? 'RSVP phone (not verified for sign-in)' : 'No phone on file');
+  return { verifiedEmail, verifiedPhone, contactEmail, contactPhone, email, phone, emailLabel, phoneLabel };
+}
+
+function accountContactMethods(row, identities, rsvpContacts) {
+  const verified = new Set(identities.map(identity => (
+    `${identity.identity_type}:${String(identity.value || '').trim().toLowerCase()}`
+  )));
+  const seen = new Set();
+  const methods = [];
+  const add = (type, value, source, label) => {
+    const cleaned = String(value || '').trim();
+    if (!cleaned) return;
+    const key = `${type}:${cleaned.toLowerCase()}`;
+    if (verified.has(key) || seen.has(key)) return;
+    seen.add(key);
+    methods.push({ type, value: cleaned, label, source, verifiedForSignIn: false });
+  };
+  add('email', row.contact_email, 'host_contact', 'Contact email (not verified for sign-in)');
+  add('email', row.email, 'legacy_contact', 'Contact email (not verified for sign-in)');
+  for (const contact of rsvpContacts) {
+    add('email', contact.email, 'rsvp', 'RSVP email (not verified for sign-in)');
+    add('phone', contact.phone, 'rsvp', 'RSVP phone (not verified for sign-in)');
+  }
+  return methods;
+}
+
 function accountListItem(row) {
   const kind = row.is_admin ? 'admin' : (row.public_slug || row.org_name || row.event_count > 0 ? 'host' : 'guest');
+  const contacts = preferredAccountContacts(row);
   return {
     id: Number(row.id),
     user_id: Number(row.id),
@@ -621,10 +557,14 @@ function accountListItem(row) {
     isAdmin: Boolean(row.is_admin),
     is_admin: Boolean(row.is_admin),
     plan: row.plan || 'free',
-    email: maskEmail(row.verified_email || row.email),
-    primary_email_masked: maskEmail(row.verified_email || row.email),
-    phone: row.verified_phone ? maskPhone(row.verified_phone) : null,
-    primary_phone_masked: row.verified_phone ? maskPhone(row.verified_phone) : null,
+    email: contacts.email,
+    phone: contacts.phone,
+    emailLabel: contacts.emailLabel,
+    phoneLabel: contacts.phoneLabel,
+    verifiedEmail: contacts.verifiedEmail,
+    verifiedPhone: contacts.verifiedPhone,
+    contactEmail: contacts.contactEmail,
+    contactPhone: contacts.contactPhone,
     hostPage: row.public_slug ? { name: row.org_name || row.name, slug: row.public_slug } : null,
     org_name: row.org_name || null,
     public_slug: row.public_slug || null,
@@ -642,8 +582,8 @@ function accountListItem(row) {
   };
 }
 
-// All canonical users, including guest-only accounts. Search accepts exact or
-// partial identity input but returns only masked list identifiers.
+// All canonical users, including guest-only accounts. Authorized administrators
+// receive complete contact values with explicit verification labels.
 router.get('/api/admin/accounts', async (req, res, next) => {
   try {
     res.setHeader('Cache-Control', 'private, no-store');
@@ -665,10 +605,19 @@ router.get('/api/admin/accounts', async (req, res, next) => {
         LOWER(COALESCE(u.name,'')) LIKE $${n}
         OR CAST(u.id AS TEXT) LIKE $${n}
         OR LOWER(COALESCE(o.org_name,'')) LIKE $${n}
+        OR LOWER(COALESCE(o.email,'')) LIKE $${n}
+        OR LOWER(COALESCE(o.contact_email,'')) LIKE $${n}
         OR EXISTS (
           SELECT 1 FROM user_identities search_identity
            WHERE search_identity.user_id=u.id AND search_identity.revoked_at IS NULL
              AND LOWER(search_identity.normalized_value) LIKE $${n}
+        )
+        OR EXISTS (
+          SELECT 1 FROM rsvps search_rsvp
+           WHERE (search_rsvp.user_id=u.id
+                  OR (search_rsvp.user_id IS NULL AND search_rsvp.account_id=o.id))
+             AND (LOWER(search_rsvp.email) LIKE $${n}
+                  OR LOWER(COALESCE(search_rsvp.phone,'')) LIKE $${n})
         )
       )`);
     }
@@ -733,7 +682,7 @@ router.get('/api/admin/accounts/invitations', async (req, res, next) => {
       invitations: rows.map(row => ({
         id: Number(row.id),
         name: row.name,
-        email: maskEmail(row.email),
+        email: row.email,
         prepareHostPage: row.prepare_host_page,
         status: row.claimed_at ? 'claimed'
           : (row.revoked_at ? 'revoked'
@@ -764,7 +713,7 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
     if (!row) return res.status(404).json({ error: 'Account not found' });
 
     const actorUserId = Number(req.organizer.user_id || req.organizer.id);
-    const [identityResult, ownershipResult, eventResult, notesResult, auditResult, conflictResult, deletionState] = await Promise.all([
+    const [identityResult, contactResult, ownershipResult, eventResult, notesResult, auditResult, conflictResult, deletionState] = await Promise.all([
       pool.query(
         `SELECT id,identity_type,value,verified_at,verification_scope,is_primary,
                 revoked_at,created_at
@@ -772,6 +721,13 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
           WHERE user_id=$1 AND revoked_at IS NULL
             AND verification_scope='account' AND verified_at IS NOT NULL
           ORDER BY identity_type,is_primary DESC,id`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT DISTINCT email,phone
+           FROM rsvps
+          WHERE user_id=$1 OR account_id=$1
+          ORDER BY email,phone`,
         [userId]
       ),
       pool.query(
@@ -819,18 +775,26 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
               AND (c.first_candidate_user_id=$1 OR c.second_candidate_user_id=$1))::int AS relationship_conflicts`,
         [userId]
       ),
-      getTestAccountDeletionState(pool, { userId, actorUserId, account: row })
+      getAccountDeletionState(pool, { userId, actorUserId, account: row })
     ]);
 
+    const preferredContacts = preferredAccountContacts(row);
+    const contactMethods = accountContactMethods(row, identityResult.rows, contactResult.rows);
+    const primaryEmailIdentity = identityResult.rows.find(identity => identity.identity_type === 'email') || null;
+    const primaryPhoneIdentity = identityResult.rows.find(identity => identity.identity_type === 'phone') || null;
+    const fallbackEmail = contactMethods.find(method => method.type === 'email') || null;
+    const fallbackPhone = contactMethods.find(method => method.type === 'phone') || null;
     const account = {
       ...accountListItem(row),
       // Detail sign-in methods must reflect only proved account identities.
       // `organizers.email` is a legacy/contact compatibility field and may
       // belong to an RSVP-only shell that has never claimed an account.
-      email: row.verified_email ? maskEmail(row.verified_email) : null,
-      primary_email_masked: row.verified_email ? maskEmail(row.verified_email) : null,
-      phone: row.verified_phone ? maskPhone(row.verified_phone) : null,
-      primary_phone_masked: row.verified_phone ? maskPhone(row.verified_phone) : null,
+      email: preferredContacts.verifiedEmail,
+      phone: preferredContacts.verifiedPhone,
+      contactEmail: fallbackEmail?.value || null,
+      contactPhone: fallbackPhone?.value || null,
+      emailLabel: primaryEmailIdentity ? 'Verified sign-in email' : (fallbackEmail?.label || 'No email on file'),
+      phoneLabel: primaryPhoneIdentity ? 'Verified sign-in phone' : (fallbackPhone?.label || 'No phone on file'),
       smsCredits: Number(row.sms_credits || 0),
       suspensionReason: row.suspension_reason || null,
       can_suspend: actorUserId !== userId,
@@ -841,13 +805,23 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
       identities: identityResult.rows.map(identity => ({
         id: Number(identity.id),
         type: identity.identity_type,
-        maskedValue: maskIdentity(identity.identity_type, identity.value),
+        value: identity.value,
+        label: identity.identity_type === 'email' ? 'Verified sign-in email' : 'Verified sign-in phone',
         verifiedAt: identity.verified_at,
         verificationScope: identity.verification_scope,
         isPrimary: identity.is_primary,
         revokedAt: identity.revoked_at,
         createdAt: identity.created_at
       })),
+      contactMethods,
+      contactSummary: {
+        email: primaryEmailIdentity
+          ? { value: primaryEmailIdentity.value, label: 'Verified sign-in email', verifiedForSignIn: true }
+          : (fallbackEmail || { value: null, label: 'No email on file', verifiedForSignIn: false }),
+        phone: primaryPhoneIdentity
+          ? { value: primaryPhoneIdentity.value, label: 'Verified sign-in phone', verifiedForSignIn: true }
+          : (fallbackPhone || { value: null, label: 'No phone on file', verifiedForSignIn: false })
+      },
       ownership: {
         event_count: Number(ownershipResult.rows[0].events || 0),
         rsvp_count: Number(ownershipResult.rows[0].rsvps || 0),
@@ -931,16 +905,16 @@ router.post('/api/admin/accounts/:id/sign-out-all', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Account not found' });
     }
-    const result = await invalidateAccountAccess(client, userId);
+    const result = await invalidateAccountAccess(client, userId, account.organizer_id);
     await writeAudit(client, req, {
       targetUserId: userId,
       actionType: 'sessions_revoked',
       reason,
       beforeState: { sessionsValidAfter: account.sessions_valid_after || null },
-      afterState: result
+      afterState: result.public
     });
     await client.query('COMMIT');
-    res.json({ ok: true, sessions: { validAfter: result.invalidatedAt, individuallyTracked: false } });
+    res.json({ ok: true, sessions: { validAfter: result.public.invalidatedAt, individuallyTracked: false } });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -958,6 +932,10 @@ router.post('/api/admin/accounts/:id/suspend', async (req, res, next) => {
   try {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('silver-glider-admin-suspension'))");
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(userId)]
+    );
     const account = await lockAccount(client, userId);
     if (!account) {
       await client.query('ROLLBACK');
@@ -986,13 +964,13 @@ router.post('/api/admin/accounts/:id/suspend', async (req, res, next) => {
         WHERE id=$1`,
       [userId, suspendedAt, actorUserId, reason]
     );
-    const access = await invalidateAccountAccess(client, userId);
+    const access = await invalidateAccountAccess(client, userId, account.organizer_id);
     await writeAudit(client, req, {
       targetUserId: userId,
       actionType: 'account_suspended',
       reason,
       beforeState: { status: 'active' },
-      afterState: { status: 'suspended', suspendedAt: suspendedAt.toISOString(), ...access }
+      afterState: { status: 'suspended', suspendedAt: suspendedAt.toISOString(), ...access.public }
     });
     await client.query('COMMIT');
     res.json({ ok: true, status: 'suspended', suspendedAt });
@@ -1045,109 +1023,17 @@ router.post('/api/admin/accounts/:id/reactivate', async (req, res, next) => {
   } finally { client.release(); }
 });
 
-router.post('/api/admin/accounts/:id/mark-test-account', async (req, res, next) => {
+// Permanent deletion is a direct Super Admin action. The proof check is routed
+// through an action/target-aware seam pending dedicated one-time admin proofs.
+// Ordinary account history is an impact warning, not an artificial eligibility
+// blocker. Profile and contact columns are anonymized; immutable operator-entered
+// support/audit history and anonymized financial records remain for integrity.
+router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => {
   const userId = positiveId(req.params.id);
   const actorUserId = Number(req.organizer.user_id || req.organizer.id);
   const reason = cleanReason(req.body?.reason);
   const confirmation = String(req.body?.confirmation || '').trim();
-  const testAccountConfirmed = req.body?.testAccountConfirmed === true;
   if (!userId) return res.status(404).json({ error: 'Account not found' });
-  if (!testAccountConfirmed) {
-    return res.status(400).json({
-      error: 'test_account_confirmation_required',
-      message: 'Confirm that this account contains test data only.'
-    });
-  }
-  if (!reason || reason.length < 8) {
-    return res.status(400).json({
-      error: 'designation_reason_required',
-      message: 'Add a reason of at least 8 characters.'
-    });
-  }
-  if (confirmation !== `MARK TEST USER ${userId}`) {
-    return res.status(400).json({
-      error: 'designation_confirmation_mismatch',
-      message: `Type MARK TEST USER ${userId} exactly.`
-    });
-  }
-  if (!hasIdentityStepUp(req, actorUserId)) {
-    return res.status(403).json({
-      error: 'identity_step_up_required',
-      message: 'Confirm your current email before designating this test account.'
-    });
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-    await client.query(
-      'SELECT pg_advisory_xact_lock(hashtext($1))',
-      [`admin-test-account-delete:${userId}`]
-    );
-    const account = await lockAccount(client, userId);
-    if (!account) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Account not found' });
-    }
-    if (account.is_test_account) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'Account is already designated as test data' });
-    }
-    await client.query('SELECT id FROM events WHERE organizer_id=$1 FOR UPDATE', [account.organizer_id]);
-    const deletionState = await getTestAccountDeletionState(client, { userId, actorUserId, account });
-    if (!deletionState.private.designationAllowed) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        error: 'account_not_designatable',
-        message: 'This account has protected history and cannot be marked as disposable test data.',
-        deletion: deletionState.public
-      });
-    }
-    await client.query(
-      `UPDATE users
-          SET is_test_account=TRUE,test_account_marked_at=NOW(),
-              test_account_marked_by_user_id=$2,test_account_mark_reason=$3,updated_at=NOW()
-        WHERE id=$1`,
-      [userId, actorUserId, reason]
-    );
-    await writeAudit(client, req, {
-      targetUserId: userId,
-      actionType: 'test_account_designated',
-      reason,
-      beforeState: { isTestAccount: false },
-      afterState: { isTestAccount: true }
-    });
-    await client.query('COMMIT');
-    return res.json({ ok: true, isTestAccount: true });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    if (error.code === '40001') {
-      return res.status(409).json({
-        error: 'account_changed_retry',
-        message: 'The account changed during review. Reload it and try again.'
-      });
-    }
-    return next(error);
-  } finally { client.release(); }
-});
-
-// This intentionally is not a general account delete. It is a high-friction,
-// audited cleanup path for disposable test accounts whose data graph has no
-// paid history, external ownership, active audience, or immutable support
-// dependency. A minimal canonical user tombstone remains for audit integrity.
-router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next) => {
-  const userId = positiveId(req.params.id);
-  const actorUserId = Number(req.organizer.user_id || req.organizer.id);
-  const reason = cleanReason(req.body?.reason);
-  const confirmation = String(req.body?.confirmation || '').trim();
-  const testAccountConfirmed = req.body?.testAccountConfirmed === true;
-  if (!userId) return res.status(404).json({ error: 'Account not found' });
-  if (!testAccountConfirmed) {
-    return res.status(400).json({
-      error: 'test_account_confirmation_required',
-      message: 'Confirm that this account contains test data only.'
-    });
-  }
   if (!reason || reason.length < 8) {
     return res.status(400).json({
       error: 'deletion_reason_required',
@@ -1160,10 +1046,21 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       message: `Type DELETE USER ${userId} exactly.`
     });
   }
-  if (!hasIdentityStepUp(req, actorUserId)) {
+  let actionProofAccepted;
+  try {
+    actionProofAccepted = await verifyAccountDeletionActionProof({
+      req,
+      action: 'account_delete',
+      actorUserId,
+      targetUserId: userId
+    });
+  } catch (error) {
+    return next(error);
+  }
+  if (!actionProofAccepted) {
     return res.status(403).json({
       error: 'identity_step_up_required',
-      message: 'Confirm your current email before permanently deleting this test account.'
+      message: 'Confirm this administrator account before permanently deleting the target account.'
     });
   }
 
@@ -1175,20 +1072,20 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
     await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtext($1))`,
-      [`admin-test-account-delete:${userId}`]
+      [outboundDeliveryLockKey(userId)]
     );
     const account = await lockAccount(client, userId);
     if (!account) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Account not found' });
     }
-    // Lock every owned event before the blocker snapshot. This prevents a new
-    // RSVP/photo/message from appearing between the safety check and delete.
+    // Lock every owned event before the impact snapshot. This prevents new
+    // dependent records appearing between review and deletion.
     await client.query(
       'SELECT id FROM events WHERE organizer_id=$1 FOR UPDATE',
       [account.organizer_id]
     );
-    const deletionState = await getTestAccountDeletionState(client, {
+    const deletionState = await getAccountDeletionState(client, {
       userId,
       actorUserId,
       account
@@ -1197,12 +1094,12 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       await client.query('ROLLBACK');
       return res.status(409).json({
         error: 'account_not_deletable',
-        message: 'This account has data that must be handled before it can be deleted.',
+        message: deletionState.public.blockers[0]?.message || 'This account cannot be deleted.',
         deletion: deletionState.public
       });
     }
 
-    const { organizerId, emails, phones } = deletionState.private;
+    const { organizerId } = deletionState.private;
     responseSummary = deletionState.public.summary;
     const eventMedia = await client.query(
       `SELECT cover_image_url,flyer_image_url,event_vibe_image_url,
@@ -1215,8 +1112,8 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       `SELECT photo.cloudinary_id
          FROM event_photos photo
          JOIN events event ON event.id=photo.event_id
-        WHERE event.organizer_id=$1`,
-      [organizerId]
+        WHERE event.organizer_id=$1 OR photo.uploader_user_id=$2`,
+      [organizerId, userId]
     );
     const candidateMediaPublicIds = [...new Set([
       ...eventPhotoMedia.rows.map(row => String(row.cloudinary_id || '').trim()).filter(isManagedPublicId),
@@ -1233,28 +1130,27 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
         ])
       ].map(managedPublicIdFromUrl).filter(Boolean)
     ])];
-    const [survivingOrganizerMedia, survivingEventMedia, survivingPhotoMedia] = await Promise.all([
-      client.query(
-        `SELECT avatar_url,logo_url,header_image_url
-           FROM organizers
-          WHERE id<>$1`,
-        [organizerId]
-      ),
-      client.query(
-        `SELECT cover_image_url,flyer_image_url,event_vibe_image_url,
-                event_vibe_image_url_2,event_vibe_image_url_3
-           FROM events
-          WHERE organizer_id<>$1`,
-        [organizerId]
-      ),
-      client.query(
-        `SELECT photo.cloudinary_id
-           FROM event_photos photo
-           JOIN events event ON event.id=photo.event_id
-          WHERE event.organizer_id<>$1`,
-        [organizerId]
-      )
-    ]);
+    const survivingOrganizerMedia = await client.query(
+      `SELECT avatar_url,logo_url,header_image_url
+         FROM organizers
+        WHERE id<>$1`,
+      [organizerId]
+    );
+    const survivingEventMedia = await client.query(
+      `SELECT cover_image_url,flyer_image_url,event_vibe_image_url,
+              event_vibe_image_url_2,event_vibe_image_url_3
+         FROM events
+        WHERE organizer_id<>$1`,
+      [organizerId]
+    );
+    const survivingPhotoMedia = await client.query(
+      `SELECT photo.cloudinary_id
+         FROM event_photos photo
+         JOIN events event ON event.id=photo.event_id
+        WHERE event.organizer_id<>$1
+          AND photo.uploader_user_id IS DISTINCT FROM $2`,
+      [organizerId, userId]
+    );
     const survivingPublicIds = new Set([
       ...survivingOrganizerMedia.rows.flatMap(row => [
         row.avatar_url, row.logo_url, row.header_image_url
@@ -1276,7 +1172,7 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
         `WITH inserted AS (
            INSERT INTO managed_media_deletion_jobs
              (public_id,source_kind,source_user_id)
-           SELECT public_id,'test_account_deletion',$2
+           SELECT public_id,'account_deletion',$2
              FROM UNNEST($1::text[]) AS public_id
            ON CONFLICT (source_kind,source_user_id,public_id) DO NOTHING
            RETURNING id
@@ -1284,7 +1180,7 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
          SELECT id FROM inserted
          UNION
          SELECT id FROM managed_media_deletion_jobs
-          WHERE source_kind='test_account_deletion'
+          WHERE source_kind='account_deletion'
             AND source_user_id=$2
             AND public_id=ANY($1::text[])
             AND status IN ('pending','processing')`,
@@ -1296,10 +1192,15 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
 
     const deletedPlaceholder = `deleted+${userId}@example.invalid`;
 
-    const access = await invalidateAccountAccess(client, userId);
+    const access = await invalidateAccountAccess(client, userId, organizerId);
+    await forfeitSmsCreditBalance(client, {
+      organizerId,
+      userId,
+      balance: account.sms_credits
+    });
     await writeAudit(client, req, {
       targetUserId: userId,
-      actionType: 'test_account_deleted',
+      actionType: 'account_deleted',
       reason,
       beforeState: {
         status: account.account_status,
@@ -1308,15 +1209,15 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       },
       afterState: { status: 'deleted' },
       metadata: {
-        deletionMode: 'test_account',
+        deletionMode: 'super_admin',
         deletedUserId: userId,
         ...responseSummary,
-        guestSessionsRevoked: access.guestSessionsRevoked
+        guestSessionsRevoked: access.public.guestSessionsRevoked
       }
     });
 
-    // Break references from events that were duplicated by another account;
-    // their copies remain usable after this disposable source is removed.
+    // Break references from events duplicated by another account; their copies
+    // remain usable after the source account's events are removed.
     await client.query(
       `UPDATE events
           SET duplicated_from_id=NULL
@@ -1324,28 +1225,43 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       [organizerId]
     );
 
-    // Preserve platform delivery telemetry without retaining the deleted
-    // account's address. Event-scoped records outside this account were
-    // blockers above and are never removed here.
+    // Only canonical ownership/link fields select records here. Contact and RSVP
+    // snapshots are display/delivery data and must never become destructive keys.
     await client.query(
       `UPDATE message_log
-          SET recipient=$2
-        WHERE recipient_user_id IS NULL
-          AND event_id IS NULL
-          AND message_type='magic_link'
-          AND LOWER(BTRIM(recipient))=ANY($1::text[])`,
-      [emails, deletedPlaceholder]
+          SET recipient='deleted+' || $1::text || '+message-' || id::text || '@example.invalid',
+              recipient_name=NULL,recipient_user_id=NULL
+        WHERE recipient_user_id=$1`,
+      [userId]
     );
     await client.query(
-      `DELETE FROM message_log
-        WHERE recipient_user_id=$1
+      `UPDATE sms_notification_recipients recipient
+          SET recipient='deleted-' || $1::text || '-sms-' || recipient.id::text,
+              recipient_name=NULL,access_token=NULL
+        WHERE recipient.rsvp_id IN (
+                SELECT id FROM rsvps
+                 WHERE user_id=$1 OR account_id=$2
+              )
+           OR recipient.host_follow_id IN (
+                SELECT id FROM host_follows
+                 WHERE follower_user_id=$1 OR follower_organizer_id=$2 OR host_organizer_id=$2
+              )`,
+      [userId, organizerId]
+    );
+    await client.query(
+      `UPDATE feedback_submissions
+          SET submitted_by_organizer_id=CASE WHEN submitted_by_organizer_id=$2 THEN NULL ELSE submitted_by_organizer_id END,
+              organizer_id=CASE WHEN organizer_id=$2 THEN NULL ELSE organizer_id END,
+              user_name=NULL,
+              user_email='deleted+' || $1::text || '+feedback-' || id::text || '@example.invalid'
+        WHERE submitted_by_organizer_id=$2 OR organizer_id=$2
            OR event_id IN (SELECT id FROM events WHERE organizer_id=$2)`,
       [userId, organizerId]
     );
     await client.query(
-      `DELETE FROM rsvps
-        WHERE user_id=$1 OR account_id=$2`,
-      [userId, organizerId]
+      `DELETE FROM admin_account_invitations
+        WHERE claimed_user_id=$1`,
+      [userId]
     );
     await client.query(
       `DELETE FROM guest_invitation_tokens
@@ -1358,20 +1274,32 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
       [userId, organizerId]
     );
     await client.query(
+      `DELETE FROM event_photos
+        WHERE uploader_user_id=$1`,
+      [userId]
+    );
+    await client.query(
+      `DELETE FROM rsvps
+        WHERE user_id=$1 OR account_id=$2`,
+      [userId, organizerId]
+    );
+    await client.query(
       `DELETE FROM host_follows
         WHERE follower_user_id=$1 OR follower_organizer_id=$2 OR host_organizer_id=$2`,
       [userId, organizerId]
     );
+    await client.query('DELETE FROM follower_optouts WHERE organizer_id=$1', [organizerId]);
     await client.query(
       `DELETE FROM phone_auth_challenges
         WHERE organizer_id=$1 OR phone_e164=ANY($2::text[])`,
-      [organizerId, phones]
+      [organizerId, access.verifiedPhones]
     );
+    await client.query('DELETE FROM account_phone_credentials WHERE organizer_id=$1', [organizerId]);
     await client.query(
       `DELETE FROM magic_link_tokens
         WHERE (requested_user_id=$1 OR target_organizer_id=$2
                OR LOWER(BTRIM(email))=ANY($3::text[]))`,
-      [userId, organizerId, emails]
+      [userId, organizerId, access.verifiedEmails]
     );
     await client.query(
       `DELETE FROM user_identity_conflicts
@@ -1383,10 +1311,24 @@ router.post('/api/admin/accounts/:id/delete-test-account', async (req, res, next
         WHERE first_candidate_user_id=$1 OR second_candidate_user_id=$1`,
       [userId]
     );
+    await client.query(
+      `DELETE FROM host_invitations
+        WHERE created_by_organizer_id=$1 OR joined_organizer_id=$1`,
+      [organizerId]
+    );
+    await client.query('DELETE FROM commerce_feature_interests WHERE organizer_id=$1', [organizerId]);
     await client.query('DELETE FROM line_submissions WHERE organizer_id=$1', [organizerId]);
     await client.query('DELETE FROM events WHERE organizer_id=$1', [organizerId]);
-    await client.query('DELETE FROM organizers WHERE id=$1 AND user_id=$2', [organizerId, userId]);
     await client.query('DELETE FROM user_identities WHERE user_id=$1', [userId]);
+    await client.query(
+      `UPDATE organizers
+          SET email=$3,name=NULL,org_name=NULL,public_slug=NULL,plan='free',sms_credits=0,
+              is_admin=FALSE,last_login_at=NULL,logo_url=NULL,header_image_url=NULL,bio=NULL,
+              website_url=NULL,instagram_url=NULL,instagram_handle=NULL,contact_email=NULL,
+              avatar_url=NULL,sessions_valid_after=NOW(),updated_at=NOW()
+        WHERE id=$1 AND user_id=$2`,
+      [organizerId, userId, deletedPlaceholder]
+    );
     await client.query(
       `UPDATE users
           SET name=NULL,account_status='deleted',
@@ -1598,7 +1540,7 @@ router.post('/api/admin/accounts/invitations', async (req, res, next) => {
     invitation: {
       id: Number(invitation.id),
       name: invitation.name,
-      email: maskEmail(invitation.email),
+      email: invitation.email,
       prepareHostPage: invitation.prepare_host_page,
       status: 'sent',
       createdAt: invitation.created_at,
@@ -1614,6 +1556,14 @@ router.setAccountClaimSenderForTests = sender => {
     ? sender
     : sendAccountClaimInvitation;
 };
-router.resetRateLimitsForTests = () => inviteLimiter.reset();
+router.setAccountDeletionProofVerifierForTests = verifier => {
+  verifyAccountDeletionActionProof = typeof verifier === 'function'
+    ? verifier
+    : legacyAccountDeletionProofVerifier;
+};
+router.resetRateLimitsForTests = () => {
+  inviteLimiter.reset();
+  verifyAccountDeletionActionProof = legacyAccountDeletionProofVerifier;
+};
 
 module.exports = router;

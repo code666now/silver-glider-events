@@ -75,10 +75,12 @@
 .accounts-identity-icon { width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:rgba(28,197,190,.08);color:var(--sg-accent); }
 .accounts-identity-icon svg { width:20px;height:20px; }
 .accounts-identity-copy { min-width:0; }
-.accounts-identity-copy strong,.accounts-identity-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.accounts-identity-copy strong,.accounts-identity-copy span { display:block;overflow-wrap:anywhere; }
 .accounts-identity-copy strong { font-size:12px; }
 .accounts-identity-copy span { margin-top:3px;color:var(--sg-text-faint);font-size:10px; }
-.accounts-identity-state { color:#86d496;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase; }
+.accounts-identity-state { color:#86d496;font-size:9px;font-weight:800;letter-spacing:.07em;text-align:right;text-transform:uppercase; }
+.accounts-identity-state.contact { color:#e5bd72; }
+.accounts-identity-state.unavailable { color:var(--sg-text-faint); }
 .accounts-property-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px; }
 .accounts-property-card { min-width:0;padding:15px;border:1px solid var(--sg-border-soft);border-radius:15px;background:rgba(255,255,255,.012); }
 .accounts-property-card span { display:block;margin-bottom:5px;color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
@@ -116,20 +118,12 @@
 .accounts-danger-zone { margin-top:28px;padding:22px;border:1px solid rgba(224,82,82,.3);border-radius:18px;background:rgba(224,82,82,.035); }
 .accounts-danger-zone.accounts-detail-section { border-bottom:1px solid rgba(224,82,82,.3); }
 .accounts-danger-kicker { margin:0 0 6px;color:#ef7777;font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase; }
-.accounts-delete-readiness { display:grid;gap:3px;margin-bottom:14px;padding:13px 14px;border:1px solid var(--sg-border-soft);border-radius:14px;background:rgba(255,255,255,.015); }
-.accounts-delete-readiness strong,.accounts-delete-readiness span { display:block; }
-.accounts-delete-readiness strong { font-size:12px; }
-.accounts-delete-readiness span { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
-.accounts-delete-readiness.eligible { border-color:rgba(121,201,138,.24); }
-.accounts-delete-readiness.eligible strong { color:#86d496; }
-.accounts-delete-readiness.blocked { border-color:rgba(224,82,82,.26); }
-.accounts-delete-readiness.blocked strong { color:#ef7777; }
 .accounts-delete-summary,.accounts-delete-dialog-summary { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px; }
 .accounts-delete-summary[hidden],.accounts-delete-dialog-summary[hidden] { display:none; }
 .accounts-delete-summary > span,.accounts-delete-dialog-summary > span { min-width:0;padding:10px;border:1px solid var(--sg-border-soft);border-radius:12px;color:var(--sg-text-faint);font-size:9px;line-height:1.35;text-align:center; }
 .accounts-delete-summary strong,.accounts-delete-dialog-summary strong { display:block;margin-bottom:2px;color:var(--sg-text);font-size:13px;overflow-wrap:anywhere; }
-.accounts-delete-blockers { display:grid;gap:7px;margin:0 0 16px;padding:13px 15px 13px 31px;border:1px solid rgba(224,82,82,.2);border-radius:14px;color:var(--sg-text-dim);font-size:10px;line-height:1.5; }
-.accounts-delete-blockers[hidden] { display:none; }
+.accounts-delete-warnings { display:grid;gap:7px;margin:0 0 16px;padding:13px 15px 13px 31px;border:1px solid rgba(224,82,82,.2);border-radius:14px;color:var(--sg-text-dim);font-size:10px;line-height:1.5; }
+.accounts-delete-warnings[hidden] { display:none; }
 .accounts-delete-verification-note { margin:0 0 14px;color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
 .accounts-delete-verification-note[hidden] { display:none; }
 .accounts-delete-button { min-height:44px;padding:10px 17px;font-size:12px; }
@@ -154,8 +148,10 @@
 .accounts-delete-dialog { width:min(580px,calc(100vw - 32px)); }
 .accounts-delete-card { max-height:min(90dvh,800px);overflow:auto;overscroll-behavior:contain; }
 .accounts-delete-card .accounts-delete-dialog-summary { grid-template-columns:repeat(4,minmax(0,1fr)); }
-.accounts-delete-confirm-row { border-color:rgba(224,82,82,.25);background:rgba(224,82,82,.025); }
-.accounts-delete-confirm-row input { accent-color:#df5c5c; }
+.accounts-delete-alert { display:grid;gap:3px;margin-bottom:14px;padding:13px 14px;border:1px solid rgba(224,82,82,.25);border-radius:14px;background:rgba(224,82,82,.025); }
+.accounts-delete-alert strong,.accounts-delete-alert span { display:block; }
+.accounts-delete-alert strong { color:#ef7777;font-size:12px; }
+.accounts-delete-alert span { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
 .accounts-delete-card code { padding:2px 5px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--sg-text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;overflow-wrap:anywhere; }
 .accounts-delete-confirmation-input,.accounts-delete-code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.025em; }
 .accounts-delete-code { font-size:21px;letter-spacing:.18em; }
@@ -224,7 +220,7 @@
   .accounts-dialog-actions { display:grid;grid-template-columns:1fr; }
   .accounts-dialog-actions .sg-btn { min-height:52px;width:100%; }
   .accounts-dialog-actions .sg-btn-primary,.accounts-dialog-actions .sg-btn-danger { grid-row:1; }
-  #confirm-delete-test-account { min-height:52px; }
+  #submit-delete-account { min-height:52px; }
 }
 
 @media (prefers-reduced-motion:reduce) {
