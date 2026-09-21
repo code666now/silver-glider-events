@@ -238,7 +238,9 @@ test('Accounts & Support UI is mobile-safe and offers only explicit support acti
   assert.match(script, /endpoint: 'suspend'/);
   assert.match(script, /endpoint: 'reactivate'/);
   assert.doesNotMatch(html, /id="(?:impersonate|edit-credential)/i);
-  assert.doesNotMatch(script, /\/api\/admin\/accounts\/[^`'"\n]+\/(?:impersonate|identit)/i);
+  assert.doesNotMatch(script, /\/api\/admin\/accounts\/[^`'"\n]+\/impersonate/i);
+  assert.match(script, /\/identity-changes/);
+  assert.doesNotMatch(script, /identity-changes[^\n]{0,100}\/verify/);
 
   assert.match(css, /@media \(max-width:879px\)[\s\S]*height:100dvh/);
   assert.match(css, /\.accounts-icon-button \{[^}]*width:44px;height:44px/);

@@ -9,6 +9,7 @@ const { tokenHash } = require('../lib/guest-session');
 const { isManagedPublicId, managedPublicIdFromUrl } = require('../lib/cloudinary');
 const { queueManagedMediaDeletionJobs } = require('../jobs/managed-media-deletions');
 const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
+const { listIdentityChangeRequests } = require('../lib/admin-identity-changes');
 const {
   clearAdminActionProofCookie,
   consumeAdminActionProof
@@ -269,6 +270,13 @@ async function invalidateAccountAccess(client, userId, organizerId) {
         AND (organizer_id=$1 OR phone_e164=ANY($2::text[]))`,
     [organizerId, phones]
   );
+  const identityChanges = await client.query(
+    `UPDATE admin_account_identity_change_requests
+        SET status='cancelled',cancelled_at=NOW(),updated_at=NOW()
+      WHERE target_user_id=$1 AND status='pending'
+      RETURNING id`,
+    [userId]
+  );
   const guestSessions = await client.query(
     `UPDATE guest_sessions
         SET revoked_at=COALESCE(revoked_at,NOW())
@@ -280,7 +288,8 @@ async function invalidateAccountAccess(client, userId, organizerId) {
   return {
     public: {
       invalidatedAt: now.toISOString(),
-      guestSessionsRevoked: guestSessions.rowCount || 0
+      guestSessionsRevoked: guestSessions.rowCount || 0,
+      identityChangesCancelled: identityChanges.rowCount || 0
     },
     verifiedEmails: [...new Set(emails)],
     verifiedPhones: [...new Set(phones)]
@@ -696,7 +705,8 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
     if (!row) return res.status(404).json({ error: 'Account not found' });
 
     const { actorUserId } = actorIds(req);
-    const [identityResult, contactResult, ownershipResult, eventResult, notesResult, auditResult, conflictResult, deletionState] = await Promise.all([
+    const [identityResult, contactResult, ownershipResult, eventResult, notesResult, auditResult,
+      conflictResult, deletionState, identityChangeRequests] = await Promise.all([
       pool.query(
         `SELECT id,identity_type,value,verified_at,verification_scope,is_primary,
                 revoked_at,created_at
@@ -769,7 +779,8 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
         actorUserId,
         account: row,
         canDelete: isDedicatedSuperAdmin(req)
-      })
+      }),
+      req.adminOperator ? listIdentityChangeRequests(pool, userId) : Promise.resolve([])
     ]);
 
     const preferredContacts = preferredAccountContacts(row);
@@ -843,6 +854,7 @@ router.get('/api/admin/accounts/:id', async (req, res, next) => {
         individuallyTracked: false
       },
       conflicts: conflictResult.rows[0],
+      identityChangeRequests,
       deletion: deletionState.public,
       notes: notesResult.rows,
       audit: auditResult.rows
@@ -894,6 +906,10 @@ router.post('/api/admin/accounts/:id/sign-out-all', async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(userId)]
+    );
     const account = await lockAccount(client, userId);
     if (!account) {
       await client.query('ROLLBACK');
@@ -1307,6 +1323,12 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
     await client.query(
       `DELETE FROM canonical_user_link_conflicts
         WHERE first_candidate_user_id=$1 OR second_candidate_user_id=$1`,
+      [userId]
+    );
+    // The canonical user remains as a tombstone, so the FK cannot remove this
+    // PII for us. Delete all proposed email/phone changes explicitly.
+    await client.query(
+      'DELETE FROM admin_account_identity_change_requests WHERE target_user_id=$1',
       [userId]
     );
     await client.query(

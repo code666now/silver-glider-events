@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.124
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Recipient-verified support changes
+
+* Dedicated Support and Super Admin operators can prepare a replacement email address or mobile number from Accounts & Support, but the requested value does not become a sign-in method until its recipient proves ownership. Email changes use an explicit confirmation link; phone changes require both a private link and a Twilio verification code.
+* Successful replacement keeps the permanent user ID, events, Host Page, RSVPs, followers, and active customer session ownership intact. An email change revokes only the former primary address while preserving unrelated verified recovery addresses; phone replacement atomically retires the old credential only after the new proof succeeds.
+
+### Identity safety and auditability
+
+* Verification links are hashed, short-lived, scanner-safe, rate-limited, and never returned through administrator APIs. Recipient confirmation never signs in, switches, or impersonates a customer account, and ownership collisions roll back without transferring an identity.
+* Pending requests can be reviewed, resent, or cancelled and are invalidated by suspension, sign-out-everywhere, or deletion. Every administrator and recipient step is attributed in account history, while legacy emergency administrators retain ordinary account access without seeing or changing proposed sign-in values.
+
 ## 1.0.123
 
 Released September 20, 2026. Built and deployed by Codex.

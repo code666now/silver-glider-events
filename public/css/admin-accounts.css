@@ -71,6 +71,11 @@
 .accounts-account-profile-form .sg-field { margin:0; }
 .accounts-account-profile-form .accounts-inline-actions { grid-column:1/-1;margin-top:3px; }
 .accounts-identity-list { display:grid;gap:9px; }
+.accounts-identity-trust-note { display:grid;gap:4px;margin-bottom:13px;padding:13px 15px;border:1px solid rgba(28,197,190,.2);border-radius:15px;background:rgba(28,197,190,.035); }
+.accounts-identity-trust-note[hidden],.accounts-identity-actions[hidden] { display:none; }
+.accounts-identity-trust-note strong,.accounts-identity-trust-note span { display:block; }
+.accounts-identity-trust-note strong { color:var(--sg-text);font-size:11px; }
+.accounts-identity-trust-note span { color:var(--sg-text-faint);font-size:10px;line-height:1.55; }
 .accounts-identity-row { display:grid;grid-template-columns:42px 1fr auto;gap:13px;align-items:center;padding:14px;border:1px solid var(--sg-border-soft);border-radius:15px;background:rgba(255,255,255,.012); }
 .accounts-identity-icon { width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:rgba(28,197,190,.08);color:var(--sg-accent); }
 .accounts-identity-icon svg { width:20px;height:20px; }
@@ -81,6 +86,25 @@
 .accounts-identity-state { color:#86d496;font-size:9px;font-weight:800;letter-spacing:.07em;text-align:right;text-transform:uppercase; }
 .accounts-identity-state.contact { color:#e5bd72; }
 .accounts-identity-state.unavailable { color:var(--sg-text-faint); }
+.accounts-identity-actions { display:flex;flex-wrap:wrap;gap:9px;margin-top:13px; }
+.accounts-identity-actions .sg-btn { min-height:44px;padding:10px 17px;font-size:11px; }
+.accounts-identity-actions .sg-btn:disabled { opacity:.55;cursor:not-allowed; }
+.accounts-pending-identities { margin-top:22px;padding-top:20px;border-top:1px solid var(--sg-border-soft); }
+.accounts-pending-identities[hidden] { display:none; }
+.accounts-pending-identities-head { margin-bottom:11px; }
+.accounts-pending-identities-head h4 { margin-bottom:4px;font-size:14px; }
+.accounts-pending-identities-head p { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
+.accounts-pending-identity-list { display:grid;gap:9px; }
+.accounts-pending-identity { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px;border:1px solid rgba(229,189,114,.22);border-radius:15px;background:rgba(229,189,114,.025); }
+.accounts-pending-identity-copy { min-width:0; }
+.accounts-pending-identity-copy strong,.accounts-pending-identity-copy span,.accounts-pending-identity-copy time { display:block;overflow-wrap:anywhere; }
+.accounts-pending-identity-copy strong { font-size:12px; }
+.accounts-pending-identity-copy span { margin-top:3px;color:#e5bd72;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase; }
+.accounts-pending-identity-copy time { margin-top:5px;color:var(--sg-text-faint);font-size:9px;line-height:1.45; }
+.accounts-pending-identity-actions { display:flex;align-items:center;gap:7px; }
+.accounts-pending-identity-actions .sg-btn { min-height:40px;padding:8px 12px;font-size:10px; }
+.accounts-pending-identity-actions .accounts-quiet-danger { color:#e89a9a; }
+.accounts-pending-identity-actions .sg-btn:disabled { opacity:.55;cursor:not-allowed; }
 .accounts-property-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px; }
 .accounts-property-card { min-width:0;padding:15px;border:1px solid var(--sg-border-soft);border-radius:15px;background:rgba(255,255,255,.012); }
 .accounts-property-card span { display:block;margin-bottom:5px;color:var(--sg-text-faint);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }
@@ -133,6 +157,10 @@
 .accounts-action-card { padding:26px;border:1px solid var(--sg-border);border-radius:22px;background:#151517;box-shadow:var(--sg-shadow); }
 .accounts-action-card h2 { margin-bottom:8px;font-size:26px; }
 .accounts-action-description { margin-bottom:22px;color:var(--sg-text-dim);font-size:13px;line-height:1.65; }
+.accounts-identity-dialog-note { display:grid;gap:3px;margin:-6px 0 20px;padding:13px 14px;border:1px solid rgba(28,197,190,.2);border-radius:14px;background:rgba(28,197,190,.025); }
+.accounts-identity-dialog-note strong,.accounts-identity-dialog-note span { display:block; }
+.accounts-identity-dialog-note strong { color:var(--sg-accent);font-size:11px; }
+.accounts-identity-dialog-note span { color:var(--sg-text-faint);font-size:10px;line-height:1.5; }
 .accounts-action-card .sg-field { margin-bottom:17px; }
 .accounts-field-help { margin-top:7px;color:var(--sg-text-faint);font-size:10px; }
 .accounts-form-error { display:none;margin:0 0 14px;color:#ef7777;font-size:11px; }
@@ -185,6 +213,13 @@
   .accounts-section-heading-row h3 { font-size:var(--sg-mobile-section-title-size); }
   .accounts-section-heading-row p { font-size:13px; }
   .accounts-identity-row { min-height:74px;padding:14px 15px; }
+  .accounts-identity-trust-note { padding:15px; }
+  .accounts-identity-trust-note strong { font-size:13px; }
+  .accounts-identity-trust-note span { font-size:12px; }
+  .accounts-identity-actions { display:grid;grid-template-columns:1fr 1fr; }
+  .accounts-identity-actions .sg-btn { min-height:52px;width:100%; }
+  .accounts-pending-identity { padding:16px; }
+  .accounts-pending-identity-actions .sg-btn { min-height:44px; }
   .accounts-support-actions { display:grid; }
   .accounts-support-actions .sg-btn { min-height:52px;width:100%; }
   .accounts-danger-zone { padding:20px; }
@@ -209,6 +244,10 @@
   .accounts-profile-grid .accounts-wide { grid-column:auto; }
   .accounts-account-profile-form { grid-template-columns:1fr; }
   .accounts-account-profile-form .accounts-inline-actions { grid-column:auto; }
+  .accounts-identity-actions { grid-template-columns:1fr; }
+  .accounts-pending-identity { grid-template-columns:1fr; }
+  .accounts-pending-identity-actions { display:grid;grid-template-columns:1fr 1fr; }
+  .accounts-pending-identity-actions .sg-btn { width:100%; }
   .accounts-note-form { grid-template-columns:1fr; }
   .accounts-note-form .sg-btn { min-height:50px;width:100%; }
   .accounts-inline-actions { align-items:stretch;flex-direction:column; }

@@ -45,6 +45,7 @@ const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
 const adminAccountsRoutes = require('../../src/routes/admin-accounts');
 const adminAuthRoutes = require('../../src/routes/admin-auth');
+const adminIdentityChangeRoutes = require('../../src/routes/admin-identity-changes');
 
 let server;
 let baseUrl;
@@ -89,6 +90,7 @@ function resetRateLimits() {
   adminAccountsRoutes.resetRateLimitsForTests();
   adminAccountsRoutes.setAccountClaimSenderForTests();
   adminAuthRoutes.resetRateLimitsForTests();
+  adminIdentityChangeRoutes.resetRateLimitsForTests();
 }
 
 async function resetDatabase() {
@@ -223,6 +225,24 @@ async function createAdminOperator(email, role = 'super_admin', status = 'active
      VALUES ($1,$2,$3) RETURNING *`,
     [email, role, status]
   )).rows[0];
+}
+
+async function addVerifiedEmailIdentity(userId, email, { primary = false, source = 'integration_test' } = {}) {
+  const identity = (await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'email',$2,$2,NOW(),'account',$3,$4)
+     RETURNING id`,
+    [userId, email, source, primary]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identity_verifications
+       (user_identity_id,verification_scope,verified_at,verification_source)
+     VALUES ($1,'account',NOW(),$2)`,
+    [identity.id, source]
+  );
+  return identity;
 }
 
 async function signInAdminOperator(email) {
@@ -6232,6 +6252,15 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   const reason = 'Owner requested permanent removal of this completed account';
   const operator = await createAdminOperator('delete-success-operator@example.test', 'super_admin');
   const adminSession = await signInAdminOperator(operator.email);
+  await pool.query(
+    `INSERT INTO admin_account_identity_change_requests
+       (target_user_id,identity_type,value,normalized_value,request_token_hash,
+        requested_by_admin_operator_id,reason,sent_at,expires_at)
+     VALUES ($1,'email','delete-pending@example.test','delete-pending@example.test',
+             $2,$3,'Recipient requested an email update before deletion',NOW(),
+             NOW() + INTERVAL '30 minutes')`,
+    [target.user_id, 'd'.repeat(64), operator.id]
+  );
   const beforeDeletion = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
     headers: { cookie: adminSession }
   });
@@ -6326,6 +6355,11 @@ test('direct account deletion purges property, revokes access, and leaves an aud
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM magic_link_tokens WHERE LOWER(email)=$1', [targetEmail]
   )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_identity_change_requests
+      WHERE target_user_id=$1`, [target.user_id]
+  )).rows[0].count, 0,
+  'tombstone deletion removes proposed identity PII instead of relying on FK cascade');
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
   )).rows[0].count, 0);
@@ -6774,4 +6808,615 @@ test('a stale never-sent invitation is revoked before its replacement is created
       WHERE metadata->>'invitationId'=$1 ORDER BY id`,
     [String(stale.id)]
   )).rows.map(row => row.action_type), ['account_invitation_stale_revoked']);
+});
+
+test('recipient-verified admin email replacement preserves recovery aliases and never signs the recipient in', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('identity-primary-a@example.test','Identity Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const primary = await addVerifiedEmailIdentity(
+    target.user_id,
+    'identity-primary-a@example.test',
+    { primary: true, source: 'identity_fixture_primary' }
+  );
+  const recovery = await addVerifiedEmailIdentity(
+    target.user_id,
+    'identity-recovery-b@example.test',
+    { source: 'identity_fixture_recovery' }
+  );
+  const oldMagic = (await pool.query(
+    `INSERT INTO magic_link_tokens (token,email,expires_at,intent,return_path)
+     VALUES ('identity-old-primary-link','identity-primary-a@example.test',
+             NOW() + INTERVAL '30 minutes','sign_in','/dashboard')
+     RETURNING id`
+  )).rows[0];
+  const recoveryMagic = (await pool.query(
+    `INSERT INTO magic_link_tokens (token,email,expires_at,intent,return_path)
+     VALUES ('identity-recovery-link','identity-recovery-b@example.test',
+             NOW() + INTERVAL '30 minutes','sign_in','/dashboard')
+     RETURNING id`
+  )).rows[0];
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'identity-new-c@example.test',
+        reason: 'Account owner requested a new primary email'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestedBody = await requested.json();
+  assert.equal(requestedBody.identityChangeRequest.status, 'pending');
+  assert.equal(requestedBody.identityChangeRequest.value, 'identity-new-c@example.test');
+  const recipientToken = tokenFromLink(
+    lastDevEmail('identity-new-c@example.test', 'admin_identity_change').link
+  );
+  assert.ok(recipientToken);
+
+  const unchangedBeforeProof = (await pool.query(
+    `SELECT email FROM organizers WHERE user_id=$1`, [target.user_id]
+  )).rows[0];
+  assert.equal(unchangedBeforeProof.email, 'identity-primary-a@example.test');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND normalized_value='identity-new-c@example.test'
+        AND revoked_at IS NULL`, [target.user_id]
+  )).rows[0].count, 0, 'admin delivery alone never grants ownership');
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const preview = await fetch(
+      `${baseUrl}/api/account/identity-change?token=${encodeURIComponent(recipientToken)}`
+    );
+    assert.equal(preview.status, 200);
+    const previewBody = await preview.json();
+    assert.deepEqual(
+      { type: previewBody.request.type, status: previewBody.request.status, requiresCode: previewBody.request.requiresCode },
+      { type: 'email', status: 'pending', requiresCode: false }
+    );
+    assert.equal(JSON.stringify(previewBody).includes(recipientToken), false,
+      'preview never reflects the bearer token');
+  }
+
+  const otherCustomerCookie = cookieHeader(
+    `sge_session=${signSession(organizerId)}`,
+    `sge_identity_step_up=${signIdentityStepUp(organizerId)}`
+  );
+  const verified = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: otherCustomerCookie },
+    body: JSON.stringify({ token: recipientToken })
+  });
+  assert.equal(verified.status, 200);
+  assert.deepEqual(await verified.json(), { ok: true, type: 'email' });
+  const verificationCookies = verified.headers.get('set-cookie') || '';
+  assert.doesNotMatch(verificationCookies, /sge_session=/);
+  assert.doesNotMatch(verificationCookies, /sge_identity_step_up=/);
+  const stillOtherCustomer = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: otherCustomerCookie }
+  });
+  assert.equal(stillOtherCustomer.status, 200);
+  assert.equal(Number((await stillOtherCustomer.json()).organizer.id), Number(organizerId));
+
+  const identities = (await pool.query(
+    `SELECT id,normalized_value,is_primary,revoked_at
+       FROM user_identities WHERE user_id=$1 AND identity_type='email'
+      ORDER BY normalized_value`,
+    [target.user_id]
+  )).rows;
+  const oldPrimary = identities.find(row => row.normalized_value === 'identity-primary-a@example.test');
+  const preservedRecovery = identities.find(row => row.normalized_value === 'identity-recovery-b@example.test');
+  const newPrimary = identities.find(row => row.normalized_value === 'identity-new-c@example.test');
+  assert.equal(Number(oldPrimary.id), Number(primary.id));
+  assert.ok(oldPrimary.revoked_at);
+  assert.equal(oldPrimary.is_primary, false);
+  assert.equal(Number(preservedRecovery.id), Number(recovery.id));
+  assert.equal(preservedRecovery.revoked_at, null);
+  assert.equal(preservedRecovery.is_primary, false);
+  assert.equal(newPrimary.revoked_at, null);
+  assert.equal(newPrimary.is_primary, true);
+  assert.equal((await pool.query(
+    'SELECT email FROM organizers WHERE user_id=$1', [target.user_id]
+  )).rows[0].email, 'identity-new-c@example.test');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identity_verifications
+      WHERE user_identity_id=$1 AND revoked_at IS NULL`, [primary.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identity_verifications
+      WHERE user_identity_id=$1 AND revoked_at IS NULL`, [recovery.id]
+  )).rows[0].count, 1);
+  assert.ok((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE id=$1', [oldMagic.id]
+  )).rows[0].used_at);
+  assert.equal((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE id=$1', [recoveryMagic.id]
+  )).rows[0].used_at, null, 'recovery-address sign-in proof remains usable');
+
+  const completionAudit = (await pool.query(
+    `SELECT actor_user_id,actor_admin_operator_id,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='identity_change_recipient_verified'`,
+    [target.user_id]
+  )).rows[0];
+  assert.equal(completionAudit.actor_user_id, null);
+  assert.equal(Number(completionAudit.actor_admin_operator_id), Number(operator.id));
+  assert.equal(completionAudit.metadata.performedBy, 'recipient');
+
+  const replay = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: recipientToken })
+  });
+  assert.equal(replay.status, 400);
+});
+
+test('identity collision rolls back the replacement and remains dismissible without transferring ownership', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-conflict-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('collision-old@example.test','Collision Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  await addVerifiedEmailIdentity(target.user_id, 'collision-old@example.test', {
+    primary: true,
+    source: 'collision_fixture'
+  });
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'collision-new@example.test',
+        reason: 'Owner requested this replacement email address'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestId = (await requested.json()).identityChangeRequest.id;
+  const token = tokenFromLink(
+    lastDevEmail('collision-new@example.test', 'admin_identity_change').link
+  );
+
+  const competing = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('collision-new@example.test','Competing Owner',NOW())
+     RETURNING id`
+  )).rows[0];
+  competing.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [competing.id]
+  )).rows[0].user_id;
+  await addVerifiedEmailIdentity(competing.user_id, 'collision-new@example.test', {
+    primary: true,
+    source: 'collision_competing_fixture'
+  });
+
+  const verification = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  assert.equal(verification.status, 409);
+  assert.equal((await verification.json()).error, 'verification_conflict');
+  assert.equal((await pool.query(
+    'SELECT email FROM organizers WHERE user_id=$1', [target.user_id]
+  )).rows[0].email, 'collision-old@example.test');
+  const oldPrimary = (await pool.query(
+    `SELECT is_primary,revoked_at FROM user_identities
+      WHERE user_id=$1 AND normalized_value='collision-old@example.test'`,
+    [target.user_id]
+  )).rows[0];
+  assert.equal(oldPrimary.is_primary, true);
+  assert.equal(oldPrimary.revoked_at, null);
+  assert.equal((await pool.query(
+    `SELECT user_id FROM user_identities
+      WHERE identity_type='email' AND normalized_value='collision-new@example.test'
+        AND revoked_at IS NULL`
+  )).rows[0].user_id, competing.user_id);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'conflict');
+  const conflict = (await pool.query(
+    `SELECT candidate_user_id,conflicting_user_id,reason
+       FROM user_identity_conflicts
+      WHERE verification_source='admin_identity_change.email_link'
+        AND source_record_id=$1`, [requestId]
+  )).rows[0];
+  assert.deepEqual({
+    candidate: Number(conflict.candidate_user_id),
+    owner: Number(conflict.conflicting_user_id),
+    reason: conflict.reason
+  }, {
+    candidate: Number(target.user_id),
+    owner: Number(competing.user_id),
+    reason: 'already_claimed'
+  });
+
+  const cancelled = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/cancel`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Conflict reviewed and dismissed by support' })
+    }
+  );
+  assert.equal(cancelled.status, 200);
+  assert.equal((await cancelled.json()).identityChangeRequest.status, 'cancelled');
+});
+
+test('legacy admin account APIs remain available but never expose or mutate dedicated identity requests', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-dedicated@example.test', 'support');
+  const dedicatedCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('legacy-gated-target@example.test','Legacy Gated Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const pending = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: dedicatedCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'legacy-gated-new@example.test',
+        reason: 'Recipient asked support to prepare this email'
+      })
+    }
+  );
+  assert.equal(pending.status, 201);
+
+  const legacy = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('legacy-identity-admin@example.test','Legacy Identity Admin',TRUE,NOW())
+     RETURNING id`
+  )).rows[0];
+  const legacyCookie = `sge_session=${signSession(legacy.id)}`;
+  const ordinaryList = await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: legacyCookie }
+  });
+  assert.equal(ordinaryList.status, 200,
+    'identity middleware must not intercept the existing account-support API');
+  const ordinaryDetail = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: legacyCookie }
+  });
+  assert.equal(ordinaryDetail.status, 200);
+  assert.deepEqual((await ordinaryDetail.json()).identityChangeRequests, [],
+    'false manage-identities capability also hides recipient PII and reasons');
+
+  const dedicatedList = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    { headers: { cookie: legacyCookie } }
+  );
+  assert.equal(dedicatedList.status, 403);
+  assert.equal((await dedicatedList.json()).error, 'dedicated_admin_required');
+  const dedicatedMutation = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: legacyCookie },
+      body: JSON.stringify({
+        type: 'phone', value: '+14155550121', reason: 'Legacy sessions cannot prepare changes'
+      })
+    }
+  );
+  assert.equal(dedicatedMutation.status, 403);
+  assert.equal((await dedicatedMutation.json()).error, 'dedicated_admin_required');
+});
+
+test('admin-prepared phone replacement rotates recipient proof on resend and accepts only the latest Twilio check', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('phone-change-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('phone-change-target@example.test','Phone Change Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const oldPhone = '+14155550131';
+  const newPhone = '+14155550132';
+  const oldCredential = (await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW()) RETURNING id`,
+    [target.id, oldPhone]
+  )).rows[0];
+  const oldIdentity = (await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,source_record_id,is_primary)
+     VALUES ($1,'phone',$2,$2,NOW(),'account','phone_change_fixture',$3,TRUE)
+     RETURNING id`,
+    [target.user_id, oldPhone, oldCredential.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identity_verifications
+       (user_identity_id,verification_scope,verified_at,verification_source,source_record_id)
+     VALUES ($1,'account',NOW(),'phone_change_fixture',$2)`,
+    [oldIdentity.id, oldCredential.id]
+  );
+
+  const originalStart = phoneVerification.startVerification;
+  const originalCheck = phoneVerification.checkVerification;
+  const originalSendSms = sms.sendSms;
+  const firstSid = `VE${'1'.repeat(32)}`;
+  const secondSid = `VE${'2'.repeat(32)}`;
+  const startedSids = [];
+  const checkedSids = [];
+  const recipientMessages = [];
+  let signalStaleCheck;
+  let releaseStaleCheck;
+  const staleCheckStarted = new Promise(resolve => { signalStaleCheck = resolve; });
+  const staleCheckGate = new Promise(resolve => { releaseStaleCheck = resolve; });
+  phoneVerification.startVerification = async phone => {
+    assert.equal(phone, newPhone);
+    const verificationSid = startedSids.length ? secondSid : firstSid;
+    startedSids.push(verificationSid);
+    return { verificationSid, phone, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async ({ verificationSid, code }) => {
+    checkedSids.push(verificationSid);
+    if (code === '000000') {
+      throw new phoneVerification.PhoneVerificationError('That verification code is invalid', {
+        code: 'invalid_phone_verification_code', status: 400
+      });
+    }
+    if (code === '111111') {
+      signalStaleCheck();
+      await staleCheckGate;
+      throw new phoneVerification.PhoneVerificationError('That verification code is invalid', {
+        code: 'invalid_phone_verification_code', status: 400
+      });
+    }
+    if (code === '999999') {
+      throw new phoneVerification.PhoneVerificationError('Phone verification is temporarily unavailable', {
+        code: 'phone_verification_unavailable', status: 502
+      });
+    }
+    assert.equal(code, '246810');
+    return { approved: true, verificationSid, phone: newPhone, status: 'approved' };
+  };
+  sms.sendSms = async payload => {
+    recipientMessages.push(payload);
+    return { sid: `SM${String(recipientMessages.length).repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+  t.after(() => {
+    phoneVerification.startVerification = originalStart;
+    phoneVerification.checkVerification = originalCheck;
+    sms.sendSms = originalSendSms;
+  });
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'phone', value: newPhone,
+        reason: 'Account owner requested a replacement mobile number'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestId = (await requested.json()).identityChangeRequest.id;
+  assert.deepEqual(startedSids, [firstSid]);
+  assert.equal(recipientMessages.length, 1);
+  assert.equal(recipientMessages[0].to, newPhone);
+  const firstLink = recipientMessages[0].body.match(/https?:\/\/\S+/)?.[0];
+  const firstToken = tokenFromLink(firstLink);
+  assert.ok(firstToken, 'recipient—not the administrator—receives the high-entropy page token');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2
+        AND revoked_at IS NULL`, [target.user_id, newPhone]
+  )).rows[0].count, 0);
+
+  const wrongCode = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '000000' })
+  });
+  assert.equal(wrongCode.status, 400);
+  assert.equal((await wrongCode.json()).error, 'verification_invalid');
+  assert.equal((await pool.query(
+    `SELECT verification_attempts,status FROM admin_account_identity_change_requests WHERE id=$1`,
+    [requestId]
+  )).rows[0].verification_attempts, 1);
+
+  const inFlightOldCheck = fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '111111' })
+  });
+  await staleCheckStarted;
+  const resent = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/resend`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Recipient requested a fresh phone verification code' })
+    }
+  );
+  assert.equal(resent.status, 200);
+  releaseStaleCheck();
+  const staleCheck = await inFlightOldCheck;
+  assert.equal(staleCheck.status, 400);
+  assert.deepEqual(startedSids, [firstSid, secondSid]);
+  assert.equal(recipientMessages.length, 2);
+  const secondLink = recipientMessages[1].body.match(/https?:\/\/\S+/)?.[0];
+  const secondToken = tokenFromLink(secondLink);
+  assert.ok(secondToken);
+  assert.notEqual(secondToken, firstToken);
+  const rotated = (await pool.query(
+    `SELECT provider_sid,verification_attempts,status FROM admin_account_identity_change_requests
+      WHERE id=$1`, [requestId]
+  )).rows[0];
+  assert.equal(rotated.provider_sid, secondSid);
+  assert.equal(rotated.verification_attempts, 0);
+  assert.equal(rotated.status, 'pending');
+
+  const checksBeforeOldToken = checkedSids.length;
+  const oldToken = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '246810' })
+  });
+  assert.equal(oldToken.status, 400);
+  assert.equal(checkedSids.length, checksBeforeOldToken,
+    'a rotated token is rejected before contacting Twilio');
+
+  const providerOutage = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: secondToken, code: '999999' })
+  });
+  assert.equal(providerOutage.status, 502);
+  assert.equal((await providerOutage.json()).error, 'phone_verification_unavailable');
+  assert.equal((await pool.query(
+    'SELECT verification_attempts FROM admin_account_identity_change_requests WHERE id=$1',
+    [requestId]
+  )).rows[0].verification_attempts, 0,
+  'provider outages must not consume the recipient\'s proof attempts');
+
+  const verified = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: secondToken, code: '246810' })
+  });
+  assert.equal(verified.status, 200);
+  assert.deepEqual(await verified.json(), { ok: true, type: 'phone' });
+  assert.deepEqual(checkedSids, [firstSid, firstSid, secondSid, secondSid]);
+  assert.doesNotMatch(verified.headers.get('set-cookie') || '', /sge_(?:session|identity_step_up)=/);
+
+  const phoneIdentities = (await pool.query(
+    `SELECT normalized_value,is_primary,revoked_at FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' ORDER BY id`, [target.user_id]
+  )).rows;
+  assert.equal(phoneIdentities.length, 2);
+  assert.equal(phoneIdentities[0].normalized_value, oldPhone);
+  assert.ok(phoneIdentities[0].revoked_at);
+  assert.equal(phoneIdentities[1].normalized_value, newPhone);
+  assert.equal(phoneIdentities[1].revoked_at, null);
+  assert.equal(phoneIdentities[1].is_primary, true);
+  const credentials = (await pool.query(
+    `SELECT phone_e164,revoked_at FROM account_phone_credentials
+      WHERE organizer_id=$1 ORDER BY id`, [target.id]
+  )).rows;
+  assert.equal(credentials[0].phone_e164, oldPhone);
+  assert.ok(credentials[0].revoked_at);
+  assert.equal(credentials[1].phone_e164, newPhone);
+  assert.equal(credentials[1].revoked_at, null);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'verified');
+});
+
+test('sign-out-all serializes behind recipient delivery and cancels the proof before it can be used', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-race-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('identity-race-old@example.test','Identity Race Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const created = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email', value: 'identity-race-new@example.test',
+        reason: 'Owner asked support to prepare a new email'
+      })
+    }
+  );
+  assert.equal(created.status, 201);
+  const requestId = (await created.json()).identityChangeRequest.id;
+
+  const originalSender = mailer.sendAdminIdentityChangeVerification;
+  let releaseDelivery;
+  let deliveryStarted;
+  const deliveryGate = new Promise(resolve => { releaseDelivery = resolve; });
+  const startedGate = new Promise(resolve => { deliveryStarted = resolve; });
+  let resendLink = null;
+  mailer.sendAdminIdentityChangeVerification = async payload => {
+    resendLink = payload.link;
+    deliveryStarted();
+    await deliveryGate;
+    return { id: 'race-delivery' };
+  };
+  t.after(() => { mailer.sendAdminIdentityChangeVerification = originalSender; });
+
+  const resendPromise = fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/resend`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Recipient requested another verification email' })
+    }
+  );
+  await startedGate;
+  let signOutSettled = false;
+  const signOutPromise = fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/sign-out-all`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'Owner reported that all existing access should be revoked' })
+  }).then(response => {
+    signOutSettled = true;
+    return response;
+  });
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(signOutSettled, false,
+    'access invalidation waits for the serialized outbound delivery section');
+  releaseDelivery();
+
+  const [resent, signedOut] = await Promise.all([resendPromise, signOutPromise]);
+  assert.equal(resent.status, 200);
+  assert.equal(signedOut.status, 200);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'cancelled');
+  const token = tokenFromLink(resendLink);
+  const blocked = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  assert.equal(blocked.status, 400);
+  assert.equal((await pool.query(
+    `SELECT (after_state->>'identityChangesCancelled')::int AS cancelled
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='sessions_revoked'`,
+    [target.user_id]
+  )).rows[0].cancelled, 1);
 });

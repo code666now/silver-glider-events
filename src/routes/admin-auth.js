@@ -261,7 +261,7 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
   const dedicatedSuperAdmin = isDedicatedSuperAdmin(req);
   const capabilities = {
     manageAccounts: true,
-    manageIdentities: true,
+    manageIdentities: Boolean(req.adminOperator),
     suspendAccounts: true,
     deleteAccounts: dedicatedSuperAdmin,
     manageOperators: dedicatedSuperAdmin

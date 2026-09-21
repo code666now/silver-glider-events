@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Verify account change — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/account-verify-change.css">
+</head>
+<body>
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
+
+  <main class="identity-verify-shell" aria-labelledby="identity-verify-title">
+    <a class="identity-verify-brand" href="/">Silver Glider <span>Events</span></a>
+
+    <section class="identity-verify-card" id="identity-verify-loading" aria-live="polite">
+      <p class="identity-verify-eyebrow">Account security</p>
+      <h1 id="identity-verify-title">Checking your request…</h1>
+      <p class="identity-verify-copy">One moment while we securely load this account change.</p>
+      <div class="identity-verify-progress" aria-hidden="true"><span></span></div>
+    </section>
+
+    <section class="identity-verify-card" id="identity-verify-email" aria-labelledby="identity-email-title" hidden>
+      <p class="identity-verify-eyebrow">Recipient verification</p>
+      <h1 id="identity-email-title" tabindex="-1">Confirm your new email</h1>
+      <p class="identity-verify-copy" id="identity-email-copy">Confirm that this email belongs to you before it becomes a sign-in method.</p>
+      <div class="identity-verify-summary" role="note">
+        <span>New sign-in email</span>
+        <strong id="identity-email-target">Your email</strong>
+      </div>
+      <p class="identity-verify-assurance">Your current sign-in method stays active until this confirmation succeeds. Confirming does not sign you in.</p>
+      <p class="identity-verify-error" id="identity-email-error" role="alert"></p>
+      <button class="sg-btn sg-btn-primary sg-btn-block" id="identity-email-confirm" type="button">Confirm email</button>
+    </section>
+
+    <section class="identity-verify-card" id="identity-verify-phone" aria-labelledby="identity-phone-title" hidden>
+      <p class="identity-verify-eyebrow">Recipient verification</p>
+      <h1 id="identity-phone-title" tabindex="-1">Verify your new number</h1>
+      <p class="identity-verify-copy">Enter the six-digit code sent separately to your new number. Only the recipient can complete this change.</p>
+      <div class="identity-verify-summary" role="note">
+        <span>New sign-in number</span>
+        <strong id="identity-phone-target">Your mobile number</strong>
+      </div>
+      <form id="identity-phone-form" novalidate>
+        <div class="sg-field">
+          <label for="identity-phone-code">Text message code</label>
+          <input class="sg-input identity-phone-code" id="identity-phone-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" aria-describedby="identity-phone-help" required>
+          <p class="identity-verify-help" id="identity-phone-help">Use the private link and the most recent code sent to the new number.</p>
+        </div>
+        <p class="identity-verify-error" id="identity-phone-error" role="alert"></p>
+        <button class="sg-btn sg-btn-primary sg-btn-block" id="identity-phone-confirm" type="submit">Verify mobile number</button>
+      </form>
+    </section>
+
+    <section class="identity-verify-card identity-verify-result success" id="identity-verify-success" aria-labelledby="identity-success-title" hidden>
+      <span class="identity-verify-result-icon" aria-hidden="true">✓</span>
+      <p class="identity-verify-eyebrow">Change complete</p>
+      <h1 id="identity-success-title" tabindex="-1">You’re verified</h1>
+      <p class="identity-verify-copy" id="identity-success-copy">The verified sign-in method now belongs to the account.</p>
+      <p class="identity-verify-assurance">For your security, this confirmation did not sign you in.</p>
+      <a class="sg-btn sg-btn-primary sg-btn-block" href="/login">Go to sign in</a>
+    </section>
+
+    <section class="identity-verify-card identity-verify-result" id="identity-verify-error" aria-labelledby="identity-error-title" hidden>
+      <span class="identity-verify-result-icon error" aria-hidden="true">!</span>
+      <p class="identity-verify-eyebrow">Account security</p>
+      <h1 id="identity-error-title" tabindex="-1">This request can’t be completed</h1>
+      <p class="identity-verify-copy" id="identity-error-copy">The verification request may have expired, been cancelled, or already been used.</p>
+      <p class="identity-verify-assurance">Ask the person helping with your account to send a new verification request.</p>
+      <a class="sg-btn sg-btn-ghost sg-btn-block" href="/">Return to Silver Glider</a>
+    </section>
+  </main>
+
+  <script src="/js/account-verify-change.js"></script>
+</body>
+</html>

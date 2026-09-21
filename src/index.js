@@ -57,6 +57,7 @@ app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
+app.use(require('./routes/admin-identity-changes'));
 app.use(require('./routes/admin-accounts'));
 
 // Auth guards for app pages (server-side redirect to /login when signed out)
@@ -72,6 +73,12 @@ app.get('/privacy', (req, res) => res.type('html').send(renderLegalPage('privacy
 app.get('/terms', (req, res) => res.type('html').send(renderLegalPage('terms')));
 app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
 app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
+app.get('/account/verify-change', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  res.sendFile(path.join(VIEWS, 'account-verify-change.html'));
+});
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
   if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');

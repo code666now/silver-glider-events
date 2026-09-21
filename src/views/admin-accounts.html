@@ -140,9 +140,29 @@
 
         <section class="accounts-detail-section" aria-labelledby="identities-title">
           <div class="accounts-section-heading-row">
-            <div><h3 id="identities-title">Sign-in &amp; contact</h3><p>Verified sign-in methods and contact-only details are labeled separately.</p></div>
+            <div>
+              <h3 id="identities-title">Sign-in &amp; contact</h3>
+              <p>Verified sign-in methods and contact-only details are labeled separately.</p>
+            </div>
           </div>
-          <div class="accounts-identity-list" id="account-identities"></div>
+          <div class="accounts-identity-trust-note" id="account-identity-trust-note" role="note" hidden>
+            <strong>The recipient controls verification.</strong>
+            <span>Support can send a change request, but cannot verify an email or phone for someone else. Their current sign-in method stays active until they complete verification.</span>
+          </div>
+          <div class="accounts-identity-list" id="account-identities" aria-live="polite"></div>
+          <div class="accounts-identity-actions" id="account-identity-actions" hidden>
+            <button class="sg-btn sg-btn-ghost" id="request-email-change" type="button">Change email</button>
+            <button class="sg-btn sg-btn-ghost" id="request-phone-change" type="button">Change mobile number</button>
+          </div>
+          <p class="accounts-action-status" id="account-identity-status" role="status" aria-live="polite"></p>
+
+          <section class="accounts-pending-identities" id="account-pending-identities" aria-labelledby="pending-identities-title" hidden>
+            <div class="accounts-pending-identities-head">
+              <h4 id="pending-identities-title">Verification requests</h4>
+              <p>Pending or unsuccessful requests remain here until they are verified or cancelled.</p>
+            </div>
+            <div class="accounts-pending-identity-list" id="account-pending-identity-list"></div>
+          </section>
         </section>
 
         <section class="accounts-detail-section" aria-labelledby="ownership-title">
@@ -227,6 +247,32 @@
       <div class="accounts-dialog-actions">
         <button class="sg-btn sg-btn-ghost" id="cancel-support-action" type="button">Cancel</button>
         <button class="sg-btn sg-btn-danger" id="confirm-support-action" type="submit">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="accounts-action-dialog accounts-identity-dialog" id="identity-change-dialog" aria-labelledby="identity-change-title" aria-describedby="identity-change-description">
+    <form class="accounts-action-card" id="identity-change-form">
+      <p class="accounts-eyebrow">Recipient verification</p>
+      <h2 id="identity-change-title">Change sign-in email</h2>
+      <p class="accounts-action-description" id="identity-change-description">We’ll send a verification request to the new address. The account will not change until its recipient verifies it.</p>
+      <div class="accounts-identity-dialog-note" role="note">
+        <strong>Support cannot complete this step.</strong>
+        <span>The recipient must use the private verification message sent directly to the new email or phone.</span>
+      </div>
+      <div class="sg-field">
+        <label for="identity-change-value" id="identity-change-value-label">New email address</label>
+        <input class="sg-input" id="identity-change-value" type="email" inputmode="email" autocomplete="off" maxlength="254" required>
+      </div>
+      <div class="sg-field">
+        <label for="identity-change-reason">Reason for change</label>
+        <textarea class="sg-textarea" id="identity-change-reason" minlength="8" maxlength="500" placeholder="Requested by the account owner" required></textarea>
+        <p class="accounts-field-help">Saved in the permanent account audit.</p>
+      </div>
+      <p class="accounts-form-error" id="identity-change-error" role="alert"></p>
+      <div class="accounts-dialog-actions">
+        <button class="sg-btn sg-btn-ghost" id="cancel-identity-change" type="button">Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="submit-identity-change" type="submit">Send verification request</button>
       </div>
     </form>
   </dialog>

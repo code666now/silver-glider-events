@@ -482,13 +482,14 @@ test('verified phone attach refuses a legacy credential owned by another user', 
     user_id: 7,
     email: 'person@example.com',
     name: null,
+    account_status: 'active',
     created_at: new Date('2026-01-01T00:00:00Z'),
     last_login_at: null
   };
   const db = {
     async query(sql) {
       if (sql.includes('FROM user_identities')) return { rows: [] };
-      if (sql.includes('FROM organizers') && sql.includes('WHERE id=$1')) {
+      if (sql.includes('FROM organizers') && sql.includes('WHERE organizer.id=$1')) {
         return { rows: [organizer] };
       }
       if (sql.startsWith('INSERT INTO users')) return { rows: [{ id: 7, name: null }] };
@@ -526,6 +527,7 @@ test('phone attach keeps the credential, identity, organizer, user lock order', 
     user_id: 7,
     email: 'person@example.com',
     name: null,
+    account_status: 'active',
     created_at: new Date('2026-01-01T00:00:00Z'),
     last_login_at: null
   };
@@ -556,7 +558,7 @@ test('phone attach keeps the credential, identity, organizer, user lock order', 
         lockOrder.push('identity');
         return { rows: [canonical] };
       }
-      if (sql.includes('FROM organizers') && sql.includes('WHERE id=$1')) {
+      if (sql.includes('FROM organizers') && sql.includes('WHERE organizer.id=$1')) {
         lockOrder.push('organizer');
         return { rows: [organizer] };
       }
@@ -587,6 +589,7 @@ test('verified phone resolver repairs a missing canonical row from active legacy
     user_id: 7,
     email: 'person@example.com',
     name: null,
+    account_status: 'active',
     created_at: new Date('2026-01-01T00:00:00Z'),
     last_login_at: null
   };
@@ -610,7 +613,7 @@ test('verified phone resolver repairs a missing canonical row from active legacy
     async query(sql) {
       if (sql.includes('FROM user_identities')) return { rows: [] };
       if (sql.includes('FROM account_phone_credentials')) return { rows: [credential] };
-      if (sql.includes('FROM organizers') && sql.includes('WHERE id=$1')) {
+      if (sql.includes('FROM organizers') && sql.includes('WHERE organizer.id=$1')) {
         return { rows: [organizer] };
       }
       if (sql.startsWith('INSERT INTO users')) return { rows: [{ id: 7, name: null }] };

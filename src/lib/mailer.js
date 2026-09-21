@@ -554,6 +554,33 @@ async function sendAccountVerificationCode({ to, code, purpose = 'creator_setup'
   });
 }
 
+// Staff can request an email change, but this link is delivered only to the
+// proposed inbox. Opening the page is read-only; the recipient must explicitly
+// confirm before the address becomes a sign-in identity.
+async function sendAdminIdentityChangeVerification({ to, link, accountName }) {
+  const firstName = String(accountName || '').trim().split(/\s+/)[0];
+  if (!resend) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Identity verification email delivery is unavailable');
+    }
+    console.log(`[mailer:dev] ADMIN IDENTITY CHANGE for ${to}: ${link}`);
+    recordDevEmail({ to, kind: 'admin_identity_change', link });
+    return { dev: true };
+  }
+  return send({
+    to,
+    subject: 'Confirm your Silver Glider email',
+    html: layout({
+      kicker: 'Account security',
+      headline: firstName ? `${esc(firstName)}, confirm this email.` : 'Confirm this email.',
+      sub: 'Silver Glider support prepared an email change for your account. Only you can approve it.',
+      cta: 'Review and confirm',
+      ctaUrl: link,
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t ask support to change your email? Ignore this message. Your current sign-in stays unchanged.</p>'
+    })
+  });
+}
+
 // Dedicated staff authentication never shares customer magic-link state. The
 // caller has already resolved an active admin operator and sends only a code.
 async function sendAdminPasscode({ to, code, purpose = 'login' }) {
@@ -839,6 +866,7 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 
 module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
+  sendAdminIdentityChangeVerification,
   sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,

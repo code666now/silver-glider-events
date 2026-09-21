@@ -10,6 +10,10 @@ const state = {
   nextCursor: null,
   requestId: 0,
   action: null,
+  identityChangeType: null,
+  canManageIdentities: false,
+  identityChangeRequests: [],
+  audit: [],
   deletion: null,
   deleteRequest: null
 };
@@ -18,6 +22,7 @@ const list = document.getElementById('accounts-list');
 const empty = document.getElementById('accounts-empty');
 const detailDialog = document.getElementById('account-detail-dialog');
 const actionDialog = document.getElementById('support-action-dialog');
+const identityChangeDialog = document.getElementById('identity-change-dialog');
 const invitationDialog = document.getElementById('invitation-dialog');
 const deleteDialog = document.getElementById('delete-account-dialog');
 const search = document.getElementById('account-search');
@@ -330,6 +335,96 @@ function renderIdentities(identities, account) {
   }).join('') : '<p class="accounts-muted-empty">No verified sign-in methods are available.</p>';
 }
 
+function identityChangeStatus(request) {
+  return String(firstValue(request, ['status'], 'pending') || 'pending').trim().toLowerCase();
+}
+
+function identityChangeId(request) {
+  return firstValue(request, ['id', 'changeId', 'change_id'], '');
+}
+
+function identityChangeValue(request) {
+  return String(firstValue(request, ['value', 'newValue', 'new_value', 'target'], '') || '').trim();
+}
+
+function identityChangeType(request) {
+  return String(firstValue(request, ['type', 'identityType', 'identity_type'], 'email')).toLowerCase() === 'phone'
+    ? 'phone'
+    : 'email';
+}
+
+function identityChangeStatusLabel(status) {
+  return {
+    pending: 'Waiting for verification',
+    sent: 'Waiting for verification',
+    delivery_failed: 'Delivery failed',
+    conflict: 'Needs attention',
+    expired: 'Expired'
+  }[status] || 'Waiting for verification';
+}
+
+function identityChangeTiming(request, status) {
+  const createdAt = firstValue(request, ['createdAt', 'created_at'], null);
+  const expiresAt = firstValue(request, ['expiresAt', 'expires_at'], null);
+  if (status === 'delivery_failed') return 'The verification message could not be delivered. Review the value before resending.';
+  if (status === 'conflict') return 'This value may already belong to another account. The recipient has not been verified.';
+  if (status === 'expired') return `Expired${expiresAt ? ` ${formatDate(expiresAt, true)}` : ''}. Resend only after confirming the recipient still wants this change.`;
+  const sent = createdAt ? `Requested ${formatDate(createdAt, true)}` : 'Verification requested';
+  return `${sent}${expiresAt ? ` · Expires ${formatDate(expiresAt, true)}` : ''}`;
+}
+
+function renderIdentityChanges(requests) {
+  const section = document.getElementById('account-pending-identities');
+  const list = document.getElementById('account-pending-identity-list');
+  const actions = document.getElementById('account-identity-actions');
+  const trustNote = document.getElementById('account-identity-trust-note');
+  actions.hidden = !state.canManageIdentities;
+  trustNote.hidden = !state.canManageIdentities;
+  if (!state.canManageIdentities) {
+    section.hidden = true;
+    list.replaceChildren();
+    document.getElementById('request-email-change').disabled = true;
+    document.getElementById('request-phone-change').disabled = true;
+    return;
+  }
+  const openRequests = asArray(requests).filter(request => !['verified', 'cancelled', 'canceled', 'superseded'].includes(identityChangeStatus(request)));
+  const activeTypes = new Set(openRequests
+    .filter(request => {
+      const status = identityChangeStatus(request);
+      return ['pending', 'sent'].includes(status) || (
+        ['delivery_failed', 'conflict'].includes(status)
+        && firstValue(request, ['canCancel', 'can_cancel'], false) === true
+      );
+    })
+    .map(identityChangeType));
+  const emailButton = document.getElementById('request-email-change');
+  const phoneButton = document.getElementById('request-phone-change');
+  emailButton.disabled = activeTypes.has('email');
+  phoneButton.disabled = activeTypes.has('phone');
+  emailButton.title = emailButton.disabled ? 'Resolve the current email request first.' : '';
+  phoneButton.title = phoneButton.disabled ? 'Resolve the current phone request first.' : '';
+  section.hidden = openRequests.length === 0;
+  list.innerHTML = openRequests.map(request => {
+    const id = identityChangeId(request);
+    const type = identityChangeType(request);
+    const value = identityChangeValue(request);
+    const status = identityChangeStatus(request);
+    const canResend = firstValue(request, ['canResend', 'can_resend'], false) === true;
+    const canCancel = firstValue(request, ['canCancel', 'can_cancel'], false) === true;
+    return `<article class="accounts-pending-identity" data-identity-change-id="${esc(id)}">
+      <div class="accounts-pending-identity-copy">
+        <strong>${esc(value || `New ${type}`)}</strong>
+        <span>${esc(identityChangeStatusLabel(status))}</span>
+        <time>${esc(identityChangeTiming(request, status))}</time>
+      </div>
+      ${(canResend || canCancel) ? `<div class="accounts-pending-identity-actions">
+        ${canResend ? `<button class="sg-btn sg-btn-ghost" type="button" data-identity-request-action="resend" data-identity-change-id="${esc(id)}" aria-label="Resend verification to ${esc(value || type)}">Resend</button>` : ''}
+        ${canCancel ? `<button class="sg-btn sg-btn-ghost accounts-quiet-danger" type="button" data-identity-request-action="cancel" data-identity-change-id="${esc(id)}" aria-label="Cancel verification request for ${esc(value || type)}">Cancel request</button>` : ''}
+      </div>` : ''}
+    </article>`;
+  }).join('');
+}
+
 function ownershipValue(ownership, account, keys, fallback = 0) {
   return firstValue(ownership, keys, firstValue(account, keys, fallback));
 }
@@ -399,7 +494,13 @@ function renderNotes(notes) {
 }
 
 function renderAudit(audit) {
-  document.getElementById('account-audit').innerHTML = audit.length ? audit.map(item => {
+  const visibleAudit = state.canManageIdentities
+    ? audit
+    : audit.filter(item => !String(firstValue(item, ['action_type','actionType','action','event','label'], ''))
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+      .includes('identity_change'));
+  document.getElementById('account-audit').innerHTML = visibleAudit.length ? visibleAudit.map(item => {
     const rawAction = firstValue(item, ['label','action_label','action','event'], 'Account updated');
     const action = String(rawAction).replace(/_/g, ' ').replace(/^./, character => character.toUpperCase());
     const actor = firstValue(item, ['actor_name','admin_name','actor'], 'Silver Glider');
@@ -495,6 +596,7 @@ function detailCollections(data, account) {
   if (ownership.identity_conflict_count === undefined) ownership.identity_conflict_count = numberValue(data, ['identity_conflict_count','conflict_count'], 0);
   return {
     identities: normalizeIdentities(data, account),
+    identityChangeRequests: asArray(data.identityChangeRequests || data.identity_change_requests),
     ownership,
     notes: asArray(data.notes || data.support_notes || account.notes),
     audit: asArray(data.audit || data.audit_log || data.activity || data.history)
@@ -513,10 +615,14 @@ function renderDetail(data) {
   const badge = document.getElementById('account-detail-status');
   badge.className = `accounts-status-badge ${statusOf(account)}`;
   badge.textContent = statusLabel(account);
+  document.getElementById('account-identity-status').textContent = '';
   renderIdentities(collections.identities, account);
+  state.identityChangeRequests = collections.identityChangeRequests;
+  renderIdentityChanges(state.identityChangeRequests);
   renderOwnership(collections.ownership, account);
   renderNotes(collections.notes);
-  renderAudit(collections.audit);
+  state.audit = collections.audit;
+  renderAudit(state.audit);
   renderDeletion(data.deletion || null);
   document.getElementById('account-display-name').value = accountName(account);
   document.getElementById('account-profile-reason').value = '';
@@ -560,6 +666,81 @@ function closeDetail() {
   if (detailDialog.open) detailDialog.close();
 }
 
+function configureIdentityChangeDialog(type, trigger) {
+  if (!state.canManageIdentities) return;
+  if (!state.selectedId) return;
+  const phone = type === 'phone';
+  state.identityChangeType = phone ? 'phone' : 'email';
+  const form = document.getElementById('identity-change-form');
+  form.reset();
+  const input = document.getElementById('identity-change-value');
+  input.type = phone ? 'tel' : 'email';
+  input.inputMode = phone ? 'tel' : 'email';
+  input.autocomplete = 'off';
+  input.placeholder = phone ? '+1 415 555 0123' : 'name@example.com';
+  input.maxLength = phone ? 32 : 254;
+  document.getElementById('identity-change-value-label').textContent = phone ? 'New mobile number' : 'New email address';
+  document.getElementById('identity-change-title').textContent = phone ? 'Change mobile number' : 'Change sign-in email';
+  document.getElementById('identity-change-description').textContent = phone
+    ? 'We’ll text a verification request to the new number. The account will not change until its recipient enters the code.'
+    : 'We’ll send a private verification link to the new address. The account will not change until its recipient reviews and confirms it.';
+  setFormError('identity-change-error', '');
+  showDialog(identityChangeDialog, trigger);
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeIdentityChangeDialog() {
+  if (identityChangeDialog.open) identityChangeDialog.close();
+}
+
+async function refreshSelectedAccount() {
+  if (!state.selectedId) return;
+  renderDetail(await fetchAccount(state.selectedId));
+}
+
+async function submitIdentityChange(event) {
+  event.preventDefault();
+  if (!state.canManageIdentities) return;
+  if (!state.selectedId || !state.identityChangeType) return;
+  const valueField = document.getElementById('identity-change-value');
+  const reasonField = document.getElementById('identity-change-reason');
+  const value = valueField.value.trim();
+  const reason = reasonField.value.trim();
+  if (!value) {
+    setFormError('identity-change-error', `Enter the new ${state.identityChangeType === 'phone' ? 'mobile number' : 'email address'}.`);
+    valueField.focus();
+    return;
+  }
+  if (state.identityChangeType === 'email' && !valueField.validity.valid) {
+    setFormError('identity-change-error', 'Enter a valid email address.');
+    valueField.focus();
+    return;
+  }
+  if (reason.length < 8) {
+    setFormError('identity-change-error', 'Add a short reason for the permanent audit record.');
+    reasonField.focus();
+    return;
+  }
+  const button = document.getElementById('submit-identity-change');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  setFormError('identity-change-error', '');
+  try {
+    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/identity-changes`, {
+      method:'POST',
+      body:{ type:state.identityChangeType, value, reason }
+    });
+    identityChangeDialog.close();
+    toast('Verification request sent to the recipient');
+    await Promise.all([loadAccounts(), refreshSelectedAccount()]);
+  } catch (error) {
+    setFormError('identity-change-error', error.message || 'The verification request could not be sent.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Send verification request';
+  }
+}
+
 function openSupportAction(action) {
   if (!state.selectedId) return;
   const name = accountName(state.selected || {});
@@ -593,9 +774,39 @@ function openSupportAction(action) {
   document.getElementById('support-action-reason').value = '';
   const confirm = document.getElementById('confirm-support-action');
   confirm.textContent = copy.button;
-  confirm.className = `sg-btn ${action === 'reactivate' ? 'sg-btn-primary' : 'sg-btn-danger'}`;
+  confirm.className = `sg-btn ${state.action.tone === 'primary' || action === 'reactivate' ? 'sg-btn-primary' : 'sg-btn-danger'}`;
   setFormError('support-action-error', '');
   showDialog(actionDialog);
+  requestAnimationFrame(() => document.getElementById('support-action-reason').focus());
+}
+
+function openIdentityRequestAction(action, changeId, trigger) {
+  if (!state.canManageIdentities) return;
+  const requests = asArray(state.detail?.identityChangeRequests || state.detail?.identity_change_requests);
+  const request = requests.find(item => String(identityChangeId(item)) === String(changeId));
+  if (!request || !state.selectedId) return;
+  const value = identityChangeValue(request) || identityChangeType(request);
+  const resend = action === 'resend';
+  state.action = {
+    action:resend ? 'identityResend' : 'identityCancel',
+    title:resend ? 'Resend this verification?' : 'Cancel this verification request?',
+    description:resend
+      ? `A fresh verification message will be sent to ${value}. Only its recipient can complete the change.`
+      : `${value} will no longer be able to complete this request. The account’s current sign-in method will remain unchanged.`,
+    button:resend ? 'Resend verification' : 'Cancel request',
+    path:`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/identity-changes/${encodeURIComponent(changeId)}/${resend ? 'resend' : 'cancel'}`,
+    method:'POST',
+    tone:resend ? 'primary' : 'danger',
+    success:resend ? 'Verification resent to the recipient' : 'Verification request cancelled'
+  };
+  document.getElementById('support-action-title').textContent = state.action.title;
+  document.getElementById('support-action-description').textContent = state.action.description;
+  document.getElementById('support-action-reason').value = '';
+  const confirm = document.getElementById('confirm-support-action');
+  confirm.textContent = state.action.button;
+  confirm.className = `sg-btn ${resend ? 'sg-btn-primary' : 'sg-btn-danger'}`;
+  setFormError('support-action-error', '');
+  showDialog(actionDialog, trigger);
   requestAnimationFrame(() => document.getElementById('support-action-reason').focus());
 }
 
@@ -618,10 +829,11 @@ async function submitSupportAction(event) {
   button.disabled = true;
   button.textContent = 'Saving…';
   try {
-    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${state.action.endpoint}`, { method:state.action.method,body:{ reason } });
+    const path = state.action.path || `/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${state.action.endpoint}`;
+    await api(path, { method:state.action.method,body:{ reason } });
     actionDialog.close();
-    toast(`${original} complete`);
-    await Promise.all([loadAccounts(), openAccount(state.selectedId)]);
+    toast(state.action.success || `${original} complete`);
+    await Promise.all([loadAccounts(), refreshSelectedAccount()]);
   } catch (error) {
     setFormError('support-action-error', error.message);
   } finally {
@@ -924,6 +1136,15 @@ document.getElementById('open-invitation').addEventListener('click', openInvitat
 document.getElementById('cancel-invitation').addEventListener('click', () => invitationDialog.close());
 document.getElementById('invitation-form').addEventListener('submit', submitInvitation);
 document.getElementById('close-account-detail').addEventListener('click', closeDetail);
+document.getElementById('request-email-change').addEventListener('click', event => configureIdentityChangeDialog('email', event.currentTarget));
+document.getElementById('request-phone-change').addEventListener('click', event => configureIdentityChangeDialog('phone', event.currentTarget));
+document.getElementById('cancel-identity-change').addEventListener('click', closeIdentityChangeDialog);
+document.getElementById('identity-change-form').addEventListener('submit', submitIdentityChange);
+document.getElementById('account-pending-identity-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-identity-request-action]');
+  if (!button) return;
+  openIdentityRequestAction(button.dataset.identityRequestAction, button.dataset.identityChangeId, button);
+});
 document.getElementById('account-sign-out-all').addEventListener('click', () => openSupportAction('signOut'));
 document.getElementById('account-status-action').addEventListener('click', event => openSupportAction(event.currentTarget.dataset.action));
 document.getElementById('delete-account-action').addEventListener('click', event => openDeleteAccount(event.currentTarget));
@@ -937,13 +1158,28 @@ document.getElementById('account-note-form').addEventListener('submit', submitNo
 document.getElementById('account-profile-form').addEventListener('submit', submitAccountProfile);
 document.getElementById('host-profile-form').addEventListener('submit', submitHostProfile);
 
-[detailDialog, actionDialog, invitationDialog, deleteDialog].forEach(dialog => {
+[detailDialog, actionDialog, identityChangeDialog, invitationDialog, deleteDialog].forEach(dialog => {
   dialog.addEventListener('click', event => {
     if (event.target === dialog) dialog.close();
   });
   dialog.addEventListener('close', () => restoreDialogFocus(dialog));
 });
 
+identityChangeDialog.addEventListener('close', () => {
+  state.identityChangeType = null;
+  document.getElementById('identity-change-form').reset();
+  setFormError('identity-change-error', '');
+});
 deleteDialog.addEventListener('close', resetDeleteDialog);
+
+window.adminShellSession.then(session => {
+  state.canManageIdentities = session?.capabilities?.manageIdentities === true;
+  renderIdentityChanges(state.identityChangeRequests);
+  renderAudit(state.audit);
+}).catch(() => {
+  state.canManageIdentities = false;
+  renderIdentityChanges([]);
+  renderAudit(state.audit);
+});
 
 loadAccounts();
