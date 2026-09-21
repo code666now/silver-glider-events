@@ -46,6 +46,9 @@ const publicRoutes = require('../../src/routes/public');
 const adminAccountsRoutes = require('../../src/routes/admin-accounts');
 const adminAuthRoutes = require('../../src/routes/admin-auth');
 const adminIdentityChangeRoutes = require('../../src/routes/admin-identity-changes');
+const adminDoneForYouRoutes = require('../../src/routes/admin-done-for-you');
+const uploadRoutes = require('../../src/routes/uploads');
+const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
 
 let server;
 let baseUrl;
@@ -91,6 +94,9 @@ function resetRateLimits() {
   adminAccountsRoutes.setAccountClaimSenderForTests();
   adminAuthRoutes.resetRateLimitsForTests();
   adminIdentityChangeRoutes.resetRateLimitsForTests();
+  adminDoneForYouRoutes.resetRateLimitsForTests();
+  adminDoneForYouRoutes.setClaimSenderForTests();
+  uploadRoutes.setAdminHostUploadsForTests();
 }
 
 async function resetDatabase() {
@@ -325,6 +331,61 @@ async function adminOperatorProof(sessionCookie, targetKey) {
   const proofCookie = responseCookie(completed, 'sge_admin_action');
   assert.ok(proofCookie);
   return cookieHeader(sessionCookie, proofCookie);
+}
+
+async function doneForYouLookup(sessionCookie, { email, phone = null }) {
+  return fetch(`${baseUrl}/api/admin/done-for-you/lookup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ email, phone })
+  });
+}
+
+async function provisionDoneForYou(sessionCookie, {
+  hostName,
+  contactName,
+  email,
+  phone = null,
+  expectedUserId
+}) {
+  return fetch(`${baseUrl}/api/admin/done-for-you`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ hostName, contactName, email, phone, expectedUserId })
+  });
+}
+
+async function createDoneForYouClient(sessionCookie, input) {
+  const lookup = await doneForYouLookup(sessionCookie, input);
+  assert.equal(lookup.status, 200);
+  const preview = await lookup.json();
+  const provisioned = await provisionDoneForYou(sessionCookie, {
+    ...input,
+    expectedUserId: preview.expectedUserId
+  });
+  assert.ok([200, 201].includes(provisioned.status));
+  return { preview, response: provisioned, client: (await provisioned.json()).client };
+}
+
+async function waitUntilOutboundLockHeld(userId) {
+  const probe = await pool.connect();
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const acquired = (await probe.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        [outboundDeliveryLockKey(userId)]
+      )).rows[0].acquired;
+      if (!acquired) return;
+      await probe.query(
+        'SELECT pg_advisory_unlock(hashtext($1))',
+        [outboundDeliveryLockKey(userId)]
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.fail(`outbound account lock was not acquired for user ${userId}`);
+  } finally {
+    probe.release();
+  }
 }
 
 test.before(async () => {
@@ -5001,6 +5062,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
     capabilities: {
       manageAccounts: true,
       manageIdentities: true,
+      manageDoneForYou: true,
       suspendAccounts: true,
       deleteAccounts: true,
       manageOperators: true
@@ -7419,4 +7481,920 @@ test('sign-out-all serializes behind recipient delivery and cancels the proof be
       WHERE target_user_id=$1 AND action_type='sessions_revoked'`,
     [target.user_id]
   )).rows[0].cancelled, 1);
+});
+
+test('Done For You provisioning is dedicated-admin only, aligned, unverified, idempotent, and session-free', async () => {
+  resetRateLimits();
+  const support = await createAdminOperator('dfy-support@example.test', 'support');
+  const supportCookie = await signInAdminOperator(support.email);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: supportCookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).capabilities.manageDoneForYou, true);
+
+  const contact = {
+    hostName: 'Moonlight Social',
+    contactName: 'Maya Client',
+    email: 'maya.dfy@example.test',
+    phone: '+14155550191'
+  };
+  assert.equal((await doneForYouLookup('', contact)).status, 401);
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const legacy = await doneForYouLookup(`sge_session=${signSession(organizerId)}`, contact);
+  assert.equal(legacy.status, 403);
+  assert.equal((await legacy.json()).error, 'dedicated_admin_required');
+
+  const invalid = await doneForYouLookup(supportCookie, { email: 'not-an-email', phone: 'nope' });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error, 'invalid_done_for_you_contact');
+  const previewResponse = await doneForYouLookup(supportCookie, contact);
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.equal(preview.expectedUserId, null);
+  assert.equal(preview.matched, false);
+
+  const skippedPreview = await fetch(`${baseUrl}/api/admin/done-for-you`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: supportCookie },
+    body: JSON.stringify(contact)
+  });
+  assert.equal(skippedPreview.status, 409);
+  assert.equal((await skippedPreview.json()).error, 'done_for_you_lookup_required');
+
+  const created = await provisionDoneForYou(supportCookie, { ...contact, expectedUserId: null });
+  assert.equal(created.status, 201);
+  assert.doesNotMatch(created.headers.get('set-cookie') || '', /sge_session=/);
+  const first = (await created.json()).client;
+  assert.equal(first.userId, first.organizerId);
+  assert.equal(first.userCreated, true);
+  assert.equal(first.claimed, false);
+  const stored = (await pool.query(
+    `SELECT canonical_user.name,canonical_user.account_status,
+            organizer.id,organizer.user_id,organizer.org_name,organizer.public_slug,
+            organizer.last_login_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [first.userId]
+  )).rows[0];
+  assert.equal(stored.id, first.userId);
+  assert.equal(stored.user_id, first.userId);
+  assert.equal(stored.name, contact.contactName);
+  assert.equal(stored.org_name, contact.hostName);
+  assert.equal(stored.account_status, 'active');
+  assert.equal(stored.last_login_at, null);
+  const identities = (await pool.query(
+    `SELECT identity_type,normalized_value,verification_scope,verified_at,is_primary
+       FROM user_identities WHERE user_id=$1 ORDER BY identity_type`,
+    [first.userId]
+  )).rows;
+  assert.deepEqual(identities.map(row => ({
+    type: row.identity_type,
+    value: row.normalized_value,
+    scope: row.verification_scope,
+    verified: Boolean(row.verified_at),
+    primary: row.is_primary
+  })), [
+    { type: 'email', value: contact.email, scope: 'unverified', verified: false, primary: false },
+    { type: 'phone', value: contact.phone, scope: 'unverified', verified: false, primary: false }
+  ]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE organizer_id=$1',
+    [first.userId]
+  )).rows[0].count, 0);
+
+  const repeatPreview = await doneForYouLookup(supportCookie, contact);
+  const repeatPreviewBody = await repeatPreview.json();
+  assert.equal(repeatPreviewBody.expectedUserId, first.userId);
+  const repeated = await provisionDoneForYou(supportCookie, {
+    ...contact,
+    expectedUserId: first.userId
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal((await repeated.json()).client.noOp, true);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [first.userId]
+  )).rows[0].count, 1);
+  const audit = (await pool.query(
+    `SELECT before_state,after_state,metadata FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type LIKE 'done_for_you_client_%'`,
+    [first.userId]
+  )).rows;
+  assert.equal(audit.length, 1);
+  assert.doesNotMatch(JSON.stringify(audit), /Maya Client|Moonlight Social|maya\.dfy|50191/);
+
+  const list = await fetch(`${baseUrl}/api/admin/done-for-you`, { headers: { cookie: supportCookie } });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).clients[0].userId, first.userId);
+  const detail = await fetch(`${baseUrl}/api/admin/done-for-you/${first.id}`, {
+    headers: { cookie: supportCookie }
+  });
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json()).owner.userId, first.userId);
+});
+
+test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-race@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const contact = {
+    hostName: 'Race Safe Host',
+    contactName: 'Race Safe Client',
+    email: 'dfy-race-client@example.test',
+    phone: '+14155550192',
+    expectedUserId: null
+  };
+  const responses = await Promise.all([
+    provisionDoneForYou(session, contact),
+    provisionDoneForYou(session, contact)
+  ]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409]);
+  const conflictBody = await responses.find(response => response.status === 409).json();
+  assert.equal(conflictBody.error, 'done_for_you_lookup_changed');
+  assert.equal(typeof conflictBody.actualUserId, 'number');
+  const ownerId = conflictBody.actualUserId;
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL`,
+    [contact.email]
+  )).rows[0].count, 1);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM organizers WHERE user_id=$1', [ownerId]
+  )).rows[0].count, 1);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1', [ownerId]
+  )).rows[0].count, 1);
+});
+
+test('Done For You exact ownership handles unverified contacts, split owners, and legacy projection drift safely', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-identity@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  async function createCompat(email, name) {
+    const inserted = (await pool.query(
+      'INSERT INTO organizers (email,name) VALUES ($1,$2) RETURNING id',
+      [email, name]
+    )).rows[0];
+    return (await pool.query('SELECT id,user_id FROM organizers WHERE id=$1', [inserted.id])).rows[0];
+  }
+  async function addUnverified(userId, type, value) {
+    await pool.query(
+      `INSERT INTO user_identities
+         (user_id,identity_type,value,normalized_value,verification_scope,
+          verification_source,is_primary)
+       VALUES ($1,$2,$3,$3,'unverified','integration_test',FALSE)`,
+      [userId, type, value]
+    );
+  }
+
+  const ownerA = await createCompat('owner-a-compat@example.test', 'Owner A');
+  await addUnverified(ownerA.user_id, 'email', 'owner-a@example.test');
+  await addUnverified(ownerA.user_id, 'phone', '+14155550201');
+  const sameOwner = await doneForYouLookup(session, {
+    email: 'owner-a@example.test', phone: '+14155550201'
+  });
+  assert.equal(sameOwner.status, 200);
+  assert.equal((await sameOwner.json()).expectedUserId, ownerA.user_id);
+
+  const phoneAlone = await doneForYouLookup(session, {
+    email: 'new-email@example.test', phone: '+14155550201'
+  });
+  assert.equal(phoneAlone.status, 409);
+  assert.deepEqual((await phoneAlone.json()).ownerUserIds, [ownerA.user_id]);
+
+  const ownerB = await createCompat('owner-b-compat@example.test', 'Owner B');
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'phone',$2,$2,NOW(),'account','integration_test',TRUE)`,
+    [ownerB.user_id, '+14155550202']
+  );
+  const split = await doneForYouLookup(session, {
+    email: 'owner-a@example.test', phone: '+14155550202'
+  });
+  assert.equal(split.status, 409);
+  const splitBody = await split.json();
+  assert.equal(splitBody.error, 'split_identity_owners');
+  assert.equal(splitBody.emailOwnerUserId, ownerA.user_id);
+  assert.equal(splitBody.phoneOwnerUserId, ownerB.user_id);
+  assert.doesNotMatch(JSON.stringify(splitBody), /owner-a@example|55550202/);
+
+  const legacyConflict = await createCompat('owner-a@example.test', 'Legacy Conflict');
+  const disagreement = await doneForYouLookup(session, { email: 'owner-a@example.test' });
+  assert.equal(disagreement.status, 409);
+  const disagreementBody = await disagreement.json();
+  assert.equal(disagreementBody.error, 'identity_projection_conflict');
+  assert.deepEqual(new Set(disagreementBody.ownerUserIds), new Set([ownerA.user_id, legacyConflict.user_id]));
+
+  const legacyEmail = await createCompat('legacy-only@example.test', 'Legacy Email');
+  const userCountBeforeEmail = Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count);
+  const legacyEmailPreview = await doneForYouLookup(session, { email: 'legacy-only@example.test' });
+  assert.equal(legacyEmailPreview.status, 200);
+  const legacyEmailBody = await legacyEmailPreview.json();
+  assert.equal(legacyEmailBody.expectedUserId, legacyEmail.user_id);
+  assert.ok(legacyEmailBody.matchedBy.includes('legacy_email'));
+  const legacyEmailProvision = await provisionDoneForYou(session, {
+    hostName: 'Legacy Email Host', contactName: 'Legacy Email',
+    email: 'legacy-only@example.test', expectedUserId: legacyEmail.user_id
+  });
+  assert.equal(legacyEmailProvision.status, 201);
+  assert.equal(Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count), userCountBeforeEmail);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2`,
+    [legacyEmail.user_id, 'legacy-only@example.test']
+  )).rows[0].verification_scope, 'unverified');
+
+  const legacyPhone = await createCompat('legacy-phone@example.test', 'Legacy Phone');
+  await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW())`,
+    [legacyPhone.id, '+14155550203']
+  );
+  const userCountBeforePhone = Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count);
+  const legacyPhonePreview = await doneForYouLookup(session, {
+    email: 'legacy-phone-new@example.test', phone: '+14155550203'
+  });
+  assert.equal(legacyPhonePreview.status, 200);
+  const legacyPhoneBody = await legacyPhonePreview.json();
+  assert.equal(legacyPhoneBody.expectedUserId, legacyPhone.user_id);
+  assert.ok(legacyPhoneBody.matchedBy.includes('legacy_verified_phone'));
+  const legacyPhoneProvision = await provisionDoneForYou(session, {
+    hostName: 'Legacy Phone Host', contactName: 'Legacy Phone',
+    email: 'legacy-phone-new@example.test', phone: '+14155550203',
+    expectedUserId: legacyPhone.user_id
+  });
+  assert.equal(legacyPhoneProvision.status, 201);
+  assert.equal(Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count), userCountBeforePhone);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2`,
+    [legacyPhone.user_id, '+14155550203']
+  )).rows[0].verification_scope, 'account');
+});
+
+test('target-bound Done For You claims are scanner-safe, revoke old links, and claim the exact prepared user', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-claim@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Claimed Host', contactName: 'Casey Claim',
+    email: 'casey-claim@example.test', phone: '+14155550211'
+  });
+  const links = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { links.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+
+  const sendClaim = () => fetch(`${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: session },
+    body: '{}'
+  });
+  const first = await sendClaim();
+  assert.equal(first.status, 201);
+  const firstBody = await first.json();
+  assert.doesNotMatch(JSON.stringify(firstBody), /token|auth\/verify/i);
+  const firstToken = tokenFromLink(links[0]);
+  const second = await sendClaim();
+  assert.equal(second.status, 201);
+  const secondBody = await second.json();
+  assert.doesNotMatch(JSON.stringify(secondBody), /token|auth\/verify/i);
+  const secondToken = tokenFromLink(links[1]);
+  assert.notEqual(firstToken, secondToken);
+
+  const oldPost = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: firstToken })
+  });
+  assert.equal(oldPost.status, 400);
+  const scanOne = await fetch(`${baseUrl}/auth/verify?token=${secondToken}`, { redirect: 'manual' });
+  const scanTwo = await fetch(`${baseUrl}/auth/verify?token=${secondToken}`, { redirect: 'manual' });
+  assert.equal(scanOne.status, 200);
+  assert.equal(scanTwo.status, 200);
+  assert.equal(scanOne.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE token=$1',
+    [require('../../src/lib/guest-session').tokenHash(secondToken)]
+  )).rows[0].used_at, null);
+
+  const claimed = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(claimed.status, 303);
+  const customerCookie = responseCookie(claimed, 'sge_session');
+  assert.ok(customerCookie);
+  const customerMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: customerCookie } });
+  assert.equal(customerMe.status, 200);
+  assert.equal((await customerMe.json()).organizer.id, prepared.client.userId);
+  const ownerRows = await pool.query(
+    `SELECT invitation.target_user_id,invitation.claimed_user_id,invitation.claimed_at,
+            identity.identity_type,identity.verification_scope,identity.verified_at,
+            identity.is_primary
+       FROM admin_account_invitations invitation
+       JOIN user_identities identity ON identity.user_id=invitation.target_user_id
+      WHERE invitation.id=$1 ORDER BY identity.identity_type`,
+    [secondBody.invitation.id]
+  );
+  assert.equal(ownerRows.rows[0].target_user_id, prepared.client.userId);
+  assert.equal(ownerRows.rows[0].claimed_user_id, prepared.client.userId);
+  assert.ok(ownerRows.rows[0].claimed_at);
+  const claimedEmail = ownerRows.rows.find(row => row.identity_type === 'email');
+  const untouchedPhone = ownerRows.rows.find(row => row.identity_type === 'phone');
+  assert.equal(claimedEmail.verification_scope, 'account');
+  assert.ok(claimedEmail.verified_at);
+  assert.equal(claimedEmail.is_primary, true);
+  assert.equal(untouchedPhone.verification_scope, 'unverified');
+  assert.equal(untouchedPhone.verified_at, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM users WHERE id=$1', [prepared.client.userId]
+  )).rows[0].count, 1);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(replay.status, 400);
+
+  await assert.rejects(
+    pool.query(
+      `UPDATE admin_account_invitations
+          SET target_user_id=$2,claimed_user_id=$2
+        WHERE id=$1`,
+      [secondBody.invitation.id, organizerId]
+    ),
+    /target is immutable/
+  );
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM message_log
+      WHERE recipient_user_id=$1 AND message_type='magic_link' AND status='sent'`,
+    [prepared.client.userId]
+  )).rows[0].count, 2);
+  const claimAudit = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type LIKE 'done_for_you_claim_invitation_%'`,
+    [prepared.client.userId]
+  )).rows;
+  assert.ok(claimAudit.length >= 2);
+  assert.doesNotMatch(JSON.stringify(claimAudit), /casey-claim@example\.test/);
+});
+
+test('a target-bound claim becomes terminal if the owner claims through another identity first', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-stale-claim@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Stale Claim Host', contactName: 'Riley Owner',
+    email: 'stale-claim@example.test'
+  });
+  let link = '';
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { link = message.link; });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  const sent = await fetch(`${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}'
+  });
+  assert.equal(sent.status, 201);
+  const invitationId = (await sent.json()).invitation.id;
+  await addVerifiedEmailIdentity(prepared.client.userId, 'other-owner-proof@example.test');
+  const token = tokenFromLink(link);
+  const stale = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(stale.status, 409);
+  const invitation = (await pool.query(
+    'SELECT claimed_at,revoked_at FROM admin_account_invitations WHERE id=$1', [invitationId]
+  )).rows[0];
+  assert.equal(invitation.claimed_at, null);
+  assert.ok(invitation.revoked_at);
+  assert.ok((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE token=$1',
+    [require('../../src/lib/guest-session').tokenHash(token)]
+  )).rows[0].used_at);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(replay.status, 400);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND normalized_value='stale-claim@example.test'`,
+    [prepared.client.userId]
+  )).rows[0].verification_scope, 'unverified');
+});
+
+test('Done For You claim links are revoked by sign-out-all, suspension, reactivation, and deletion cleanup', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-cleanup@example.test', 'super_admin');
+  const session = await signInAdminOperator(operator.email);
+  const delivered = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { delivered.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  async function preparedClaim(email, suffix) {
+    const prepared = await createDoneForYouClient(session, {
+      hostName: `Cleanup Host ${suffix}`,
+      contactName: `Cleanup Client ${suffix}`,
+      email
+    });
+    const response = await fetch(
+      `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+      { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+    );
+    assert.equal(response.status, 201);
+    return { ...prepared, invitation: (await response.json()).invitation, link: delivered.at(-1) };
+  }
+  async function postClaim(link) {
+    return fetch(`${baseUrl}/auth/verify`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokenFromLink(link) })
+    });
+  }
+
+  const signout = await preparedClaim('dfy-signout@example.test', 'Signout');
+  const signedOut = await fetch(`${baseUrl}/api/admin/accounts/${signout.client.userId}/sign-out-all`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Owner requested every pending access path be revoked' })
+  });
+  assert.equal(signedOut.status, 200);
+  assert.equal((await postClaim(signout.link)).status, 400);
+  assert.ok((await pool.query(
+    'SELECT revoked_at FROM admin_account_invitations WHERE id=$1', [signout.invitation.id]
+  )).rows[0].revoked_at);
+
+  const suspended = await preparedClaim('dfy-suspend@example.test', 'Suspend');
+  const suspend = await fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/suspend`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Support is temporarily securing this client account' })
+  });
+  assert.equal(suspend.status, 200);
+  assert.equal((await postClaim(suspended.link)).status, 400);
+  const reactivate = await fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/reactivate`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Support completed the client security review' })
+  });
+  assert.equal(reactivate.status, 200);
+  assert.equal((await postClaim(suspended.link)).status, 400,
+    'reactivation never resurrects a revoked claim link');
+
+  const deleted = await preparedClaim('dfy-delete@example.test', 'Delete');
+  const deletionCookie = await adminDeletionProof(session, deleted.client.userId);
+  const removed = await fetch(`${baseUrl}/api/admin/accounts/${deleted.client.userId}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
+    body: JSON.stringify({
+      reason: 'Client requested permanent deletion of the prepared account',
+      confirmation: `DELETE USER ${deleted.client.userId}`
+    })
+  });
+  assert.equal(removed.status, 200);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [deleted.client.userId]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [deleted.client.userId]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM magic_link_tokens
+      WHERE token=$1`,
+    [require('../../src/lib/guest-session').tokenHash(tokenFromLink(deleted.link))]
+  )).rows[0].count, 0);
+  const deliveryLog = (await pool.query(
+    `SELECT recipient,recipient_user_id FROM message_log
+      WHERE message_type='magic_link' AND recipient LIKE $1 ORDER BY id DESC LIMIT 1`,
+    [`deleted+${deleted.client.userId}+message-%`]
+  )).rows[0];
+  assert.ok(deliveryLog);
+  assert.equal(deliveryLog.recipient_user_id, null);
+  const deletedClaim = await postClaim(deleted.link);
+  assert.equal(deletedClaim.status, 303);
+  assert.match(deletedClaim.headers.get('location') || '', /^\/login\?error=expired/);
+
+  let uploadCalls = 0;
+  uploadRoutes.setAdminHostUploadsForTests({
+    configured: true,
+    logo: async () => { uploadCalls += 1; return { secure_url: 'https://example.test/should-not-upload.png' }; }
+  });
+  t.after(() => uploadRoutes.setAdminHostUploadsForTests());
+  const deletedLogo = new FormData();
+  deletedLogo.set('image', new Blob([Buffer.from('not-reached')], { type: 'image/png' }), 'logo.png');
+  const blockedUpload = await fetch(
+    `${baseUrl}/api/admin/uploads/hosts/${deleted.client.organizerId}/logo`,
+    { method: 'POST', headers: { cookie: session }, body: deletedLogo }
+  );
+  assert.equal(blockedUpload.status, 404);
+  assert.equal(uploadCalls, 0);
+  const blockedProfile = await fetch(
+    `${baseUrl}/api/admin/hosts/${deleted.client.organizerId}/profile`,
+    {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({ orgName: 'Must Not Return' })
+    }
+  );
+  assert.equal(blockedProfile.status, 404);
+});
+
+test('Done For You preserves established profile values, fills blanks, and rejects a stale preview after signup', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-fill-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+
+  const established = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('dfy-established@example.test','Established Person','Established Host','established-host')
+     RETURNING id,user_id`
+  )).rows[0];
+  established.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [established.id]
+  )).rows[0].user_id;
+  const establishedPreview = await doneForYouLookup(session, {
+    email: 'dfy-established@example.test'
+  });
+  assert.equal(establishedPreview.status, 200);
+  const establishedProvision = await provisionDoneForYou(session, {
+    hostName: 'Submitted Replacement Host',
+    contactName: 'Submitted Replacement Person',
+    email: 'dfy-established@example.test',
+    expectedUserId: established.user_id
+  });
+  assert.equal(establishedProvision.status, 201);
+  const preserved = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name,
+            organizer.org_name,organizer.public_slug
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [established.user_id]
+  )).rows[0];
+  assert.equal(preserved.name, 'Established Person');
+  assert.equal(preserved.organizer_name, 'Established Person');
+  assert.equal(preserved.org_name, 'Established Host');
+  assert.equal(preserved.public_slug, 'established-host');
+
+  const blank = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('dfy-fill-blank@example.test','Temporary Name')
+     RETURNING id,user_id`
+  )).rows[0];
+  blank.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [blank.id]
+  )).rows[0].user_id;
+  await pool.query('UPDATE users SET name=NULL WHERE id=$1', [blank.user_id]);
+  await pool.query(
+    `UPDATE organizers
+        SET name=NULL,org_name=NULL,public_slug=NULL
+      WHERE id=$1`,
+    [blank.id]
+  );
+  const blankPreview = await doneForYouLookup(session, { email: 'dfy-fill-blank@example.test' });
+  assert.equal(blankPreview.status, 200);
+  const filledResponse = await provisionDoneForYou(session, {
+    hostName: 'Filled Host',
+    contactName: 'Filled Person',
+    email: 'dfy-fill-blank@example.test',
+    expectedUserId: blank.user_id
+  });
+  assert.equal(filledResponse.status, 201);
+  const filled = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name,
+            organizer.org_name,organizer.public_slug,marker.updated_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+       JOIN admin_done_for_you_clients marker ON marker.target_user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [blank.user_id]
+  )).rows[0];
+  assert.equal(filled.name, 'Filled Person');
+  assert.equal(filled.organizer_name, 'Filled Person');
+  assert.equal(filled.org_name, 'Filled Host');
+  assert.match(filled.public_slug, /^filled-host/);
+
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await pool.query('UPDATE users SET name=NULL WHERE id=$1', [blank.user_id]);
+  const repaired = await provisionDoneForYou(session, {
+    hostName: 'Must Not Replace Filled Host',
+    contactName: 'Repaired Person',
+    email: 'dfy-fill-blank@example.test',
+    expectedUserId: blank.user_id
+  });
+  assert.equal(repaired.status, 201);
+  assert.equal((await repaired.json()).client.noOp, false);
+  const touched = (await pool.query(
+    `SELECT canonical_user.name,organizer.org_name,marker.updated_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+       JOIN admin_done_for_you_clients marker ON marker.target_user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [blank.user_id]
+  )).rows[0];
+  assert.equal(touched.name, 'Repaired Person');
+  assert.equal(touched.org_name, 'Filled Host');
+  assert.ok(new Date(touched.updated_at) > new Date(filled.updated_at));
+
+  const staleInput = {
+    hostName: 'Signup Won Host',
+    contactName: 'Signup Won Owner',
+    email: 'dfy-signup-won@example.test'
+  };
+  const stalePreview = await doneForYouLookup(session, staleInput);
+  assert.equal(stalePreview.status, 200);
+  assert.equal((await stalePreview.json()).expectedUserId, null);
+  const signupWinner = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ($1,$2,NOW()) RETURNING id,user_id`,
+    [staleInput.email, staleInput.contactName]
+  )).rows[0];
+  signupWinner.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [signupWinner.id]
+  )).rows[0].user_id;
+  const usersBefore = (await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count;
+  const staleProvision = await provisionDoneForYou(session, {
+    ...staleInput,
+    expectedUserId: null
+  });
+  assert.equal(staleProvision.status, 409);
+  const staleBody = await staleProvision.json();
+  assert.equal(staleBody.error, 'done_for_you_lookup_changed');
+  assert.equal(staleBody.actualUserId, signupWinner.user_id);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count, usersBefore);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [signupWinner.user_id]
+  )).rows[0].count, 0);
+});
+
+test('Done For You Host Page support edits and media are dedicated, audited, and target-isolated', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-host-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const first = await createDoneForYouClient(session, {
+    hostName: 'First Managed Host', contactName: 'First Client',
+    email: 'first-managed-host@example.test'
+  });
+  const second = await createDoneForYouClient(session, {
+    hostName: 'Second Managed Host', contactName: 'Second Client',
+    email: 'second-managed-host@example.test'
+  });
+
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const legacyCookie = `sge_session=${signSession(organizerId)}`;
+  const legacyDenied = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: legacyCookie },
+      body: JSON.stringify({ org_name: 'Legacy Must Not Edit' })
+    }
+  );
+  assert.equal(legacyDenied.status, 403);
+  assert.equal((await legacyDenied.json()).error, 'dedicated_admin_required');
+  const crossOriginDenied = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json', cookie: session,
+        origin: 'https://attacker.example'
+      },
+      body: JSON.stringify({ org_name: 'Cross Origin Must Not Edit' })
+    }
+  );
+  assert.equal(crossOriginDenied.status, 403);
+
+  const profile = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({
+        org_name: 'First Managed Host Updated',
+        bio: 'A support-prepared public description.',
+        website_url: 'https://first-managed.example',
+        instagram_handle: '@firstmanaged',
+        contact_email: 'public-contact@example.test'
+      })
+    }
+  );
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).host.org_name, 'First Managed Host Updated');
+  const unchangedSecond = (await pool.query(
+    'SELECT org_name,logo_url,header_image_url FROM organizers WHERE id=$1',
+    [second.client.organizerId]
+  )).rows[0];
+  assert.equal(unchangedSecond.org_name, 'Second Managed Host');
+  assert.equal(unchangedSecond.logo_url, null);
+  assert.equal(unchangedSecond.header_image_url, null);
+
+  const logoUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v123/sg-events-dev/hosts/first-logo.png';
+  const headerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v124/sg-events-dev/hosts/headers/first-header.jpg';
+  uploadRoutes.setAdminHostUploadsForTests({
+    configured: true,
+    logo: async () => ({ secure_url: logoUrl }),
+    header: async () => ({ secure_url: headerUrl })
+  });
+  t.after(() => uploadRoutes.setAdminHostUploadsForTests());
+  async function upload(kind) {
+    const form = new FormData();
+    form.set('image', new Blob([Buffer.from(kind)], { type: 'image/png' }), `${kind}.png`);
+    return fetch(
+      `${baseUrl}/api/admin/uploads/hosts/${first.client.organizerId}/${kind}`,
+      { method: 'POST', headers: { cookie: session }, body: form }
+    );
+  }
+  const logo = await upload('logo');
+  assert.equal(logo.status, 200);
+  assert.equal((await logo.json()).url, logoUrl);
+  const header = await upload('header');
+  assert.equal(header.status, 200);
+  assert.equal((await header.json()).url, headerUrl);
+
+  const firstStored = (await pool.query(
+    'SELECT logo_url,header_image_url FROM organizers WHERE id=$1',
+    [first.client.organizerId]
+  )).rows[0];
+  assert.equal(firstStored.logo_url, logoUrl);
+  assert.equal(firstStored.header_image_url, headerUrl);
+  const supportAuditRows = (await pool.query(
+    `SELECT action_type,target_user_id,actor_admin_operator_id,
+            before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN ('host_profile_updated','host_logo_updated','host_header_updated')
+      ORDER BY id`,
+    [first.client.userId]
+  )).rows;
+  assert.doesNotMatch(
+    JSON.stringify(supportAuditRows),
+    /First Managed Host Updated|support-prepared|first-managed\.example|public-contact@example|res\.cloudinary\.com/
+  );
+  assert.deepEqual(supportAuditRows.map(row => ({
+    action: row.action_type,
+    target: Number(row.target_user_id),
+    operator: Number(row.actor_admin_operator_id),
+    mediaKind: row.metadata?.mediaKind || null,
+    managedAfter: row.after_state?.managedPublicId || null
+  })), [
+    { action: 'host_profile_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: null, managedAfter: null },
+    { action: 'host_logo_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: 'logo', managedAfter: 'sg-events-dev/hosts/first-logo' },
+    { action: 'host_header_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: 'header', managedAfter: 'sg-events-dev/hosts/headers/first-header' }
+  ]);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN ('host_profile_updated','host_logo_updated','host_header_updated')`,
+    [second.client.userId]
+  )).rows[0].count, 0);
+});
+
+test('Done For You claims serialize behind suspension and deletion without issuing a customer session', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-race-super@example.test', 'super_admin');
+  const session = await signInAdminOperator(operator.email);
+  const delivered = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { delivered.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+
+  async function preparedClaim(email, label) {
+    const prepared = await createDoneForYouClient(session, {
+      hostName: `${label} Host`, contactName: `${label} Client`, email
+    });
+    const sent = await fetch(
+      `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+      { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+    );
+    assert.equal(sent.status, 201);
+    return { ...prepared, link: delivered.at(-1) };
+  }
+  async function claim(link) {
+    return fetch(`${baseUrl}/auth/verify`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokenFromLink(link) })
+    });
+  }
+  async function withBlockedUser(userId, work) {
+    const blocker = await pool.connect();
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+    try {
+      return await work(async () => {
+        await blocker.query('COMMIT');
+      });
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      blocker.release();
+    }
+  }
+
+  const suspended = await preparedClaim('dfy-claim-suspend-race@example.test', 'Suspend Race');
+  await withBlockedUser(suspended.client.userId, async release => {
+    const suspension = fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/suspend`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({ reason: 'Serialize account suspension before recipient claim completion' })
+    });
+    await waitUntilOutboundLockHeld(suspended.client.userId);
+    let claimSettled = false;
+    const attemptedClaim = claim(suspended.link).then(response => {
+      claimSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(claimSettled, false);
+    await release();
+    const [suspendResponse, claimResponse] = await Promise.all([suspension, attemptedClaim]);
+    assert.equal(suspendResponse.status, 200);
+    assert.equal(claimResponse.status, 400);
+    assert.doesNotMatch(claimResponse.headers.get('set-cookie') || '', /sge_session=/);
+  });
+
+  const deleted = await preparedClaim('dfy-claim-delete-race@example.test', 'Delete Race');
+  const deletionCookie = await adminDeletionProof(session, deleted.client.userId);
+  await withBlockedUser(deleted.client.userId, async release => {
+    const deletion = fetch(`${baseUrl}/api/admin/accounts/${deleted.client.userId}/delete-account`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: deletionCookie },
+      body: JSON.stringify({
+        reason: 'Serialize permanent deletion before recipient claim completion',
+        confirmation: `DELETE USER ${deleted.client.userId}`
+      })
+    });
+    await waitUntilOutboundLockHeld(deleted.client.userId);
+    let claimSettled = false;
+    const attemptedClaim = claim(deleted.link).then(response => {
+      claimSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(claimSettled, false);
+    await release();
+    const [deleteResponse, claimResponse] = await Promise.all([deletion, attemptedClaim]);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(claimResponse.status, 303);
+    assert.match(claimResponse.headers.get('location') || '', /^\/login\?error=expired/);
+    assert.doesNotMatch(claimResponse.headers.get('set-cookie') || '', /sge_session=/);
+  });
+});
+
+test('a target-bound Done For You claim is terminal after its exact email is reassigned', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-mismatch-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Mismatch Host', contactName: 'Mismatch Client',
+    email: 'dfy-target-mismatch@example.test'
+  });
+  let claimLink = '';
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { claimLink = message.link; });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  const sent = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+  );
+  assert.equal(sent.status, 201);
+  const invitationId = (await sent.json()).invitation.id;
+  const other = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('different-target@example.test','Different Target') RETURNING id`
+  )).rows[0];
+  const otherUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [other.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `UPDATE user_identities SET user_id=$2,updated_at=NOW()
+      WHERE user_id=$1 AND identity_type='email'
+        AND normalized_value='dfy-target-mismatch@example.test'`,
+    [prepared.client.userId, otherUserId]
+  );
+  const token = tokenFromLink(claimLink);
+  const mismatch = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(mismatch.status, 409);
+  assert.doesNotMatch(mismatch.headers.get('set-cookie') || '', /sge_session=/);
+  const terminal = (await pool.query(
+    `SELECT invitation.revoked_at,challenge.used_at
+       FROM admin_account_invitations invitation
+       JOIN magic_link_tokens challenge ON challenge.id=invitation.magic_link_token_id
+      WHERE invitation.id=$1`,
+    [invitationId]
+  )).rows[0];
+  assert.ok(terminal.revoked_at);
+  assert.ok(terminal.used_at);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(replay.status, 400);
 });

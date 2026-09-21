@@ -43,6 +43,7 @@ app.use(require('./lib/session').sessionMiddleware(pool));
 app.use(require('./routes/auth'));
 app.use(require('./routes/admin-auth'));
 app.use(require('./routes/admin-operators'));
+app.use(require('./routes/admin-done-for-you'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
@@ -96,7 +97,7 @@ app.get('/admin/login', async (req, res, next) => {
     const dedicated = await loadAdminOperator(pool, req);
     if (dedicated.operator) return res.redirect(destination);
     if (dedicated.stale) clearAdminSessionCookie(res);
-    if (req.sessionAccount?.is_admin && requireAdmin.legacyFallbackEnabled()) {
+    if (req.query.dedicated !== '1' && req.sessionAccount?.is_admin && requireAdmin.legacyFallbackEnabled()) {
       return res.redirect(destination);
     }
     res.sendFile(path.join(VIEWS, 'admin-login.html'));
@@ -182,6 +183,11 @@ app.get([
 app.get('/admin', requireAdmin, view('admin-overview.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
+app.get('/admin/done-for-you', requireAdmin, requireAdmin.requireDedicatedAdmin, view('admin-done-for-you.html'));
+app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  return res.sendFile(path.join(VIEWS, 'admin-done-for-you-detail.html'));
+});
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));

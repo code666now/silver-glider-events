@@ -2,9 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
-const { actorIds, requireSuperAdmin } = require('../middleware/requireAdmin');
+const { actorIds, requireDedicatedAdmin, requireSuperAdmin } = require('../middleware/requireAdmin');
 const { normalizeHostProfile } = require('../lib/host-profile');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 const sms = require('../lib/sms');
 
 const router = express.Router();
@@ -143,7 +144,7 @@ router.patch('/api/admin/events/:id/collect-photos', requireSuperAdmin, async (r
 });
 
 // PUT /api/admin/hosts/:id/profile — targeted public-profile editing only.
-router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
+router.put('/api/admin/hosts/:id/profile', requireDedicatedAdmin, async (req, res, next) => {
   let client;
   try {
     client = await pool.connect();
@@ -153,12 +154,27 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Host account not found' });
     }
-    const { rows: currentRows } = await client.query(
-      'SELECT * FROM organizers WHERE id=$1 FOR UPDATE',
+    const target = (await client.query(
+      'SELECT user_id FROM organizers WHERE id=$1',
       [id]
+    )).rows[0];
+    if (!target) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Host account not found' });
+    }
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(target.user_id)]
     );
-    const current = currentRows[0];
-    if (!current) {
+    const current = (await client.query(
+      'SELECT * FROM organizers WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [id, target.user_id]
+    )).rows[0];
+    const canonicalUser = (await client.query(
+      'SELECT account_status FROM users WHERE id=$1 FOR UPDATE',
+      [target.user_id]
+    )).rows[0];
+    if (!current || !canonicalUser || canonicalUser.account_status === 'deleted') {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Host account not found' });
     }
@@ -212,32 +228,38 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
       ]
     );
     const actor = actorIds(req);
+    const auditState = profile => ({
+      hasName: Boolean(profile.org_name),
+      hasSlug: Boolean(profile.public_slug),
+      hasBio: Boolean(profile.bio),
+      hasWebsite: Boolean(profile.website_url),
+      hasInstagram: Boolean(profile.instagram_handle),
+      hasContactEmail: Boolean(profile.contact_email)
+    });
+    const trackedFields = [
+      ['orgName', 'org_name'],
+      ['publicSlug', 'public_slug'],
+      ['bio', 'bio'],
+      ['website', 'website_url'],
+      ['instagram', 'instagram_handle'],
+      ['contactEmail', 'contact_email']
+    ];
+    const changedFields = trackedFields
+      .filter(([, column]) => (current[column] || null) !== (rows[0][column] || null))
+      .map(([field]) => field);
     await client.query(
       `INSERT INTO admin_account_audit_log
          (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
-          before_state,after_state,request_ip,user_agent)
+          before_state,after_state,metadata,request_ip,user_agent)
        VALUES ($1,$2,$3,'host_profile_updated','Admin Host Page update',
-               $4::jsonb,$5::jsonb,$6,$7)`,
+               $4::jsonb,$5::jsonb,$6::jsonb,$7,$8)`,
       [
         actor.actorUserId,
         actor.actorAdminOperatorId,
         Number(current.user_id || current.id),
-        JSON.stringify({
-          orgName: current.org_name || null,
-          publicSlug: current.public_slug || null,
-          bio: current.bio || null,
-          websiteUrl: current.website_url || null,
-          instagramHandle: current.instagram_handle || null,
-          hasContactEmail: Boolean(current.contact_email)
-        }),
-        JSON.stringify({
-          orgName: rows[0].org_name || null,
-          publicSlug: rows[0].public_slug || null,
-          bio: rows[0].bio || null,
-          websiteUrl: rows[0].website_url || null,
-          instagramHandle: rows[0].instagram_handle || null,
-          hasContactEmail: Boolean(rows[0].contact_email)
-        }),
+        JSON.stringify(auditState(current)),
+        JSON.stringify(auditState(rows[0])),
+        JSON.stringify({ organizerId: Number(id), changedFields }),
         String(clientIp(req) || '').slice(0, 100) || null,
         String(req.get('user-agent') || '').slice(0, 1000) || null
       ]

@@ -68,6 +68,7 @@ const {
   readPhoneChallenge,
   setPhoneAuthCookie
 } = require('../lib/phone-auth');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 
@@ -584,6 +585,162 @@ async function prepareClaimedHostPage(client, organizerId, name) {
   );
 }
 
+function validClaimInvitation(invitation) {
+  return Boolean(invitation && invitation.sent_at && !invitation.revoked_at &&
+    !invitation.delivery_failed_at && !invitation.claimed_at &&
+    new Date(invitation.expires_at) > new Date());
+}
+
+async function lockTargetClaimByLinkToken(client, token) {
+  if (!token || token.length > 200) return null;
+  // This is intentionally a non-locking pre-read. target_user_id is immutable;
+  // after resolving it we enter the same account-wide advisory critical
+  // section as suspension, deletion, sign-out-all, and invitation resend.
+  // The bearer token itself is consumed only after that lock is held.
+  const { rows } = await client.query(
+    `SELECT invitation.target_user_id
+       FROM magic_link_tokens challenge
+       JOIN admin_account_invitations invitation
+         ON invitation.magic_link_token_id=challenge.id
+      WHERE challenge.token=$1 AND challenge.intent='claim_account'
+        AND invitation.target_user_id IS NOT NULL
+      LIMIT 1`,
+    [tokenHash(token)]
+  );
+  const targetUserId = Number(rows[0]?.target_user_id);
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) return null;
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtext($1))',
+    [outboundDeliveryLockKey(targetUserId)]
+  );
+  return targetUserId;
+}
+
+async function rejectTargetBoundClaim(client, invitationId, message, code) {
+  await client.query(
+    `UPDATE admin_account_invitations
+        SET revoked_at=COALESCE(revoked_at,NOW())
+      WHERE id=$1 AND claimed_at IS NULL`,
+    [invitationId]
+  );
+  throw new CanonicalIdentityError(message, { code, status: 409 });
+}
+
+async function resolveTargetBoundClaim(client, {
+  invitation,
+  email,
+  emailProofSource,
+  pendingId
+}) {
+  const targetUserId = Number(invitation.target_user_id);
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0 ||
+      normalizeEmail(invitation.email) !== normalizeEmail(email)) {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared account invitation no longer matches its owner.',
+      'account_invitation_target_mismatch'
+    );
+  }
+
+  // Preserve the canonical identity -> organizer -> user lock order used by
+  // provisioning. Recipient proof may upgrade only the exact identity that
+  // the administrator attached to this pre-created user.
+  const identity = (await client.query(
+    `SELECT id,user_id,identity_type,value,normalized_value,verification_scope,
+            verified_at,is_primary
+       FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL
+      FOR UPDATE`,
+    [normalizeEmail(email)]
+  )).rows[0];
+  if (!identity || Number(identity.user_id) !== targetUserId) {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared email is no longer attached to the intended account.',
+      'account_invitation_target_mismatch'
+    );
+  }
+  const organizer = (await client.query(
+    `SELECT id,user_id,last_login_at
+       FROM organizers
+      WHERE user_id=$1 AND id=$1
+      FOR UPDATE`,
+    [targetUserId]
+  )).rows[0];
+  const canonicalUser = (await client.query(
+    `SELECT id,name,account_status
+       FROM users
+      WHERE id=$1
+      FOR UPDATE`,
+    [targetUserId]
+  )).rows[0];
+  const account = organizer && canonicalUser
+    ? { ...organizer, account_status: canonicalUser.account_status }
+    : null;
+  if (!account || account.account_status !== 'active') {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared account is no longer available.',
+      'account_invitation_target_inactive'
+    );
+  }
+  const alreadyClaimed = Boolean(account.last_login_at) || Boolean((await client.query(
+    `SELECT 1
+       FROM user_identities
+      WHERE user_id=$1 AND revoked_at IS NULL
+        AND verification_scope='account' AND verified_at IS NOT NULL
+      LIMIT 1`,
+    [targetUserId]
+  )).rows[0]);
+  if (alreadyClaimed) {
+    // The account gained recipient-owned proof after support sent this link.
+    // Make the stale invitation terminal in the same transaction as consuming
+    // its bearer token; it must never be able to replace the owner's primary
+    // inbox or mint a second session.
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This account has already been claimed by its owner.',
+      'account_invitation_target_claimed'
+    );
+  }
+  await attachIdentity(client, {
+    userId: targetUserId,
+    identityType: IDENTITY_TYPES.EMAIL,
+    value: email,
+    verifiedAt: new Date(),
+    verificationScope: 'account',
+    verificationSource: emailProofSource === 'email_code'
+      ? 'admin_done_for_you.claim_code'
+      : 'admin_done_for_you.claim_link',
+    sourceRecordId: Number(invitation.id || pendingId),
+    isPrimary: true
+  });
+  await client.query(
+    `UPDATE users
+        SET name=COALESCE(NULLIF(BTRIM(name),''),$2),updated_at=NOW()
+      WHERE id=$1`,
+    [targetUserId, invitation.name]
+  );
+  const updated = (await client.query(
+    `UPDATE organizers
+        SET name=COALESCE(NULLIF(BTRIM(name),''),$2),last_login_at=NOW(),updated_at=NOW()
+      WHERE id=$1 AND user_id=$1
+      RETURNING *`,
+    [targetUserId, invitation.name]
+  )).rows[0];
+  return {
+    organizer: updated,
+    user: { id: targetUserId },
+    identity,
+    createdOrganizer: false,
+    createdIdentity: false
+  };
+}
+
 // Finishes a consumed link or code. Database work happens on `client` inside
 // the caller's transaction; cookies are applied only after COMMIT through
 // `afterCommit(res)`.
@@ -707,20 +864,35 @@ async function completeChallenge(client, req, pending, {
     };
   }
 
-  const canonical = await resolveOrCreateOrganizerByEmail(client, {
-    email,
-    name: pending.intent === 'claim_account'
-      ? (await client.query(
-          `SELECT name FROM admin_account_invitations
-            WHERE magic_link_token_id=$1`,
-          [pending.id]
-        )).rows[0]?.name
-      : null,
-    accountVerification: {
-      verifiedAt: new Date(),
-      verificationSource: emailProofSource
+  let invitation = null;
+  if (pending.intent === 'claim_account') {
+    invitation = (await client.query(
+      `SELECT * FROM admin_account_invitations
+        WHERE magic_link_token_id=$1`,
+      [pending.id]
+    )).rows[0];
+    if (!validClaimInvitation(invitation)) {
+      throw new CanonicalIdentityError('This account invitation is no longer available.', {
+        code: 'account_invitation_expired', status: 400
+      });
     }
-  });
+  }
+
+  const canonical = invitation?.target_user_id
+    ? await resolveTargetBoundClaim(client, {
+        invitation,
+        email,
+        emailProofSource,
+        pendingId: pending.id
+      })
+    : await resolveOrCreateOrganizerByEmail(client, {
+        email,
+        name: invitation?.name || null,
+        accountVerification: {
+          verifiedAt: new Date(),
+          verificationSource: emailProofSource
+        }
+      });
   const organizer = (await client.query(
     'SELECT * FROM organizers WHERE id=$1', [canonical.user.id]
   )).rows[0];
@@ -732,9 +904,9 @@ async function completeChallenge(client, req, pending, {
         FOR UPDATE`,
       [pending.id]
     );
-    const invitation = invitations[0];
-    if (!invitation || !invitation.sent_at || invitation.revoked_at || invitation.delivery_failed_at ||
-        invitation.claimed_at || new Date(invitation.expires_at) <= new Date()) {
+    invitation = invitations[0];
+    if (!validClaimInvitation(invitation) ||
+        (invitation.target_user_id && Number(invitation.target_user_id) !== Number(organizer.id))) {
       throw new CanonicalIdentityError('This account invitation is no longer available.', {
         code: 'account_invitation_expired', status: 400
       });
@@ -752,9 +924,24 @@ async function completeChallenge(client, req, pending, {
     await client.query(
       `UPDATE admin_account_invitations
           SET claimed_user_id=$2,claimed_at=NOW()
-        WHERE id=$1`,
+        WHERE id=$1 AND (target_user_id IS NULL OR target_user_id=$2)`,
       [invitation.id, organizer.id]
     );
+    const otherInvitations = await client.query(
+      `UPDATE admin_account_invitations
+          SET revoked_at=COALESCE(revoked_at,NOW())
+        WHERE target_user_id=$1 AND id<>$2 AND claimed_at IS NULL
+          AND revoked_at IS NULL AND delivery_failed_at IS NULL
+        RETURNING magic_link_token_id`,
+      [organizer.id, invitation.id]
+    );
+    if (otherInvitations.rows.length) {
+      await client.query(
+        `UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW())
+          WHERE id=ANY($1::int[])`,
+        [otherInvitations.rows.map(row => Number(row.magic_link_token_id))]
+      );
+    }
     await client.query(
       `INSERT INTO admin_account_audit_log
          (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
@@ -911,10 +1098,11 @@ router.get('/auth/verify', async (req, res, next) => {
       hostName = rows[0]?.org_name || '';
     }
     res.setHeader('Cache-Control', 'private, no-store');
-    // same-origin, not no-referrer: the token-bearing URL still never leaves
-    // the site, but no-referrer would make browsers send `Origin: null` on the
-    // Continue POST and fail the same-origin check below.
-    res.setHeader('Referrer-Policy', 'same-origin');
+    // The query string is a bearer credential. Do not disclose it even to a
+    // same-origin stylesheet/script request or to access logs behind a
+    // separate static-asset origin. Form POST Origin handling is independent
+    // of the Referer policy and remains checked below.
+    res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     res.type('html').send(continuePage({ copy: continuePageCopy(pending, hostName), token, next: legacyNext }));
   } catch (err) { next(err); }
@@ -943,6 +1131,7 @@ router.post('/auth/verify', async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await lockTargetClaimByLinkToken(client, token);
     const pending = await consumeLink(client, token);
     if (!pending) {
       const usedClaim = token && token.length <= 200
@@ -966,7 +1155,13 @@ router.post('/auth/verify', async (req, res, next) => {
     const fallback = outcome.kind === 'guest' ? '/' : '/dashboard';
     res.redirect(303, outcome.redirect || legacyNext || fallback);
   } catch (err) {
-    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended') {
+    if (err instanceof CanonicalIdentityError &&
+        [
+          'account_suspended',
+          'account_invitation_target_claimed',
+          'account_invitation_target_inactive',
+          'account_invitation_target_mismatch'
+        ].includes(err.code)) {
       // The account-status check runs before identity/session mutations. Keep
       // the consumed bearer token consumed while denying the new session.
       await client.query('COMMIT').catch(() => {});
@@ -1023,7 +1218,9 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
       redirect: outcome.redirect || fallback
     });
   } catch (err) {
-    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended' && consumedPending) {
+    if (err instanceof CanonicalIdentityError &&
+        ['account_suspended', 'account_invitation_target_claimed'].includes(err.code) &&
+        consumedPending) {
       await client.query('COMMIT').catch(() => {});
     } else {
       await client.query('ROLLBACK').catch(() => {});
@@ -1073,6 +1270,11 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const canonicalUserId = Number(req.organizer.user_id || req.organizer.id);
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(canonicalUserId)]
+    );
     await client.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
     await revokeIdentityGuestSessions(client, req.organizer.id, req.organizer.user_id);
     const { rows: activeEmails } = await client.query(
@@ -1080,7 +1282,7 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
          FROM user_identities
         WHERE user_id=$1 AND identity_type='email' AND revoked_at IS NULL
           AND verification_scope='account' AND verified_at IS NOT NULL`,
-      [req.organizer.user_id || req.organizer.id]
+      [canonicalUserId]
     );
     const emailValues = activeEmails.map(row => row.email);
     if (!emailValues.includes(String(req.organizer.email || '').trim().toLowerCase())) {
@@ -1091,8 +1293,23 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
           SET used_at=NOW()
         WHERE used_at IS NULL
           AND (LOWER(BTRIM(email))=ANY($2::text[]) OR requested_user_id=$1)`,
-      [req.organizer.user_id || req.organizer.id, emailValues]
+      [canonicalUserId, emailValues]
     );
+    const pendingClaims = await client.query(
+      `UPDATE admin_account_invitations
+          SET revoked_at=COALESCE(revoked_at,NOW())
+        WHERE target_user_id=$1 AND claimed_at IS NULL
+          AND revoked_at IS NULL AND delivery_failed_at IS NULL
+        RETURNING magic_link_token_id`,
+      [canonicalUserId]
+    );
+    if (pendingClaims.rows.length) {
+      await client.query(
+        `UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW())
+          WHERE id=ANY($1::int[])`,
+        [pendingClaims.rows.map(row => Number(row.magic_link_token_id))]
+      );
+    }
     const { rows: activePhones } = await client.query(
       `SELECT phone_e164 AS phone
          FROM account_phone_credentials

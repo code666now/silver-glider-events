@@ -277,6 +277,22 @@ async function invalidateAccountAccess(client, userId, organizerId) {
       RETURNING id`,
     [userId]
   );
+  const claimInvitations = await client.query(
+    `UPDATE admin_account_invitations
+        SET revoked_at=COALESCE(revoked_at,NOW())
+      WHERE target_user_id=$1 AND claimed_at IS NULL
+        AND revoked_at IS NULL AND delivery_failed_at IS NULL
+      RETURNING id,magic_link_token_id`,
+    [userId]
+  );
+  if (claimInvitations.rows.length) {
+    await client.query(
+      `UPDATE magic_link_tokens
+          SET used_at=COALESCE(used_at,NOW())
+        WHERE id=ANY($1::int[])`,
+      [claimInvitations.rows.map(row => Number(row.magic_link_token_id))]
+    );
+  }
   const guestSessions = await client.query(
     `UPDATE guest_sessions
         SET revoked_at=COALESCE(revoked_at,NOW())
@@ -289,7 +305,8 @@ async function invalidateAccountAccess(client, userId, organizerId) {
     public: {
       invalidatedAt: now.toISOString(),
       guestSessionsRevoked: guestSessions.rowCount || 0,
-      identityChangesCancelled: identityChanges.rowCount || 0
+      identityChangesCancelled: identityChanges.rowCount || 0,
+      claimInvitationsRevoked: claimInvitations.rowCount || 0
     },
     verifiedEmails: [...new Set(emails)],
     verifiedPhones: [...new Set(phones)]
@@ -1272,9 +1289,20 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
            OR event_id IN (SELECT id FROM events WHERE organizer_id=$2)`,
       [userId, organizerId]
     );
-    await client.query(
+    const deletedClaimInvitations = await client.query(
       `DELETE FROM admin_account_invitations
-        WHERE claimed_user_id=$1`,
+        WHERE target_user_id=$1 OR claimed_user_id=$1
+        RETURNING magic_link_token_id`,
+      [userId]
+    );
+    if (deletedClaimInvitations.rows.length) {
+      await client.query(
+        'DELETE FROM magic_link_tokens WHERE id=ANY($1::int[])',
+        [deletedClaimInvitations.rows.map(row => Number(row.magic_link_token_id))]
+      );
+    }
+    await client.query(
+      'DELETE FROM admin_done_for_you_clients WHERE target_user_id=$1',
       [userId]
     );
     await client.query(

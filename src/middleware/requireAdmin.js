@@ -75,6 +75,20 @@ function requireSuperAdmin(req, res, next) {
   return res.redirect('/admin/accounts');
 }
 
+function requireDedicatedAdmin(req, res, next) {
+  if (req.adminActor?.type === 'admin_operator' && req.adminOperator) return next();
+  if (isApi(req)) {
+    return res.status(403).json({
+      error: 'dedicated_admin_required',
+      message: 'Sign in through the dedicated admin login.'
+    });
+  }
+  const nextPath = req.originalUrl && req.originalUrl.startsWith('/admin')
+    ? `&next=${encodeURIComponent(req.originalUrl)}`
+    : '';
+  return res.redirect(`/admin/login?dedicated=1${nextPath}`);
+}
+
 async function requireAdmin(req, res, next) {
   try {
     const dedicated = await loadAdminOperator(pool, req);
@@ -120,6 +134,7 @@ async function requireAdmin(req, res, next) {
 module.exports = requireAdmin;
 module.exports.actorIds = actorIds;
 module.exports.isDedicatedSuperAdmin = isDedicatedSuperAdmin;
+module.exports.requireDedicatedAdmin = requireDedicatedAdmin;
 module.exports.legacyFallbackEnabled = legacyFallbackEnabled;
 module.exports.requireSuperAdmin = requireSuperAdmin;
 module.exports.sameOriginMutation = sameOriginMutation;
