@@ -89,7 +89,7 @@ test('dedicated admin operators are independent principals with isolated passcod
   assert.match(auth, /ACTION_PROOF_COOKIE = 'sge_admin_action'/);
   assert.match(auth, /runInBackground\(async \(\) =>/);
   assert.match(auth, /router\.post\('\/api\/admin\/auth\/logout'[\s\S]*sameOriginMutation/);
-  assert.match(auth, /UPDATE admin_action_proofs[\s\S]*operator_id=\$2[\s\S]*action=\$3[\s\S]*target_user_id=\$4[\s\S]*consumed_at IS NULL/);
+  assert.match(auth, /UPDATE admin_action_proofs[\s\S]*operator_id=\$2[\s\S]*action=\$3[\s\S]*target_user_id IS NOT DISTINCT FROM \$4[\s\S]*target_key IS NOT DISTINCT FROM \$5[\s\S]*consumed_at IS NULL/);
   assert.match(adminRoutes, /events\/:id\/collect-photos', requireSuperAdmin/);
   assert.match(adminRoutes, /admin\/sms\/test', requireSuperAdmin/);
   assert.match(commerceRoutes, /commerce-interest\/send', requireAdmin, requireSuperAdmin/);
@@ -98,6 +98,56 @@ test('dedicated admin operators are independent principals with isolated passcod
   assert.match(index, /app\.get\('\/admin\/login'/);
   assert.match(login, /Operator sign in/);
   assert.match(login, /autocomplete="one-time-code"/);
+});
+
+test('operator roster changes are target-bound, audited, and preserve a final Super Admin', () => {
+  const migration = read('src/db/migrations/053_admin_operator_management.sql');
+  const service = read('src/lib/admin-operators.js');
+  const route = read('src/routes/admin-operators.js');
+  const auth = read('src/routes/admin-auth.js');
+  const index = read('src/index.js');
+  const migrations = fs.readdirSync(path.join(root, 'src/db/migrations'))
+    .filter(file => file.endsWith('.sql')).sort();
+
+  assert.ok(migrations.indexOf('053_admin_operator_management.sql') >
+    migrations.indexOf('052_admin_operator_credential_invalidation.sql'));
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS target_key TEXT/);
+  assert.match(migration, /action='operator_manage'[\s\S]*target_user_id IS NULL[\s\S]*target_key IS NOT NULL/);
+  assert.match(migration, /\^operator:\[1-9\]\[0-9\]\*\$/);
+  assert.match(migration, /\^new:/);
+  assert.match(migration, /BEFORE UPDATE OF status,role ON admin_operators/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS admin_operator_audit_log/);
+  assert.match(migration, /actor_email\s+TEXT NOT NULL/);
+  assert.match(migration, /target_email\s+TEXT NOT NULL/);
+  assert.match(migration, /BEFORE UPDATE OR DELETE ON admin_operator_audit_log/);
+  assert.match(migration, /BEFORE DELETE ON admin_operators/);
+
+  assert.match(service, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/);
+  assert.match(service, /last_active_super_admin/);
+  assert.match(service, /cannot_demote_self/);
+  assert.match(service, /cannot_disable_self/);
+  assert.match(service, /operator_created/);
+  assert.match(service, /operator_updated/);
+  assert.match(service, /operator_sessions_revoked/);
+  assert.match(service, /await authorize\(client, targetKey\)/);
+
+  assert.match(route, /router\.use\('\/api\/admin\/operators', requireAdmin, requireDedicatedSuperAdmin\)/);
+  assert.match(route, /router\.get\('\/api\/admin\/operators'/);
+  assert.match(route, /router\.post\('\/api\/admin\/operators'/);
+  assert.match(route, /router\.patch\('\/api\/admin\/operators\/:id'/);
+  assert.match(route, /router\.post\('\/api\/admin\/operators\/:id\/revoke-sessions'/);
+  assert.match(route, /action: 'operator_manage'/);
+  assert.match(route, /clearAdminActionProofCookie\(res\)/);
+  assert.match(auth, /canonicalOperatorTargetKey/);
+  assert.match(auth, /result\.challenge\.target_key/);
+  for (const capability of ['manageAccounts', 'manageIdentities', 'suspendAccounts',
+    'deleteAccounts', 'manageOperators']) {
+    assert.match(auth, new RegExp(`${capability}:`));
+  }
+  assert.match(auth, /deleteAccounts: dedicatedSuperAdmin/);
+  assert.match(auth, /manageOperators: dedicatedSuperAdmin/);
+  assert.match(auth, /redirect: '\/admin'/);
+  assert.match(index, /app\.use\(require\('\.\/routes\/admin-operators'\)\)/);
 });
 
 test('account support APIs are admin-only, audited, and label complete identity data accurately', () => {

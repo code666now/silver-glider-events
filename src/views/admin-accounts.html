@@ -10,10 +10,11 @@
   <title>Accounts &amp; Support — Admin — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
   <link rel="stylesheet" href="/css/admin-accounts.css">
   <script src="/js/legal-footer.js" defer></script>
 </head>
-<body>
+<body data-admin-section="accounts">
   <main class="sg-shell accounts-shell">
     <nav id="nav"></nav>
 
@@ -25,15 +26,6 @@
       </div>
       <button class="sg-btn sg-btn-primary accounts-invite-button" id="open-invitation" type="button">Send setup invitation</button>
     </header>
-
-    <nav class="admin-section-nav" aria-label="Admin sections">
-      <a class="active" href="/admin/accounts" aria-current="page">Accounts</a>
-      <a href="/admin/hosts">Hosts</a>
-      <a href="/admin/line">The Line</a>
-      <a href="/admin/ticketing">Ticketing</a>
-      <a href="/admin/feedback">Feedback</a>
-      <a href="/admin/invitations">Invitations</a>
-    </nav>
 
     <section class="accounts-summary" aria-label="Account summary" aria-busy="true">
       <article class="accounts-summary-card">
@@ -312,6 +304,7 @@
   </dialog>
 
   <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
   <script src="/js/admin-accounts.js"></script>
 </body>
 </html>

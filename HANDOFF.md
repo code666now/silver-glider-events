@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 19, 2026 (v1.0.118)
+**Last updated:** September 20, 2026 (v1.0.123)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -200,7 +200,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
 - Branch: `main`
-- Current release prepared for production: `v1.0.122`. Staff sign in through the independent `/admin/login` operator realm with separate sessions and `super_admin`/`support` roles. The responsive `/admin/accounts` console labels sign-in identities and contact-only values truthfully. Super Admin account deletion uses impact review, reason, exact confirmation, and a fresh target-bound one-time operator passcode; ordinary account history is anonymized or cleaned up instead of blocking support. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release prepared for production: `v1.0.123`. Staff sign in through the independent `/admin/login` operator realm with separate sessions and `super_admin`/`support` roles. `/admin` is the shared operational overview, and `/admin/team` gives dedicated Super Admins audited operator creation, role/status controls, and session revocation. The responsive `/admin/accounts` console labels sign-in identities and contact-only values truthfully. Super Admin account deletion uses impact review, reason, exact confirmation, and a fresh target-bound one-time operator passcode; ordinary account history is anonymized or cleaned up instead of blocking support. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -210,6 +210,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 ### Most recently completed
 
 - `v1.0.122` introduces independent administrator operators and a dedicated email-passcode session that owns no customer property. It replaces test-account designation with direct audited Super Admin deletion: review impact, give a reason, type the exact account phrase, prove the operator again, and execute. Genuine administrator/self safeguards remain, while ordinary history is anonymized or cleaned rather than treated as a blocker. Queued outbound work is race-safe and managed-media cleanup remains durable.
+- `v1.0.123` adds the shared administrator control center and audited Team workspace. Support and Super Admin capabilities now shape visible navigation and server authorization; every operator mutation requires target-bound inbox proof, role/status changes invalidate sessions, and the final active Super Admin cannot be removed.
 - `v1.0.121` introduced the original guarded test-account deletion flow. Release 1.0.122 deliberately supersedes its designation and blocker maze while preserving its durable cleanup and audit guarantees.
 - `v1.0.120` adds the responsive canonical-user Accounts & Support workspace. Super-admins can find hosts and RSVP-only people, review masked identities and ownership, record internal notes, send single-use claim invitations, correct safe profile fields, revoke sessions, and suspend/reactivate access with a permanent audit trail. Suspension preserves events and public Host Pages; delete, impersonation, promotion, direct credential edits, and merges remain unavailable.
 - `v1.0.117` adds the non-destructive canonical identity foundation: one stable `user_id`, normalized email/phone ownership with future Google support, explicit account-versus-scoped proof, collision quarantine, transaction-safe dual writes, backward-compatible sessions, and conservative production backfill. First RSVP, Familiar Faces, Follow Host, photos, permissions, and every user-facing screen keep their current behavior while later relationship migrations can proceed incrementally.

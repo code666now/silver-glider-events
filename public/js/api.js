@@ -1,5 +1,10 @@
 /* Shared fetch helper + app shell for organizer pages */
 
+function sgIsAdminPath(pathname = location.pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return normalized === '/admin' || normalized.startsWith('/admin/');
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
@@ -9,7 +14,7 @@ async function api(path, opts = {}) {
   });
   if (res.status === 401) {
     const returnTo = `${location.pathname}${location.search}`;
-    const login = location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
+    const login = sgIsAdminPath() ? '/admin/login' : '/login';
     window.location.href = `${login}?next=${encodeURIComponent(returnTo)}`;
     throw new Error('Not signed in');
   }
@@ -22,6 +27,19 @@ async function api(path, opts = {}) {
     throw error;
   }
   return data;
+}
+
+let sgAdminSessionPromise = null;
+
+function getAdminSession({ force = false } = {}) {
+  if (force) sgAdminSessionPromise = null;
+  if (!sgAdminSessionPromise) {
+    sgAdminSessionPromise = api('/api/admin/auth/me').catch(error => {
+      sgAdminSessionPromise = null;
+      throw error;
+    });
+  }
+  return sgAdminSessionPromise;
 }
 
 function sgEscapeHtml(value) {
@@ -118,7 +136,7 @@ function updateNavAccount(organizer) {
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
-  if (window.location.pathname.startsWith('/admin')) {
+  if (sgIsAdminPath()) {
     renderAdminNav(el);
     return;
   }
@@ -229,7 +247,7 @@ function renderAdminNav(el) {
   el.className = 'sg-nav';
   document.body.classList.add('sg-app-page', 'sg-admin-page');
   el.innerHTML = `
-    <a class="sg-nav-brand" href="/admin/accounts">Silver Glider <span>Admin</span></a>
+    <a class="sg-nav-brand" href="/admin">Silver Glider <span>Admin</span></a>
     <div class="sg-nav-actions">
       <span class="sg-admin-operator" data-admin-operator>Admin operator</span>
       <button class="sg-btn sg-btn-ghost sg-admin-signout" type="button">Sign out</button>
@@ -239,7 +257,7 @@ function renderAdminNav(el) {
     try { await api('/api/admin/auth/logout', { method:'POST' }); } catch (_) {}
     window.location.href = '/admin/login';
   });
-  api('/api/admin/auth/me').then(({ operator }) => {
+  getAdminSession().then(({ operator }) => {
     const role = operator.role === 'super_admin' ? 'Super Admin' : 'Support';
     label.textContent = `${operator.email} · ${role}${operator.legacy ? ' · legacy session' : ''}`;
   }).catch(() => {});
@@ -374,7 +392,7 @@ function fillMenuSheet(sheet, organizer) {
   admin.hidden = !organizer.is_admin;
   // One row; the admin pages have their own section tabs.
   if (organizer.is_admin && !admin.children.length) {
-    admin.innerHTML = `<a class="sg-menu-row" href="/admin/accounts">${menuIcon('admin')}<span>Admin</span></a>`;
+    admin.innerHTML = `<a class="sg-menu-row" href="/admin">${menuIcon('admin')}<span>Admin</span></a>`;
   }
 }
 

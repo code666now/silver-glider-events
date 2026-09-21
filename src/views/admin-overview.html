@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Overview — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-overview.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="overview">
+  <main class="sg-shell admin-overview-shell" data-admin-section="overview">
+    <nav id="nav"></nav>
+
+    <header class="admin-overview-head">
+      <div>
+        <p class="admin-overview-eyebrow">Admin workspace</p>
+        <h1 class="sg-page-title">Overview</h1>
+        <p class="sg-page-sub">A quick read on accounts that need attention and the tools to handle them.</p>
+      </div>
+      <a class="sg-btn sg-btn-primary" href="/admin/accounts">Find an account</a>
+    </header>
+
+    <section class="admin-overview-metrics" aria-label="Workspace summary" aria-busy="true">
+      <a class="admin-overview-metric" href="/admin/accounts">
+        <span>All accounts</span>
+        <strong id="overview-total"><i class="sg-skeleton admin-overview-number-skeleton" aria-hidden="true"></i></strong>
+        <small>Open the directory</small>
+      </a>
+      <a class="admin-overview-metric" href="/admin/accounts?status=suspended">
+        <span>Suspended</span>
+        <strong id="overview-suspended"><i class="sg-skeleton admin-overview-number-skeleton" aria-hidden="true"></i></strong>
+        <small>Review account access</small>
+      </a>
+      <a class="admin-overview-metric" href="/admin/accounts?type=host">
+        <span>Host pages</span>
+        <strong id="overview-hosts"><i class="sg-skeleton admin-overview-number-skeleton" aria-hidden="true"></i></strong>
+        <small>Review host accounts</small>
+      </a>
+      <a class="admin-overview-metric" href="/admin/accounts">
+        <span>Active in 30 days</span>
+        <strong id="overview-active"><i class="sg-skeleton admin-overview-number-skeleton" aria-hidden="true"></i></strong>
+        <small>Recent account activity</small>
+      </a>
+      <a class="admin-overview-metric" id="overview-team-card" href="/admin/team" hidden>
+        <span>Active operators</span>
+        <strong id="overview-operators"><i class="sg-skeleton admin-overview-number-skeleton" aria-hidden="true"></i></strong>
+        <small>Manage admin access</small>
+      </a>
+    </section>
+
+    <div class="admin-overview-grid">
+      <section class="admin-overview-panel admin-overview-shortcuts" aria-labelledby="workspace-shortcuts-title">
+        <div class="admin-overview-panel-head">
+          <div>
+            <h2 id="workspace-shortcuts-title">Workspace</h2>
+            <p>Go straight to the record or queue you need.</p>
+          </div>
+        </div>
+        <nav aria-label="Admin shortcuts">
+          <a href="/admin/accounts"><span><strong>Accounts</strong><small>Identity, access, and support</small></span><b aria-hidden="true">›</b></a>
+          <a href="/admin/hosts"><span><strong>Hosts</strong><small>Profiles and owned events</small></span><b aria-hidden="true">›</b></a>
+          <a href="/admin/feedback"><span><strong>Feedback</strong><small>Review product reports</small></span><b aria-hidden="true">›</b></a>
+          <a href="/admin/invitations"><span><strong>Invitations</strong><small>Private host invitations</small></span><b aria-hidden="true">›</b></a>
+        </nav>
+      </section>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-overview.js"></script>
+</body>
+</html>

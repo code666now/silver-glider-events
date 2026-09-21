@@ -11,6 +11,7 @@ const {
   setAdminSessionCookie
 } = require('../lib/admin-session');
 const { sendAdminPasscode } = require('../lib/mailer');
+const { canonicalOperatorTargetKey } = require('../lib/admin-operators');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -92,15 +93,21 @@ function waitForMinimum(startedAt, minimumMs = 650) {
   return remaining > 0 ? new Promise(resolve => setTimeout(resolve, remaining)) : Promise.resolve();
 }
 
-async function createChallenge(db, { operatorId, purpose, action = null, targetUserId = null }) {
+async function createChallenge(db, {
+  operatorId,
+  purpose,
+  action = null,
+  targetUserId = null,
+  targetKey = null
+}) {
   const requestToken = crypto.randomBytes(24).toString('base64url');
   const requestHash = tokenHash(requestToken);
   const code = newCode();
   await db.query(
     `INSERT INTO admin_auth_challenges
-       (operator_id,purpose,action,target_user_id,request_hash,code_hash,expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,NOW() + make_interval(mins => $7))`,
-    [operatorId, purpose, action, targetUserId, requestHash, codeHash(requestHash, code),
+       (operator_id,purpose,action,target_user_id,target_key,request_hash,code_hash,expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + make_interval(mins => $8))`,
+    [operatorId, purpose, action, targetUserId, targetKey, requestHash, codeHash(requestHash, code),
      CHALLENGE_TTL_MINUTES]
   );
   return { requestToken, code };
@@ -116,7 +123,8 @@ async function consumeChallenge(client, {
   const params = [tokenHash(requestToken), purpose];
   const operatorClause = operatorId ? `AND challenge.operator_id=$${params.push(operatorId)}` : '';
   const { rows } = await client.query(
-    `SELECT challenge.id,challenge.operator_id,challenge.action,challenge.target_user_id,
+    `SELECT challenge.id,challenge.operator_id,challenge.action,
+            challenge.target_user_id,challenge.target_key,
             challenge.request_hash,challenge.code_hash,challenge.code_attempts,
             operator.email,operator.role
        FROM admin_auth_challenges challenge
@@ -241,7 +249,7 @@ router.post('/api/admin/auth/verify', async (req, res, next) => {
     setAdminSessionCookie(res, result.challenge.operator_id, authenticatedAt);
     clearOpaqueCookie(res, LOGIN_REQUEST_COOKIE);
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, redirect: '/admin/accounts' });
+    res.json({ ok: true, redirect: '/admin' });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -250,6 +258,14 @@ router.post('/api/admin/auth/verify', async (req, res, next) => {
 
 router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
+  const dedicatedSuperAdmin = isDedicatedSuperAdmin(req);
+  const capabilities = {
+    manageAccounts: true,
+    manageIdentities: true,
+    suspendAccounts: true,
+    deleteAccounts: dedicatedSuperAdmin,
+    manageOperators: dedicatedSuperAdmin
+  };
   if (req.adminOperator) {
     return res.json({
       operator: {
@@ -258,7 +274,8 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
         role: req.adminOperator.role,
         status: req.adminOperator.status,
         legacy: false
-      }
+      },
+      capabilities
     });
   }
   res.json({
@@ -268,7 +285,8 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
       role: req.adminActor.role,
       status: 'active',
       legacy: true
-    }
+    },
+    capabilities
   });
 });
 
@@ -293,31 +311,66 @@ router.post('/api/admin/auth/step-up/start', requireAdmin, async (req, res, next
     res.setHeader('Retry-After', String(Math.ceil(limit.retryAfterMs / 1000)));
     return res.status(429).json({ error: 'Too many requests. Wait a few minutes and try again.' });
   }
-  const targetUserId = Number(req.body?.targetUserId);
-  if (!Number.isInteger(targetUserId) || targetUserId <= 0 || req.body?.action !== 'account_delete') {
-    return res.status(400).json({ error: 'invalid_admin_action' });
-  }
+  const action = String(req.body?.action || '').trim();
+  let targetUserId = null;
+  let targetKey = null;
   try {
-    const target = await pool.query(
-      `SELECT id FROM users WHERE id=$1 AND account_status<>'deleted'`,
-      [targetUserId]
-    );
-    if (!target.rows[0]) return res.status(404).json({ error: 'Account not found' });
+    if (action === 'account_delete') {
+      targetUserId = Number(req.body?.targetUserId);
+      if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+        return res.status(400).json({ error: 'invalid_admin_action' });
+      }
+      const target = await pool.query(
+        `SELECT id FROM users WHERE id=$1 AND account_status<>'deleted'`,
+        [targetUserId]
+      );
+      if (!target.rows[0]) return res.status(404).json({ error: 'Account not found' });
+    } else if (action === 'operator_manage') {
+      targetKey = canonicalOperatorTargetKey(req.body?.targetKey);
+      if (!targetKey) return res.status(400).json({ error: 'invalid_admin_action' });
+      if (targetKey.startsWith('operator:')) {
+        const target = await pool.query(
+          'SELECT id FROM admin_operators WHERE id=$1',
+          [Number(targetKey.slice('operator:'.length))]
+        );
+        if (!target.rows[0]) {
+          return res.status(404).json({ error: 'operator_not_found', message: 'Operator not found.' });
+        }
+      } else {
+        const email = targetKey.slice('new:'.length);
+        const existing = await pool.query(
+          'SELECT id FROM admin_operators WHERE email=$1',
+          [email]
+        );
+        if (existing.rows[0]) {
+          return res.status(409).json({
+            error: 'operator_already_exists',
+            message: 'An operator with that email already exists.'
+          });
+        }
+      }
+    } else {
+      return res.status(400).json({ error: 'invalid_admin_action' });
+    }
     const challenge = await createChallenge(pool, {
       operatorId: req.adminOperator.id,
       purpose: 'step_up',
-      action: 'account_delete',
-      targetUserId
+      action,
+      targetUserId,
+      targetKey
     });
     await deliverAdminPasscode({
       to: req.adminOperator.email,
       code: challenge.code,
-      purpose: 'account_delete'
+      purpose: action
     });
     setOpaqueCookie(res, STEP_UP_REQUEST_COOKIE, challenge.requestToken, CHALLENGE_TTL_MINUTES * 60);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       ok: true,
+      action,
+      targetUserId,
+      targetKey,
       maskedEmail: maskEmail(req.adminOperator.email),
       codeLength: CODE_LENGTH
     });
@@ -352,10 +405,10 @@ router.post('/api/admin/auth/step-up/complete', requireAdmin, async (req, res, n
     const proofToken = crypto.randomBytes(32).toString('base64url');
     await client.query(
       `INSERT INTO admin_action_proofs
-         (operator_id,action,target_user_id,token_hash,expires_at)
-       VALUES ($1,$2,$3,$4,NOW() + make_interval(mins => $5))`,
+         (operator_id,action,target_user_id,target_key,token_hash,expires_at)
+       VALUES ($1,$2,$3,$4,$5,NOW() + make_interval(mins => $6))`,
       [req.adminOperator.id, result.challenge.action, result.challenge.target_user_id,
-       tokenHash(proofToken), PROOF_TTL_MINUTES]
+       result.challenge.target_key, tokenHash(proofToken), PROOF_TTL_MINUTES]
     );
     await client.query('COMMIT');
     setOpaqueCookie(res, ACTION_PROOF_COOKIE, proofToken, PROOF_TTL_MINUTES * 60);
@@ -365,7 +418,10 @@ router.post('/api/admin/auth/step-up/complete', requireAdmin, async (req, res, n
       ok: true,
       kind: 'admin_action_proof',
       action: result.challenge.action,
-      targetUserId: Number(result.challenge.target_user_id)
+      targetUserId: result.challenge.target_user_id === null
+        ? null
+        : Number(result.challenge.target_user_id),
+      targetKey: result.challenge.target_key
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -373,16 +429,23 @@ router.post('/api/admin/auth/step-up/complete', requireAdmin, async (req, res, n
   } finally { client.release(); }
 });
 
-async function consumeAdminActionProof(client, req, { operatorId, action, targetUserId }) {
+async function consumeAdminActionProof(client, req, {
+  operatorId,
+  action,
+  targetUserId = null,
+  targetKey = null
+}) {
   const token = readCookie(req, ACTION_PROOF_COOKIE);
   if (!token || token.length > 200) return false;
   const { rows } = await client.query(
     `UPDATE admin_action_proofs
         SET consumed_at=NOW()
-      WHERE token_hash=$1 AND operator_id=$2 AND action=$3 AND target_user_id=$4
+      WHERE token_hash=$1 AND operator_id=$2 AND action=$3
+        AND target_user_id IS NOT DISTINCT FROM $4
+        AND target_key IS NOT DISTINCT FROM $5
         AND consumed_at IS NULL AND expires_at>NOW()
       RETURNING id`,
-    [tokenHash(token), operatorId, action, targetUserId]
+    [tokenHash(token), operatorId, action, targetUserId, targetKey]
   );
   return Boolean(rows[0]);
 }

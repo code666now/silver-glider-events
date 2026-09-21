@@ -42,6 +42,7 @@ app.use(require('./lib/session').sessionMiddleware(pool));
 // Routes
 app.use(require('./routes/auth'));
 app.use(require('./routes/admin-auth'));
+app.use(require('./routes/admin-operators'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
@@ -80,9 +81,11 @@ app.get('/login', (req, res) => {
 app.get('/admin/login', async (req, res, next) => {
   try {
     const requested = safeNext(req.query.next);
-    const destination = requested.startsWith('/admin/') && requested !== '/admin/login'
+    const requestedPath = requested ? new URL(requested, 'http://localhost').pathname : '';
+    const destination = (requestedPath === '/admin' || requestedPath.startsWith('/admin/')) &&
+      requestedPath !== '/admin/login'
       ? requested
-      : '/admin/accounts';
+      : '/admin';
     const dedicated = await loadAdminOperator(pool, req);
     if (dedicated.operator) return res.redirect(destination);
     if (dedicated.stale) clearAdminSessionCookie(res);
@@ -169,12 +172,17 @@ app.get([
   '/settings/messaging',
   '/settings/host-page'
 ], requireOrganizer, view('settings-v2.html'));
+app.get('/admin', requireAdmin, view('admin-overview.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
+app.get('/admin/team', requireAdmin, (req, res) => {
+  if (!requireAdmin.isDedicatedSuperAdmin(req)) return res.redirect('/admin');
+  return res.sendFile(path.join(VIEWS, 'admin-team.html'));
+});
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

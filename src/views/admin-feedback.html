@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
   <style>
     .feedback-filters { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px; }
     .feedback-list-head,.feedback-admin-row {
@@ -58,20 +59,11 @@
     }
   </style>
 </head>
-<body>
+<body data-admin-section="feedback">
   <div class="sg-shell" style="max-width:1260px">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Feedback</h1>
     <p class="sg-page-sub">Bug reports and product feedback from signed-in hosts.</p>
-    <div class="admin-section-nav" aria-label="Admin sections">
-      <a href="/admin/accounts">Accounts</a>
-      <a href="/admin/hosts">Hosts</a>
-      <a href="/admin/line">The Line</a>
-      <a href="/admin/ticketing">Ticketing</a>
-      <a class="active" href="/admin/feedback">Feedback</a>
-      <a href="/admin/invitations">Invitations</a>
-    </div>
-
     <div class="feedback-filters">
       <select class="sg-select" id="type-filter" aria-label="Filter by type" disabled>
         <option value="">All types</option><option value="bug">Bugs</option><option value="suggestion">Suggestions</option><option value="other">Other</option>
@@ -108,6 +100,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
   <script>
     renderNav('');
     const detailModal = document.getElementById('feedback-detail-modal');

@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.123
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Administrator control center
+
+* `/admin` is now a focused operational overview with live account, Host Page, event, RSVP, support, and invitation counts plus direct shortcuts into the existing work queues. The new shared dark-theme shell gives every administrator page one consistent desktop and responsive navigation system; The Line is intentionally omitted.
+* The account directory accepts bookmarked filters, and Settings now points staff to one control-center entry instead of exposing a loose collection of administration links.
+
+### Super Admin team management
+
+* Super Admins can add support or Super Admin operators, change roles, disable or reactivate access, and revoke administrator sessions from `/admin/team`. Support operators can use the customer-support workspace but cannot manage the team or permanently delete accounts.
+* Every team mutation requires a fresh, one-time email passcode bound to the exact operator being changed. Session invalidation, final-Super-Admin protections, and immutable audit records preserve accountability without connecting an administrator identity to customer-owned events or Host Pages.
+
 ## 1.0.122
 
 Released September 20, 2026. Built and deployed by Codex.

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
   <style>
     .host-summary { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px; }
     .host-summary-card { padding:18px 20px;border:1px solid var(--sg-border-soft);border-radius:17px;background:rgba(17,17,17,.72); }
@@ -89,20 +90,11 @@
     }
   </style>
 </head>
-<body>
+<body data-admin-section="hosts">
   <div class="sg-shell" style="max-width:1260px">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Hosts</h1>
     <p class="sg-page-sub">Track account creation and manage public host-page details.</p>
-    <div class="admin-section-nav" aria-label="Admin sections">
-      <a href="/admin/accounts">Accounts</a>
-      <a class="active" href="/admin/hosts">Hosts</a>
-      <a href="/admin/line">The Line</a>
-      <a href="/admin/ticketing">Ticketing</a>
-      <a href="/admin/feedback">Feedback</a>
-      <a href="/admin/invitations">Invitations</a>
-    </div>
-
     <section class="host-summary" aria-label="Host account summary">
       <div class="host-summary-card"><strong id="total-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Host accounts</span><small id="guest-identity-note" style="display:block;margin-top:4px;color:var(--sg-text-faint);font-size:11px"></small></div>
       <div class="host-summary-card"><strong id="new-hosts"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>New in 30 days</span></div>
@@ -154,6 +146,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
   <script>
     renderNav('');
     let hosts = [];

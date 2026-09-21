@@ -26,6 +26,13 @@ const statusFilter = document.getElementById('account-status');
 const loadMoreButton = document.getElementById('accounts-load-more');
 const dialogReturnFocus = new Map();
 
+const initialFilters = new URLSearchParams(location.search);
+const initialKind = initialFilters.get('type') || initialFilters.get('kind') || '';
+const initialStatus = initialFilters.get('status') || '';
+if ([...kindFilter.options].some(option => option.value === initialKind)) kindFilter.value = initialKind;
+if ([...statusFilter.options].some(option => option.value === initialStatus)) statusFilter.value = initialStatus;
+search.value = initialFilters.get('q') || '';
+
 function showDialog(dialog, trigger = document.activeElement) {
   if (!dialog.open) {
     if (trigger instanceof HTMLElement) dialogReturnFocus.set(dialog, trigger);

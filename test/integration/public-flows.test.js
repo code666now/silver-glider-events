@@ -273,6 +273,40 @@ async function adminDeletionProof(sessionCookie, targetUserId) {
   return cookieHeader(sessionCookie, proofCookie);
 }
 
+async function adminOperatorProof(sessionCookie, targetKey) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/step-up/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ action: 'operator_manage', targetKey })
+  });
+  assert.equal(started.status, 200);
+  const startedBody = await started.json();
+  assert.equal(startedBody.action, 'operator_manage');
+  assert.equal(startedBody.targetKey, targetKey);
+  const requestCookie = responseCookie(started, 'sge_admin_step_up');
+  assert.ok(requestCookie);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.equal(me.status, 200);
+  const operator = (await me.json()).operator;
+  const { code } = lastDevEmail(operator.email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/step-up/complete`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(sessionCookie, requestCookie)
+    },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const completedBody = await completed.json();
+  assert.equal(completedBody.action, 'operator_manage');
+  assert.equal(completedBody.targetKey, targetKey);
+  assert.equal(completedBody.targetUserId, null);
+  const proofCookie = responseCookie(completed, 'sge_admin_action');
+  assert.ok(proofCookie);
+  return cookieHeader(sessionCookie, proofCookie);
+}
+
 test.before(async () => {
   await migrate();
   await resetDatabase();
@@ -4931,6 +4965,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   assert.match(setCookie, /sge_admin_session=/);
   assert.match(setCookie, /HttpOnly/i);
   assert.match(setCookie, /SameSite=Strict/i);
+  assert.deepEqual(await verified.json(), { ok: true, redirect: '/admin' });
   const sessionCookie = responseCookie(verified, 'sge_admin_session');
   assert.equal((await fetch(`${baseUrl}/admin/accounts`, {
     redirect: 'manual'
@@ -4942,6 +4977,13 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   assert.deepEqual(await me.json(), {
     operator: {
       id: Number(operator.id), email: activeEmail, role: 'super_admin', status: 'active', legacy: false
+    },
+    capabilities: {
+      manageAccounts: true,
+      manageIdentities: true,
+      suspendAccounts: true,
+      deleteAccounts: true,
+      manageOperators: true
     }
   });
 
@@ -5047,6 +5089,262 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   );
   assert.equal(invalidatedProof.status, 403);
   assert.equal((await invalidatedProof.json()).error, 'admin_step_up_required');
+});
+
+test('operator roster access and mutations require dedicated target-bound Super Admin proof', async () => {
+  resetRateLimits();
+  const actor = await createAdminOperator('roster-actor@example.test', 'super_admin');
+  const peer = await createAdminOperator('roster-peer@example.test', 'super_admin');
+  const support = await createAdminOperator('roster-support@example.test', 'support');
+  const actorSession = await signInAdminOperator(actor.email);
+  const supportSession = await signInAdminOperator(support.email);
+  const legacyAdmin = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('roster-legacy@example.test','Roster Legacy',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  const legacySession = `sge_session=${signSession(legacyAdmin.id)}`;
+
+  const signedOutOverview = await fetch(`${baseUrl}/admin`, { redirect: 'manual' });
+  assert.equal(signedOutOverview.status, 302);
+  assert.equal(signedOutOverview.headers.get('location'), '/admin/login?next=%2Fadmin');
+  assert.equal((await fetch(`${baseUrl}/admin`, {
+    headers: { cookie: supportSession }
+  })).status, 200, 'support operators can use the control-center overview');
+  const supportTeamPage = await fetch(`${baseUrl}/admin/team`, {
+    redirect: 'manual',
+    headers: { cookie: supportSession }
+  });
+  assert.equal(supportTeamPage.status, 302);
+  assert.equal(supportTeamPage.headers.get('location'), '/admin');
+  assert.equal((await fetch(`${baseUrl}/admin/team`, {
+    headers: { cookie: actorSession }
+  })).status, 200, 'dedicated Super Admins can manage the operator roster');
+  const legacyTeamPage = await fetch(`${baseUrl}/admin/team`, {
+    redirect: 'manual',
+    headers: { cookie: legacySession }
+  });
+  assert.equal(legacyTeamPage.status, 302);
+  assert.equal(legacyTeamPage.headers.get('location'), '/admin');
+  const exactOverviewNext = await fetch(`${baseUrl}/admin/login?next=%2Fadmin`, {
+    redirect: 'manual',
+    headers: { cookie: actorSession }
+  });
+  assert.equal(exactOverviewNext.headers.get('location'), '/admin');
+  const loginLoopNext = await fetch(`${baseUrl}/admin/login?next=%2Fadmin%2Flogin%3Fx%3D1`, {
+    redirect: 'manual',
+    headers: { cookie: actorSession }
+  });
+  assert.equal(loginLoopNext.headers.get('location'), '/admin');
+
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: supportSession }
+  })).status, 403);
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: legacySession }
+  })).status, 403, 'legacy customer-admin sessions cannot manage independent operators');
+
+  const actorMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: actorSession }
+  });
+  assert.equal((await actorMe.json()).capabilities.manageOperators, true);
+  const supportMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  });
+  const supportCapabilities = (await supportMe.json()).capabilities;
+  assert.equal(supportCapabilities.manageAccounts, true);
+  assert.equal(supportCapabilities.suspendAccounts, true);
+  assert.equal(supportCapabilities.deleteAccounts, false);
+  assert.equal(supportCapabilities.manageOperators, false);
+  const legacyMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: legacySession }
+  });
+  const legacyCapabilities = (await legacyMe.json()).capabilities;
+  assert.equal(legacyCapabilities.manageAccounts, true);
+  assert.equal(legacyCapabilities.deleteAccounts, false);
+  assert.equal(legacyCapabilities.manageOperators, false);
+
+  const initial = await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: actorSession }
+  });
+  assert.equal(initial.status, 200);
+  const initialBody = await initial.json();
+  assert.equal(initialBody.operators.length, 3);
+  assert.equal(initialBody.activeSuperAdminCount, 2);
+  assert.deepEqual(initialBody.audit, []);
+
+  const missingProof = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: actorSession },
+    body: JSON.stringify({
+      email: 'new-operator@example.test',
+      role: 'support',
+      reason: 'Cover the weekend support rotation'
+    })
+  });
+  assert.equal(missingProof.status, 403);
+  assert.equal((await missingProof.json()).error, 'admin_step_up_required');
+
+  const creationProof = await adminOperatorProof(
+    actorSession,
+    'new:new-operator@example.test'
+  );
+  const created = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: creationProof },
+    body: JSON.stringify({
+      email: 'New-Operator@Example.Test',
+      role: 'support',
+      reason: 'Cover the weekend support rotation'
+    })
+  });
+  assert.equal(created.status, 201);
+  const createdOperator = (await created.json()).operator;
+  assert.equal(createdOperator.email, 'new-operator@example.test');
+  assert.equal(createdOperator.role, 'support');
+  assert.equal(createdOperator.status, 'active');
+
+  const reusedForAnotherTarget = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: creationProof },
+    body: JSON.stringify({
+      email: 'wrong-target@example.test',
+      role: 'support',
+      reason: 'This target was never verified'
+    })
+  });
+  assert.equal(reusedForAnotherTarget.status, 403);
+  assert.equal((await reusedForAnotherTarget.json()).error, 'admin_step_up_required');
+
+  const supportProof = await adminOperatorProof(actorSession, `operator:${support.id}`);
+  const wrongTarget = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: supportProof },
+    body: JSON.stringify({ role: 'support', reason: 'Wrong target rollback check' })
+  });
+  assert.equal(wrongTarget.status, 403);
+  assert.equal((await wrongTarget.json()).error, 'admin_step_up_required');
+  const pendingProof = (await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 AND target_key=$2 ORDER BY id DESC LIMIT 1`,
+    [actor.id, `operator:${support.id}`]
+  )).rows[0];
+  assert.equal(pendingProof.consumed_at, null,
+    'a target mismatch rolls back without consuming the one-time proof');
+
+  const promoted = await fetch(`${baseUrl}/api/admin/operators/${support.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: supportProof },
+    body: JSON.stringify({ role: 'super_admin', reason: 'Promote the on-call lead' })
+  });
+  assert.equal(promoted.status, 200);
+  assert.equal((await promoted.json()).operator.role, 'super_admin');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  })).status, 401, 'a role change invalidates sessions minted for the previous role');
+
+  const roster = await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: actorSession }
+  });
+  const rosterBody = await roster.json();
+  assert.deepEqual(rosterBody.audit.map(entry => entry.action), [
+    'operator_updated',
+    'operator_created'
+  ]);
+  assert.ok(rosterBody.audit.every(entry => entry.actorOperatorId === Number(actor.id)));
+  assert.deepEqual(rosterBody.audit.map(entry => entry.actorEmail), [actor.email, actor.email]);
+
+  await assert.rejects(
+    pool.query(
+      `UPDATE admin_operator_audit_log SET reason='rewritten history' WHERE id=$1`,
+      [rosterBody.audit[0].id]
+    ),
+    /append-only|immutable/i
+  );
+  await assert.rejects(
+    pool.query('DELETE FROM admin_operators WHERE id=$1', [createdOperator.id]),
+    /retained for immutable audit attribution/i
+  );
+});
+
+test('operator roster protects self/final Super Admin and explicitly revokes target sessions', async () => {
+  resetRateLimits();
+  const actor = await createAdminOperator('guard-actor@example.test', 'super_admin');
+  const peer = await createAdminOperator('guard-peer@example.test', 'super_admin');
+  const support = await createAdminOperator('guard-support@example.test', 'support');
+  const actorSession = await signInAdminOperator(actor.email);
+  const peerSession = await signInAdminOperator(peer.email);
+  const supportSession = await signInAdminOperator(support.email);
+
+  const selfProof = await adminOperatorProof(actorSession, `operator:${actor.id}`);
+  const selfDemotion = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ role: 'support', reason: 'Self demotion must be blocked' })
+  });
+  assert.equal(selfDemotion.status, 409);
+  assert.equal((await selfDemotion.json()).error, 'cannot_demote_self');
+  const selfDisable = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ status: 'disabled', reason: 'Self disable must be blocked' })
+  });
+  assert.equal(selfDisable.status, 409);
+  assert.equal((await selfDisable.json()).error, 'cannot_disable_self');
+
+  const disablePeerProof = await adminOperatorProof(actorSession, `operator:${peer.id}`);
+  const disabledPeer = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: disablePeerProof },
+    body: JSON.stringify({ status: 'disabled', reason: 'Remove access during leave' })
+  });
+  assert.equal(disabledPeer.status, 200);
+  assert.equal((await disabledPeer.json()).operator.status, 'disabled');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: peerSession }
+  })).status, 401);
+
+  const finalSuperAdmin = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ role: 'support', reason: 'Final administrator guard' })
+  });
+  assert.equal(finalSuperAdmin.status, 409);
+  assert.equal((await finalSuperAdmin.json()).error, 'last_active_super_admin');
+
+  const enablePeerProof = await adminOperatorProof(actorSession, `operator:${peer.id}`);
+  const enabledPeer = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: enablePeerProof },
+    body: JSON.stringify({ status: 'active', reason: 'Restore access after leave' })
+  });
+  assert.equal(enabledPeer.status, 200);
+  assert.equal((await enabledPeer.json()).operator.status, 'active');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: peerSession }
+  })).status, 401, 're-enabling cannot revive the session invalidated at disable time');
+
+  const revokeProof = await adminOperatorProof(actorSession, `operator:${support.id}`);
+  const revoked = await fetch(`${baseUrl}/api/admin/operators/${support.id}/revoke-sessions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: revokeProof },
+    body: JSON.stringify({ reason: 'End sessions after device loss' })
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  })).status, 401);
+  const audit = (await pool.query(
+    `SELECT action_type,actor_email,target_email
+       FROM admin_operator_audit_log ORDER BY id`
+  )).rows;
+  assert.deepEqual(audit.map(entry => entry.action_type), [
+    'operator_updated',
+    'operator_updated',
+    'operator_sessions_revoked'
+  ]);
+  assert.equal(audit[2].actor_email, actor.email);
+  assert.equal(audit[2].target_email, support.email);
 });
 
 test('dedicated admin mutations enforce same-origin and retain the operator audit actor', async () => {

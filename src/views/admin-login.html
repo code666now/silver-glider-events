@@ -69,9 +69,11 @@
   <script>
     const params = new URLSearchParams(location.search);
     const candidateNext = params.get('next') || '';
-    const next = candidateNext.startsWith('/admin/') && candidateNext !== '/admin/login'
+    let candidatePath = '';
+    try { candidatePath = new URL(candidateNext, location.origin).pathname; } catch (_) {}
+    const next = (candidatePath === '/admin' || candidatePath.startsWith('/admin/')) && candidatePath !== '/admin/login'
       ? candidateNext
-      : '/admin/accounts';
+      : '/admin';
     const emailState = document.getElementById('email-state');
     const codeState = document.getElementById('code-state');
     const email = document.getElementById('admin-email');
