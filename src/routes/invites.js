@@ -100,6 +100,9 @@ router.get('/invite/:slug', (req, res) => {
 
 router.get('/i/:token', async (req, res, next) => {
   try {
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
     const token = String(req.params.token || '').trim();
     if (!/^[a-z0-9-]{12,220}$/.test(token)) return res.status(404).send('Invitation not found');
     const { rows } = await pool.query(
@@ -111,8 +114,7 @@ router.get('/i/:token', async (req, res, next) => {
     if (!rows.length) return res.status(404).send('Invitation not found');
 
     const invite = rows[0];
-    const nextPath = `/events/new?invite=${invite.token}`;
-    res.set('X-Robots-Tag', 'noindex, nofollow');
+    const nextPath = `/host-invitation/${invite.token}`;
     res.send(render(generatedTemplate, {
       hostName: invite.host_name,
       personalNote: invite.personal_note,

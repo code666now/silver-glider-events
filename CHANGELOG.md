@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.129
+
+Released September 22, 2026. Built and deployed by Codex.
+
+### Contextual Host invitation onboarding
+
+* Personalized Host invitation links now lead through one contextual journey: the invitation explains the product, phone-sized screens emphasize phone verification, desktop emphasizes email, and both established sign-in methods remain available. The exact invitation destination survives authentication, returning 30-day sessions skip sign-in, and ordinary Create Event authentication is unchanged.
+* After signing in, recipients explicitly accept the invitation, see a focused welcome, and can create their Host Page with only a name required before continuing to the existing event editor or dashboard. Existing Host Pages are preserved, partial legacy profiles recover safely, and setup reuses the canonical profile, logo upload, and public Host Page rather than adding another owner, page model, or editor.
+* Invitation reads are private and mutation-free. Acceptance is a same-origin, row-locked POST that is idempotent for the rightful account and rejects revoked, missing, or already-claimed links. The full 456-test release suite contains 353 unit tests and 103 HTTP/PostgreSQL integration tests, plus a real mobile/desktop browser pass through sign-in, setup, the public Host Page, and persistent return.
+
 ## 1.0.128
 
 Released September 21, 2026. Built and deployed by Codex.

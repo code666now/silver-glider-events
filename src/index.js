@@ -57,6 +57,7 @@ app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
+app.use(require('./routes/host-invitation-onboarding'));
 app.use(require('./routes/invites'));
 app.use(require('./routes/follows'));
 app.use(require('./routes/commerce'));
@@ -92,6 +93,9 @@ app.get('/account/verify-change', (req, res) => {
 app.get('/login', (req, res) => {
   if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');
   if (req.sessionStale) clearSessionCookie(res);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
   res.sendFile(path.join(VIEWS, 'login.html'));
 });
 app.get('/admin/login', async (req, res, next) => {
@@ -145,25 +149,15 @@ app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
     );
   } catch (err) { next(err); }
 });
-app.get('/events/new', requireOrganizer, async (req, res, next) => {
+app.get('/events/new', (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
-  if (!invitationToken) {
-    const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
-    return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
+  if (invitationToken && /^[a-z0-9-]{12,220}$/.test(invitationToken)) {
+    return res.redirect(`/host-invitation/${encodeURIComponent(invitationToken)}`);
   }
-  try {
-    if (/^[a-z0-9-]{12,220}$/.test(invitationToken)) {
-      await pool.query(
-        `UPDATE host_invitations
-            SET joined_organizer_id=COALESCE(joined_organizer_id,$2),
-                joined_at=COALESCE(joined_at,NOW()),updated_at=NOW()
-          WHERE token=$1 AND revoked_at IS NULL
-            AND (joined_organizer_id IS NULL OR joined_organizer_id=$2)`,
-        [invitationToken, req.organizer.id]
-      );
-    }
-    res.redirect('/events/new');
-  } catch (err) { next(err); }
+  return next();
+}, requireOrganizer, (req, res) => {
+  const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
+  return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
 });
 // Hosts type or bookmark /events/123 without /manage; send them to the page
 // they meant rather than "Cannot GET". Non-numeric ids fall through to 404.

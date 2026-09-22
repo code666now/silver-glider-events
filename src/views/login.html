@@ -84,9 +84,9 @@
     <p class="sg-label" style="margin-bottom:28px">Silver Glider Events</p>
 
     <div id="phone-state" hidden>
-      <p class="auth-progress">Create your event</p>
-      <h1 class="auth-heading">Start with your phone</h1>
-      <p class="auth-copy">We’ll text you a 6-digit code and remember you on this device.</p>
+      <p class="auth-progress" id="phone-progress">Create your event</p>
+      <h1 class="auth-heading" id="phone-heading">Start with your phone</h1>
+      <p class="auth-copy" id="phone-copy">We’ll text you a 6-digit code and remember you on this device.</p>
       <p class="auth-error" id="phone-error" role="alert"></p>
       <form id="phone-form">
         <div class="sg-field">
@@ -130,8 +130,9 @@
     </div>
 
     <div id="form-state">
-      <h1 class="auth-heading">Sign in</h1>
-      <p class="auth-copy" style="margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
+      <p class="auth-progress" id="email-progress" hidden>Host invitation</p>
+      <h1 class="auth-heading" id="email-heading">Sign in</h1>
+      <p class="auth-copy" id="email-copy" style="margin-bottom:32px">Enter your email and we'll send you a sign-in code. No password needed.</p>
       <p id="error" role="alert" aria-live="assertive" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:18px"></p>
       <div id="returning-guest" hidden style="padding:22px;border:1px solid var(--sg-border);border-radius:18px;background:rgba(255,255,255,.035);margin-bottom:18px">
         <p class="sg-label" style="margin-bottom:8px">Welcome back</p>
@@ -147,6 +148,7 @@
         </div>
         <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="submit-btn">Continue</button>
       </form>
+      <button class="auth-secondary" type="button" id="use-phone-instead" hidden>Use phone instead</button>
     </div>
 
     <!-- Luma-style: finish right here with the emailed code, or tap the link
@@ -172,7 +174,10 @@
     const params = new URLSearchParams(location.search);
     const requestedNext = params.get('next') || '';
     const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
-    const creatorPhoneFlow = next === '/events/new' || next.startsWith('/events/new?');
+    const invitationAuthFlow = /^\/host-invitation\/[a-z0-9-]{12,220}$/.test(next);
+    const creatorPhoneFlow = next === '/events/new' || next.startsWith('/events/new?') || invitationAuthFlow;
+    const invitationPhoneFirst = invitationAuthFlow && matchMedia('(max-width: 879px)').matches;
+    const initialPhoneState = creatorPhoneFlow && (!invitationAuthFlow || invitationPhoneFirst);
     let returningGuest = null;
     let lastRequest = null;
     let phoneNumber = '';
@@ -188,6 +193,26 @@
     const phoneCodeInput = document.getElementById('phone-code');
     const phoneCodeSubmit = document.getElementById('phone-code-submit');
     const phoneResendButton = document.getElementById('resend-phone-code');
+    const usePhoneInstead = document.getElementById('use-phone-instead');
+
+    if (invitationAuthFlow) {
+      document.getElementById('phone-progress').textContent = 'Accept your invitation';
+      document.getElementById('phone-heading').textContent = 'Start with your phone';
+      document.getElementById('phone-copy').textContent = 'Sign in to create your Host Page. Publish unique event pages and collect RSVPs.';
+      document.getElementById('email-heading').textContent = 'Accept your invitation';
+      document.getElementById('email-copy').textContent = 'Sign in to create your Host Page. Publish unique event pages and collect RSVPs.';
+      document.getElementById('email-progress').hidden = false;
+      const invitationToken = next.slice('/host-invitation/'.length);
+      fetch(`/api/public/host-invitations/${encodeURIComponent(invitationToken)}`, {
+        headers: { Accept: 'application/json' }
+      }).then(response => response.ok ? response.json() : null).then(data => {
+        const hostName = String(data?.invitation?.hostName || '').trim();
+        if (!hostName) return;
+        document.getElementById('phone-progress').textContent = `Host invitation · ${hostName}`;
+        document.getElementById('email-progress').textContent = `Host invitation · ${hostName}`;
+      }).catch(() => {});
+    }
+    usePhoneInstead.hidden = !creatorPhoneFlow;
 
     function showState(activeId) {
       stateIds.forEach(id => {
@@ -241,7 +266,16 @@
       setTimeout(() => focusTarget.focus(), 0);
     }
 
-    if (creatorPhoneFlow) {
+    function showPhoneLogin() {
+      emailBindingMode = false;
+      lastRequest = null;
+      showCodeError('');
+      showError('phone-error', '');
+      showState('phone-state');
+      setTimeout(() => phoneInput.focus(), 0);
+    }
+
+    if (initialPhoneState) {
       showState('phone-state');
       setTimeout(() => phoneInput.focus(), 0);
     } else {
@@ -250,7 +284,7 @@
     }
 
     if (params.get('error') === 'expired') {
-      if (creatorPhoneFlow) {
+      if (initialPhoneState) {
         showError('phone-error', 'That link expired or was already used. Request a new sign-in code.');
       } else {
         showError('error', 'That link expired or was already used. Request a new one.');
@@ -277,7 +311,8 @@
       document.getElementById('code-expiry').textContent = bindingPhone
         ? 'The code expires in 15 minutes.'
         : 'The code and link expire in 15 minutes.';
-      document.getElementById('restart-phone').hidden = !bindingPhone;
+      document.getElementById('restart-phone').hidden = !creatorPhoneFlow;
+      document.getElementById('restart-phone').textContent = bindingPhone ? 'Use a different phone' : 'Use phone instead';
       codeSubmit.textContent = bindingPhone ? 'Finish' : 'Sign in';
       codeSubmit.disabled = false;
       codeInput.value = '';
@@ -368,6 +403,7 @@
     document.querySelectorAll('.use-email-instead').forEach(button => {
       button.addEventListener('click', showEmailLogin);
     });
+    usePhoneInstead.addEventListener('click', showPhoneLogin);
 
     document.getElementById('phone-form').addEventListener('submit', async event => {
       event.preventDefault();

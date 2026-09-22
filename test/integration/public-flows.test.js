@@ -2238,6 +2238,340 @@ test('keeps ordinary Create Event magic-link destinations unchanged', async () =
   )).rows[0].count, 0);
 });
 
+test('host invitation onboarding preserves context through email auth and claims only on its authenticated POST', async () => {
+  resetRateLimits();
+  const token = 'heat-34b8bbbbb785ec87';
+  const personalNote = 'Chosen for the <script>alert("private")</script> community you built.';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Heat',$2)`,
+    [token, personalNote]
+  );
+
+  const landing = await fetch(`${baseUrl}/i/${token}`);
+  assert.equal(landing.status, 200);
+  assert.match(landing.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal(landing.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(landing.headers.get('x-robots-tag') || '', /noindex/);
+  const landingHtml = await landing.text();
+  assert.match(landingHtml, /Accept invitation/);
+  assert.match(landingHtml, /Publish unique event pages and collect RSVPs\./);
+  assert.match(landingHtml, /href="\/login\?next=%2Fhost-invitation%2Fheat-34b8bbbbb785ec87"/);
+  assert.match(landingHtml, /&lt;script&gt;alert\(&quot;private&quot;\)&lt;\/script&gt;/);
+  assert.doesNotMatch(landingHtml, /<script>alert\("private"\)<\/script>/);
+  assert.deepEqual((await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1',
+    [token]
+  )).rows[0], { joined_organizer_id: null, joined_at: null });
+
+  const publicContext = await fetch(`${baseUrl}/api/public/host-invitations/${token}`);
+  assert.equal(publicContext.status, 200);
+  assert.match(publicContext.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal(publicContext.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(publicContext.headers.get('x-robots-tag') || '', /noindex/);
+  assert.equal((await publicContext.json()).invitation.hostName, 'Heat');
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'the public context endpoint is read-only');
+
+  const signedOutOnboarding = await fetch(`${baseUrl}/host-invitation/${token}`, { redirect: 'manual' });
+  assert.equal(signedOutOnboarding.status, 302);
+  assert.equal(
+    signedOutOnboarding.headers.get('location'),
+    `/login?next=${encodeURIComponent(`/host-invitation/${token}`)}`
+  );
+  assert.match(signedOutOnboarding.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'opening onboarding before login does not accept it');
+
+  const existingHostCookie = `sge_session=${signSession(organizerId)}`;
+  const signedInOnboarding = await fetch(`${baseUrl}/host-invitation/${token}`, {
+    headers: { cookie: existingHostCookie }
+  });
+  assert.equal(signedInOnboarding.status, 200);
+  assert.match(await signedInOnboarding.text(), /id="welcome-panel"/);
+  const signedInState = await fetch(`${baseUrl}/api/host-invitations/${token}`, {
+    headers: { cookie: existingHostCookie }
+  });
+  assert.equal(signedInState.status, 200);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'authenticated reads remain read-only');
+  assert.equal((await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    headers: { cookie: existingHostCookie }
+  })).status, 404, 'acceptance is not exposed as a GET');
+
+  const crossOrigin = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingHostCookie,
+      origin: 'https://attacker.example',
+      'sec-fetch-site': 'cross-site'
+    },
+    body: '{}'
+  });
+  assert.equal(crossOrigin.status, 403);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'a cross-origin request cannot claim the invitation');
+
+  const invitedEmail = 'heat-invitation@example.test';
+  const nextPath = `/host-invitation/${token}`;
+  const signInStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: invitedEmail, next: nextPath })
+  });
+  assert.equal(signInStart.status, 200);
+  assert.equal((await pool.query(
+    `SELECT return_path FROM magic_link_tokens
+      WHERE email=$1 ORDER BY id DESC LIMIT 1`,
+    [invitedEmail]
+  )).rows[0].return_path, nextPath);
+  const completedSignIn = await followSignInLink(lastDevEmail(invitedEmail, 'magic_link').link);
+  assert.equal(completedSignIn.status, 303);
+  assert.equal(completedSignIn.headers.get('location'), nextPath);
+  const invitedCookie = responseCookie(completedSignIn, 'sge_session');
+  assert.ok(invitedCookie);
+  const invitedAccount = (await pool.query(
+    'SELECT id FROM organizers WHERE LOWER(email)=LOWER($1)', [invitedEmail]
+  )).rows[0];
+  assert.ok(invitedAccount);
+
+  const acceptHeaders = {
+    'content-type': 'application/json',
+    cookie: invitedCookie,
+    origin: baseUrl,
+    'sec-fetch-site': 'same-origin'
+  };
+  const accepted = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST', headers: acceptHeaders, body: '{}'
+  });
+  assert.equal(accepted.status, 200);
+  const firstClaim = (await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1', [token]
+  )).rows[0];
+  assert.equal(Number(firstClaim.joined_organizer_id), Number(invitedAccount.id));
+  assert.ok(firstClaim.joined_at instanceof Date);
+
+  const acceptedAgain = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST', headers: acceptHeaders, body: '{}'
+  });
+  assert.equal(acceptedAgain.status, 200);
+  const idempotentClaim = (await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1', [token]
+  )).rows[0];
+  assert.equal(Number(idempotentClaim.joined_organizer_id), Number(invitedAccount.id));
+  assert.equal(idempotentClaim.joined_at.getTime(), firstClaim.joined_at.getTime());
+
+  const otherAccount = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingHostCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(otherAccount.status, 409);
+  assert.equal(Number((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id), Number(invitedAccount.id));
+
+  const legacyToken = 'legacy-host-1234567890';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Legacy Host','This invitation must remain unclaimed on a legacy GET.')`,
+    [legacyToken]
+  );
+  const signedOutLegacy = await fetch(`${baseUrl}/events/new?invite=${legacyToken}`, {
+    redirect: 'manual'
+  });
+  assert.equal(signedOutLegacy.status, 302);
+  assert.equal(signedOutLegacy.headers.get('location'), `/host-invitation/${legacyToken}`);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [legacyToken]
+  )).rows[0].joined_organizer_id, null, 'a signed-out legacy GET preserves context without claiming');
+
+  const legacy = await fetch(`${baseUrl}/events/new?invite=${legacyToken}`, {
+    redirect: 'manual', headers: { cookie: existingHostCookie }
+  });
+  assert.equal(legacy.status, 302);
+  assert.equal(legacy.headers.get('location'), `/host-invitation/${legacyToken}`);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [legacyToken]
+  )).rows[0].joined_organizer_id, null, 'the legacy compatibility redirect never claims an invitation');
+});
+
+test('host invitation onboarding handles revoked and missing links without mutating account ownership', async () => {
+  const revokedToken = 'revoked-host-123456789';
+  const missingToken = 'missing-host-123456789';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note,revoked_at)
+     VALUES ($1,'Revoked Host','This invitation was intentionally revoked.',NOW())`,
+    [revokedToken]
+  );
+  const cookie = `sge_session=${signSession(organizerId)}`;
+
+  for (const path of [
+    `/i/${revokedToken}`,
+    `/i/${missingToken}`,
+    '/i/INVALID'
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get('cache-control') || '', /private, no-store/);
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('x-robots-tag') || '', /noindex/);
+  }
+  assert.equal((await fetch(`${baseUrl}/host-invitation/${revokedToken}`)).status, 410);
+  assert.equal((await fetch(`${baseUrl}/host-invitation/${missingToken}`)).status, 404);
+
+  for (const [path, expected] of [
+    [`/api/public/host-invitations/${revokedToken}`, 410],
+    [`/api/public/host-invitations/${missingToken}`, 404]
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, expected);
+    assert.match(response.headers.get('cache-control') || '', /private, no-store/);
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+  }
+
+  for (const [token, expected] of [[revokedToken, 410], [missingToken, 404]]) {
+    const state = await fetch(`${baseUrl}/api/host-invitations/${token}`, {
+      headers: { cookie }
+    });
+    assert.equal(state.status, expected);
+    const accept = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie,
+        origin: baseUrl,
+        'sec-fetch-site': 'same-origin'
+      },
+      body: '{}'
+    });
+    assert.equal(accept.status, expected);
+  }
+  assert.deepEqual((await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1',
+    [revokedToken]
+  )).rows[0], { joined_organizer_id: null, joined_at: null });
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM host_invitations WHERE token=$1', [missingToken]
+  )).rows[0].count, 0);
+});
+
+test('host invitation onboarding preserves existing hosts and reuses settings to create one new Host Page', async () => {
+  const existingToken = 'existing-host-123456789';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Should Not Replace Test Host','An existing Host Page must remain unchanged.')`,
+    [existingToken]
+  );
+  const existingBefore = (await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0];
+  const existingCookie = `sge_session=${signSession(organizerId)}`;
+  const existingAccept = await fetch(`${baseUrl}/api/host-invitations/${existingToken}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(existingAccept.status, 200);
+  assert.deepEqual((await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0], existingBefore);
+  assert.equal(Number((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [existingToken]
+  )).rows[0].joined_organizer_id), Number(organizerId));
+
+  const noSlugAccount = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('host-page-onboarding@example.test','Profile Keeper')
+     RETURNING id`
+  )).rows[0];
+  const noSlugCookie = `sge_session=${signSession(noSlugAccount.id)}`;
+  const setupToken = 'setup-host-123456789012';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Invite Ready Host','This account should create its Host Page through existing settings.')`,
+    [setupToken]
+  );
+
+  const accepted = await fetch(`${baseUrl}/api/host-invitations/${setupToken}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: noSlugCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual((await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [noSlugAccount.id]
+  )).rows[0], { name: 'Profile Keeper', org_name: null, public_slug: null });
+
+  const saved = await fetch(`${baseUrl}/api/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: noSlugCookie },
+    body: JSON.stringify({
+      name: 'Profile Keeper',
+      org_name: 'Invite Ready Host',
+      bio: 'Independent gatherings and thoughtful rooms.',
+      instagram_handle: '@InviteReady',
+      website_url: ''
+    })
+  });
+  assert.equal(saved.status, 200);
+  const firstSavedProfile = (await pool.query(
+    `SELECT name,org_name,public_slug,bio,instagram_handle
+       FROM organizers WHERE id=$1`,
+    [noSlugAccount.id]
+  )).rows[0];
+  assert.equal(firstSavedProfile.name, 'Profile Keeper');
+  assert.equal(firstSavedProfile.org_name, 'Invite Ready Host');
+  assert.match(firstSavedProfile.public_slug, /^invite-ready-host(?:-[a-f0-9]{4})?$/);
+  assert.equal(firstSavedProfile.bio, 'Independent gatherings and thoughtful rooms.');
+  assert.equal(firstSavedProfile.instagram_handle, 'inviteready');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM organizers
+      WHERE id=$1 AND public_slug IS NOT NULL`,
+    [noSlugAccount.id]
+  )).rows[0].count, 1);
+
+  const savedAgain = await fetch(`${baseUrl}/api/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: noSlugCookie },
+    body: JSON.stringify({
+      name: 'Profile Keeper',
+      org_name: 'Invite Ready Host',
+      bio: 'Independent gatherings and thoughtful rooms.',
+      instagram_handle: '@InviteReady',
+      website_url: ''
+    })
+  });
+  assert.equal(savedAgain.status, 200);
+  const savedAgainProfile = (await pool.query(
+    'SELECT name,public_slug FROM organizers WHERE id=$1', [noSlugAccount.id]
+  )).rows[0];
+  assert.deepEqual(savedAgainProfile, {
+    name: 'Profile Keeper',
+    public_slug: firstSavedProfile.public_slug
+  });
+});
+
 test('serves two labeled Event Vibe choices in both public presentations', async () => {
   const vibeFields = {
     event_vibe_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',

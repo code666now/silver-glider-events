@@ -84,7 +84,8 @@ function safeNext(value) {
 // keep their existing email-first boundaries.
 function creatorNext(value) {
   const next = safeNext(value);
-  return next === '/events/new' || next.startsWith('/events/new?') ? next : '';
+  const hostInvitation = /^\/host-invitation\/[a-z0-9-]{12,220}$/.test(next);
+  return next === '/events/new' || next.startsWith('/events/new?') || hostInvitation ? next : '';
 }
 
 // In-memory limits (single instance, reset on deploy — fine at this scale).
