@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** September 22, 2026 (v1.0.129)
+**Last updated:** September 23, 2026 (v1.0.130)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -201,8 +201,8 @@ This repository is a continuation of the same Silver Glider Events project, not 
 ### Exact repository and production state
 
 - Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
-- Branch: `main`
-- Current release prepared for production: `v1.0.129`. Host invitation links now use contextual authentication and an explicit welcome → Host Page setup → ready journey while reusing the canonical customer identity, Host Page, and event editor. Staff sign in through the independent `/admin/login` operator realm with separate sessions and `super_admin`/`support` roles. `/admin` is the shared operational overview, `/admin/team` manages staff access, `/admin/accounts` provides full audited account support and direct Super Admin deletion, `/admin/events` provides the platform-wide event directory, and `/admin/done-for-you` prepares client-owned accounts, Host Pages, and isolated event preparation/publishing workspaces without impersonation. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Branch: `codex/admin-control-center`
+- Current release prepared for production: `v1.0.130`. Public event pages now restore an attendee's event-scoped RSVP state after reload, signed-in hosts who also RSVP'd keep both their personal status and live editor, and personalized RSVP states suppress redundant RSVP actions without hiding external-ticket actions. Host invitation links retain the contextual authentication and welcome → Host Page setup → ready journey introduced in v1.0.129. Staff sign in through the independent `/admin/login` operator realm with separate sessions and `super_admin`/`support` roles. `/admin` is the shared operational overview, `/admin/team` manages staff access, `/admin/accounts` provides full audited account support and direct Super Admin deletion, `/admin/events` provides the platform-wide event directory, and `/admin/done-for-you` prepares client-owned accounts, Host Pages, and isolated event preparation/publishing workspaces without impersonation. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
@@ -211,6 +211,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 ### Most recently completed
 
+- `v1.0.130` restores a confirmed or cancelled RSVP from the exact event's scoped attendee cookie and lets signed-in hosts who RSVP'd see their personal status without losing the owner editor. Answered RSVP states no longer fall back to the generic inline or mobile-sticky RSVP action; external-ticket events preserve their ticket action while hiding only the redundant RSVP alternative. The release changes no RSVP data, database schema, media, or messaging behavior and passes all 460 tests.
 - `v1.0.129` replaces the abrupt Host invitation-to-editor jump with contextual sign-in and an explicit onboarding journey. Phones emphasize phone verification and desktop emphasizes email, while both methods remain available and the established one-time email binding and 30-day session behavior stay unchanged. Invitation acceptance is an explicit, same-origin, row-locked POST; existing Host Pages are preserved, partial profiles recover through setup, and the canonical profile, logo upload, dashboard, and event editor are reused without another owner, page model, or editor.
 - `v1.0.128` adds the protected Admin Events workspace: every platform event, operational filters, confirmed RSVP counts, responsive event detail, and safe links to Preview, Host Page, Accounts & Support, or the existing isolated Done For You draft editor. The API deliberately excludes attendee PII and event credentials, and ordinary customer events remain read-only without impersonation or a duplicate editor.
 - `v1.0.127` fixes the Done For You client detail loader so its animated skeleton is removed after the client request settles, including when returning from event setup. The patch changes only presentation state and adds a focused regression test; client, Host Page, ownership, event, and publishing behavior remain unchanged.

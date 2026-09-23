@@ -507,6 +507,7 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
          FROM rsvps
         WHERE event_id=$1
           AND (user_id=$2 OR (user_id IS NULL AND account_id=$3))
+          AND status IN ('confirmed','cancelled')
         LIMIT 1`,
       [eventId, identity.user_id, identity.id]
     )).rows[0] || null;
@@ -521,6 +522,34 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
       sessionId: null,
       rsvp
     };
+  }
+
+  // The attendee cookie is scoped to one event and contains only that RSVP's
+  // unguessable manage token. It is lower precedence than an authenticated
+  // account so a signed-in person can never inherit someone else's answer on
+  // a shared browser, and unlike the general remembered-guest cookie it proves
+  // access to this exact RSVP.
+  const attendeeToken = readCookie(req, attendeeCookieName(eventId));
+  if (attendeeToken && attendeeToken.length <= 100) {
+    const rsvp = (await db.query(
+      `SELECT * FROM rsvps
+        WHERE event_id=$1 AND manage_token=$2
+          AND status IN ('confirmed','cancelled')`,
+      [eventId, attendeeToken]
+    )).rows[0] || null;
+    if (rsvp) {
+      return {
+        identityId: rsvp.account_id || null,
+        userId: rsvp.user_id || null,
+        email: rsvp.email,
+        displayFirstName: firstNameFrom(rsvp.first_name),
+        displayName: `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || rsvp.first_name,
+        verified: true,
+        source: 'attendee',
+        sessionId: null,
+        rsvp
+      };
+    }
   }
 
   return null;
@@ -635,9 +664,15 @@ router.get('/e/:slug', async (req, res, next) => {
     const rsvpEnabled = event.status === 'published' && !isSilverGliderTickets(event);
     const invitationToken = typeof req.query.invite === 'string' ? req.query.invite.trim() : '';
     const rsvpToken = typeof req.query.rsvp === 'string' ? req.query.rsvp.trim() : '';
-    const recognizedGuest = rsvpEnabled && !event.is_past && event.status === 'published' && !ownerPreview
+    const recognizedGuestCandidate = rsvpEnabled && !event.is_past && event.status === 'published'
       ? await returningGuestContext(pool, req, event.id, { invitationToken, rsvpToken })
       : null;
+    // A host who has also RSVP'd should see their attendee answer without
+    // losing the live owner editor. Hosts with no RSVP keep the established
+    // owner-preview CTA instead of receiving an unanswered guest prompt.
+    const recognizedGuest = ownerPreview && recognizedGuestCandidate?.source === 'account' && !recognizedGuestCandidate.rsvp
+      ? null
+      : recognizedGuestCandidate;
     if (recognizedGuest?.invalidPersonalToken) return res.status(404).send(render404());
     // An unanswered personal invitation keeps the ordinary lightweight RSVP
     // form. The token is submitted with it and safely links a matching inbox.

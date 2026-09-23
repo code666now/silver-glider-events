@@ -211,6 +211,19 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(flyerStyles, /\.public-guest-list,[\s\S]*\.event-wall \{[\s\S]*backdrop-filter: none;/);
 });
 
+test('answered RSVP state suppresses RSVP actions while preserving ticket admission', () => {
+  const client = source('public/js/public-event.js');
+  const flyerStyles = source('public/css/event-public-flyer.css');
+
+  assert.match(client, /function keepsAdmissionAction\(stateId, inlineCta/);
+  assert.match(client, /stateId === 'returning-rsvp-state' && inlineCta\?\.dataset\.primaryAction === 'ticket'/);
+  assert.match(client, /activeRsvpState === 'cta-state' \|\| keepsAdmissionAction\(activeRsvpState, inlineCta\)/);
+  assert.match(client, /action\.hidden = keepAdmissionAction/);
+  assert.match(client, /id === stateId \|\| \(id === 'cta-state' && keepAdmissionAction\)/);
+  assert.match(client, /renderConfirmationDialog\(\);\s+show\('returning-rsvp-state'\);/);
+  assert.match(flyerStyles, /\.flyer-action-stack\.preserves-ticket-action \+ #returning-rsvp-state \{ margin-top: 18px; \}/);
+});
+
 test('past events replace RSVP with photos when available and reject new submissions', () => {
   const route = source('src/routes/public.js');
   const standardView = source('src/views/event-public.html');

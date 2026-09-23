@@ -1197,6 +1197,28 @@ test('enabled day-before reminders send automatically once when the full balance
   }
 });
 
+test('an event owner keeps the live editor while their own confirmed RSVP is recognized', async () => {
+  const event = await createEvent({ slug: 'owner-rsvp-night', title: 'Owner RSVP Night' });
+  await createRsvp(event.id, {
+    first_name: 'Test',
+    last_name: 'Host',
+    email: 'host@example.test',
+    account_id: organizerId,
+    manage_token: 'owner-rsvp-token'
+  });
+
+  const page = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  const html = await page.text();
+
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('cache-control') || '', /private, no-store/);
+  assert.match(html, /id="owner-edit-trigger"/);
+  assert.match(html, /id="owner-editor"/);
+  assert.match(html, /"returningGuest":\{"firstName":"Test","source":"account","response":"going","calendarUrl":"\/r\/owner-rsvp-token\/calendar\.ics"\}/);
+});
+
 test('live event editing is visible only to the owner and saves through the protected event API', async () => {
   const event = await createEvent({ slug: 'owner-edit-night', title: 'Owner Edit Night' });
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
@@ -5283,6 +5305,43 @@ test('past-event pickers explain why a face can’t be selected', async () => {
   const faces = await (await fetch(`${baseUrl}/api/events/${past.id}/familiar-faces`, { headers: { cookie } })).json();
   assert.equal(faces.faces.find(face => face.name === 'Una Person').note, 'Unsubscribed');
   assert.equal(faces.faces.find(face => face.name === 'Ok Person').note, null);
+});
+
+test('an event-scoped attendee cookie restores that RSVP on reload and nowhere else', async () => {
+  resetRateLimits();
+  const event = await createEvent({
+    slug: 'attendee-cookie-reload',
+    title: 'Attendee Cookie Reload',
+    comments_enabled: true
+  });
+  const other = await createEvent({
+    slug: 'attendee-cookie-other',
+    title: 'Attendee Cookie Other'
+  });
+
+  const created = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Cookie Guest', email: 'cookie-guest@example.test' })
+  });
+  assert.equal(created.status, 201);
+  const payload = await created.json();
+  const attendeeCookie = responseCookie(created, `sge_attendee_${event.id}`);
+  assert.ok(attendeeCookie);
+
+  const reloaded = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: attendeeCookie }
+  });
+  const reloadedHtml = await reloaded.text();
+  assert.match(reloaded.headers.get('cache-control') || '', /private, no-store/);
+  assert.match(reloadedHtml, new RegExp(
+    `"returningGuest":\\{"firstName":"Cookie","source":"attendee","response":"going","calendarUrl":"\\/r\\/${payload.rsvpToken}\\/calendar\\.ics"\\}`
+  ));
+
+  const unrelatedHtml = await (await fetch(`${baseUrl}/e/${other.slug}`, {
+    headers: { cookie: attendeeCookie }
+  })).text();
+  assert.match(unrelatedHtml, /"returningGuest":null/);
 });
 
 test('a personal link from the guest’s own email shows their RSVP on that event only', async () => {

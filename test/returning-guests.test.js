@@ -113,6 +113,44 @@ test('both public presentations use the personalized one-tap RSVP state', () => 
   assert.match(client, /EVENT\.returningGuest\.response/);
 });
 
+test('returning RSVP state and owner preview preserve their distinct action contracts', () => {
+  const routes = read('src/routes/public.js');
+  const client = read('public/js/public-event.js');
+  const eventPage = routes.slice(
+    routes.indexOf("router.get('/e/:slug'"),
+    routes.indexOf("router.get('/e/:slug/tickets'")
+  );
+  const dockSync = client.slice(
+    client.indexOf('function syncMobileRsvpDock()'),
+    client.indexOf('let mobileRsvpSyncQueued')
+  );
+  const initialState = client.slice(
+    client.indexOf('if (EVENT.returningGuest) {'),
+    client.indexOf('async function answerReturningRsvp')
+  );
+
+  // Anonymous viewers and owners without an RSVP keep the ordinary RSVP CTA
+  // and therefore remain eligible for the generic mobile dock.
+  assert.match(client, /let activeRsvpState = 'cta-state'/);
+  assert.match(dockSync, /activeRsvpState === 'cta-state'/);
+  assert.match(eventPage, /ownerPreview && recognizedGuestCandidate\?\.source === 'account' && !recognizedGuestCandidate\.rsvp\s*\? null/);
+
+  // A signed-in non-owner is still a recognized one-tap viewer before they
+  // answer; confirmed and cancelled answers use that same inline state. None
+  // of those personalized states should fall back to the generic RSVP dock.
+  assert.match(initialState, /EVENT\.rsvpEnabled !== false && !EVENT\.isPast && EVENT\.returningGuest\) show\('returning-rsvp-state'\)/);
+  assert.doesNotMatch(dockSync, /activeRsvpState === 'returning-rsvp-state'/);
+
+  // Owner recognition is no longer excluded up front. An owner who really has
+  // an RSVP can see its status while the owner editor remains independently
+  // mounted; only an unanswered owner candidate is reduced back to preview.
+  const candidateLine = eventPage.match(/const recognizedGuestCandidate =[\s\S]*?: null;/)?.[0] || '';
+  assert.ok(candidateLine, 'event page should resolve a returning-guest candidate');
+  assert.doesNotMatch(candidateLine, /!ownerPreview/);
+  assert.match(eventPage, /const ownerEditorHtml = ownerPreview \? renderOwnerEditor\(event\) : ''/);
+  assert.match(eventPage, /returningGuest: returningGuestJson/);
+});
+
 test('personal invitation tokens are opaque, hashed, permanent, revocable, and scanner-safe', () => {
   const routes = read('src/routes/public.js');
   const worker = read('src/jobs/previous-guest-invitations.js');

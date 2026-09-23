@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.130
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning RSVP state
+
+* Reloading a public event now restores a guest’s existing answer from that event’s scoped attendee cookie, while unrelated event pages receive no attendee identity. Signed-in event owners who also RSVP’d keep the live owner editor while seeing their own attendance state.
+* Returning guests consistently remain in their personalized RSVP status after confirming or changing an answer. External-ticket events keep the outbound ticket action, including its mobile dock, while suppressing the redundant RSVP action.
+
+### Reliability and compatibility
+
+* The fix applies to existing Standard and Flyer event pages and reads only existing confirmed or cancelled RSVP records. It does not change event data, capacity, comments, Cloudinary assets, emails, reminders, Host Pages, discovery, or database schema.
+* The full 460-test release suite contains 355 unit tests and 105 HTTP/PostgreSQL integration tests.
+
 ## 1.0.129
 
 Released September 22, 2026. Built and deployed by Codex.
