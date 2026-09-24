@@ -103,11 +103,50 @@ async function createChallenge(db, {
   purpose,
   action = null,
   targetUserId = null,
-  targetKey = null
+  targetKey = null,
+  supersedeRequestToken = null
 }) {
-  const requestToken = crypto.randomBytes(24).toString('base64url');
-  const requestHash = tokenHash(requestToken);
-  const code = newCode();
+  let requestToken = crypto.randomBytes(24).toString('base64url');
+  let requestHash = tokenHash(requestToken);
+  let code = newCode();
+  const priorRequestToken = String(supersedeRequestToken || '');
+  if (priorRequestToken && priorRequestToken.length <= 100) {
+    const priorRequestHash = tokenHash(priorRequestToken);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const nextCodeHash = codeHash(priorRequestHash, code);
+      const rotated = await db.query(
+        `UPDATE admin_auth_challenges
+            SET code_hash=$7,code_attempts=0,created_at=NOW(),
+                expires_at=NOW() + make_interval(mins => $8)
+          WHERE request_hash=$1 AND operator_id=$2 AND purpose=$3
+            AND action IS NOT DISTINCT FROM $4
+            AND target_user_id IS NOT DISTINCT FROM $5
+            AND target_key IS NOT DISTINCT FROM $6
+            AND used_at IS NULL AND expires_at>NOW()
+            AND code_hash<>$7
+          RETURNING id`,
+        [priorRequestHash, operatorId, purpose, action, targetUserId, targetKey,
+         nextCodeHash, CHALLENGE_TTL_MINUTES]
+      );
+      if (rotated.rows[0]) {
+        requestToken = priorRequestToken;
+        requestHash = priorRequestHash;
+        return { requestToken, code, reused: true };
+      }
+      const existing = await db.query(
+        `SELECT 1 FROM admin_auth_challenges
+          WHERE request_hash=$1 AND operator_id=$2 AND purpose=$3
+            AND action IS NOT DISTINCT FROM $4
+            AND target_user_id IS NOT DISTINCT FROM $5
+            AND target_key IS NOT DISTINCT FROM $6
+            AND used_at IS NULL AND expires_at>NOW()
+          LIMIT 1`,
+        [priorRequestHash, operatorId, purpose, action, targetUserId, targetKey]
+      );
+      if (!existing.rows[0]) break;
+      code = newCode();
+    }
+  }
   await db.query(
     `INSERT INTO admin_auth_challenges
        (operator_id,purpose,action,target_user_id,target_key,request_hash,code_hash,expires_at)
@@ -115,7 +154,7 @@ async function createChallenge(db, {
     [operatorId, purpose, action, targetUserId, targetKey, requestHash, codeHash(requestHash, code),
      CHALLENGE_TTL_MINUTES]
   );
-  return { requestToken, code };
+  return { requestToken, code, reused: false };
 }
 
 async function consumeChallenge(client, {
@@ -194,7 +233,8 @@ router.post('/api/admin/auth/start', async (req, res, next) => {
     if (rows[0]) {
       const challenge = await createChallenge(pool, {
         operatorId: rows[0].id,
-        purpose: 'login'
+        purpose: 'login',
+        supersedeRequestToken: readCookie(req, LOGIN_REQUEST_COOKIE)
       });
       requestToken = challenge.requestToken;
       runInBackground(async () => {
@@ -272,25 +312,12 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
     deleteAccounts: dedicatedSuperAdmin,
     manageOperators: dedicatedSuperAdmin
   };
-  if (req.adminOperator) {
-    return res.json({
-      operator: {
-        id: Number(req.adminOperator.id),
-        email: req.adminOperator.email,
-        role: req.adminOperator.role,
-        status: req.adminOperator.status,
-        legacy: false
-      },
-      capabilities
-    });
-  }
   res.json({
     operator: {
-      id: null,
-      email: req.adminActor.email,
-      role: req.adminActor.role,
-      status: 'active',
-      legacy: true
+      id: Number(req.adminOperator.id),
+      email: req.adminOperator.email,
+      role: req.adminOperator.role,
+      status: req.adminOperator.status
     },
     capabilities
   });
@@ -388,7 +415,8 @@ router.post('/api/admin/auth/step-up/start', requireAdmin, async (req, res, next
       purpose: 'step_up',
       action,
       targetUserId,
-      targetKey
+      targetKey,
+      supersedeRequestToken: readCookie(req, STEP_UP_REQUEST_COOKIE)
     });
     await deliverAdminPasscode({
       to: req.adminOperator.email,

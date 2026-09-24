@@ -72,7 +72,10 @@ test('dedicated admin operators are independent principals with isolated passcod
   assert.match(session, /sessions_valid_after/);
   assert.match(middleware, /req\.adminOperator = dedicated\.operator/);
   assert.match(middleware, /req\.adminActor = \{/);
-  assert.match(middleware, /LEGACY_ADMIN_AUTH_ENABLED \|\| 'false'/);
+  assert.match(middleware, /actorUserId: null/);
+  assert.doesNotMatch(middleware, /LEGACY_ADMIN_AUTH_ENABLED|legacyFallbackEnabled|legacy_user/);
+  assert.doesNotMatch(middleware, /requireOrganizer|clearSessionCookie|setSessionCookie/);
+  assert.doesNotMatch(middleware, /\.is_admin/);
   assert.match(middleware, /function requireSuperAdmin/);
   assert.match(middleware, /error: 'super_admin_required'/);
   assert.match(middleware, /function sameOriginMutation/);
@@ -96,6 +99,14 @@ test('dedicated admin operators are independent principals with isolated passcod
   assert.match(feedbackRoutes, /delete\('\/api\/admin\/feedback\/:id', requireAdmin, requireSuperAdmin/);
   assert.match(index, /app\.use\(require\('\.\/routes\/admin-auth'\)\)/);
   assert.match(index, /app\.get\('\/admin\/login'/);
+  assert.doesNotMatch(index, /sessionAccount\?\.is_admin|legacyFallbackEnabled/);
+  assert.doesNotMatch(read('public/js/settings.js'), /organizer\.is_admin/);
+  assert.doesNotMatch(read('src/views/settings.html'), /organizer\.is_admin/);
+  assert.doesNotMatch(read('.env.example'), /LEGACY_ADMIN_AUTH_ENABLED/);
+  assert.doesNotMatch(adminRoutes, /legacy_user|adminActor\.userId|legacyOrganizerId/);
+  assert.match(adminRoutes, /adminOperatorId: String\(req\.adminOperator\.id\)/);
+  assert.doesNotMatch(read('src/routes/admin-accounts.js'), /adminActor\.userId/);
+  assert.match(read('src/routes/admin-accounts.js'), /adminId: String\(req\.adminOperator\.id\)/);
   assert.match(login, /Operator sign in/);
   assert.match(login, /autocomplete="one-time-code"/);
 });

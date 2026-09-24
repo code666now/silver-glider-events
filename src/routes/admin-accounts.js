@@ -1451,7 +1451,7 @@ router.post('/api/admin/accounts/invitations', async (req, res, next) => {
   if (name.length < 2) return res.status(400).json({ error: 'Enter the person’s name' });
   if (!email) return res.status(400).json({ error: 'Enter a valid email' });
   const rate = inviteLimiter.consume({
-    adminId: `${req.adminActor.type}:${req.adminActor.operatorId || req.adminActor.userId}`,
+    adminId: String(req.adminOperator.id),
     ip: clientIp(req)
   });
   if (!rate.allowed) {

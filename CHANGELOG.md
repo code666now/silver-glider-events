@@ -2,6 +2,26 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.136
+
+Released September 24, 2026. Built and deployed by Codex.
+
+### Separate customer and administrator authentication
+
+* Customer authentication now answers only **who is this person?** Verified email and verified phone work the same for every customer account, including a person whose normal account also carries an administrative permission. Successful verification always resolves the canonical User ID and creates only the ordinary Silver Glider customer session.
+* The administrator realm now accepts only the independent operator login and `sge_admin_session`. The transitional customer-session fallback, configuration switch, customer Admin links, and all email-only restrictions tied to `organizers.is_admin` are removed.
+* Admin invitations, account support, Events, Hosts, Ticketing, SMS testing, identity support, Done For You, and isolated event preparation now attribute work only to the dedicated operator identity.
+
+### Reliable one-time codes
+
+* The reported valid-code failure came from the phone-to-email completion path rejecting an otherwise valid challenge when the resolved customer record had `is_admin`. That authorization check has been removed from authentication.
+* Customer email resends now rotate the exact browser-bound challenge transactionally. The old link and code fail, unrelated pending challenges remain intact, failed delivery leaves the previous challenge usable, and the newest delivered code resolves the canonical account session.
+* Dedicated administrator resends likewise rotate one browser-bound login challenge so the prior passcode fails and the newest succeeds. Expiry, purpose, attempt limits, normalization, malformed-cookie handling, and the separation between customer and administrator cookies are covered by regression tests.
+
+### Verification
+
+* The release passes static validation and all 472 automated tests, including 106 PostgreSQL/HTTP integration scenarios for customer email, returning phone, admin-permission customer login, dedicated admin login, expired and superseded codes, latest resend, invitations, support controls, and Done For You.
+
 ## 1.0.135
 
 Released September 23, 2026. Built and deployed by Codex.

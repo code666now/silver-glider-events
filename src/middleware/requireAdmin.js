@@ -1,6 +1,4 @@
 const pool = require('../config/db');
-const requireOrganizer = require('./requireOrganizer');
-const { clearSessionCookie, setSessionCookie, MAX_AGE_SECONDS: ORGANIZER_MAX_AGE } = require('../lib/session');
 const {
   clearAdminSessionCookie,
   loadAdminOperator,
@@ -31,10 +29,6 @@ function reject(req, res, status = 401) {
   return res.redirect(`/admin/login${next}`);
 }
 
-function legacyFallbackEnabled() {
-  return String(process.env.LEGACY_ADMIN_AUTH_ENABLED || 'false').toLowerCase() === 'true';
-}
-
 function sameOriginMutation(req) {
   const site = req.get('sec-fetch-site');
   if (site) return site === 'same-origin' || site === 'none';
@@ -59,7 +53,7 @@ function continueAuthenticated(req, res, next) {
 
 function actorIds(req) {
   return {
-    actorUserId: req.adminActor?.type === 'legacy_user' ? Number(req.adminActor.userId) : null,
+    actorUserId: null,
     actorAdminOperatorId: req.adminActor?.type === 'admin_operator'
       ? Number(req.adminActor.operatorId)
       : null
@@ -71,7 +65,7 @@ function isDedicatedSuperAdmin(req) {
 }
 
 function requireSuperAdmin(req, res, next) {
-  if (req.adminActor?.role === 'super_admin') return next();
+  if (isDedicatedSuperAdmin(req)) return next();
   if (isApi(req)) {
     return res.status(403).json({
       error: 'super_admin_required',
@@ -115,25 +109,9 @@ async function requireAdmin(req, res, next) {
     }
     req.adminOperator = null;
     req.adminSession = null;
+    req.adminActor = null;
     if (dedicated.stale) clearAdminSessionCookie(res);
-
-    if (!legacyFallbackEnabled()) return reject(req, res);
-    const legacy = await requireOrganizer.resolveSession(req);
-    if (!legacy.account) {
-      if (legacy.stale) clearSessionCookie(res);
-      return reject(req, res);
-    }
-    if (!legacy.account.is_admin) return reject(req, res, 403);
-    const remaining = legacy.session.exp - Math.floor(Date.now() / 1000);
-    if (remaining < ORGANIZER_MAX_AGE / 2) setSessionCookie(res, legacy.account.id);
-    req.organizer = legacy.account;
-    req.adminActor = {
-      type: 'legacy_user',
-      userId: Number(legacy.account.user_id || legacy.account.id),
-      email: legacy.account.email,
-      role: 'super_admin'
-    };
-    return continueAuthenticated(req, res, next);
+    return reject(req, res);
   } catch (error) {
     next(error);
   }
@@ -143,6 +121,5 @@ module.exports = requireAdmin;
 module.exports.actorIds = actorIds;
 module.exports.isDedicatedSuperAdmin = isDedicatedSuperAdmin;
 module.exports.requireDedicatedAdmin = requireDedicatedAdmin;
-module.exports.legacyFallbackEnabled = legacyFallbackEnabled;
 module.exports.requireSuperAdmin = requireSuperAdmin;
 module.exports.sameOriginMutation = sameOriginMutation;

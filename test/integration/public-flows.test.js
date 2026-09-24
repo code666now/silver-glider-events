@@ -15,10 +15,6 @@ process.env.NODE_ENV = 'development';
 process.env.REMINDERS_ENABLED = 'false';
 process.env.COMMERCE_ENABLED = 'false';
 process.env.CLOUDINARY_CLOUD_NAME = 'integration-cloud';
-// Most pre-operator regression cases exercise the explicitly controlled
-// rollback path. Dedicated-boundary tests below turn this off and prove the
-// production default rejects customer/organizer sessions.
-process.env.LEGACY_ADMIN_AUTH_ENABLED = 'true';
 delete process.env.COMMERCE_API_BASE_URL;
 delete process.env.RESEND_API_KEY;
 delete process.env.CLOUDINARY_API_KEY;
@@ -1843,14 +1839,15 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(stored.rows[0].count, 1);
 
   const denied = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
-  assert.equal(denied.status, 403);
+  assert.equal(denied.status, 401);
 
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
-  const adminPage = await fetch(`${baseUrl}/admin/ticketing`, { headers: { cookie } });
+  const operator = await createAdminOperator('ticketing-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const adminPage = await fetch(`${baseUrl}/admin/ticketing`, { headers: { cookie: adminCookie } });
   assert.equal(adminPage.status, 200);
   assert.match(await adminPage.text(), /Ticketing interest/);
 
-  const adminList = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  const adminList = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie: adminCookie } });
   assert.equal(adminList.status, 200);
   const adminData = await adminList.json();
   assert.equal(adminData.counts.interested, 1);
@@ -1858,14 +1855,14 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(adminData.interests[0].email, 'host@example.test');
 
   const testEmail = await fetch(`${baseUrl}/api/admin/commerce-interest/test`, {
-    method: 'POST', headers: { cookie }
+    method: 'POST', headers: { cookie: adminCookie }
   });
   assert.equal(testEmail.status, 200);
-  assert.equal((await testEmail.json()).recipient, 'host@example.test');
+  assert.equal((await testEmail.json()).recipient, operator.email);
 
   const prematureLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
   });
   assert.equal(prematureLaunch.status, 409);
@@ -1881,7 +1878,7 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   try {
     const launch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
     });
     assert.equal(launch.status, 200);
@@ -1889,7 +1886,7 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
 
     const retryLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
     });
     assert.equal(retryLaunch.status, 200);
@@ -1915,7 +1912,9 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(remove.status, 200);
   assert.equal((await remove.json()).interest.interested, false);
 
-  const afterRemoval = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  const afterRemoval = await fetch(`${baseUrl}/api/admin/commerce-interest`, {
+    headers: { cookie: adminCookie }
+  });
   const afterRemovalData = await afterRemoval.json();
   assert.equal(afterRemovalData.counts.interested, 0);
   assert.ok(afterRemovalData.interests[0].removed_at);
@@ -2843,19 +2842,20 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
     headers: { 'content-type': 'application/json', cookie: organizerCookie },
     body: JSON.stringify({ enabled: true })
   });
-  assert.equal(forbidden.status, 403);
+  assert.equal(forbidden.status, 401);
 
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const operator = await createAdminOperator('collect-photos-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
   const futureEnable = await fetch(`${baseUrl}/api/admin/events/${future.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: true })
   });
   assert.equal(futureEnable.status, 400);
 
   const enabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: true })
   });
   assert.equal(enabled.status, 200);
@@ -2997,7 +2997,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
 
   const disabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: false })
   });
   assert.equal(disabled.status, 200);
@@ -3348,9 +3348,9 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
 });
 
 test('admin-only SMS test route normalizes one recipient and cannot accept custom copy', async () => {
-  const cookie = `sge_session=${signSession(organizerId)}`;
-  const { rows: currentRows } = await pool.query('SELECT is_admin FROM organizers WHERE id=$1', [organizerId]);
-  const wasAdmin = currentRows[0].is_admin;
+  const customerCookie = `sge_session=${signSession(organizerId)}`;
+  const operator = await createAdminOperator('sms-test-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
   const originalSendTestSms = sms.sendTestSms;
   let deliveredTo = null;
 
@@ -3360,19 +3360,17 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
       return { sid: `SM${'d'.repeat(32)}`, status: 'accepted', recipient };
     };
 
-    await pool.query('UPDATE organizers SET is_admin=FALSE WHERE id=$1', [organizerId]);
     const denied = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: customerCookie },
       body: JSON.stringify({ to: '+14155551234', confirm: 'SEND_TEST_SMS' })
     });
-    assert.equal(denied.status, 403);
+    assert.equal(denied.status, 401);
     assert.equal(deliveredTo, null);
 
-    await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
     const unconfirmed = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ to: '+14155551234' })
     });
     assert.equal(unconfirmed.status, 400);
@@ -3380,7 +3378,7 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
 
     const invalid = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ to: 'not-a-phone', confirm: 'SEND_TEST_SMS' })
     });
     assert.equal(invalid.status, 400);
@@ -3388,7 +3386,7 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
 
     const sent = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({
         to: '(415) 555-1234',
         message: 'This browser-supplied text must never be sent.',
@@ -3405,7 +3403,6 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
     });
   } finally {
     sms.sendTestSms = originalSendTestSms;
-    await pool.query('UPDATE organizers SET is_admin=$2 WHERE id=$1', [organizerId, wasAdmin]);
   }
 });
 
@@ -3991,63 +3988,130 @@ test('phone sign-in requires phone and inbox proof, then remembers the verified 
   }
 });
 
-test('administrator identities remain email-only even if a phone was previously bound', async () => {
+test('a user with admin permission authenticates normally by verified email and phone while admin login stays separate', async () => {
   resetRateLimits();
   await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
   const verificationSid = `VE${'e'.repeat(32)}`;
   const phone = '+14155550191';
-  phoneVerification.startVerification = async () => ({ verificationSid, phone, status: 'pending' });
-  phoneVerification.checkVerification = async () => ({ approved: true, verificationSid, phone, status: 'approved' });
+  phoneVerification.startVerification = async recipient => {
+    assert.equal(recipient, phone);
+    return { verificationSid, phone, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async input => {
+    assert.equal(input.code, '123456');
+    return {
+      approved: true,
+      verificationSid: input.verificationSid,
+      phone,
+      status: 'approved'
+    };
+  };
 
   try {
-    const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
+    const emailStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ email: '  HOST@Example.Test  ', next: '/profile' })
     });
-    const phoneCookie = responseCookie(started, 'sge_phone_auth');
-    await fetch(`${baseUrl}/api/auth/phone/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
-      body: JSON.stringify({ code: '123456' })
-    });
-    const emailStep = await fetch(`${baseUrl}/api/auth/phone/email`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
-      body: JSON.stringify({ email: 'host@example.test' })
-    });
-    const emailCookie = responseCookie(emailStep, 'sge_sign_in');
-    const emailCode = lastDevEmail('host@example.test', 'account_verification_code').code;
-    const bindAttempt = await fetch(`${baseUrl}/api/auth/verify-code`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: emailCookie },
+    assert.equal(emailStart.status, 200);
+    const emailRequestCookie = responseCookie(emailStart, 'sge_sign_in');
+    const emailCode = lastDevEmail('host@example.test', 'magic_link').code;
+    const emailVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: emailRequestCookie },
       body: JSON.stringify({ code: emailCode })
     });
-    assert.equal(bindAttempt.status, 403);
-    assert.equal((await bindAttempt.json()).error, 'email_sign_in_required');
-    assert.equal(responseCookie(bindAttempt, 'sge_session'), '');
-    assert.equal((await pool.query(
-      'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE organizer_id=$1 AND revoked_at IS NULL', [organizerId]
-    )).rows[0].count, 0);
+    assert.equal(emailVerify.status, 200);
+    assert.equal((await emailVerify.clone().json()).redirect, '/profile');
+    const emailSession = responseCookie(emailVerify, 'sge_session');
+    const identityStepUp = responseCookie(emailVerify, 'sge_identity_step_up');
+    assert.ok(emailSession);
+    assert.ok(identityStepUp);
+    assert.equal(responseCookie(emailVerify, 'sge_admin_session'), '',
+      'normal email authentication never creates an administrator session');
+    const emailMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: emailSession } });
+    assert.equal(emailMe.status, 200);
+    assert.equal(Number((await emailMe.json()).organizer.id), Number(organizerId));
+    const verifiedEmail = (await pool.query(
+      `SELECT user_id,verification_scope,verified_at
+         FROM user_identities
+        WHERE identity_type='email' AND normalized_value='host@example.test'
+          AND revoked_at IS NULL`
+    )).rows[0];
+    assert.equal(Number(verifiedEmail.user_id), Number(organizerId));
+    assert.equal(verifiedEmail.verification_scope, 'account');
+    assert.ok(verifiedEmail.verified_at);
 
-    await pool.query(
-      `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
-       VALUES ($1,$2,NOW())`,
-      [organizerId, phone]
-    );
+    const accountCookies = cookieHeader(emailSession, identityStepUp);
+    const identityState = await fetch(`${baseUrl}/api/me/identities`, {
+      headers: { cookie: accountCookies }
+    });
+    assert.equal(identityState.status, 200);
+    assert.equal((await identityState.json()).capabilities.canAddPhone, true);
+
+    const addPhoneStart = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: accountCookies },
+      body: JSON.stringify({ phone })
+    });
+    assert.equal(addPhoneStart.status, 200);
+    const addPhoneCookie = responseCookie(addPhoneStart, 'sge_phone_auth');
+    const addPhoneVerify = await fetch(`${baseUrl}/api/me/identities/phone/verify`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookieHeader(accountCookies, addPhoneCookie)
+      },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(addPhoneVerify.status, 200);
+    const addedPhone = (await addPhoneVerify.json()).identities.find(identity => identity.type === 'phone');
+    assert.equal(addedPhone.value, phone);
+    assert.ok(addedPhone.verifiedAt);
+
+    const emailDeliveriesBeforePhoneSignIn = mailer.devOutbox.length;
     const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone, next: '/events' })
     });
     assert.equal(returningStart.status, 200);
-    const returningAttempt = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+    const returningVerify = await fetch(`${baseUrl}/api/auth/phone/verify`, {
       method: 'POST', headers: {
         'content-type': 'application/json',
         cookie: responseCookie(returningStart, 'sge_phone_auth')
       },
       body: JSON.stringify({ code: '123456' })
     });
-    assert.equal(returningAttempt.status, 403);
-    assert.equal((await returningAttempt.json()).error, 'email_sign_in_required');
-    assert.equal(responseCookie(returningAttempt, 'sge_session'), '');
+    assert.equal(returningVerify.status, 200);
+    const returningBody = await returningVerify.json();
+    assert.deepEqual(returningBody, { ok: true, redirect: '/events' });
+    assert.equal('needsEmail' in returningBody, false,
+      'a returning verified phone never repeats inbox verification');
+    assert.equal(mailer.devOutbox.length, emailDeliveriesBeforePhoneSignIn,
+      'returning phone sign-in sends no email code');
+    const phoneSession = responseCookie(returningVerify, 'sge_session');
+    assert.ok(phoneSession);
+    assert.equal(responseCookie(returningVerify, 'sge_admin_session'), '',
+      'normal phone authentication never creates an administrator session');
+    const phoneMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: phoneSession } });
+    assert.equal(phoneMe.status, 200);
+    assert.equal(Number((await phoneMe.json()).organizer.id), Number(organizerId));
+
+    const normalSessionAtAdminApi = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { cookie: phoneSession }
+    });
+    assert.equal(normalSessionAtAdminApi.status, 401,
+      'a normal session cannot authorize the dedicated admin dashboard');
+
+    const operator = await createAdminOperator('host@example.test', 'super_admin');
+    const adminSession = await signInAdminOperator(operator.email);
+    assert.match(adminSession, /^sge_admin_session=/);
+    const adminMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { cookie: adminSession }
+    });
+    assert.equal(adminMe.status, 200);
+    assert.equal(Number((await adminMe.json()).operator.id), Number(operator.id));
   } finally {
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
@@ -4310,6 +4374,117 @@ test('a 6-digit code signs in only the browser that asked for it and locks after
     body: JSON.stringify({ code: lockCode })
   });
   assert.equal((await tooLate.json()).error, 'locked');
+});
+
+test('expired and superseded email codes fail while the latest resent code creates the canonical normal session', async () => {
+  resetRateLimits();
+
+  const expiredEmail = 'expired-code@example.test';
+  const expiredStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: expiredEmail, next: '/dashboard' })
+  });
+  assert.equal(expiredStart.status, 200);
+  const expiredCookie = responseCookie(expiredStart, 'sge_sign_in');
+  const expiredCode = lastDevEmail(expiredEmail, 'magic_link').code;
+  await pool.query(
+    `UPDATE magic_link_tokens SET expires_at=NOW() - INTERVAL '1 second'
+      WHERE email=$1 AND used_at IS NULL`,
+    [expiredEmail]
+  );
+  const expiredVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: expiredCookie },
+    body: JSON.stringify({ code: expiredCode })
+  });
+  assert.equal(expiredVerify.status, 400);
+  assert.equal((await expiredVerify.json()).error, 'expired');
+  assert.equal(responseCookie(expiredVerify, 'sge_session'), '');
+
+  const email = 'resent-code@example.test';
+  const firstStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next: '/events' })
+  });
+  assert.equal(firstStart.status, 200);
+  const firstCookie = responseCookie(firstStart, 'sge_sign_in');
+  const firstEmail = lastDevEmail(email, 'magic_link');
+  const firstCode = firstEmail.code;
+
+  const unrelatedEmail = 'unrelated-pending-code@example.test';
+  const unrelatedStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: unrelatedEmail, next: '/profile' })
+  });
+  assert.equal(unrelatedStart.status, 200);
+
+  const resentStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstCookie },
+    body: JSON.stringify({ email, next: '/events' })
+  });
+  assert.equal(resentStart.status, 200);
+  const latestCookie = responseCookie(resentStart, 'sge_sign_in');
+  const latestCode = lastDevEmail(email, 'magic_link').code;
+  const challenges = (await pool.query(
+    `SELECT id,used_at FROM magic_link_tokens
+      WHERE email=$1 ORDER BY id`,
+    [email]
+  )).rows;
+  assert.equal(challenges.length, 1,
+    'a same-context resend rotates the browser-bound challenge in place');
+  assert.equal(challenges[0].used_at, null);
+  assert.equal(latestCookie, firstCookie,
+    'the stable request cookie cannot drift from concurrent resend delivery');
+  assert.equal((await pool.query(
+    `SELECT used_at FROM magic_link_tokens WHERE email=$1 ORDER BY id DESC LIMIT 1`,
+    [unrelatedEmail]
+  )).rows[0].used_at, null, 'an unrelated pending challenge remains valid');
+
+  const supersededLink = await fetch(
+    `${baseUrl}/auth/verify?token=${tokenFromLink(firstEmail.link)}`,
+    { redirect: 'manual' }
+  );
+  assert.equal(supersededLink.status, 302);
+  assert.match(supersededLink.headers.get('location') || '', /^\/login\?error=expired/);
+
+  const supersededVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstCookie },
+    body: JSON.stringify({ code: firstCode })
+  });
+  assert.equal(supersededVerify.status, 400);
+  assert.equal((await supersededVerify.json()).error, 'invalid');
+  assert.equal(responseCookie(supersededVerify, 'sge_session'), '');
+
+  const latestVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: latestCookie },
+    body: JSON.stringify({ code: latestCode })
+  });
+  assert.equal(latestVerify.status, 200);
+  assert.deepEqual(await latestVerify.clone().json(), {
+    ok: true,
+    kind: 'account',
+    firstName: null,
+    redirect: '/events'
+  });
+  const sessionCookie = responseCookie(latestVerify, 'sge_session');
+  assert.ok(sessionCookie);
+  assert.equal(responseCookie(latestVerify, 'sge_admin_session'), '');
+  const canonicalUserId = Number((await pool.query(
+    `SELECT user_id FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1
+        AND verification_scope='account' AND verified_at IS NOT NULL
+        AND revoked_at IS NULL`,
+    [email]
+  )).rows[0].user_id);
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.equal(me.status, 200);
+  assert.equal(Number((await me.json()).organizer.id), canonicalUserId);
 });
 
 test('sign out of all devices rejects older cookies everywhere, including pre-upgrade cookies', async () => {
@@ -4679,39 +4854,6 @@ test('verified email ownership conflicts are quarantined without merging either 
   )).rows[0].used_at, 'the conflicted proof is consumed instead of remaining replayable');
 });
 
-test('administrators cannot add phone sign-in even after fresh account proof', async () => {
-  resetRateLimits();
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
-  const account = await signInAccount('host@example.test');
-  const cookies = cookieHeader(account.sessionCookie, account.stepUpCookie);
-  const state = await fetch(`${baseUrl}/api/me/identities`, { headers: { cookie: cookies } });
-  assert.equal(state.status, 200);
-  assert.equal((await state.json()).capabilities.canAddPhone, false);
-
-  const originalStartVerification = phoneVerification.startVerification;
-  let providerStarts = 0;
-  phoneVerification.startVerification = async () => {
-    providerStarts += 1;
-    return { verificationSid: `VE${'f'.repeat(32)}`, phone: '+14155550195', status: 'pending' };
-  };
-  try {
-    const response = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: cookies },
-      body: JSON.stringify({ phone: '+1 (415) 555-0195' })
-    });
-    assert.equal(response.status, 403);
-    assert.equal((await response.json()).error, 'email_sign_in_required');
-    assert.equal(providerStarts, 0);
-    assert.equal((await pool.query(
-      `SELECT COUNT(*)::int AS count FROM phone_auth_challenges
-        WHERE purpose='add_phone'`
-    )).rows[0].count, 0);
-  } finally {
-    phoneVerification.startVerification = originalStartVerification;
-  }
-});
-
 test('a freshly verified replacement phone revokes the old credential without changing the user', async () => {
   resetRateLimits();
   const account = await signInAccount('host@example.test');
@@ -4998,16 +5140,15 @@ test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only
   assert.equal(dana.canInvite, false);
   assert.equal(faces.faces.find(face => face.name === 'Gia Going').status, 'RSVP’d');
 
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at) VALUES ('hosts-admin@example.test','Hosts Admin',TRUE,NOW()) RETURNING id`
-  )).rows[0];
+  const operator = await createAdminOperator('hosts-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   await pool.query(`INSERT INTO organizers (email,name) VALUES ('rsvp-only-identity@example.test','RSVP Only')`);
   const hosts = await (await fetch(`${baseUrl}/api/admin/hosts`, {
-    headers: { cookie: `sge_session=${signSession(admin.id)}` }
+    headers: { cookie: adminCookie }
   })).json();
   const emails = hosts.hosts.map(host => host.email);
   assert.ok(emails.includes('host@example.test'));
-  assert.ok(emails.includes('hosts-admin@example.test'));
+  assert.ok(!emails.includes(operator.email));
   assert.ok(!emails.includes('rsvp-only-identity@example.test'));
   assert.ok(hosts.guestIdentityCount >= 1);
 });
@@ -5024,7 +5165,7 @@ test('Admin Events securely searches and filters every host event while reusing 
   const customerApi = await fetch(`${baseUrl}/api/admin/events`, {
     headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
-  assert.equal(customerApi.status, 403);
+  assert.equal(customerApi.status, 401);
   const page = await fetch(`${baseUrl}/admin/events`, { headers: { cookie: adminCookie } });
   assert.equal(page.status, 200);
   assert.match(await page.text(), /data-admin-section="events"/);
@@ -5537,25 +5678,21 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   const disabledEmail = 'disabled-admin@example.test';
   const operator = await createAdminOperator(activeEmail, 'super_admin');
   await createAdminOperator(disabledEmail, 'support', 'disabled');
-  const legacyAdmin = (await pool.query(
+  const normalUserWithAdminPermission = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('legacy-boundary-admin@example.test','Legacy Boundary Admin',TRUE,NOW()) RETURNING id`
   )).rows[0];
-  process.env.LEGACY_ADMIN_AUTH_ENABLED = 'false';
-  try {
-    const legacyApi = await fetch(`${baseUrl}/api/admin/accounts`, {
-      headers: { cookie: `sge_session=${signSession(legacyAdmin.id)}` }
-    });
-    assert.equal(legacyApi.status, 401);
-    const legacyPage = await fetch(`${baseUrl}/admin/accounts`, {
-      redirect: 'manual',
-      headers: { cookie: `sge_session=${signSession(legacyAdmin.id)}` }
-    });
-    assert.equal(legacyPage.status, 302);
-    assert.equal(legacyPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
-  } finally {
-    process.env.LEGACY_ADMIN_AUTH_ENABLED = 'true';
-  }
+  const normalSession = `sge_session=${signSession(normalUserWithAdminPermission.id)}`;
+  const normalApi = await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalApi.status, 401);
+  const normalPage = await fetch(`${baseUrl}/admin/accounts`, {
+    redirect: 'manual',
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalPage.status, 302);
+  assert.equal(normalPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
   const outboxBefore = mailer.devOutbox.length;
 
   const unknown = await fetch(`${baseUrl}/api/admin/auth/start`, {
@@ -5628,7 +5765,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
   assert.deepEqual(await me.json(), {
     operator: {
-      id: Number(operator.id), email: activeEmail, role: 'super_admin', status: 'active', legacy: false
+      id: Number(operator.id), email: activeEmail, role: 'super_admin', status: 'active'
     },
     capabilities: {
       manageAccounts: true,
@@ -5744,6 +5881,54 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
   assert.equal((await invalidatedProof.json()).error, 'admin_step_up_required');
 });
 
+test('dedicated admin login resends retire the older passcode and accept the newest one', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('admin-resend@example.test', 'support');
+  const start = cookie => fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(cookie ? { cookie } : {})
+    },
+    body: JSON.stringify({ email: operator.email })
+  });
+
+  const first = await start();
+  assert.equal(first.status, 200);
+  const firstCookie = responseCookie(first, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const firstCode = lastDevEmail(operator.email, 'admin_passcode').code;
+
+  const resent = await start(firstCookie);
+  assert.equal(resent.status, 200);
+  const resentCookie = responseCookie(resent, 'sge_admin_sign_in');
+  assert.equal(resentCookie, firstCookie,
+    'a resend keeps one browser-bound challenge rather than creating parallel valid codes');
+  await adminAuthRoutes.settleBackgroundWork();
+  const latestCode = lastDevEmail(operator.email, 'admin_passcode').code;
+  assert.notEqual(latestCode, firstCode);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' AND used_at IS NULL`,
+    [operator.id]
+  )).rows[0].count, 1);
+
+  const oldAttempt = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: resentCookie },
+    body: JSON.stringify({ code: firstCode })
+  });
+  assert.equal(oldAttempt.status, 400);
+
+  const latestAttempt = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: resentCookie },
+    body: JSON.stringify({ code: latestCode })
+  });
+  assert.equal(latestAttempt.status, 200);
+  assert.ok(responseCookie(latestAttempt, 'sge_admin_session'));
+});
+
 test('operator roster access and mutations require dedicated target-bound Super Admin proof', async () => {
   resetRateLimits();
   const actor = await createAdminOperator('roster-actor@example.test', 'super_admin');
@@ -5751,11 +5936,11 @@ test('operator roster access and mutations require dedicated target-bound Super 
   const support = await createAdminOperator('roster-support@example.test', 'support');
   const actorSession = await signInAdminOperator(actor.email);
   const supportSession = await signInAdminOperator(support.email);
-  const legacyAdmin = (await pool.query(
+  const normalUserWithAdminPermission = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('roster-legacy@example.test','Roster Legacy',TRUE,NOW()) RETURNING id`
   )).rows[0];
-  const legacySession = `sge_session=${signSession(legacyAdmin.id)}`;
+  const normalSession = `sge_session=${signSession(normalUserWithAdminPermission.id)}`;
 
   const signedOutOverview = await fetch(`${baseUrl}/admin`, { redirect: 'manual' });
   assert.equal(signedOutOverview.status, 302);
@@ -5772,12 +5957,12 @@ test('operator roster access and mutations require dedicated target-bound Super 
   assert.equal((await fetch(`${baseUrl}/admin/team`, {
     headers: { cookie: actorSession }
   })).status, 200, 'dedicated Super Admins can manage the operator roster');
-  const legacyTeamPage = await fetch(`${baseUrl}/admin/team`, {
+  const normalTeamPage = await fetch(`${baseUrl}/admin/team`, {
     redirect: 'manual',
-    headers: { cookie: legacySession }
+    headers: { cookie: normalSession }
   });
-  assert.equal(legacyTeamPage.status, 302);
-  assert.equal(legacyTeamPage.headers.get('location'), '/admin');
+  assert.equal(normalTeamPage.status, 302);
+  assert.equal(normalTeamPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Fteam');
   const exactOverviewNext = await fetch(`${baseUrl}/admin/login?next=%2Fadmin`, {
     redirect: 'manual',
     headers: { cookie: actorSession }
@@ -5794,8 +5979,8 @@ test('operator roster access and mutations require dedicated target-bound Super 
     headers: { cookie: supportSession }
   })).status, 403);
   assert.equal((await fetch(`${baseUrl}/api/admin/operators`, {
-    headers: { cookie: legacySession }
-  })).status, 403, 'legacy customer-admin sessions cannot manage independent operators');
+    headers: { cookie: normalSession }
+  })).status, 401, 'normal customer sessions cannot manage independent operators');
 
   const actorMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
     headers: { cookie: actorSession }
@@ -5809,13 +5994,10 @@ test('operator roster access and mutations require dedicated target-bound Super 
   assert.equal(supportCapabilities.suspendAccounts, true);
   assert.equal(supportCapabilities.deleteAccounts, false);
   assert.equal(supportCapabilities.manageOperators, false);
-  const legacyMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
-    headers: { cookie: legacySession }
+  const normalMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: normalSession }
   });
-  const legacyCapabilities = (await legacyMe.json()).capabilities;
-  assert.equal(legacyCapabilities.manageAccounts, true);
-  assert.equal(legacyCapabilities.deleteAccounts, false);
-  assert.equal(legacyCapabilities.manageOperators, false);
+  assert.equal(normalMe.status, 401);
 
   const initial = await fetch(`${baseUrl}/api/admin/operators`, {
     headers: { cookie: actorSession }
@@ -6146,13 +6328,8 @@ test('dedicated admin mutations enforce same-origin and retain the operator audi
 });
 
 test('Accounts & Support returns complete verified and contact-only identity data to admins', async () => {
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('accounts-admin@example.test','Accounts Admin',TRUE,NOW()) RETURNING id,user_id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
+  const operator = await createAdminOperator('accounts-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const guest = (await pool.query(
     `INSERT INTO organizers (email,name,contact_email)
      VALUES ('rsvp-only-support@example.test','RSVP Only Support','booking-support@example.test')
@@ -6178,11 +6355,10 @@ test('Accounts & Support returns complete verified and contact-only identity dat
     account_id: guest.id, user_id: guest.user_id
   });
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts`, {
     headers: { cookie: `sge_session=${signSession(organizerId)}` }
-  })).status, 403);
+  })).status, 401);
 
   const page = await fetch(`${baseUrl}/admin/accounts`, { headers: { cookie: adminCookie } });
   assert.equal(page.status, 200);
@@ -6270,11 +6446,6 @@ test('Accounts & Support returns complete verified and contact-only identity dat
     reason: 'Correcting the display name at their request'
   }]);
 
-  const selfSignOut = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/sign-out-all`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
-    body: JSON.stringify({ reason: 'This should use Account settings instead' })
-  });
-  assert.equal(selfSignOut.status, 400);
   const guestOldCookie = `sge_session=${signSession(guest.id, Date.now() - 5000)}`;
   assert.equal((await fetch(`${baseUrl}/profile`, { headers: { cookie: guestOldCookie } })).status, 200);
   const signedOutEverywhere = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/sign-out-all`, {
@@ -6301,13 +6472,8 @@ test('Accounts & Support returns complete verified and contact-only identity dat
 
 test('admin suspension is audited, revokes access, preserves public property, and can be reversed safely', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('suspension-admin@example.test','Suspension Admin',TRUE,NOW()) RETURNING id,user_id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
+  const operator = await createAdminOperator('suspension-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const target = (await pool.query(
     `INSERT INTO organizers (email,name,org_name,public_slug,last_login_at)
      VALUES ('suspended-host@example.test','Suspended Host','Suspended Host','suspended-host',NOW())
@@ -6333,7 +6499,6 @@ test('admin suspension is audited, revokes access, preserves public property, an
   )).rows[0];
   assert.ok(publicEvent.id);
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
   const oldTargetCookie = `sge_session=${signSession(target.id, Date.now() - 5000)}`;
   const oldPhotoCookie = `sge_photo=${signPhotoAccess(target.id)}`;
   const photoScopeBeforeSuspension = await fetch(`${baseUrl}/api/me`, {
@@ -6359,12 +6524,6 @@ test('admin suspension is audited, revokes access, preserves public property, an
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
       WHERE target_user_id=$1 AND action_type='account_suspended'`, [target.user_id]
   )).rows[0].count, 0);
-
-  const selfSuspend = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/suspend`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
-    body: JSON.stringify({ reason: 'Accidental self action' })
-  });
-  assert.equal(selfSuspend.status, 400);
 
   const suspended = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
     method: 'POST', headers: {
@@ -6492,11 +6651,11 @@ test('permanent account deletion requires admin auth, fresh proof, and exact con
   assert.equal((await requestDelete(target.user_id, { cookie: '' })).status, 401);
   assert.equal((await requestDelete(target.user_id, {
     cookie: `sge_session=${signSession(organizerId)}`
-  })).status, 403);
+  })).status, 401);
 
   const legacyAttempt = await requestDelete(target.user_id, { cookie: legacyAdminSession });
-  assert.equal(legacyAttempt.status, 403);
-  assert.equal((await legacyAttempt.json()).error, 'dedicated_super_admin_required');
+  assert.equal(legacyAttempt.status, 401);
+  assert.equal((await legacyAttempt.json()).error, 'admin_auth_required');
   const supportAttempt = await requestDelete(target.user_id, { cookie: supportSession });
   assert.equal(supportAttempt.status, 403);
   assert.equal((await supportAttempt.json()).error, 'dedicated_super_admin_required');
@@ -7091,14 +7250,8 @@ test('direct account deletion purges property, revokes access, and leaves an aud
 });
 
 test('admin account invitations create no identity until the recipient claims the one-use link', async () => {
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('invitation-admin@example.test','Invitation Admin',TRUE,NOW()) RETURNING id,user_id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('invitation-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const invitedEmail = 'future-host-support@example.test';
 
   assert.equal((await pool.query(
@@ -7180,7 +7333,8 @@ test('admin account invitations create no identity until the recipient claims th
   assert.doesNotMatch(secondUse.headers.get('set-cookie') || '', /sge_session=/);
 
   const audit = (await pool.query(
-    `SELECT action_type,actor_user_id,target_user_id,reason,metadata
+    `SELECT action_type,actor_user_id,actor_admin_operator_id,
+            target_user_id,reason,metadata
        FROM admin_account_audit_log
       WHERE metadata->>'invitationId'=$1 OR target_user_id=$2
       ORDER BY id`,
@@ -7193,9 +7347,13 @@ test('admin account invitations create no identity until the recipient claims th
   assert.equal(audit[1].target_user_id, null);
   assert.equal(audit[2].target_user_id, claimed.user_id);
   assert.deepEqual(audit.map(row => row.actor_user_id), [
-    admin.user_id, admin.user_id, claimed.user_id
+    null, null, claimed.user_id
   ]);
-  assert.equal(Number(audit[2].metadata.invitedByUserId), Number(admin.user_id));
+  assert.deepEqual(audit.map(row => row.actor_admin_operator_id), [
+    operator.id, operator.id, null
+  ]);
+  assert.equal(audit[2].metadata.invitedByUserId, null);
+  assert.equal(Number(audit[2].metadata.invitedByAdminOperatorId), Number(operator.id));
 
   const duplicate = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
@@ -7207,14 +7365,7 @@ test('admin account invitations create no identity until the recipient claims th
 });
 
 test('an RSVP-only shell claims an invitation into the same canonical user without duplication', async () => {
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('shell-invitation-admin@example.test','Shell Invitation Admin',TRUE,NOW()) RETURNING id`
-  )).rows[0];
-  const adminUserId = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
-  assert.ok(adminUserId);
+  const operator = await createAdminOperator('shell-invitation-admin@example.test', 'support');
 
   const invitedEmail = 'rsvp-shell-invite@example.test';
   const shell = (await pool.query(
@@ -7239,7 +7390,7 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
         AND revoked_at IS NULL`, [shellUserId]
   )).rows[0].count, 0);
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const adminCookie = await signInAdminOperator(operator.email);
   const shellDetailBeforeClaim = await fetch(
     `${baseUrl}/api/admin/accounts/${shellUserId}`,
     { headers: { cookie: adminCookie } }
@@ -7303,12 +7454,8 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
 
 test('concurrent account invitations serialize by normalized email and mint one live link', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('concurrent-invite-admin@example.test','Concurrent Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  const cookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('concurrent-invite-admin@example.test', 'support');
+  const cookie = await signInAdminOperator(operator.email);
   const email = 'same-invite@example.test';
   const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
@@ -7341,12 +7488,8 @@ test('concurrent account invitations serialize by normalized email and mint one 
 test('failed account-invitation delivery consumes its token and permits an immediate retry', async t => {
   resetRateLimits();
   t.after(() => adminAccountsRoutes.setAccountClaimSenderForTests());
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('failed-invite-admin@example.test','Failed Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  const cookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('failed-invite-admin@example.test', 'support');
+  const cookie = await signInAdminOperator(operator.email);
   const email = 'retry-invite@example.test';
   const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
@@ -7388,14 +7531,7 @@ test('failed account-invitation delivery consumes its token and permits an immed
 
 test('a stale never-sent invitation is revoked before its replacement is created', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('stale-invite-admin@example.test','Stale Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
+  const operator = await createAdminOperator('stale-invite-admin@example.test', 'support');
   const email = 'stale-invite@example.test';
   const token = (await pool.query(
     `INSERT INTO magic_link_tokens
@@ -7407,18 +7543,20 @@ test('a stale never-sent invitation is revoked before its replacement is created
   )).rows[0];
   const stale = (await pool.query(
     `INSERT INTO admin_account_invitations
-       (email,name,magic_link_token_id,created_by_user_id,expires_at,created_at)
+       (email,name,magic_link_token_id,created_by_admin_operator_id,expires_at,created_at)
      VALUES ($1,'Stale Recipient',$2,$3,NOW() + INTERVAL '7 days',
              NOW() - INTERVAL '6 minutes')
      RETURNING id`,
-    [email, token.id, admin.user_id]
+    [email, token.id, operator.id]
   )).rows[0];
+
+  const adminCookie = await signInAdminOperator(operator.email);
 
   const response = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `sge_session=${signSession(admin.id)}`
+      cookie: adminCookie
     },
     body: JSON.stringify({ name: 'Stale Recipient', email })
   });
@@ -7697,7 +7835,7 @@ test('identity collision rolls back the replacement and remains dismissible with
   assert.equal((await cancelled.json()).identityChangeRequest.status, 'cancelled');
 });
 
-test('legacy admin account APIs remain available but never expose or mutate dedicated identity requests', async () => {
+test('customer sessions never expose or mutate dedicated account-support APIs', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('identity-dedicated@example.test', 'support');
   const dedicatedCookie = await signInAdminOperator(operator.email);
@@ -7729,24 +7867,23 @@ test('legacy admin account APIs remain available but never expose or mutate dedi
      RETURNING id`
   )).rows[0];
   const legacyCookie = `sge_session=${signSession(legacy.id)}`;
-  const ordinaryList = await fetch(`${baseUrl}/api/admin/accounts`, {
+  const customerList = await fetch(`${baseUrl}/api/admin/accounts`, {
     headers: { cookie: legacyCookie }
   });
-  assert.equal(ordinaryList.status, 200,
-    'identity middleware must not intercept the existing account-support API');
-  const ordinaryDetail = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+  assert.equal(customerList.status, 401);
+  assert.equal((await customerList.json()).error, 'admin_auth_required');
+  const customerDetail = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
     headers: { cookie: legacyCookie }
   });
-  assert.equal(ordinaryDetail.status, 200);
-  assert.deepEqual((await ordinaryDetail.json()).identityChangeRequests, [],
-    'false manage-identities capability also hides recipient PII and reasons');
+  assert.equal(customerDetail.status, 401);
+  assert.equal((await customerDetail.json()).error, 'admin_auth_required');
 
   const dedicatedList = await fetch(
     `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
     { headers: { cookie: legacyCookie } }
   );
-  assert.equal(dedicatedList.status, 403);
-  assert.equal((await dedicatedList.json()).error, 'dedicated_admin_required');
+  assert.equal(dedicatedList.status, 401);
+  assert.equal((await dedicatedList.json()).error, 'admin_auth_required');
   const dedicatedMutation = await fetch(
     `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
     {
@@ -7757,8 +7894,8 @@ test('legacy admin account APIs remain available but never expose or mutate dedi
       })
     }
   );
-  assert.equal(dedicatedMutation.status, 403);
-  assert.equal((await dedicatedMutation.json()).error, 'dedicated_admin_required');
+  assert.equal(dedicatedMutation.status, 401);
+  assert.equal((await dedicatedMutation.json()).error, 'admin_auth_required');
 });
 
 test('admin-prepared phone replacement rotates recipient proof on resend and accepts only the latest Twilio check', async t => {
@@ -8071,8 +8208,8 @@ test('Done For You provisioning is dedicated-admin only, aligned, unverified, id
   assert.equal((await doneForYouLookup('', contact)).status, 401);
   await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
   const legacy = await doneForYouLookup(`sge_session=${signSession(organizerId)}`, contact);
-  assert.equal(legacy.status, 403);
-  assert.equal((await legacy.json()).error, 'dedicated_admin_required');
+  assert.equal(legacy.status, 401);
+  assert.equal((await legacy.json()).error, 'admin_auth_required');
 
   const invalid = await doneForYouLookup(supportCookie, { email: 'not-an-email', phone: 'nope' });
   assert.equal(invalid.status, 400);
@@ -8726,8 +8863,8 @@ test('Done For You Host Page support edits and media are dedicated, audited, and
       body: JSON.stringify({ org_name: 'Legacy Must Not Edit' })
     }
   );
-  assert.equal(legacyDenied.status, 403);
-  assert.equal((await legacyDenied.json()).error, 'dedicated_admin_required');
+  assert.equal(legacyDenied.status, 401);
+  assert.equal((await legacyDenied.json()).error, 'admin_auth_required');
   const crossOriginDenied = await fetch(
     `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
     {
@@ -9033,7 +9170,7 @@ test('Done For You editor workspaces are operator-bound, expiring, audited, and 
   );
 
   const customerOnly = await start(`sge_session=${signSession(organizerId)}`);
-  assert.equal(customerOnly.status, 403,
+  assert.equal(customerOnly.status, 401,
     'a customer account cannot enter the independent admin editor realm');
 
   const opened = await start(adminSession);
@@ -9567,7 +9704,7 @@ test('Done For You admin editor creates one scoped draft, returns a safe DTO, an
     },
     body: JSON.stringify({})
   });
-  assert.equal(customerAttempt.status, 403,
+  assert.equal(customerAttempt.status, 401,
     'a customer session cannot substitute for the dedicated administrator session');
 
   const presenterRejected = await fetch(`${baseUrl}/admin-editor/api/events`, {

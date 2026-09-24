@@ -159,7 +159,7 @@ async function accountIdentityState(req) {
   return {
     identities: await listAccountIdentities(pool, userId),
     capabilities: {
-      canAddPhone: !req.organizer.is_admin,
+      canAddPhone: true,
       identityStepUpVerified: hasIdentityStepUp(req, userId),
       phoneLimit: 1
     }
@@ -210,14 +210,44 @@ function limitPhoneEmailRequest(req, res, { email, phone }) {
 
 // Emails one link + code and remembers, in this browser only, which request
 // the code belongs to.
-async function issueSignIn(res, { email, intent = 'sign_in', targetOrganizerId = null, returnPath = null, followHostName = '' }) {
-  const { token, code, requestToken } = await createSignInChallenge(pool, {
-    email, intent, targetOrganizerId, returnPath
+async function createAndDeliverSignInChallenge(req, res, challengeOptions, deliver, recipientUserId = null) {
+  const client = await pool.connect();
+  let challenge;
+  try {
+    await client.query('BEGIN');
+    challenge = await createSignInChallenge(client, {
+      ...challengeOptions,
+      supersedeRequestToken: readSignInRequest(req)
+    });
+    await deliver(challenge);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  setSignInRequestCookie(res, challenge.requestToken);
+  // Delivery and challenge persistence are the authentication boundary.
+  // Message logging is telemetry and must never turn a delivered valid code
+  // into an error response after the cookie has been rotated.
+  await logEmail(challengeOptions.email, recipientUserId).catch(error => {
+    console.error('[auth] sign-in delivery log failed', { error: error.message });
   });
-  const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
-  await sendMagicLink({ to: email, link, code, followHostName });
-  await logEmail(email);
-  setSignInRequestCookie(res, requestToken);
+  return challenge;
+}
+
+async function issueSignIn(req, res, { email, intent = 'sign_in', targetOrganizerId = null, returnPath = null, followHostName = '' }) {
+  await createAndDeliverSignInChallenge(
+    req,
+    res,
+    { email, intent, targetOrganizerId, returnPath },
+    async ({ token, code }) => {
+      const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+      await sendMagicLink({ to: email, link, code, followHostName });
+    }
+  );
 }
 
 async function signInIntent(body = {}) {
@@ -246,7 +276,7 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
 
     const challenge = await signInIntent(req.body);
     if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
-    await issueSignIn(res, { email, ...challenge });
+    await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, codeLength: CODE_LENGTH });
   } catch (err) {
     next(err);
@@ -263,7 +293,7 @@ router.post('/api/auth/guest-magic-link', async (req, res, next) => {
     if (!limitEmailRequest(req, res, email)) return;
     const challenge = await signInIntent(req.body);
     if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
-    await issueSignIn(res, { email, ...challenge });
+    await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }
 });
@@ -285,12 +315,12 @@ router.post('/api/auth/guest-code', async (req, res, next) => {
       if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
     }
     if (!limitEmailRequest(req, res, email)) return;
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email, intent: 'verify_guest', returnPath: safeNext(req.body?.next)
-    });
-    await sendVerificationCode({ to: email, code });
-    await logEmail(email);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      { email, intent: 'verify_guest', returnPath: safeNext(req.body?.next) },
+      ({ code }) => sendVerificationCode({ to: email, code })
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }
@@ -404,7 +434,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           });
         }
         const { rows } = await client.query(
-          `SELECT account.id,account.is_admin,canonical_user.account_status
+          `SELECT account.id,canonical_user.account_status
              FROM organizers account
              JOIN users canonical_user ON canonical_user.id=account.user_id
             WHERE account.id=$1
@@ -415,16 +445,6 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         if (!account) {
           throw new PhoneAuthError('This phone sign-in is no longer available. Use email instead.', {
             code: 'phone_credential_unavailable', status: 400
-          });
-        }
-        if (account.is_admin) {
-          await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
-          await client.query('COMMIT');
-          clearPhoneAuthCookie(res);
-          res.setHeader('Cache-Control', 'private, no-store');
-          return res.status(403).json({
-            error: 'email_sign_in_required',
-            message: 'For account security, sign in with email.'
           });
         }
         if (account.account_status === 'suspended') {
@@ -500,7 +520,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
 
 // A verified phone alone never claims an email identity. The inbox code is
 // mandatory on first binding, including when that email already has RSVPs,
-// events, credits, or administrative access.
+// events, credits, or other account data.
 router.post('/api/auth/phone/email', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
   try {
@@ -526,15 +546,17 @@ router.post('/api/auth/phone/email', async (req, res, next) => {
         code: 'phone_verification_expired', status: 400
       });
     }
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email,
-      intent: 'bind_phone',
-      returnPath: phoneSignInNext(challenge.return_path) || '/dashboard',
-      phoneAuthChallengeId: challenge.id
-    });
-    await sendAccountVerificationCode({ to: email, code });
-    await logEmail(email);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      {
+        email,
+        intent: 'bind_phone',
+        returnPath: phoneSignInNext(challenge.return_path) || '/dashboard',
+        phoneAuthChallengeId: challenge.id
+      },
+      ({ code }) => sendAccountVerificationCode({ to: email, code })
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) {
@@ -985,11 +1007,6 @@ async function completeChallenge(client, req, pending, {
         code: 'phone_verification_expired', status: 400
       });
     }
-    if (organizer.is_admin) {
-      throw new PhoneAuthError('For account security, administrators must sign in with email.', {
-        code: 'email_sign_in_required', status: 403
-      });
-    }
     await bindVerifiedPhone(client, {
       challengeId: pending.phone_auth_challenge_id,
       organizerId: organizer.id
@@ -1401,15 +1418,18 @@ router.post('/api/me/identities/step-up/start', requireOrganizer, async (req, re
     const email = normalizeEmail(req.organizer.email);
     if (!limitEmailRequest(req, res, email)) return;
     const userId = Number(req.organizer.user_id || req.organizer.id);
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email,
-      intent: 'identity_step_up',
-      requestedUserId: userId,
-      returnPath: '/settings/account'
-    });
-    await sendAccountVerificationCode({ to: email, code, purpose: 'identity_step_up' });
-    await logEmail(email, userId);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      {
+        email,
+        intent: 'identity_step_up',
+        requestedUserId: userId,
+        returnPath: '/settings/account'
+      },
+      ({ code }) => sendAccountVerificationCode({ to: email, code, purpose: 'identity_step_up' }),
+      userId
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) {
@@ -1439,17 +1459,19 @@ router.post(
         });
       }
       if (!limitEmailRequest(req, res, email)) return;
-      const { code, requestToken } = await createSignInChallenge(pool, {
-        email,
-        intent: 'attach_email',
-        requestedUserId: userId,
-        returnPath: '/settings/account'
-      });
-      await sendAccountVerificationCode({ to: email, code, purpose: 'attach_email' });
+      await createAndDeliverSignInChallenge(
+        req,
+        res,
+        {
+          email,
+          intent: 'attach_email',
+          requestedUserId: userId,
+          returnPath: '/settings/account'
+        },
+        ({ code }) => sendAccountVerificationCode({ to: email, code, purpose: 'attach_email' })
+      );
       // Ownership is not known until the code is entered. Do not attach the
       // requester to this delivery snapshot prematurely.
-      await logEmail(email);
-      setSignInRequestCookie(res, requestToken);
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
     } catch (error) {
@@ -1467,12 +1489,6 @@ router.post(
     const startedAt = Date.now();
     let phone;
     try {
-      if (req.organizer.is_admin) {
-        return res.status(403).json({
-          error: 'email_sign_in_required',
-          message: 'Administrators use email sign-in.'
-        });
-      }
       phone = sms.normalizeE164(req.body?.phone);
       const userId = Number(req.organizer.user_id || req.organizer.id);
       const own = await pool.query(

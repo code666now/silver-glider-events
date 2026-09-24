@@ -33,8 +33,8 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
   assert.match(api, /function sgIsAdminPath/);
   assert.match(api, /sgAdminSessionPromise = api\('\/api\/admin\/auth\/me'\)/);
   assert.match(api, /class="sg-nav-brand" href="\/admin"/);
-  assert.match(settings, /<a href="\/admin">Admin<\/a>/);
-  assert.doesNotMatch(settings, /const adminLinks/);
+  assert.doesNotMatch(settings, /href=["']\/admin/);
+  assert.doesNotMatch(settings, /const adminLinks|organizer\.is_admin/);
 });
 
 test('overview uses released account and operator endpoints only', () => {

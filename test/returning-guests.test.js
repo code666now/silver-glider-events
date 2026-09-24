@@ -187,7 +187,7 @@ test('recognized guests can become creators only through the existing magic link
   assert.match(auth, /router\.post\('\/api\/auth\/guest-magic-link'/);
   assert.match(auth, /sendMagicLink/);
   assert.match(auth, /const challenge = await signInIntent\(req\.body\)/);
-  assert.match(auth, /await issueSignIn\(res, \{ email, \.\.\.challenge \}\)/);
+  assert.match(auth, /await issueSignIn\(req, res, \{ email, \.\.\.challenge \}\)/);
   assert.doesNotMatch(auth.slice(auth.indexOf("router.post('/api/auth/guest-magic-link'"), auth.indexOf("router.post('/api/auth/guest-code'")), /setSessionCookie/);
   assert.match(login, /Continue as \$\{guest\.firstName\}/);
   assert.match(login, /Email my sign-in link/);

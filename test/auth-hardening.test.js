@@ -5,7 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'auth-hardening-unit-secret';
-const { signSession, parseSession, sessionRevoked, MAX_AGE_SECONDS } = require('../src/lib/session');
+const {
+  signSession,
+  parseSession,
+  readSessionCookie,
+  sessionRevoked,
+  MAX_AGE_SECONDS
+} = require('../src/lib/session');
 const { signAdminSession, parseAdminSession, setAdminSessionCookie } = require('../src/lib/admin-session');
 const { maskEmail, normalizeCode } = require('../src/lib/sign-in-challenges');
 const { signPhotoAccess, readPhotoAccess } = require('../src/lib/photo-access');
@@ -29,6 +35,8 @@ test('session cookies carry an issue time and still accept pre-v1.0.85 cookies',
 
   assert.equal(parseSession(`42.${issuedAt}.${exp}.${'0'.repeat(64)}`), null);
   assert.equal(parseSession('not-a-cookie'), null);
+  assert.equal(readSessionCookie({ headers: { cookie: 'sge_session=%' } }), null,
+    'a malformed percent-encoded cookie is treated as absent instead of throwing');
 });
 
 test('"sign out of all devices" rejects every cookie issued before it', () => {

@@ -83,10 +83,9 @@
 @media (hover:hover) { .identity-row-action:hover,.identity-retry:hover { color:var(--sg-text); } }
 .identity-empty { padding:20px 0;border-bottom:1px solid var(--sg-border-soft);color:var(--sg-text-dim);font-size:12px;line-height:1.55; }
 .identity-actions { display:flex;flex-wrap:wrap;gap:10px;margin-top:18px; }
-.identity-actions[hidden],.identity-admin-note[hidden] { display:none; }
+.identity-actions[hidden] { display:none; }
 .identity-actions .sg-btn { min-height:42px;font-size:11px; }
-.identity-admin-note,.identity-status { color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
-.identity-admin-note { margin-top:14px; }
+.identity-status { color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
 .identity-status { min-height:17px;margin-top:10px; }
 .identity-status.error { color:var(--sg-danger); }
 .account-devices-row { margin-top:42px;border-top:1px solid var(--sg-border-soft); }
@@ -333,7 +332,7 @@ body.host-share-dialog-open { overflow:hidden; }
   .identity-empty { padding:20px;border:1px solid var(--sg-border-soft);border-radius:20px;font-size:14px; }
   .identity-actions { display:grid;grid-template-columns:1fr;gap:12px;margin-top:16px; }
   .identity-actions .sg-btn { min-height:56px;border-radius:17px;font-size:14px; }
-  .identity-admin-note,.identity-status { font-size:13px; }
+  .identity-status { font-size:13px; }
   .account-devices-row { margin-top:44px;border-top:0; }
   .identity-dialog {
     width:100%;

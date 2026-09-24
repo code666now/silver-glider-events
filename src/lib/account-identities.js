@@ -196,7 +196,7 @@ async function replaceVerifiedPhone(db, {
   const normalizedPhone = normalizeIdentity(IDENTITY_TYPES.PHONE, phone).normalizedValue;
   return withCanonicalIdentityTransaction(db, async client => {
     const organizerResult = await client.query(
-      'SELECT id,is_admin FROM organizers WHERE id=$1 AND user_id=$1',
+      'SELECT id FROM organizers WHERE id=$1 AND user_id=$1',
       [userId]
     );
     const organizer = organizerResult.rows[0];
@@ -205,12 +205,6 @@ async function replaceVerifiedPhone(db, {
         code: 'organizer_not_found', status: 404
       });
     }
-    if (organizer.is_admin) {
-      throw new CanonicalIdentityError('Administrators use email sign-in.', {
-        code: 'email_sign_in_required', status: 403
-      });
-    }
-
     const existingResult = await client.query(
       `SELECT normalized_value
          FROM user_identities

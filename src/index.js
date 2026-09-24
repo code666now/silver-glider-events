@@ -113,9 +113,6 @@ app.get('/admin/login', async (req, res, next) => {
     const dedicated = await loadAdminOperator(pool, req);
     if (dedicated.operator) return res.redirect(destination);
     if (dedicated.stale) clearAdminSessionCookie(res);
-    if (req.query.dedicated !== '1' && req.sessionAccount?.is_admin && requireAdmin.legacyFallbackEnabled()) {
-      return res.redirect(destination);
-    }
     res.sendFile(path.join(VIEWS, 'admin-login.html'));
   } catch (error) { next(error); }
 });

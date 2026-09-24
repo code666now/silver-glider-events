@@ -97,7 +97,7 @@ router.get('/api/admin/commerce-interest', requireAdmin, async (req, res, next) 
 
 router.post('/api/admin/commerce-interest/test', requireAdmin, requireSuperAdmin, async (req, res, next) => {
   try {
-    const recipient = req.adminOperator?.email || req.adminActor.email;
+    const recipient = req.adminOperator.email;
     await sendCommerceLaunch({ to: recipient, isTest: true });
     res.json({ sent: true, recipient });
   } catch (err) { next(err); }

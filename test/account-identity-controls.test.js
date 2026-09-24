@@ -296,8 +296,8 @@ test('phone replacement rolls back the old-phone revocation when the new phone i
     is_primary: true
   };
   const harness = poolFor(async (sql, values) => {
-    if (sql.startsWith('SELECT id,is_admin FROM organizers')) {
-      return { rows: [{ id: 7, is_admin: false }] };
+    if (sql.startsWith('SELECT id FROM organizers')) {
+      return { rows: [{ id: 7 }] };
     }
     if (sql.startsWith('SELECT normalized_value')) return { rows: [{ normalized_value: oldPhone }] };
     if (sql.includes('FROM account_phone_credentials') && sql.includes('phone_e164=$1 AND')) {

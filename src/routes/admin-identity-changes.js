@@ -132,7 +132,7 @@ async function releaseDeliveryClient(client, { locked, userId }) {
 
 async function lockActiveTarget(client, userId) {
   const { rows } = await client.query(
-    `SELECT u.id,u.name,u.account_status,o.id AS organizer_id,o.is_admin
+    `SELECT u.id,u.name,u.account_status,o.id AS organizer_id
        FROM users u JOIN organizers o ON o.user_id=u.id
       WHERE u.id=$1 AND u.account_status<>'deleted'
       FOR UPDATE OF u,o`,
@@ -152,15 +152,6 @@ async function lockActiveTarget(client, userId) {
     throw error;
   }
   return target;
-}
-
-function assertTargetSupportsIdentity(target, identityType) {
-  if (identityType === 'phone' && target.is_admin) {
-    const error = new Error('Administrator customer accounts use email sign-in.');
-    error.status = 409;
-    error.code = 'email_sign_in_required';
-    throw error;
-  }
 }
 
 async function assertIdentityAvailable(client, normalized, userId) {
@@ -323,7 +314,6 @@ async function createOrResendDelivery(req, res, {
         normalizedValue: current.normalized_value
       }, userId);
       target = await lockActiveTarget(client, userId);
-      assertTargetSupportsIdentity(target, current.identity_type);
       const updated = await client.query(
         `UPDATE admin_account_identity_change_requests
             SET status='pending',request_token_hash=$3,provider_sid=NULL,
@@ -357,7 +347,6 @@ async function createOrResendDelivery(req, res, {
       });
       await assertIdentityAvailable(client, normalized, userId);
       target = await lockActiveTarget(client, userId);
-      assertTargetSupportsIdentity(target, normalized.identityType);
 
       const pending = await client.query(
         `SELECT * FROM admin_account_identity_change_requests

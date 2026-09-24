@@ -91,7 +91,7 @@ test/                        focused Node test suite
 
 ## Key mechanics
 
-- **Authentication:** one canonical `users.id` owns a person's verified account identities and relationships; `organizers` remains a compatibility/profile projection while the signed, httpOnly session remains valid for 30 days. When someone enters through **Create your event**, Twilio Verify proves the phone; a new phone is bound only after a separate browser-bound email code proves the existing email identity. Twilio Verify also handles returning creator phone codes, keeping authentication outside lifecycle and marketing sender pools. Email remains available as recovery, administrators stay email-only, and **Sign out of all devices** revokes every account session. Public RSVP, Follow Host, photo-only links, and invitation tokens keep their existing lightweight scopes, and RSVP/follow phone consent is never treated as an authentication credential.
+- **Authentication:** one canonical `users.id` owns a person's verified account identities and relationships; `organizers` remains a compatibility/profile projection while the signed, httpOnly session remains valid for 30 days. When someone enters through **Create your event**, Twilio Verify proves the phone; a new phone is bound only after a separate browser-bound email code proves the existing email identity. Twilio Verify also handles returning creator phone codes, keeping authentication outside lifecycle and marketing sender pools. Email remains available as recovery, and customer sign-in methods never change because the same person is also an administrator. Dedicated operators authenticate separately with email at `/admin/login`. **Sign out of all devices** revokes every customer account session. Public RSVP, Follow Host, photo-only links, and invitation tokens keep their existing lightweight scopes, and RSVP/follow phone consent is never treated as an authentication credential.
 - **Follow Host:** signed-in users follow immediately; signed-out users enter only an email and complete a server-stored `follow_host` intent through the existing magic link. The relationship is one reactivatable `host_follows` row per identity/Host pair. V1 sends no separate follow-confirmation email and keeps legacy RSVP announcement consent separate.
 - **Familiar Faces and invitations:** event management presents verified photos or stable playful emoji fallbacks, names, and only `RSVP’d`/`Invited` states. The same no-photo guest keeps the same server-derived emoji across events and refreshes. From an old event, a host can select confirmed primary RSVPs, choose an owned upcoming event, review, and send one artwork-led invite. The upcoming event progressively reveals **Invite Familiar Faces** only when a past published event has eligible people. Named +1s, host opt-outs, existing target attendees, and already-invited recipients are excluded server-side; delivery is queued, retryable, one-way, and recipient-deduplicated per destination event. The separate `organizer_optin` field remains limited to broader host announcements, and SMS continues to require its own event-specific consent.
 - **Guest photos:** one-time RSVP-confirmation links can authenticate a guest directly into `/add-photo`; uploads reuse the existing account avatar so the image can appear across verified RSVPs. A saved photo suppresses future photo prompts, and no separate photo-request SMS is sent.
@@ -148,9 +148,9 @@ INSERT INTO admin_operators (email, role, status)
 VALUES ('you@example.com', 'super_admin', 'active');
 ```
 
-`LEGACY_ADMIN_AUTH_ENABLED` defaults to `false`. Set it to `true` only as a
-short-lived emergency rollback measure; an ordinary organizer session is not
-an admin session by default.
+A customer `sge_session`, including one for a user whose organizer record has
+`is_admin`, never authorizes an admin route. Only a valid `sge_admin_session`
+issued by the dedicated operator login grants access to the admin realm.
 
 ## Deploy to Railway
 

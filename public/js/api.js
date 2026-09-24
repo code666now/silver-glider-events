@@ -445,7 +445,7 @@ function renderAdminNav(el) {
   });
   getAdminSession().then(({ operator }) => {
     const role = operator.role === 'super_admin' ? 'Super Admin' : 'Support';
-    label.textContent = `${operator.email} · ${role}${operator.legacy ? ' · legacy session' : ''}`;
+    label.textContent = `${operator.email} · ${role}`;
   }).catch(() => {});
 }
 

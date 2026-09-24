@@ -14,7 +14,7 @@ router.use('/api/admin', requireAdmin);
 const smsTestLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   rules: [
-    { name: 'admin', max: 5, key: context => context.organizerId },
+    { name: 'admin', max: 5, key: context => context.adminOperatorId },
     { name: 'ip', max: 10, key: context => context.ip }
   ]
 });
@@ -459,17 +459,12 @@ router.post('/api/admin/invitations', async (req, res, next) => {
 
     const token = `${slugify(hostName)}-${crypto.randomBytes(8).toString('hex')}`;
     const actor = actorIds(req);
-    const legacyOrganizerId = req.adminActor.type === 'legacy_user'
-      ? Number(req.organizer.id)
-      : null;
     const { rows } = await pool.query(
       `INSERT INTO host_invitations
-         (token, host_name, personal_note, created_by_organizer_id,
-          created_by_admin_operator_id)
-       VALUES ($1,$2,$3,$4,$5)
+         (token, host_name, personal_note, created_by_admin_operator_id)
+       VALUES ($1,$2,$3,$4)
        RETURNING *`,
-      [token, hostName, personalNote,
-       legacyOrganizerId, actor.actorAdminOperatorId]
+      [token, hostName, personalNote, actor.actorAdminOperatorId]
     );
     res.status(201).json({ invitation: { ...rows[0], path: `/i/${token}` } });
   } catch (err) { next(err); }
@@ -507,7 +502,7 @@ router.post('/api/admin/sms/test', requireSuperAdmin, async (req, res, next) => 
     }
     recipient = sms.normalizeE164(req.body?.to);
     const limit = smsTestLimiter.consume({
-      organizerId: `${req.adminActor.type}:${req.adminActor.operatorId || req.adminActor.userId}`,
+      adminOperatorId: String(req.adminOperator.id),
       ip: clientIp(req)
     });
     if (!limit.allowed) {

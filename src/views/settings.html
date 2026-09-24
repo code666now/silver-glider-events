@@ -743,10 +743,6 @@
       if (organizer.avatar_url) {
         api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
       }
-      if (organizer.is_admin) {
-        const nav = document.querySelector('.sg-nav-links');
-        nav.insertAdjacentHTML('beforeend', '<a href="/admin">Admin</a>');
-      }
       loadSmsCredits();
     }).catch(showSettingsError);
 

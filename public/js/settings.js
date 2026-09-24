@@ -29,7 +29,7 @@ let selectedCreditPack = null;
 let paymentBusy = false;
 let identityState = {
   identities: [],
-  capabilities: { canAddPhone: false, identityStepUpVerified: false, phoneLimit: 1 }
+  capabilities: { canAddPhone: true, identityStepUpVerified: false, phoneLimit: 1 }
 };
 let identityDialogReturnFocus = null;
 let identityDialogMode = '';
@@ -342,9 +342,8 @@ function renderAccountIdentities(state) {
 
   const hasPhone = state.identities?.some(identity => identity.type === 'phone');
   settingsElement('identity-actions').hidden = false;
-  settingsElement('identity-add-phone').hidden = !state.capabilities?.canAddPhone;
+  settingsElement('identity-add-phone').hidden = false;
   settingsElement('identity-add-phone').textContent = hasPhone ? 'Change mobile number' : 'Add mobile number';
-  settingsElement('identity-admin-note').hidden = Boolean(state.capabilities?.canAddPhone);
 }
 
 async function loadAccountIdentities({ announce = false } = {}) {
@@ -881,10 +880,6 @@ api('/api/auth/me').then(({ organizer }) => {
   showSettings();
   loadAccountIdentities();
   if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
-  if (organizer.is_admin) {
-    const nav = document.querySelector('.sg-nav-links');
-    nav.insertAdjacentHTML('beforeend', '<a href="/admin">Admin</a>');
-  }
   loadSmsCredits().then(showCheckoutReturn);
 }).catch(showSettingsError);
 

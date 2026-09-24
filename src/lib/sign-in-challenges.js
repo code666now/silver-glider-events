@@ -36,12 +36,73 @@ async function createSignInChallenge(db, {
   requestedUserId = null,
   returnPath = null,
   ttlMinutes = 15,
-  withCode = true
+  withCode = true,
+  supersedeRequestToken = null
 }) {
   const token = crypto.randomBytes(32).toString('hex');
   const hashedToken = tokenHash(token);
-  const code = withCode ? newCode() : null;
-  const requestToken = withCode ? crypto.randomBytes(24).toString('base64url') : null;
+  let code = withCode ? newCode() : null;
+  let requestToken = withCode ? crypto.randomBytes(24).toString('base64url') : null;
+  const priorRequestToken = String(supersedeRequestToken || '');
+  const supersedeRequestHash = priorRequestToken && priorRequestToken.length <= 100
+    ? tokenHash(priorRequestToken)
+    : null;
+
+  // A resend in the same browser and for the exact same purpose rotates the
+  // existing row in place. Keeping its browser request token stable means two
+  // serialized resend requests cannot leave the browser cookie pointing at a
+  // different challenge than the latest accepted email. Callers wrap this
+  // lookup/update and delivery in one transaction, so a delivery failure rolls
+  // the rotation back and leaves the prior code usable.
+  if (withCode && supersedeRequestHash) {
+    const reusable = await db.query(
+      `SELECT id,token,code_hash
+         FROM magic_link_tokens
+        WHERE request_hash=$1
+          AND used_at IS NULL
+          AND expires_at > NOW()
+          AND code_hash IS NOT NULL
+          AND LOWER(BTRIM(email))=LOWER(BTRIM($2))
+          AND intent=$3
+          AND target_organizer_id IS NOT DISTINCT FROM $4
+          AND phone_auth_challenge_id IS NOT DISTINCT FROM $5
+          AND requested_user_id IS NOT DISTINCT FROM $6
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [supersedeRequestHash, email, intent, targetOrganizerId,
+       phoneAuthChallengeId, requestedUserId]
+    );
+    if (reusable.rows[0]) {
+      while (codeHash(reusable.rows[0].token, code) === reusable.rows[0].code_hash) {
+        code = newCode();
+      }
+      requestToken = priorRequestToken;
+      const rotated = await db.query(
+        `UPDATE magic_link_tokens
+            SET token=$2,email=$3,created_at=NOW(),
+                expires_at=NOW() + make_interval(mins => $4),used_at=NULL,
+                intent=$5,target_organizer_id=$6,phone_auth_challenge_id=$7,
+                requested_user_id=$8,return_path=$9,code_hash=$10,
+                request_hash=$11,code_attempts=0
+          WHERE id=$1
+          RETURNING id`,
+        [reusable.rows[0].id, hashedToken, email, ttlMinutes, intent,
+         targetOrganizerId, phoneAuthChallengeId, requestedUserId,
+         returnPath || null, codeHash(hashedToken, code), supersedeRequestHash]
+      );
+      return {
+        id: rotated.rows?.[0]?.id || reusable.rows[0].id,
+        token,
+        code,
+        requestToken,
+        phoneAuthChallengeId,
+        requestedUserId,
+        reused: true
+      };
+    }
+  }
+
   const inserted = await db.query(
     `INSERT INTO magic_link_tokens
        (token, email, expires_at, intent, target_organizer_id, phone_auth_challenge_id,
@@ -55,7 +116,7 @@ async function createSignInChallenge(db, {
   // PostgreSQL clients used by older unit tests may omit `rows`; callers that
   // need the persisted id can resolve it by token hash as a compatibility path.
   const id = inserted.rows?.[0]?.id || null;
-  return { id, token, code, requestToken, phoneAuthChallengeId, requestedUserId };
+  return { id, token, code, requestToken, phoneAuthChallengeId, requestedUserId, reused: false };
 }
 
 const PENDING_COLUMNS = 'id, email, intent, target_organizer_id, return_path, phone_auth_challenge_id, requested_user_id';
