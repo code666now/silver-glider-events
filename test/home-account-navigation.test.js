@@ -11,6 +11,7 @@ test('homepage gives returning users a real account entry without changing the c
   const client = read('public/js/home-account-nav.js');
 
   assert.match(home, /class="sg-home-page"/);
+  assert.match(home, /\.sg-home-header \{[\s\S]*?width: 100%;[\s\S]*?padding: 14px clamp\(24px, 3vw, 64px\)/);
   assert.match(home, /data-home-account-shell data-loading="true"/);
   assert.match(home, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
   assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);

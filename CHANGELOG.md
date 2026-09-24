@@ -2,6 +2,14 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.132
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Wide-desktop account alignment
+
+* The homepage account control now aligns with the browser's right edge on wide desktop screens instead of stopping at the centered content column. The hero remains centered, while the existing phone header spacing and navigation behavior are unchanged.
+
 ## 1.0.131
 
 Released September 23, 2026. Built and deployed by Codex.

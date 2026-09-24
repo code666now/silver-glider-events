@@ -89,13 +89,14 @@
     .sg-home-header {
       position: relative;
       z-index: 12;
-      width: min(1120px, calc(100% - 48px));
+      width: 100%;
       min-height: 78px;
       display: flex;
       align-items: center;
       justify-content: flex-end;
       margin: 0 auto;
-      padding: 14px 0;
+      padding: 14px clamp(24px, 3vw, 64px);
+      box-sizing: border-box;
     }
     .sg-home-account-shell { min-width: 86px; min-height: 48px; display: flex; align-items: center; justify-content: flex-end; }
     .sg-home-account-shell [hidden] { display: none !important; }
