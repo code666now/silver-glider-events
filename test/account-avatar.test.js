@@ -92,10 +92,18 @@ test('desktop navigation moves Settings and sign out into the account menu', () 
   const styles = read('public/css/main.css');
   const settings = read('src/views/settings-v2.html');
 
-  assert.match(shell, /class="sg-account-avatar"/);
-  assert.match(shell, /class="sg-account-popover" role="menu" hidden/);
-  assert.match(shell, /href="\/settings\/account" role="menuitem">Settings/);
-  assert.match(shell, /class="sg-account-menu-signout"[^>]*role="menuitem">Sign out/);
+  assert.match(shell, /class="sg-account-trigger"/);
+  assert.match(shell, /class="sg-account-avatar" data-sg-avatar/);
+  assert.match(shell, /class="sg-account-popover"[^>]*role="menu" hidden/);
+  assert.match(shell, /href="\/dashboard" role="menuitem"/);
+  assert.match(shell, /href="\/events" role="menuitem"/);
+  assert.match(shell, /href="\/events\/new" role="menuitem"/);
+  assert.match(shell, /data-sg-account-host href="\/settings\/host-page" role="menuitem"/);
+  assert.match(shell, /href="\/settings" role="menuitem"/);
+  assert.match(shell, /class="sg-account-menu-signout"[^>]*role="menuitem"/);
+  assert.match(shell, /function bindAccountMenu\(menu/);
+  assert.match(shell, /event\.key === 'ArrowDown'/);
+  assert.match(shell, /event\.key === 'Escape'/);
   assert.match(shell, /function updateNavAccount\(organizer\)/);
   assert.match(styles, /\.sg-nav-links \.sg-nav-settings-link \{ display: none; \}/);
   assert.match(styles, /@media \(max-width: 1023px\)[\s\S]*\.sg-nav-links \.sg-nav-settings-link \{ display: block; \}/);

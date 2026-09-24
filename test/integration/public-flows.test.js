@@ -5428,6 +5428,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
   // Unchanged flow: the home CTA still goes through sign-in, but lands in the builder.
   const home = await (await fetch(`${baseUrl}/`)).text();
+  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);
   assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event</);
   const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(signedInLogin.headers.get('location'), '/events/new');

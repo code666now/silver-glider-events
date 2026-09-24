@@ -70,7 +70,7 @@ test('phone feedback returns focus to the menu while desktop feedback returns to
   const styles = read('public/css/main.css');
   const manage = read('public/js/manage.js');
 
-  assert.match(api, /\[bubble, document\.querySelector\('\.sg-legal-feedback'\), document\.querySelector\('\.sg-nav-toggle'\)\]/);
+  assert.match(api, /\[bubble, document\.querySelector\('\.sg-legal-feedback'\), document\.querySelector\('\.sg-nav-toggle'\), document\.querySelector\('\.sg-account-trigger'\)\]/);
   assert.match(api, /document\.querySelector\('\.sg-legal-feedback'\)/);
   assert.match(api, /candidate\.getClientRects\(\)\.length/);
   assert.match(api, /style\.display !== 'none' && style\.visibility !== 'hidden'/);

@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.131
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning account navigation
+
+* The public homepage now gives signed-out visitors a direct **Sign in** path to the dashboard. Returning people see their real RSVP photo—or initials and account name—without needing to enter the Create Event flow first.
+* Desktop opens a compact account menu with Dashboard, My Events, Create Event, Hosts, Host Page, Messaging, Profile, Settings, Feedback, and Sign out. The Admin destination appears only when the browser also has an authorized, separate admin session.
+* Phone-sized screens use the same identity in a thumb-friendly avatar and hamburger entry, then open the established full-screen Silver Glider menu with the matching destinations. Existing event-creation and authentication behavior is unchanged.
+
+### Accessibility and release safety
+
+* The desktop menu supports arrow keys, Home/End, Escape, outside-click dismissal, visible focus, and 44px minimum targets. Host Page links adapt to whether the person has already created a public page.
+* The release was verified signed out and signed in at desktop and phone sizes, at both sides of the 880px breakpoint, and through the shared dashboard navigation. The full 462-test suite passed.
+
 ## 1.0.130
 
 Released September 23, 2026. Built and deployed by Codex.

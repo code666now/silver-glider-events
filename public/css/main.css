@@ -44,10 +44,30 @@
 }
 .sg-admin-signout { min-height: 40px; padding: 8px 14px; font-size: 11px; }
 .sg-account-menu { position: relative; }
+.sg-account-trigger {
+  min-height: 46px;
+  max-width: 230px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--sg-text);
+  font: 700 13px var(--sg-font-body);
+  cursor: pointer;
+}
+@media (hover: hover) { .sg-account-trigger:hover { border-color: var(--sg-border); background: rgba(255,255,255,.025); } }
+.sg-account-trigger:focus-visible { outline: 2px solid rgba(28,197,190,.48); outline-offset: 2px; }
+.sg-account-trigger-name { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.sg-account-trigger-chevron { width: 18px; height: 18px; fill: none; stroke: var(--sg-text-dim); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.sg-account-trigger[aria-expanded="true"] .sg-account-trigger-chevron { transform: rotate(180deg); }
 .sg-account-avatar {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -56,10 +76,7 @@
   background: rgba(255,255,255,.035);
   color: var(--sg-text);
   font: 700 12px var(--sg-font-body);
-  cursor: pointer;
 }
-@media (hover: hover) { .sg-account-avatar:hover { border-color: rgba(255,255,255,.22); } }
-.sg-account-avatar:focus-visible { outline: 2px solid rgba(28,197,190,.38); outline-offset: 3px; }
 .sg-account-avatar-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .sg-account-avatar-image[hidden],.sg-account-avatar-fallback[hidden] { display: none; }
 .sg-account-popover {
@@ -67,30 +84,53 @@
   top: calc(100% + 11px);
   right: 0;
   z-index: 40;
-  width: 220px;
-  padding: 9px;
+  width: min(310px, calc(100vw - 32px));
+  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--sg-border);
-  border-radius: 17px;
-  background: rgba(18,18,20,.98);
+  border-radius: 20px;
+  background: rgba(16,16,18,.98);
   box-shadow: var(--sg-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 .sg-account-popover[hidden] { display: none; }
-.sg-account-menu-identity { padding: 10px 11px 12px; border-bottom: 1px solid var(--sg-border-soft); }
+.sg-account-menu-identity { padding: 10px 12px 13px; }
 .sg-account-menu-identity strong,.sg-account-menu-identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sg-account-menu-identity strong { font-size: 13px; }
+.sg-account-menu-identity strong { font-size: 14px; }
 .sg-account-menu-identity span { margin-top: 2px; color: var(--sg-text-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
+.sg-account-popover-group { padding: 6px 0; border-top: 1px solid var(--sg-border-soft); }
+.sg-account-popover-group[hidden] { display: none; }
 .sg-account-popover a,.sg-account-popover button {
   width: 100%;
-  display: block;
-  padding: 10px 11px;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: var(--sg-text-dim);
   text-align: left;
   font: 600 13px var(--sg-font-body);
   cursor: pointer;
 }
+.sg-account-popover .sg-menu-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--sg-text-dim);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sg-account-popover .sg-account-menu-create { color: var(--sg-accent); }
+.sg-account-popover-signout button { color: var(--sg-text-faint); }
 @media (hover: hover) { .sg-account-popover a:hover, .sg-account-popover button:hover { background: rgba(255,255,255,.045); color: var(--sg-text); } }
 .sg-account-popover a:focus-visible,.sg-account-popover button:focus-visible { outline: 2px solid rgba(28,197,190,.32); outline-offset: -2px; }
 .sg-nav-toggle {
