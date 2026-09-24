@@ -22,7 +22,10 @@ const safeNext = value => {
   try {
     const parsed = new URL(next, 'http://silver-glider.local');
     if (parsed.origin !== 'http://silver-glider.local') return '';
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//') ||
+        normalized.includes('\\') || /%5c/i.test(normalized)) return '';
+    return normalized;
   } catch (_) {
     return '';
   }

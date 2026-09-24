@@ -84,8 +84,8 @@
     <p class="sg-label" style="margin-bottom:28px">Silver Glider Events</p>
 
     <div id="phone-state" hidden>
-      <p class="auth-progress" id="phone-progress">Create your event</p>
-      <h1 class="auth-heading" id="phone-heading">Start with your phone</h1>
+      <p class="auth-progress" id="phone-progress">Sign in</p>
+      <h1 class="auth-heading" id="phone-heading">Sign in with your phone</h1>
       <p class="auth-copy" id="phone-copy">We’ll text you a 6-digit code and remember you on this device.</p>
       <p class="auth-error" id="phone-error" role="alert"></p>
       <form id="phone-form">
@@ -173,11 +173,24 @@
   <script>
     const params = new URLSearchParams(location.search);
     const requestedNext = params.get('next') || '';
-    const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '';
+    function safeNext(value) {
+      const candidate = String(value || '').trim().slice(0, 700);
+      if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\') || /%5c/i.test(candidate)) return '';
+      try {
+        const parsed = new URL(candidate, location.origin);
+        if (parsed.origin !== location.origin) return '';
+        const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        if (!normalized.startsWith('/') || normalized.startsWith('//') || normalized.includes('\\') || /%5c/i.test(normalized)) return '';
+        return normalized;
+      } catch (_) {
+        return '';
+      }
+    }
+    const next = safeNext(requestedNext);
     const invitationAuthFlow = /^\/host-invitation\/[a-z0-9-]{12,220}$/.test(next);
-    const creatorPhoneFlow = next === '/events/new' || next.startsWith('/events/new?') || invitationAuthFlow;
-    const invitationPhoneFirst = invitationAuthFlow && matchMedia('(max-width: 879px)').matches;
-    const initialPhoneState = creatorPhoneFlow && (!invitationAuthFlow || invitationPhoneFirst);
+    const eventCreationAuthFlow = next === '/events/new' || next.startsWith('/events/new?');
+    const phoneSizedDevice = matchMedia('(max-width: 879px)').matches;
+    const initialPhoneState = phoneSizedDevice;
     let returningGuest = null;
     let lastRequest = null;
     let phoneNumber = '';
@@ -211,8 +224,11 @@
         document.getElementById('phone-progress').textContent = `Host invitation · ${hostName}`;
         document.getElementById('email-progress').textContent = `Host invitation · ${hostName}`;
       }).catch(() => {});
+    } else if (eventCreationAuthFlow) {
+      document.getElementById('phone-progress').textContent = 'Create your event';
+      document.getElementById('phone-heading').textContent = 'Start with your phone';
     }
-    usePhoneInstead.hidden = !creatorPhoneFlow;
+    usePhoneInstead.hidden = false;
 
     function showState(activeId) {
       stateIds.forEach(id => {
@@ -255,7 +271,7 @@
     }
 
     function showEmailLogin() {
-      if (creatorPhoneFlow) fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
+      fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
       emailBindingMode = false;
       lastRequest = null;
       showCodeError('');
@@ -311,7 +327,7 @@
       document.getElementById('code-expiry').textContent = bindingPhone
         ? 'The code expires in 15 minutes.'
         : 'The code and link expire in 15 minutes.';
-      document.getElementById('restart-phone').hidden = !creatorPhoneFlow;
+      document.getElementById('restart-phone').hidden = false;
       document.getElementById('restart-phone').textContent = bindingPhone ? 'Use a different phone' : 'Use phone instead';
       codeSubmit.textContent = bindingPhone ? 'Finish' : 'Sign in';
       codeSubmit.disabled = false;
@@ -501,7 +517,7 @@
       .then(guest => {
         if (!guest?.recognized) return;
         returningGuest = guest;
-        if (!creatorPhoneFlow || !document.getElementById('form-state').hidden) renderReturningGuest();
+        if (!document.getElementById('form-state').hidden) renderReturningGuest();
       }).catch(() => {});
     document.getElementById('different-email').addEventListener('click', async () => {
       await fetch('/api/public/guest-session/forget', { method: 'POST' }).catch(() => {});

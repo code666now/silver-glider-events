@@ -75,17 +75,26 @@ const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function safeNext(value) {
-  const next = String(value || '').trim();
-  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+  const next = String(value || '').trim().slice(0, 700);
+  if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || /%5c/i.test(next)) return '';
+  try {
+    const parsed = new URL(next, 'http://silver-glider.local');
+    if (parsed.origin !== 'http://silver-glider.local') return '';
+    const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//') ||
+        normalized.includes('\\') || /%5c/i.test(normalized)) return '';
+    return normalized;
+  } catch (_) {
+    return '';
+  }
 }
 
-// Phone-first auth is intentionally reserved for the high-intent creator
-// journey. Guest RSVP, Follow Host, photo links, and ordinary account login
-// keep their existing email-first boundaries.
-function creatorNext(value) {
-  const next = safeNext(value);
-  const hostInvitation = /^\/host-invitation\/[a-z0-9-]{12,220}$/.test(next);
-  return next === '/events/new' || next.startsWith('/events/new?') || hostInvitation ? next : '';
+// Phone sign-in shares the same safe, same-origin destinations as email sign-in.
+// An omitted destination is an ordinary account login and returns to Dashboard;
+// an explicitly unsafe destination is rejected before an SMS is sent.
+function phoneSignInNext(value) {
+  const requested = String(value || '').trim();
+  return requested ? safeNext(requested) : '/dashboard';
 }
 
 // In-memory limits (single instance, reset on deploy — fine at this scale).
@@ -287,19 +296,20 @@ router.post('/api/auth/guest-code', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Creator-only phone-first entry. Twilio Verify proves both new and returning
-// phones so authentication never shares a sender with lifecycle/marketing SMS.
+// Twilio Verify proves both new and returning phones so authentication never
+// shares a sender with lifecycle/marketing SMS. A new phone still needs inbox
+// proof before it can be connected to an account.
 // The response deliberately does not reveal whether the phone exists.
 router.post('/api/auth/phone/start', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
   const startedAt = Date.now();
   let phone;
   try {
-    const returnPath = creatorNext(req.body?.next);
+    const returnPath = phoneSignInNext(req.body?.next);
     if (!returnPath) {
       return res.status(400).json({
-        error: 'creator_phone_auth_only',
-        message: 'Phone sign-in is available when creating an event.'
+        error: 'invalid_return_path',
+        message: 'Start again from a Silver Glider sign-in page.'
       });
     }
     phone = sms.normalizeE164(req.body?.phone);
@@ -449,7 +459,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         setSessionCookie(res, account.id);
         setIdentityStepUpCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
-        return res.json({ ok: true, redirect: creatorNext(locked.return_path) || '/events/new' });
+        return res.json({ ok: true, redirect: phoneSignInNext(locked.return_path) || '/dashboard' });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -519,7 +529,7 @@ router.post('/api/auth/phone/email', async (req, res, next) => {
     const { code, requestToken } = await createSignInChallenge(pool, {
       email,
       intent: 'bind_phone',
-      returnPath: creatorNext(challenge.return_path) || '/events/new',
+      returnPath: phoneSignInNext(challenge.return_path) || '/dashboard',
       phoneAuthChallengeId: challenge.id
     });
     await sendAccountVerificationCode({ to: email, code });

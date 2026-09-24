@@ -6,19 +6,21 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('phone authentication narrowly accepts host-invitation onboarding destinations', () => {
+test('phone authentication accepts safe Silver Glider destinations and rejects unsafe redirects', () => {
   const auth = read('src/routes/auth.js');
-  const creatorNext = auth.slice(
-    auth.indexOf('function creatorNext'),
+  const destinationHelpers = auth.slice(
+    auth.indexOf('function safeNext'),
     auth.indexOf('// In-memory limits')
   );
 
-  assert.ok(creatorNext.includes(
-    'const hostInvitation = /^\\/host-invitation\\/[a-z0-9-]{12,220}$/.test(next);'
-  ));
-  assert.match(creatorNext, /next === '\/events\/new'/);
-  assert.match(creatorNext, /next\.startsWith\('\/events\/new\?'\)/);
-  assert.equal(creatorNext.includes("startsWith('/host-invitation/"), false);
+  assert.match(destinationHelpers, /next\.startsWith\('\/'\)/);
+  assert.match(destinationHelpers, /next\.startsWith\('\/\/'\)/);
+  assert.match(destinationHelpers, /next\.includes\('\\\\'\)/);
+  assert.match(destinationHelpers, /\/%5c\/i/);
+  assert.match(destinationHelpers, /const normalized =/);
+  assert.match(destinationHelpers, /normalized\.startsWith\('\/\/'\)/);
+  assert.match(destinationHelpers, /function phoneSignInNext/);
+  assert.match(destinationHelpers, /return requested \? safeNext\(requested\) : '\/dashboard'/);
 });
 
 test('invitation sign-in reuses one auth UI with device-aware emphasis and both methods', () => {
@@ -28,13 +30,16 @@ test('invitation sign-in reuses one auth UI with device-aware emphasis and both 
     'const invitationAuthFlow = /^\\/host-invitation\\/[a-z0-9-]{12,220}$/.test(next);'
   ));
   assert.match(login, /matchMedia\('\(max-width: 879px\)'\)\.matches/);
-  assert.match(login, /const initialPhoneState = creatorPhoneFlow && \(!invitationAuthFlow \|\| invitationPhoneFirst\)/);
+  assert.match(login, /const initialPhoneState = phoneSizedDevice/);
   assert.match(login, /if \(initialPhoneState\) \{[\s\S]*showState\('phone-state'\)/);
   assert.match(login, /id="use-phone-instead" hidden>Use phone instead<\/button>/);
-  assert.match(login, /usePhoneInstead\.hidden = !creatorPhoneFlow/);
+  assert.match(login, /usePhoneInstead\.hidden = false/);
   assert.match(login, /usePhoneInstead\.addEventListener\('click', showPhoneLogin\)/);
   assert.match(login, /class="auth-secondary use-email-instead"[^>]*>Use email instead<\/button>/);
-  assert.match(login, /document\.getElementById\('restart-phone'\)\.hidden = !creatorPhoneFlow/);
+  assert.match(login, /document\.getElementById\('restart-phone'\)\.hidden = false/);
+  assert.match(login, /id="phone-progress">Sign in<\/p>/);
+  assert.match(login, /id="phone-heading">Sign in with your phone<\/h1>/);
+  assert.match(login, /else if \(eventCreationAuthFlow\) \{[\s\S]*Create your event[\s\S]*Start with your phone/);
 });
 
 test('invitation sign-in explains the Host Page journey with approved product copy', () => {

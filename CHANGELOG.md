@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.134
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning phone sign-in
+
+* A verified phone can now sign in from the ordinary Silver Glider login and return to the requested same-origin app page, instead of being incorrectly limited to the Create Event journey. Desktop remains email-first with a clear **Use phone instead** choice; phone-sized screens lead with phone verification and retain **Use email instead**.
+* First-time or unbound phones still require both SMS proof and a one-time verified email before an account is created or connected. Administrator accounts remain email-only, and suspension, rate limits, session revocation, replay protection, and collision safeguards are unchanged.
+
+### Redirect and regression safety
+
+* Phone authentication now rejects external, protocol-relative, backslash, and encoded-backslash destinations before sending a text. Create Event and personalized Host invitation copy and destinations are preserved.
+* The corrected flow was verified at desktop and phone sizes, including Dashboard/Profile returns, email/phone switching, unsafe destinations, new-phone enrollment, returning-phone sessions, and administrator rejection.
+
 ## 1.0.133
 
 Released September 23, 2026. Built and deployed by Codex.

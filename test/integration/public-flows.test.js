@@ -3746,7 +3746,7 @@ test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempo
 // Sign-in hardening and returning guests (v1.0.85)
 // ---------------------------------------------------------------------------
 
-test('creator phone onboarding requires phone and inbox proof, then remembers the verified phone', async () => {
+test('phone sign-in requires phone and inbox proof, then remembers the verified phone', async () => {
   resetRateLimits();
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
@@ -3777,16 +3777,27 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.equal(crossSite.status, 403, 'another site cannot trigger verification texts');
     assert.equal(providerStarts, 0);
 
-    const outOfScope = await fetch(`${baseUrl}/api/auth/phone/start`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/dashboard' })
-    });
-    assert.equal(outOfScope.status, 400, 'phone-first auth is creator-only');
-    assert.equal(providerStarts, 0);
+    for (const unsafeNext of [
+      'https://evil.example/dashboard',
+      '//evil.example/dashboard',
+      '/\\evil.example/dashboard',
+      '/%5Cevil.example/dashboard',
+      '/.//evil.example/dashboard',
+      '/..//evil.example/dashboard',
+      '/%2e%2e//evil.example/dashboard'
+    ]) {
+      const unsafeStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ phone, next: unsafeNext })
+      });
+      assert.equal(unsafeStart.status, 400, `unsafe return path is rejected: ${unsafeNext}`);
+      assert.equal((await unsafeStart.json()).error, 'invalid_return_path');
+    }
+    assert.equal(providerStarts, 0, 'an unsafe destination never triggers a verification text');
 
     const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone: '(415) 555-0188', next: '/events/new' })
+      body: JSON.stringify({ phone: '(415) 555-0188', next: '/dashboard' })
     });
     assert.equal(started.status, 200);
     const firstStartBody = await started.json();
@@ -3851,10 +3862,19 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
       body: JSON.stringify({ code: emailMessage.code })
     });
     assert.equal(completed.status, 200);
-    assert.equal((await completed.json()).redirect, '/events/new');
+    assert.equal((await completed.json()).redirect, '/dashboard');
     const sessionCookie = responseCookie(completed, 'sge_session');
     assert.ok(sessionCookie);
-    assert.equal((await fetch(`${baseUrl}/events/new`, { headers: { cookie: sessionCookie } })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/dashboard`, { headers: { cookie: sessionCookie } })).status, 200);
+    for (const poisonedNext of ['/.//evil.example/path', '/..//evil.example/path', '/%2e%2e//evil.example/path']) {
+      const loginRedirect = await fetch(
+        `${baseUrl}/login?next=${encodeURIComponent(poisonedNext)}`,
+        { redirect: 'manual', headers: { cookie: sessionCookie } }
+      );
+      assert.equal(loginRedirect.status, 302);
+      assert.equal(loginRedirect.headers.get('location'), '/dashboard',
+        'normalized dot segments cannot become a protocol-relative redirect');
+    }
     const credential = (await pool.query(
       'SELECT organizer_id,phone_e164 FROM account_phone_credentials WHERE revoked_at IS NULL'
     )).rows[0];
@@ -3889,7 +3909,7 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     );
     const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone, next: '/profile' })
     });
     assert.equal(returningStart.status, 200);
     assert.deepEqual(await returningStart.clone().json(), firstStartBody,
@@ -3906,7 +3926,7 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
       body: JSON.stringify({ code: '123456' })
     });
     assert.equal(returningVerify.status, 200);
-    assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/events/new' });
+    assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/profile' });
     assert.equal(providerChecks, 2);
     const returningSession = responseCookie(returningVerify, 'sge_session');
     assert.ok(returningSession);
@@ -3924,10 +3944,15 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
 
     const pendingStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone })
     });
     assert.equal(pendingStart.status, 200);
     assert.equal(providerStarts, 3);
+    assert.equal((await pool.query(
+      `SELECT return_path FROM phone_auth_challenges
+        WHERE phone_e164=$1 AND used_at IS NULL ORDER BY id DESC LIMIT 1`,
+      [phone]
+    )).rows[0].return_path, '/dashboard', 'plain phone sign-in defaults to Dashboard');
     const logoutAll = await fetch(`${baseUrl}/api/auth/logout-all`, {
       method: 'POST', headers: { cookie: returningSession }
     });
