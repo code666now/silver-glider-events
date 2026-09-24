@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.133
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Desktop Profile composition
+
+* The signed-in Profile page now expands into a balanced desktop workspace: identity and profile actions sit in one column while event activity and Host Page access sit in a second. The shared navigation uses the wider desktop frame instead of remaining inside a phone-sized column.
+* Phone layout, account data, profile-photo behavior, event totals, and Host Page destinations remain unchanged. The responsive transition was verified at 879px and 880px with no horizontal overflow, and the full 463-test suite passed.
+
 ## 1.0.132
 
 Released September 23, 2026. Built and deployed by Codex.

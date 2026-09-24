@@ -143,3 +143,16 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(profile, /profile'\)\.setAttribute\('aria-busy', 'false'\)/);
   assert.match(profile, /fetch\('\/api\/uploads\/avatar'/);
 });
+
+test('profile keeps the phone flow and uses a balanced desktop layout', () => {
+  const profile = read('src/views/profile.html');
+
+  assert.match(profile, /\.profile-layout, \.profile-aside \{ display: contents; \}/);
+  assert.match(profile, /@media \(min-width: 880px\) \{[\s\S]*?\.profile-shell \{ max-width: 1080px;[\s\S]*?\.profile-layout \{[\s\S]*?grid-template-columns: minmax\(0, 1\.15fr\) minmax\(300px, \.85fr\);[\s\S]*?\.profile-aside \{ display: block;/);
+  assert.ok(profile.indexOf('id="profile"') < profile.indexOf('class="profile-aside"'));
+  assert.ok(profile.indexOf('class="profile-aside"') < profile.indexOf('id="stat-attended"'));
+  assert.ok(profile.indexOf('id="stat-attended"') < profile.indexOf('id="stat-hosted"'));
+  assert.ok(profile.indexOf('id="stat-hosted"') < profile.indexOf('id="profile-host"'));
+  assert.match(profile, /id="profile-status" role="status" aria-live="polite"/);
+  assert.match(profile, /id="profile-stats-status" role="status" aria-live="polite"/);
+});
