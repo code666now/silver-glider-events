@@ -436,11 +436,10 @@ async function send({ to, subject, html, attachments, replyTo }) {
 function signInCodeBlock(code) {
   const digits = String(code || '').replace(/\D/g, '');
   if (!digits) return '';
-  const spaced = `${digits.slice(0, 3)} ${digits.slice(3)}`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;margin:0 0 8px;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:14px">
     <tr><td align="center" style="padding:22px 18px">
       <p style="color:#8f8f8f;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px">Your code</p>
-      <p style="color:#f4f4f4;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:.16em;line-height:1;margin:0">${esc(spaced)}</p>
+      <p style="color:#f4f4f4;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:.16em;line-height:1;margin:0">${esc(digits)}</p>
     </td></tr>
   </table>`;
 }
@@ -873,5 +872,5 @@ module.exports = {
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
-  renderSharedEmailLayout: layout, rsvpConfirmationSubject
+  renderSharedEmailLayout: layout, renderEmailCodeBlock: signInCodeBlock, rsvpConfirmationSubject
 };

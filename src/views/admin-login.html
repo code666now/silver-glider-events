@@ -59,13 +59,14 @@
       <form id="code-form" novalidate>
         <div class="sg-field">
           <label for="admin-code">Passcode</label>
-          <input class="sg-input admin-auth-code" id="admin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required>
+          <input class="sg-input admin-auth-code" id="admin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required data-email-code>
         </div>
         <button class="sg-btn sg-btn-primary sg-btn-block" id="code-submit" type="submit">Sign in</button>
       </form>
       <button class="admin-auth-secondary" id="different-email" type="button">Use a different email</button>
     </section>
   </main>
+  <script src="/js/email-code-input.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
     const candidateNext = params.get('next') || '';

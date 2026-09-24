@@ -2,6 +2,16 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.135
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Copy-and-paste verification codes
+
+* Six-digit email verification codes now contain six contiguous digits, so copying from an email pastes the complete code without an invisible formatting trap. The existing visual letter spacing remains for readability.
+* Email-code fields now normalize spaces, hyphens, and nonbreaking spaces before the browser's six-character limit can truncate a pasted code. This covers customer sign-in, RSVP and Host follow verification, account email verification, administrator sign-in, and administrator security confirmations.
+* SMS verification and private-event access codes remain unchanged. Focused paste and email-rendering regressions were added alongside the full release suite.
+
 ## 1.0.134
 
 Released September 23, 2026. Built and deployed by Codex.

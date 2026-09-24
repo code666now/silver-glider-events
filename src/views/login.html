@@ -157,7 +157,7 @@
       <h1 class="auth-heading" id="sent-heading">Check your email</h1>
       <p class="auth-copy" id="sent-copy" style="margin-bottom:22px"><span id="sent-prefix">Enter the 6-digit code we sent to </span><strong id="sent-email" style="color:var(--sg-text)"></strong><span id="sent-suffix">, or tap the link in that email.</span></p>
       <form id="code-form" class="sg-code-row auth-code-row" novalidate>
-        <input class="sg-input sg-code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" placeholder="000000">
+        <input class="sg-input sg-code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" placeholder="000000" data-email-code>
         <button class="sg-btn sg-btn-primary" type="submit" id="code-submit">Sign in</button>
       </form>
       <p class="sg-code-error" id="code-error" role="alert"></p>
@@ -170,6 +170,7 @@
     </div>
   </main>
 
+  <script src="/js/email-code-input.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
     const requestedNext = params.get('next') || '';

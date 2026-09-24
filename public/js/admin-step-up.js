@@ -17,7 +17,7 @@
         <form id="admin-step-up-form">
           <div class="sg-field">
             <label for="admin-step-up-code">Confirmation code</label>
-            <input class="sg-input admin-step-up-code" id="admin-step-up-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+            <input class="sg-input admin-step-up-code" id="admin-step-up-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required data-email-code>
           </div>
           <p class="admin-step-up-status" id="admin-step-up-status" role="status" aria-live="polite"></p>
           <div class="admin-step-up-actions">

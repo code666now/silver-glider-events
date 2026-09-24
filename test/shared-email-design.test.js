@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { renderSharedEmailLayout } = require('../src/lib/mailer');
+const { renderSharedEmailLayout, renderEmailCodeBlock } = require('../src/lib/mailer');
 
 test('shared emails use the premium Silver Glider visual system', () => {
   const html = renderSharedEmailLayout({
@@ -52,4 +52,12 @@ test('shared email layout preserves purpose-specific content and escapes user-fa
   assert.match(html, /from=email&amp;host=a/);
   assert.match(html, /data-preserved/);
   assert.match(html, /data-unsubscribe/);
+});
+
+test('emailed verification codes copy as six contiguous digits', () => {
+  const html = renderEmailCodeBlock('549218');
+
+  assert.match(html, />549218<\/p>/);
+  assert.doesNotMatch(html, /549 218/);
+  assert.match(html, /letter-spacing:\.16em/);
 });

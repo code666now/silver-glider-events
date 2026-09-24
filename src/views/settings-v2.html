@@ -239,7 +239,7 @@
     </form>
     <form class="identity-dialog-form" id="identity-code-form" hidden>
       <label for="identity-code">6-digit code</label>
-      <input class="sg-input identity-code-input" id="identity-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" aria-describedby="identity-code-help">
+      <input class="sg-input identity-code-input" id="identity-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" aria-describedby="identity-code-help" data-email-code>
       <p class="identity-code-help" id="identity-code-help"></p>
       <button class="sg-btn sg-btn-primary" id="identity-code-submit" type="submit">Verify</button>
     </form>
@@ -277,6 +277,7 @@
     </div>
   </dialog>
 
+  <script src="/js/email-code-input.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/image-optimizer.js"></script>
   <script src="/js/settings.js"></script>

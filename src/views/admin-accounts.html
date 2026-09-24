@@ -336,7 +336,7 @@
         <form id="delete-account-step-up-form">
           <div class="sg-field">
             <label for="delete-account-code">Confirmation code</label>
-            <input class="sg-input accounts-delete-code" id="delete-account-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" aria-describedby="delete-account-code-help" required>
+            <input class="sg-input accounts-delete-code" id="delete-account-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" aria-describedby="delete-account-code-help" required data-email-code>
             <p class="accounts-field-help" id="delete-account-code-help">Sending a fresh code…</p>
           </div>
           <p class="accounts-form-error" id="delete-account-step-up-error" role="alert"></p>
@@ -351,6 +351,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/admin-shell.js"></script>
+  <script src="/js/email-code-input.js"></script>
   <script src="/js/admin-accounts.js"></script>
 </body>
 </html>

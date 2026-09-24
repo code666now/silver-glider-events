@@ -185,7 +185,7 @@
       <div class="follow-modal-sent" id="follow-sent">
         <p>Check your email. Enter the 6-digit code, or tap the link we sent, to verify your address and follow {{HOST_NAME}}.</p>
         <form class="sg-code-row" id="follow-code-form" novalidate>
-          <input class="sg-input sg-code-input" id="follow-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
+          <input class="sg-input sg-code-input" id="follow-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" data-email-code>
           <button class="sg-btn sg-btn-primary" type="submit" id="follow-code-submit">Verify</button>
         </form>
         <p class="sg-code-error" id="follow-code-error" role="alert"></p>
@@ -203,6 +203,7 @@
       </div>
     </div>
   </div>
+  <script src="/js/email-code-input.js"></script>
   <script>
     (() => {
       const root = document.querySelector('[data-host-follow]');

@@ -261,7 +261,7 @@ function confirmItsYou({ container, codeRequest, title, onVerified }) {
     <p class="sg-code-title" id="sg-code-title"></p>
     <p class="sg-code-copy" data-code-copy>Sending a 6-digit code…</p>
     <form class="sg-code-row" data-code-form novalidate>
-      <input class="sg-input sg-code-input" data-code-input inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
+      <input class="sg-input sg-code-input" data-code-input data-email-code inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
       <button class="sg-btn sg-btn-primary" type="submit" data-code-submit>Verify</button>
     </form>
     <p class="sg-code-error" data-code-error role="alert"></p>

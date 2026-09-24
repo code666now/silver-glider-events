@@ -423,7 +423,9 @@ function configureIdentityDialog({ eyebrow = 'Account security', title, copy, en
   settingsElement('identity-entry-form').hidden = !entry;
   settingsElement('identity-code-form').hidden = Boolean(entry);
   setIdentityDialogStatus('');
-  settingsElement('identity-code').value = '';
+  const codeInput = settingsElement('identity-code');
+  codeInput.value = '';
+  codeInput.toggleAttribute('data-email-code', identityDialogMode !== 'add-phone');
 
   if (entry) {
     const input = settingsElement('identity-entry');
