@@ -33,7 +33,7 @@ test('phone event management uses one task hub and the original action controls'
   assert.match(client, /history\[mode === 'replace' \? 'replaceState' : 'pushState'\]/);
   assert.match(client, /fromView: mode === 'push'[\s\S]*current\?\.view === view \? current\.fromView : null/);
   assert.match(client, /data-manage-mobile-open[\s\S]*historyMode: 'push'/);
-  assert.match(client, /current\.fromView === 'home'\) history\.back\(\)/);
+  assert.match(client, /current\.fromView\) history\.back\(\)/);
   assert.match(client, /addEventListener\('popstate'[\s\S]*setMobileManageView\(entry\.view, \{ historyMode: 'none' \}\)/);
   assert.match(client, /clearMobileManageHistory\(\)[\s\S]*activeMobileManageView = 'home'/);
   assert.match(view, /class="manage-mobile-screen-intro"[\s\S]*<h1 class="sr-only" id="manage-mobile-screen-title">Overview<\/h1>/);
@@ -42,6 +42,17 @@ test('phone event management uses one task hub and the original action controls'
   for (const id of ['view-link', 'copy-link', 'edit-link', 'duplicate', 'cancel-event', 'delete-event']) {
     assert.equal((view.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `${id} stays a single control`);
   }
+});
+
+test('Invite Familiar Faces opens the shared picker as a phone Guests task', () => {
+  const view = read('src/views/event-manage.html');
+  const client = read('public/js/manage.js');
+
+  assert.match(view, /id="familiar-people" role="region" aria-labelledby="familiar-people-title" tabindex="-1" hidden/);
+  assert.match(view, /id="familiar-people-title"[^>]*>Invite your people</);
+  assert.match(client, /\$\('invite-previous-guests'\)\.addEventListener\('click',[\s\S]*mobileManageLayout\.matches[\s\S]*setMobileManageView\('guests', \{ focus: false, historyMode: 'push' \}\)/);
+  assert.match(client, /requestAnimationFrame\(\(\) => window\.requestAnimationFrame\(openPicker\)\)/);
+  assert.match(client, /mobileManageLayout\.matches \? familiarPeople : \$\('search'\)/);
 });
 
 test('phone management sizing, focus, and safe areas stay below the 880px split', () => {
