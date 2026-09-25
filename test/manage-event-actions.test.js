@@ -68,6 +68,9 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /\$\('hero-link'\)\.href = manageImage/);
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);
   assert.match(client, /class="familiar-face-name"/);
+  assert.match(client, /\$\('view-link'\)\.href = eventUrl\(\);/);
+  assert.match(client, /\$\('edit-link'\)\.href = `\/events\/\$\{encodeURIComponent\(event\.id\)\}\/edit`;/);
+  assert.doesNotMatch(client, /\$\('edit-link'\)\.href = `\/e\/[^`]+\?edit=/);
   assert.match(source('src/views/event-manage.html'), /id="sms-audience"[^>]*hidden[^>]*disabled/);
   assert.match(client, /button\.hidden = !preview\.reminderEnabled && !preview\.batch/);
   assert.match(client, /smsPreviewState\?\.needsFunds/);

@@ -366,7 +366,7 @@ async function loadEvent() {
   }
 
   $('view-link').href = eventUrl();
-  $('edit-link').href = `/e/${encodeURIComponent(event.slug)}?edit=details`;
+  $('edit-link').href = `/events/${encodeURIComponent(event.id)}/edit`;
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';

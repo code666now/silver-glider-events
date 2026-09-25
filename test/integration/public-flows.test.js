@@ -5584,7 +5584,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
   const edit = await fetch(`${baseUrl}/events/${event.id}/edit`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(edit.status, 302);
-  assert.equal(edit.headers.get('location'), `/e/${event.slug}?edit=details`);
+  assert.equal(edit.headers.get('location'), `/events/new?id=${event.id}&advanced=1`);
 
   const signedOut = await fetch(`${baseUrl}/events/${event.id}`, { redirect: 'manual' });
   assert.equal(signedOut.headers.get('location'), '/login');

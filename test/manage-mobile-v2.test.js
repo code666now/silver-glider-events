@@ -22,6 +22,7 @@ test('phone event management uses one task hub and the original action controls'
   assert.match(client, /mobileManageLayout = window\.matchMedia\('\(max-width: 879px\)'\)/);
   assert.match(client, /\$\('manage-mobile-preview-slot'\)\.append\(viewLink\)/);
   assert.match(client, /\$\('manage-mobile-edit-slot'\)\.append\(\$\('edit-link'\)\)/);
+  assert.match(client, /\$\('edit-link'\)\.href = `\/events\/\$\{encodeURIComponent\(event\.id\)\}\/edit`;/);
   assert.match(client, /mobileEditMarker\.parentNode\.insertBefore\(\$\('edit-link'\), mobileEditMarker\.nextSibling\)/);
   assert.match(client, /mobilePreviewMarker\.parentNode\.insertBefore\(viewLink, mobilePreviewMarker\.nextSibling\)/);
   assert.match(client, /setMobileManageView\('home'/);

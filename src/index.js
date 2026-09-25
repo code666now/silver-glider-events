@@ -173,7 +173,7 @@ app.get('/events/:id/edit', requireOrganizer, async (req, res, next) => {
       [req.params.id, req.organizer.id]
     );
     if (!rows.length) return res.status(404).send('Event not found');
-    res.redirect(302, `/e/${encodeURIComponent(rows[0].slug)}?edit=details`);
+    res.redirect(302, `/events/new?id=${encodeURIComponent(req.params.id)}&advanced=1`);
   } catch (err) { next(err); }
 });
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
