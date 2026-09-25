@@ -24,29 +24,37 @@ test('homepage gives returning users a real account entry without changing the c
   assert.match(client, /cache: 'no-store'/);
   assert.match(client, /if \(!response\.ok\) return null/);
   assert.doesNotMatch(client, /api\('\/api\/auth\/me'/, 'optional homepage auth must not redirect signed-out visitors');
-  assert.match(client, /sgAccountMenuMarkup\('sg-home-account'\)/);
+  assert.match(client, /sgAccountMenuMarkup\('sg-home-account',\s*\{\s*includePrimaryLinks:\s*true\s*\}\)/);
   assert.match(client, /class="sg-home-mobile-profile" href="\/profile"/);
   assert.match(client, /openMenuSheet\(menuToggle\)/);
   assert.match(client, /signOutDestination: '\/'/);
 });
 
-test('desktop and phone account menus use current Silver Glider destinations and account state', () => {
+test('homepage desktop menu retains primary links while shared account actions match the phone menu', () => {
   const shell = read('public/js/api.js');
   const styles = read('public/css/main.css');
+  const accountMenu = shell.slice(shell.indexOf('function sgAccountMenuMarkup'), shell.indexOf('function bindAccountMenu'));
+  const menuSheet = shell.slice(shell.indexOf('function buildMenuSheet'), shell.indexOf('function fillMenuSheet'));
 
-  for (const destination of ['/dashboard', '/events', '/events/new', '/following', '/settings/messaging', '/profile', '/settings']) {
-    assert.match(shell, new RegExp(`href="${destination.replaceAll('/', '\\/')}"`));
+  for (const destination of ['/events/new', '/settings/messaging', '/profile', '/settings', '/privacy', '/terms']) {
+    assert.match(accountMenu, new RegExp(`href="${destination.replaceAll('/', '\\/')}"`));
+    assert.match(menuSheet, new RegExp(`href="${destination.replaceAll('/', '\\/')}"`));
   }
+  for (const destination of ['/dashboard', '/events', '/following']) {
+    assert.match(accountMenu, new RegExp(`includePrimaryLinks[\\s\\S]*href="${destination.replaceAll('/', '\\/')}"`));
+  }
+  assert.match(accountMenu, /includePrimaryLinks\s*=\s*false/);
+  assert.match(menuSheet, /document\.body\.classList\.contains\('sg-home-page'\)/);
+  assert.match(menuSheet, /homePrimaryLinks/);
   assert.match(shell, /account\.public_slug/);
-  assert.match(shell, /Create Host Page/);
+  assert.match(accountMenu, /data-sg-account-host-label>Host Page/);
+  assert.match(accountMenu, /data-sg-account-host-value>Set up/);
   assert.match(shell, /sgPaintAvatar\(el, sgCurrentAccount\)/);
   assert.match(shell, /fetch\('\/api\/admin\/auth\/me'/);
-  assert.match(shell, /document\.body\.classList\.contains\('sg-home-page'\)/);
-  assert.match(shell, /homePrimaryLinks/);
   assert.match(styles, /\.sg-account-trigger-name/);
-  assert.match(styles, /width: min\(310px, calc\(100vw - 32px\)\)/);
-  assert.match(styles, /max-height: calc\(100dvh - 100px\)[\s\S]*overflow-y: auto/);
-  assert.match(styles, /\.sg-account-popover a,\.sg-account-popover button \{[\s\S]*min-height: 44px/);
+  assert.match(styles, /\.sg-account-popover \{[\s\S]*?width: min\(/);
+  assert.match(styles, /max-height: calc\(100dvh - \d+px\)[\s\S]*overflow-y: auto/);
+  assert.match(styles, /\.sg-account-popover a,\s*\.sg-account-popover button \{[\s\S]*min-height: 44px/);
   assert.match(shell, /menuSheetMedia\.addEventListener\('change', event => \{[\s\S]*mobileTrigger/);
   assert.match(shell, /visibleReturnFocus \|\| visibleDesktopTrigger/);
   assert.match(shell, /document\.body\.classList\.contains\('sg-home-page'\) \? '\/' : '\/login'/);

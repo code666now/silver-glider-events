@@ -116,7 +116,10 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   const profile = read('src/views/profile.html');
   const index = read('src/index.js');
   const auth = read('src/routes/auth.js');
+  const menuSheet = api.slice(api.indexOf('function buildMenuSheet'), api.indexOf('function fillMenuSheet'));
 
+  assert.match(api, /\['dashboard', '\/dashboard', 'Home'/);
+  assert.match(api, /\['events', '\/events', 'Events'/);
   assert.match(api, /\['create', '\/events\/new', 'Create'/);
   assert.match(api, /\['following', '\/following', 'Hosts'/);
   assert.match(api, /\['profile', '\/profile', 'You', null\]/);
@@ -124,6 +127,17 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(api, /setAttribute\('aria-modal', 'true'\)/);
   assert.match(api, /data-menu-feedback/);
   assert.match(api, /data-menu-signout/);
+  assert.match(menuSheet, /class="sg-menu-profile" href="\/profile"/);
+  assert.match(menuSheet, /class="sg-menu-new" href="\/events\/new"/);
+  assert.match(menuSheet, /data-menu-host href="\/settings\/host-page"/);
+  assert.match(menuSheet, /href="\/settings\/messaging"/);
+  assert.match(menuSheet, /data-menu-feedback/);
+  assert.match(menuSheet, /href="\/settings"/);
+  assert.match(menuSheet, /data-menu-admin hidden[\s\S]*href="\/admin"/);
+  assert.match(menuSheet, /data-menu-signout/);
+  assert.match(menuSheet, /href="\/privacy">Privacy Policy<\/a>[\s\S]*href="\/terms">Terms<\/a>/);
+  assert.match(menuSheet, /document\.body\.classList\.contains\('sg-home-page'\)[\s\S]*homePrimaryLinks/);
+  assert.match(menuSheet, /href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Hosts</);
   assert.match(styles, /body\.has-tab-bar \.sg-mobile-sticky-action \{ display: none !important; \}/);
   assert.match(styles, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 879px\) \{[\s\S]*?\.sg-account-menu \{ display: none; \}/);

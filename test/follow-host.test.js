@@ -65,7 +65,8 @@ test('Following is a lightweight authenticated list in the shared navigation', (
   const view = source('src/views/following.html');
   const nav = source('public/js/api.js');
   const routes = source('src/routes/follows.js');
-  assert.match(nav, /\['following', '\/following', 'Following'\]/);
+  const customerNav = nav.slice(nav.indexOf('function renderNav(active)'), nav.indexOf('async function sgExitAdminEditorWorkspace'));
+  assert.match(customerNav, /\['following', '\/following', 'Hosts'\]/);
   assert.match(view, /renderNav\('following'\)/);
   assert.match(view, /Hosts you follow will appear here\./);
   assert.match(view, /upcoming.*show/);

@@ -87,26 +87,41 @@ test('guest-list avatars link only through verified identity or attendee ownersh
   }
 });
 
-test('desktop navigation moves Settings and sign out into the account menu', () => {
+test('desktop navigation keeps primary destinations in the header and account actions in the menu', () => {
   const shell = read('public/js/api.js');
   const styles = read('public/css/main.css');
   const settings = read('src/views/settings-v2.html');
+  const renderNav = shell.slice(shell.indexOf('function renderNav(active)'), shell.indexOf('async function sgExitAdminEditorWorkspace'));
+  const accountMenu = shell.slice(shell.indexOf('function sgAccountMenuMarkup'), shell.indexOf('function bindAccountMenu'));
 
   assert.match(shell, /class="sg-account-trigger"/);
   assert.match(shell, /class="sg-account-avatar" data-sg-avatar/);
   assert.match(shell, /class="sg-account-popover"[^>]*role="menu" hidden/);
-  assert.match(shell, /href="\/dashboard" role="menuitem"/);
-  assert.match(shell, /href="\/events" role="menuitem"/);
-  assert.match(shell, /href="\/events\/new" role="menuitem"/);
-  assert.match(shell, /data-sg-account-host href="\/settings\/host-page" role="menuitem"/);
-  assert.match(shell, /href="\/settings" role="menuitem"/);
-  assert.match(shell, /class="sg-account-menu-signout"[^>]*role="menuitem"/);
+  assert.match(renderNav, /\['dashboard', '\/dashboard', 'Home'\]/);
+  assert.match(renderNav, /\['events', '\/events', 'Events'\]/);
+  assert.match(renderNav, /\['following', '\/following', 'Hosts'\]/);
+  assert.doesNotMatch(renderNav, /\['settings', '\/settings'/, 'Settings belongs in the account menu, not the desktop header');
+  assert.match(renderNav, /sgAccountMenuMarkup\('sg-app-account'\)/, 'the app menu uses the non-primary default variant');
+
+  assert.match(accountMenu, /includePrimaryLinks\s*=\s*false/);
+  assert.match(accountMenu, /href="\/profile"[^>]*role="menuitem"[\s\S]*?data-sg-avatar[\s\S]*?See your profile/);
+  assert.match(accountMenu, /href="\/events\/new"[^>]*role="menuitem"[\s\S]*?New event/i);
+  assert.match(accountMenu, /class="sg-account-menu-new-art"[^>]*hidden/);
+  assert.match(accountMenu, /data-sg-account-host href="\/settings\/host-page"[^>]*role="menuitem"/);
+  assert.match(accountMenu, /href="\/settings\/messaging"[^>]*role="menuitem"/);
+  assert.match(accountMenu, /data-[\w-]*credits/);
+  assert.match(accountMenu, /data-sg-account-feedback[^>]*>[\s\S]*?Send feedback/);
+  assert.match(accountMenu, /href="\/settings"[^>]*role="menuitem"/);
+  assert.match(accountMenu, /data-sg-account-admin hidden[\s\S]*?href="\/admin"[^>]*role="menuitem"/);
+  assert.match(accountMenu, /class="[^"]*\bsg-account-menu-signout\b[^"]*"[^>]*role="menuitem"/);
+  assert.match(accountMenu, /href="\/privacy"[^>]*>Privacy(?: Policy)?<\/a>/);
+  assert.match(accountMenu, /href="\/terms"[^>]*>Terms<\/a>/);
+  assert.match(accountMenu, /includePrimaryLinks\s*\?[^:]*href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Hosts</);
   assert.match(shell, /function bindAccountMenu\(menu/);
   assert.match(shell, /event\.key === 'ArrowDown'/);
   assert.match(shell, /event\.key === 'Escape'/);
   assert.match(shell, /function updateNavAccount\(organizer\)/);
-  assert.match(styles, /\.sg-nav-links \.sg-nav-settings-link \{ display: none; \}/);
-  assert.match(styles, /@media \(max-width: 1023px\)[\s\S]*\.sg-nav-links \.sg-nav-settings-link \{ display: block; \}/);
+  assert.doesNotMatch(styles, /sg-nav-settings-link/, 'the removed header Settings link needs no breakpoint override');
   assert.match(settings, /class="settings-mobile-signout settings-logout"[^>]*>Sign out/);
   const accountSection = settings.slice(settings.indexOf('id="settings-account"'), settings.indexOf('id="settings-messaging"'));
   assert.doesNotMatch(accountSection, /settings-logout|>Sign out</);

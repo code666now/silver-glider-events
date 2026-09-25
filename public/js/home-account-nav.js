@@ -18,7 +18,7 @@
   const showSignedIn = organizer => {
     signIn.hidden = true;
     authenticated.innerHTML = `
-      ${sgAccountMenuMarkup('sg-home-account')}
+      ${sgAccountMenuMarkup('sg-home-account', { includePrimaryLinks: true })}
       <div class="sg-home-mobile-controls">
         <a class="sg-home-mobile-profile" href="/profile" aria-label="Open your profile" data-sg-avatar>
           <span data-sg-initials>SG</span><img alt="" hidden>

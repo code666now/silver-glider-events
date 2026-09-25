@@ -133,27 +133,34 @@ function updateNavAccount(organizer) {
   }
   if (!organizer) return;
   const account = sgCurrentAccount || organizer;
-  const displayName = String(account.name || account.org_name || account.email || 'Account').trim();
-  document.querySelectorAll('.sg-account-menu').forEach(menu => {
-    const name = menu.querySelector('.sg-account-menu-name');
-    const plan = menu.querySelector('.sg-account-menu-plan');
-    if (name) name.textContent = displayName;
-    if (plan) plan.textContent = `${account.plan === 'pro' ? 'Pro' : 'Free'} plan`;
-  });
-  document.querySelectorAll('[data-sg-account-host]').forEach(link => {
-    const label = link.querySelector('[data-sg-account-host-label]');
-    if (account.public_slug) {
-      link.href = `/h/${encodeURIComponent(account.public_slug)}`;
-      if (label) label.textContent = 'Host Page';
-    } else {
-      link.href = '/settings/host-page';
-      if (label) label.textContent = 'Create Host Page';
-    }
-  });
+  document.querySelectorAll('.sg-account-menu').forEach(menu => fillAccountMenu(menu, account));
 }
 
-function sgAccountMenuMarkup(idPrefix = 'sg-account') {
+function fillAccountMenu(menu, account) {
+  if (!menu || !account) return;
+  menu.querySelectorAll('[data-sg-avatar]').forEach(el => sgPaintAvatar(el, account));
+  menu.querySelectorAll('[data-sg-name]').forEach(el => { el.textContent = sgAccountDisplayName(account); });
+  const host = menu.querySelector('[data-sg-account-host]');
+  const hostLabel = host?.querySelector('[data-sg-account-host-label]');
+  const hostValue = host?.querySelector('[data-sg-account-host-value]');
+  if (host) {
+    host.href = account.public_slug ? `/h/${encodeURIComponent(account.public_slug)}` : '/settings/host-page';
+    if (hostLabel) hostLabel.textContent = 'Host Page';
+    if (hostValue) hostValue.textContent = account.public_slug ? 'View' : 'Set up';
+  }
+  const credits = Number(account.sms_credits) || 0;
+  const creditValue = menu.querySelector('[data-sg-account-credits]');
+  if (creditValue) creditValue.textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
+}
+
+function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = false } = {}) {
   const popoverId = `${idPrefix}-popover`;
+  const primaryLinks = includePrimaryLinks ? `
+        <div class="sg-account-popover-group sg-account-popover-primary">
+          <a class="sg-account-menu-row" href="/dashboard" role="menuitem">${menuIcon('dashboard')}<span>Home</span></a>
+          <a class="sg-account-menu-row" href="/events" role="menuitem">${menuIcon('events')}<span>Events</span></a>
+          <a class="sg-account-menu-row" href="/following" role="menuitem">${menuIcon('following')}<span>Hosts</span></a>
+        </div>` : '';
   return `
     <div class="sg-account-menu">
       <button class="sg-account-trigger" type="button" aria-label="Open account menu" aria-expanded="false" aria-haspopup="menu" aria-controls="${popoverId}">
@@ -162,31 +169,29 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account') {
         <svg class="sg-account-trigger-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
       </button>
       <div class="sg-account-popover" id="${popoverId}" role="menu" hidden>
-        <div class="sg-account-menu-identity">
-          <strong class="sg-account-menu-name">Account</strong>
-          <span class="sg-account-menu-plan">Free plan</span>
-        </div>
+        <a class="sg-account-menu-profile" href="/profile" role="menuitem">
+          <span class="sg-account-menu-profile-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials>SG</span><img alt="" hidden></span>
+          <span class="sg-account-menu-profile-copy"><strong class="sg-account-menu-name" data-sg-name>Account</strong><small>See your profile</small></span>
+          <span class="sg-account-menu-profile-chevron" aria-hidden="true">›</span>
+        </a>
+        <a class="sg-account-menu-new" href="/events/new" role="menuitem">
+          <span class="sg-account-menu-new-label"><span class="sg-account-menu-new-plus" aria-hidden="true">+</span> New event</span>
+          <span class="sg-account-menu-new-art" aria-hidden="true" hidden><img alt=""></span>
+        </a>
+        ${primaryLinks}
         <div class="sg-account-popover-group">
-          <a href="/dashboard" role="menuitem">${menuIcon('dashboard')}<span>Dashboard</span></a>
-          <a href="/events" role="menuitem">${menuIcon('events')}<span>My Events</span></a>
-          <a class="sg-account-menu-create" href="/events/new" role="menuitem">${menuIcon('create')}<span>Create Event</span></a>
-          <a href="/following" role="menuitem">${menuIcon('following')}<span>Hosts</span></a>
+          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Host Page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
+          <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits>0 credits</span></a>
+          <button class="sg-account-menu-row" type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
         </div>
-        <div class="sg-account-popover-group">
-          <a data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Create Host Page</span></a>
-          <a href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span></a>
-        </div>
-        <div class="sg-account-popover-group">
-          <a href="/profile" role="menuitem">${menuIcon('profile')}<span>Profile</span></a>
-          <a href="/settings" role="menuitem">${menuIcon('settings')}<span>Settings</span></a>
-          <button type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
-        </div>
+        <div class="sg-account-popover-group"><a class="sg-account-menu-row" href="/settings" role="menuitem">${menuIcon('settings')}<span>Settings</span></a></div>
         <div class="sg-account-popover-group" data-sg-account-admin hidden>
-          <a href="/admin" role="menuitem">${menuIcon('admin')}<span>Admin</span></a>
+          <a class="sg-account-menu-row" href="/admin" role="menuitem">${menuIcon('admin')}<span>Admin</span></a>
         </div>
         <div class="sg-account-popover-group sg-account-popover-signout">
-          <button class="sg-account-menu-signout" type="button" role="menuitem">${menuIcon('signout')}<span>Sign out</span></button>
+          <button class="sg-account-menu-row sg-account-menu-signout" type="button" role="menuitem">${menuIcon('signout')}<span>Sign out</span></button>
         </div>
+        <p class="sg-account-menu-legal"><a href="/privacy" role="menuitem">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms" role="menuitem">Terms</a></p>
       </div>
     </div>`;
 }
@@ -206,6 +211,8 @@ function bindAccountMenu(menu, { beforeOpen, signOutDestination = '/login' } = {
   };
   const open = () => {
     beforeOpen?.();
+    fillAccountMenu(menu, sgCurrentAccount);
+    loadAccountMenuArt(menu);
     popover.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
     trigger.setAttribute('aria-label', 'Close account menu');
@@ -303,9 +310,8 @@ function renderNav(active) {
   }
   const links = [
     ['dashboard', '/dashboard', 'Home'],
-    ['events', '/events', 'My Events'],
-    ['following', '/following', 'Following'],
-    ['settings', '/settings', 'Settings']
+    ['events', '/events', 'Events'],
+    ['following', '/following', 'Hosts']
   ];
   el.className = 'sg-nav';
   // On phones, signed-in pages keep Feedback and the legal links inside this menu
@@ -315,7 +321,7 @@ function renderNav(active) {
     <a class="sg-nav-brand" href="/dashboard">Silver Glider <span>Events</span></a>
     <div class="sg-nav-links">
       ${links.map(([key, href, label]) =>
-        `<a href="${href}" class="${key === active ? 'active' : ''}${key === 'settings' ? ' sg-nav-settings-link' : ''}">${label}</a>`).join('')}
+        `<a href="${href}" class="${key === active ? 'active' : ''}">${label}</a>`).join('')}
       <button class="sg-nav-feedback" type="button">Send feedback</button>
       <p class="sg-nav-legal"><a href="/privacy">Privacy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
     </div>
@@ -507,7 +513,8 @@ const menuIcon = name => `<svg class="sg-menu-icon" viewBox="0 0 24 24" aria-hid
 
 let menuSheet = null;
 let menuSheetReturnFocus = null;
-let menuSheetArtLoaded = false;
+let menuArtworkUrlsPromise = null;
+const menuArtworkLoaded = new WeakSet();
 
 function buildMenuSheet() {
   const sheet = document.createElement('div');
@@ -518,8 +525,8 @@ function buildMenuSheet() {
   sheet.hidden = true;
   const homePrimaryLinks = document.body.classList.contains('sg-home-page')
     ? `<div class="sg-menu-group sg-menu-primary-group">
-        <a class="sg-menu-row" href="/dashboard">${menuIcon('dashboard')}<span>Dashboard</span></a>
-        <a class="sg-menu-row" href="/events">${menuIcon('events')}<span>My Events</span></a>
+        <a class="sg-menu-row" href="/dashboard">${menuIcon('dashboard')}<span>Home</span></a>
+        <a class="sg-menu-row" href="/events">${menuIcon('events')}<span>Events</span></a>
         <a class="sg-menu-row" href="/following">${menuIcon('following')}<span>Hosts</span></a>
       </div>`
     : '';
@@ -590,18 +597,26 @@ function fillMenuSheet(sheet, organizer) {
   sheet.querySelector('[data-menu-credits]').textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
 }
 
-// The New event card shows the host's latest artwork, so it feels like theirs.
-function loadMenuSheetArt(sheet) {
-  if (menuSheetArtLoaded) return;
-  menuSheetArtLoaded = true;
-  api('/api/events').then(({ events }) => {
-    const artworkUrls = (events || []).map(ev => sgSafeHttpUrl(
+function loadMenuArtworkUrls() {
+  if (!menuArtworkUrlsPromise) {
+    menuArtworkUrlsPromise = api('/api/events').then(({ events }) => (events || []).map(ev => sgSafeHttpUrl(
       ev.presentation_mode === 'flyer'
         ? (ev.flyer_image_url || ev.cover_image_url)
         : (ev.cover_image_url || ev.flyer_image_url)
-    )).filter(Boolean);
+    )).filter(Boolean)).catch(() => []);
+  }
+  return menuArtworkUrlsPromise;
+}
+
+// Both menu surfaces use the host's latest artwork without making duplicate requests.
+function loadMenuArtwork(surface, artSelector) {
+  if (!surface || menuArtworkLoaded.has(surface)) return;
+  menuArtworkLoaded.add(surface);
+  loadMenuArtworkUrls().then(urls => {
+    const artworkUrls = [...urls];
     if (!artworkUrls.length) return;
-    const art = sheet.querySelector('.sg-menu-new-art');
+    const art = surface.querySelector(artSelector);
+    if (!art) return;
     const image = art.querySelector('img');
     const tryArtwork = () => {
       const url = artworkUrls.shift();
@@ -619,8 +634,11 @@ function loadMenuSheetArt(sheet) {
       image.src = url;
     };
     tryArtwork();
-  }).catch(() => {});
+  });
 }
+
+function loadMenuSheetArt(sheet) { loadMenuArtwork(sheet, '.sg-menu-new-art'); }
+function loadAccountMenuArt(menu) { loadMenuArtwork(menu, '.sg-account-menu-new-art'); }
 
 function openMenuSheet(trigger) {
   menuSheet = menuSheet || buildMenuSheet();
