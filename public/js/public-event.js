@@ -197,6 +197,10 @@ const mobileRsvpDock = $('mobile-rsvp-dock');
 const mobileRsvpCta = $('mobile-rsvp-cta');
 const mobileRsvpMedia = window.matchMedia('(max-width: 767px)');
 
+function keepsAdmissionAction(stateId, inlineCta = document.querySelector('[data-primary-action]')) {
+  return stateId === 'returning-rsvp-state' && inlineCta?.dataset.primaryAction === 'ticket';
+}
+
 function syncMobileRsvpDock() {
   if (!mobileRsvpDock || !mobileRsvpCta) return;
   const inlineCta = document.querySelector('[data-primary-action]');
@@ -206,7 +210,8 @@ function syncMobileRsvpDock() {
   const footerTarget = document.querySelector('.sg-event-legal-footer') || document.querySelector('.flyer-attribution');
   const footerRect = footerTarget?.getBoundingClientRect();
   const footerIsNear = Boolean(footerRect && footerRect.bottom > 0 && footerRect.top < window.innerHeight * .88);
-  const shouldShow = mobileRsvpMedia.matches && activeRsvpState === 'cta-state' && !inlineCtaIsVisible && !footerIsNear;
+  const stateAllowsDock = activeRsvpState === 'cta-state' || keepsAdmissionAction(activeRsvpState, inlineCta);
+  const shouldShow = mobileRsvpMedia.matches && stateAllowsDock && !inlineCtaIsVisible && !footerIsNear;
   mobileRsvpDock.hidden = !shouldShow;
   document.body.classList.toggle('has-mobile-rsvp-dock', shouldShow);
 }
@@ -223,10 +228,16 @@ function queueMobileRsvpDockSync() {
 
 function show(stateId) {
   activeRsvpState = stateId;
+  const ctaState = $('cta-state');
+  const keepAdmissionAction = keepsAdmissionAction(stateId, ctaState?.querySelector('[data-primary-action]'));
+  ctaState?.classList.toggle('preserves-ticket-action', keepAdmissionAction);
+  ctaState?.querySelectorAll('.flyer-secondary-rsvp[data-open-rsvp]').forEach(action => {
+    action.hidden = keepAdmissionAction;
+  });
   ['cta-state', 'returning-rsvp-state', 'rsvp-form-box', 'success-state', 'full-state', 'cancelled-state']
     .forEach(id => {
       const element = $(id);
-      if (element) element.style.display = id === stateId ? 'block' : 'none';
+      if (element) element.style.display = id === stateId || (id === 'cta-state' && keepAdmissionAction) ? 'block' : 'none';
     });
   syncMobileRsvpDock();
 }
@@ -250,7 +261,7 @@ function confirmItsYou({ container, codeRequest, title, onVerified }) {
     <p class="sg-code-title" id="sg-code-title"></p>
     <p class="sg-code-copy" data-code-copy>Sending a 6-digit code…</p>
     <form class="sg-code-row" data-code-form novalidate>
-      <input class="sg-input sg-code-input" data-code-input inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
+      <input class="sg-input sg-code-input" data-code-input data-email-code inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code">
       <button class="sg-btn sg-btn-primary" type="submit" data-code-submit>Verify</button>
     </form>
     <p class="sg-code-error" data-code-error role="alert"></p>
@@ -454,6 +465,7 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     confirmationEditing = false;
     renderReturningState();
     renderConfirmationDialog();
+    show('returning-rsvp-state');
     return;
   }
   const buttons = Array.from(document.querySelectorAll('.returning-choice'));
@@ -481,6 +493,7 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     confirmationFresh = false;
     renderReturningState({ fresh: true });
     renderConfirmationDialog();
+    show('returning-rsvp-state');
     (confirmationDialog?.open ? $('rsvp-confirmation-change') : $('returning-rsvp-change'))?.focus({ preventScroll: true });
     if (response === 'going') await loadComments();
   } catch (errorValue) {

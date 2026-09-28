@@ -125,7 +125,12 @@ function attendeeCookieName(eventId) {
 function readCookie(req, name) {
   const header = req.headers.cookie || '';
   const part = header.split(';').map(item => item.trim()).find(item => item.startsWith(`${name}=`));
-  return part ? decodeURIComponent(part.slice(name.length + 1)) : '';
+  if (!part) return '';
+  try {
+    return decodeURIComponent(part.slice(name.length + 1));
+  } catch (_) {
+    return '';
+  }
 }
 
 module.exports = {

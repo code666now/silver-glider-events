@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
   <style>
     .ticketing-summary { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0 28px; }
     .ticketing-summary-card { padding:20px;border:1px solid var(--sg-border-soft);border-radius:18px;background:rgba(17,17,17,.74); }
@@ -56,20 +57,11 @@
     }
   </style>
 </head>
-<body>
+<body data-admin-section="ticketing">
   <div class="sg-shell" style="max-width:1260px">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Ticketing interest</h1>
     <p class="sg-page-sub">Hosts who asked for one email when Silver Glider Tickets launches.</p>
-    <div class="admin-section-nav" aria-label="Admin sections">
-      <a href="/admin/accounts">Accounts</a>
-      <a href="/admin/hosts">Hosts</a>
-      <a href="/admin/line">The Line</a>
-      <a class="active" href="/admin/ticketing">Ticketing</a>
-      <a href="/admin/feedback">Feedback</a>
-      <a href="/admin/invitations">Invitations</a>
-    </div>
-
     <section class="ticketing-summary" aria-label="Ticketing launch audience">
       <div class="ticketing-summary-card"><strong id="count-interested"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Interested</span></div>
       <div class="ticketing-summary-card"><strong id="count-awaiting"><span class="sg-skeleton admin-summary-skeleton" aria-hidden="true"></span></strong><span>Awaiting email</span></div>
@@ -111,6 +103,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
   <script>
     renderNav('');
     let launchState = { commerceEnabled:false, awaiting:0 };

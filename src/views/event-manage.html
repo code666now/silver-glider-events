@@ -15,13 +15,14 @@
   <link rel="stylesheet" href="/css/familiar-faces.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
   <style>
-    .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
       min-width: 0; background: var(--sg-card); border: 1px solid var(--sg-border-soft);
       border-radius: 18px; padding: 18px 20px;
     }
     .stat strong { font-family: var(--sg-font-display); font-size: 30px; display: block; line-height: 1; }
     .stat span { font-size: 11px; color: var(--sg-text-faint); text-transform: uppercase; letter-spacing: 0.12em; }
+    .stat-note { display: block; margin-top: 7px; color: var(--sg-text-dim); font-size: 11px; line-height: 1.35; }
     .cap-bar { height: 4px; background: var(--sg-surface); border-radius: 4px; margin-top: 10px; overflow: hidden; }
     .cap-bar div { height: 100%; background: var(--sg-accent); border-radius: 4px; }
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -221,7 +222,6 @@
         margin-bottom:20px;
       }
       .stat { padding:17px; }
-      .stat-row:not(.private-metrics) .stat:first-child { grid-column:1/-1; }
       .toolbar { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px; }
       .toolbar .sg-btn,
       .toolbar .more-menu,
@@ -415,6 +415,8 @@
       .manage-mobile-hub-intro { margin-bottom:var(--sg-mobile-intro-spacing); }
       .manage-mobile-hub-intro p { margin:0;color:var(--sg-text-dim);font-size:var(--sg-mobile-helper-size);line-height:1.5; }
       .manage-mobile-headcount strong { color:var(--sg-text);font-weight:700; }
+      .manage-mobile-returning { margin-top:7px !important;color:var(--sg-accent) !important; }
+      .manage-mobile-returning[hidden] { display:none; }
       .manage-mobile-share { gap:10px;margin-top:18px; }
       .manage-mobile-share[hidden] { display:none; }
       .manage-mobile-share svg { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
@@ -476,7 +478,6 @@
         border-radius:22px;background:rgba(255,255,255,.02);color:var(--sg-text-faint);font:400 56px var(--sg-font-display);
       }
       .stat-row { grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0; }
-      .stat-row:not(.private-metrics) .stat:first-child { grid-column:1/-1; }
       .stat { min-height:104px;padding:20px;border-radius:20px; }
       .stat strong { font-size:32px; }
       .stat span { font-size:12px;line-height:1.35; }
@@ -583,6 +584,7 @@
     <section class="manage-mobile-hub" id="manage-mobile-hub" aria-label="Event management sections" hidden>
       <div class="manage-mobile-hub-intro">
         <p class="manage-mobile-headcount" id="manage-mobile-headcount" aria-live="polite">Choose an area. Your event stays live while you work.</p>
+        <p class="manage-mobile-returning" id="manage-mobile-returning" hidden></p>
         <button class="sg-btn sg-btn-primary sg-btn-block manage-mobile-share" id="manage-mobile-share" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v9h14v-9"/></svg>
           Share event
@@ -627,6 +629,11 @@
         <strong id="stat-attendance"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
         <span>People going</span>
         <div class="cap-bar" id="cap-bar" style="display:none"><div id="cap-fill"></div></div>
+      </div>
+      <div class="stat">
+        <strong id="stat-returning"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
+        <span>Returning guests</span>
+        <small class="stat-note" id="stat-returning-note"></small>
       </div>
       <div class="stat" data-private-metric>
         <strong id="stat-guests"><span class="sg-skeleton manage-stat-skeleton" aria-hidden="true"></span></strong>
@@ -762,10 +769,10 @@
         </div>
       </div>
 
-      <div class="familiar-people" id="familiar-people" hidden>
+      <div class="familiar-people" id="familiar-people" role="region" aria-labelledby="familiar-people-title" tabindex="-1" hidden>
         <div class="familiar-people-head">
           <div>
-            <p class="sg-label" style="margin:0 0 7px">Invite your people</p>
+            <p class="sg-label" id="familiar-people-title" style="margin:0 0 7px">Invite your people</p>
             <p class="familiar-people-intro" id="familiar-people-intro">From your past events. Tap faces to select them.</p>
           </div>
           <label class="familiar-people-source"><span class="sr-only">Show people from</span><select class="sg-input" id="familiar-people-source"><option value="">All past events</option></select></label>

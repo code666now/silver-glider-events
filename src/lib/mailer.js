@@ -436,11 +436,10 @@ async function send({ to, subject, html, attachments, replyTo }) {
 function signInCodeBlock(code) {
   const digits = String(code || '').replace(/\D/g, '');
   if (!digits) return '';
-  const spaced = `${digits.slice(0, 3)} ${digits.slice(3)}`;
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;margin:0 0 8px;background:#111111;border:1px solid #292929;border-collapse:separate;border-radius:14px">
     <tr><td align="center" style="padding:22px 18px">
       <p style="color:#8f8f8f;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px">Your code</p>
-      <p style="color:#f4f4f4;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:.16em;line-height:1;margin:0">${esc(spaced)}</p>
+      <p style="color:#f4f4f4;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:38px;font-weight:800;letter-spacing:.16em;line-height:1;margin:0">${esc(digits)}</p>
     </td></tr>
   </table>`;
 }
@@ -548,6 +547,68 @@ async function sendAccountVerificationCode({ to, code, purpose = 'creator_setup'
       sub: accountSettings
         ? 'Enter this code in Account settings. It expires in 15 minutes.'
         : 'Enter this code where you started creating your event. It expires in 15 minutes.',
+      bodyHtml: signInCodeBlock(code),
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
+    })
+  });
+}
+
+// Staff can request an email change, but this link is delivered only to the
+// proposed inbox. Opening the page is read-only; the recipient must explicitly
+// confirm before the address becomes a sign-in identity.
+async function sendAdminIdentityChangeVerification({ to, link, accountName }) {
+  const firstName = String(accountName || '').trim().split(/\s+/)[0];
+  if (!resend) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Identity verification email delivery is unavailable');
+    }
+    console.log(`[mailer:dev] ADMIN IDENTITY CHANGE for ${to}: ${link}`);
+    recordDevEmail({ to, kind: 'admin_identity_change', link });
+    return { dev: true };
+  }
+  return send({
+    to,
+    subject: 'Confirm your Silver Glider email',
+    html: layout({
+      kicker: 'Account security',
+      headline: firstName ? `${esc(firstName)}, confirm this email.` : 'Confirm this email.',
+      sub: 'Silver Glider support prepared an email change for your account. Only you can approve it.',
+      cta: 'Review and confirm',
+      ctaUrl: link,
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t ask support to change your email? Ignore this message. Your current sign-in stays unchanged.</p>'
+    })
+  });
+}
+
+// Dedicated staff authentication never shares customer magic-link state. The
+// caller has already resolved an active admin operator and sends only a code.
+async function sendAdminPasscode({ to, code, purpose = 'login' }) {
+  if (!resend) {
+    console.log(`[mailer:dev] ADMIN PASSCODE for ${to}: ${code}`);
+    recordDevEmail({ to, kind: 'admin_passcode', purpose, code });
+    return { dev: true };
+  }
+  const deletion = purpose === 'account_delete';
+  const operatorManagement = purpose === 'operator_manage';
+  return send({
+    to,
+    subject: deletion
+      ? `Confirm account deletion: ${code}`
+      : operatorManagement
+        ? `Confirm admin-team change: ${code}`
+        : `Your Silver Glider admin code: ${code}`,
+    html: layout({
+      kicker: 'Admin security',
+      headline: deletion
+        ? 'Confirm account deletion'
+        : operatorManagement
+          ? 'Confirm admin-team change'
+          : 'Your admin sign-in code',
+      sub: deletion
+        ? 'Enter this code in the admin workspace to confirm the selected account deletion. It expires in 10 minutes.'
+        : operatorManagement
+          ? 'Enter this code in the admin workspace to confirm the selected operator change. It expires in 10 minutes.'
+          : 'Enter this code on the Silver Glider admin sign-in page. It expires in 10 minutes.',
       bodyHtml: signInCodeBlock(code),
       footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0">Didn’t request this? You can safely ignore this email.</p>'
     })
@@ -803,12 +864,13 @@ async function sendCommerceLaunch({ to, isTest = false }) {
 }
 
 module.exports = {
-  devOutbox, sendVerificationCode, sendAccountVerificationCode,
+  devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
+  sendAdminIdentityChangeVerification,
   sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
   sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
-  renderSharedEmailLayout: layout, rsvpConfirmationSubject
+  renderSharedEmailLayout: layout, renderEmailCodeBlock: signInCodeBlock, rsvpConfirmationSubject
 };

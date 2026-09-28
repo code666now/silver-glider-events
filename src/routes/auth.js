@@ -68,22 +68,33 @@ const {
   readPhoneChallenge,
   setPhoneAuthCookie
 } = require('../lib/phone-auth');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function safeNext(value) {
-  const next = String(value || '').trim();
-  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+  const next = String(value || '').trim().slice(0, 700);
+  if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || /%5c/i.test(next)) return '';
+  try {
+    const parsed = new URL(next, 'http://silver-glider.local');
+    if (parsed.origin !== 'http://silver-glider.local') return '';
+    const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//') ||
+        normalized.includes('\\') || /%5c/i.test(normalized)) return '';
+    return normalized;
+  } catch (_) {
+    return '';
+  }
 }
 
-// Phone-first auth is intentionally reserved for the high-intent creator
-// journey. Guest RSVP, Follow Host, photo links, and ordinary account login
-// keep their existing email-first boundaries.
-function creatorNext(value) {
-  const next = safeNext(value);
-  return next === '/events/new' || next.startsWith('/events/new?') ? next : '';
+// Phone sign-in shares the same safe, same-origin destinations as email sign-in.
+// An omitted destination is an ordinary account login and returns to Dashboard;
+// an explicitly unsafe destination is rejected before an SMS is sent.
+function phoneSignInNext(value) {
+  const requested = String(value || '').trim();
+  return requested ? safeNext(requested) : '/dashboard';
 }
 
 // In-memory limits (single instance, reset on deploy — fine at this scale).
@@ -148,7 +159,7 @@ async function accountIdentityState(req) {
   return {
     identities: await listAccountIdentities(pool, userId),
     capabilities: {
-      canAddPhone: !req.organizer.is_admin,
+      canAddPhone: true,
       identityStepUpVerified: hasIdentityStepUp(req, userId),
       phoneLimit: 1
     }
@@ -199,14 +210,44 @@ function limitPhoneEmailRequest(req, res, { email, phone }) {
 
 // Emails one link + code and remembers, in this browser only, which request
 // the code belongs to.
-async function issueSignIn(res, { email, intent = 'sign_in', targetOrganizerId = null, returnPath = null, followHostName = '' }) {
-  const { token, code, requestToken } = await createSignInChallenge(pool, {
-    email, intent, targetOrganizerId, returnPath
+async function createAndDeliverSignInChallenge(req, res, challengeOptions, deliver, recipientUserId = null) {
+  const client = await pool.connect();
+  let challenge;
+  try {
+    await client.query('BEGIN');
+    challenge = await createSignInChallenge(client, {
+      ...challengeOptions,
+      supersedeRequestToken: readSignInRequest(req)
+    });
+    await deliver(challenge);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  setSignInRequestCookie(res, challenge.requestToken);
+  // Delivery and challenge persistence are the authentication boundary.
+  // Message logging is telemetry and must never turn a delivered valid code
+  // into an error response after the cookie has been rotated.
+  await logEmail(challengeOptions.email, recipientUserId).catch(error => {
+    console.error('[auth] sign-in delivery log failed', { error: error.message });
   });
-  const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
-  await sendMagicLink({ to: email, link, code, followHostName });
-  await logEmail(email);
-  setSignInRequestCookie(res, requestToken);
+  return challenge;
+}
+
+async function issueSignIn(req, res, { email, intent = 'sign_in', targetOrganizerId = null, returnPath = null, followHostName = '' }) {
+  await createAndDeliverSignInChallenge(
+    req,
+    res,
+    { email, intent, targetOrganizerId, returnPath },
+    async ({ token, code }) => {
+      const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
+      await sendMagicLink({ to: email, link, code, followHostName });
+    }
+  );
 }
 
 async function signInIntent(body = {}) {
@@ -235,7 +276,7 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
 
     const challenge = await signInIntent(req.body);
     if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
-    await issueSignIn(res, { email, ...challenge });
+    await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, codeLength: CODE_LENGTH });
   } catch (err) {
     next(err);
@@ -252,7 +293,7 @@ router.post('/api/auth/guest-magic-link', async (req, res, next) => {
     if (!limitEmailRequest(req, res, email)) return;
     const challenge = await signInIntent(req.body);
     if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
-    await issueSignIn(res, { email, ...challenge });
+    await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }
 });
@@ -274,30 +315,31 @@ router.post('/api/auth/guest-code', async (req, res, next) => {
       if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email' });
     }
     if (!limitEmailRequest(req, res, email)) return;
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email, intent: 'verify_guest', returnPath: safeNext(req.body?.next)
-    });
-    await sendVerificationCode({ to: email, code });
-    await logEmail(email);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      { email, intent: 'verify_guest', returnPath: safeNext(req.body?.next) },
+      ({ code }) => sendVerificationCode({ to: email, code })
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }
 });
 
-// Creator-only phone-first entry. Twilio Verify proves both new and returning
-// phones so authentication never shares a sender with lifecycle/marketing SMS.
+// Twilio Verify proves both new and returning phones so authentication never
+// shares a sender with lifecycle/marketing SMS. A new phone still needs inbox
+// proof before it can be connected to an account.
 // The response deliberately does not reveal whether the phone exists.
 router.post('/api/auth/phone/start', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
   const startedAt = Date.now();
   let phone;
   try {
-    const returnPath = creatorNext(req.body?.next);
+    const returnPath = phoneSignInNext(req.body?.next);
     if (!returnPath) {
       return res.status(400).json({
-        error: 'creator_phone_auth_only',
-        message: 'Phone sign-in is available when creating an event.'
+        error: 'invalid_return_path',
+        message: 'Start again from a Silver Glider sign-in page.'
       });
     }
     phone = sms.normalizeE164(req.body?.phone);
@@ -392,7 +434,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           });
         }
         const { rows } = await client.query(
-          `SELECT account.id,account.is_admin,canonical_user.account_status
+          `SELECT account.id,canonical_user.account_status
              FROM organizers account
              JOIN users canonical_user ON canonical_user.id=account.user_id
             WHERE account.id=$1
@@ -403,16 +445,6 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         if (!account) {
           throw new PhoneAuthError('This phone sign-in is no longer available. Use email instead.', {
             code: 'phone_credential_unavailable', status: 400
-          });
-        }
-        if (account.is_admin) {
-          await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
-          await client.query('COMMIT');
-          clearPhoneAuthCookie(res);
-          res.setHeader('Cache-Control', 'private, no-store');
-          return res.status(403).json({
-            error: 'email_sign_in_required',
-            message: 'For account security, sign in with email.'
           });
         }
         if (account.account_status === 'suspended') {
@@ -447,7 +479,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         setSessionCookie(res, account.id);
         setIdentityStepUpCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
-        return res.json({ ok: true, redirect: creatorNext(locked.return_path) || '/events/new' });
+        return res.json({ ok: true, redirect: phoneSignInNext(locked.return_path) || '/dashboard' });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -488,7 +520,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
 
 // A verified phone alone never claims an email identity. The inbox code is
 // mandatory on first binding, including when that email already has RSVPs,
-// events, credits, or administrative access.
+// events, credits, or other account data.
 router.post('/api/auth/phone/email', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).json({ error: 'forbidden' });
   try {
@@ -514,15 +546,17 @@ router.post('/api/auth/phone/email', async (req, res, next) => {
         code: 'phone_verification_expired', status: 400
       });
     }
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email,
-      intent: 'bind_phone',
-      returnPath: creatorNext(challenge.return_path) || '/events/new',
-      phoneAuthChallengeId: challenge.id
-    });
-    await sendAccountVerificationCode({ to: email, code });
-    await logEmail(email);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      {
+        email,
+        intent: 'bind_phone',
+        returnPath: phoneSignInNext(challenge.return_path) || '/dashboard',
+        phoneAuthChallengeId: challenge.id
+      },
+      ({ code }) => sendAccountVerificationCode({ to: email, code })
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) {
@@ -582,6 +616,162 @@ async function prepareClaimedHostPage(client, organizerId, name) {
       WHERE id=$1`,
     [organizerId, name, publicSlug]
   );
+}
+
+function validClaimInvitation(invitation) {
+  return Boolean(invitation && invitation.sent_at && !invitation.revoked_at &&
+    !invitation.delivery_failed_at && !invitation.claimed_at &&
+    new Date(invitation.expires_at) > new Date());
+}
+
+async function lockTargetClaimByLinkToken(client, token) {
+  if (!token || token.length > 200) return null;
+  // This is intentionally a non-locking pre-read. target_user_id is immutable;
+  // after resolving it we enter the same account-wide advisory critical
+  // section as suspension, deletion, sign-out-all, and invitation resend.
+  // The bearer token itself is consumed only after that lock is held.
+  const { rows } = await client.query(
+    `SELECT invitation.target_user_id
+       FROM magic_link_tokens challenge
+       JOIN admin_account_invitations invitation
+         ON invitation.magic_link_token_id=challenge.id
+      WHERE challenge.token=$1 AND challenge.intent='claim_account'
+        AND invitation.target_user_id IS NOT NULL
+      LIMIT 1`,
+    [tokenHash(token)]
+  );
+  const targetUserId = Number(rows[0]?.target_user_id);
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) return null;
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtext($1))',
+    [outboundDeliveryLockKey(targetUserId)]
+  );
+  return targetUserId;
+}
+
+async function rejectTargetBoundClaim(client, invitationId, message, code) {
+  await client.query(
+    `UPDATE admin_account_invitations
+        SET revoked_at=COALESCE(revoked_at,NOW())
+      WHERE id=$1 AND claimed_at IS NULL`,
+    [invitationId]
+  );
+  throw new CanonicalIdentityError(message, { code, status: 409 });
+}
+
+async function resolveTargetBoundClaim(client, {
+  invitation,
+  email,
+  emailProofSource,
+  pendingId
+}) {
+  const targetUserId = Number(invitation.target_user_id);
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0 ||
+      normalizeEmail(invitation.email) !== normalizeEmail(email)) {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared account invitation no longer matches its owner.',
+      'account_invitation_target_mismatch'
+    );
+  }
+
+  // Preserve the canonical identity -> organizer -> user lock order used by
+  // provisioning. Recipient proof may upgrade only the exact identity that
+  // the administrator attached to this pre-created user.
+  const identity = (await client.query(
+    `SELECT id,user_id,identity_type,value,normalized_value,verification_scope,
+            verified_at,is_primary
+       FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL
+      FOR UPDATE`,
+    [normalizeEmail(email)]
+  )).rows[0];
+  if (!identity || Number(identity.user_id) !== targetUserId) {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared email is no longer attached to the intended account.',
+      'account_invitation_target_mismatch'
+    );
+  }
+  const organizer = (await client.query(
+    `SELECT id,user_id,last_login_at
+       FROM organizers
+      WHERE user_id=$1 AND id=$1
+      FOR UPDATE`,
+    [targetUserId]
+  )).rows[0];
+  const canonicalUser = (await client.query(
+    `SELECT id,name,account_status
+       FROM users
+      WHERE id=$1
+      FOR UPDATE`,
+    [targetUserId]
+  )).rows[0];
+  const account = organizer && canonicalUser
+    ? { ...organizer, account_status: canonicalUser.account_status }
+    : null;
+  if (!account || account.account_status !== 'active') {
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This prepared account is no longer available.',
+      'account_invitation_target_inactive'
+    );
+  }
+  const alreadyClaimed = Boolean(account.last_login_at) || Boolean((await client.query(
+    `SELECT 1
+       FROM user_identities
+      WHERE user_id=$1 AND revoked_at IS NULL
+        AND verification_scope='account' AND verified_at IS NOT NULL
+      LIMIT 1`,
+    [targetUserId]
+  )).rows[0]);
+  if (alreadyClaimed) {
+    // The account gained recipient-owned proof after support sent this link.
+    // Make the stale invitation terminal in the same transaction as consuming
+    // its bearer token; it must never be able to replace the owner's primary
+    // inbox or mint a second session.
+    return rejectTargetBoundClaim(
+      client,
+      invitation.id,
+      'This account has already been claimed by its owner.',
+      'account_invitation_target_claimed'
+    );
+  }
+  await attachIdentity(client, {
+    userId: targetUserId,
+    identityType: IDENTITY_TYPES.EMAIL,
+    value: email,
+    verifiedAt: new Date(),
+    verificationScope: 'account',
+    verificationSource: emailProofSource === 'email_code'
+      ? 'admin_done_for_you.claim_code'
+      : 'admin_done_for_you.claim_link',
+    sourceRecordId: Number(invitation.id || pendingId),
+    isPrimary: true
+  });
+  await client.query(
+    `UPDATE users
+        SET name=COALESCE(NULLIF(BTRIM(name),''),$2),updated_at=NOW()
+      WHERE id=$1`,
+    [targetUserId, invitation.name]
+  );
+  const updated = (await client.query(
+    `UPDATE organizers
+        SET name=COALESCE(NULLIF(BTRIM(name),''),$2),last_login_at=NOW(),updated_at=NOW()
+      WHERE id=$1 AND user_id=$1
+      RETURNING *`,
+    [targetUserId, invitation.name]
+  )).rows[0];
+  return {
+    organizer: updated,
+    user: { id: targetUserId },
+    identity,
+    createdOrganizer: false,
+    createdIdentity: false
+  };
 }
 
 // Finishes a consumed link or code. Database work happens on `client` inside
@@ -707,20 +897,35 @@ async function completeChallenge(client, req, pending, {
     };
   }
 
-  const canonical = await resolveOrCreateOrganizerByEmail(client, {
-    email,
-    name: pending.intent === 'claim_account'
-      ? (await client.query(
-          `SELECT name FROM admin_account_invitations
-            WHERE magic_link_token_id=$1`,
-          [pending.id]
-        )).rows[0]?.name
-      : null,
-    accountVerification: {
-      verifiedAt: new Date(),
-      verificationSource: emailProofSource
+  let invitation = null;
+  if (pending.intent === 'claim_account') {
+    invitation = (await client.query(
+      `SELECT * FROM admin_account_invitations
+        WHERE magic_link_token_id=$1`,
+      [pending.id]
+    )).rows[0];
+    if (!validClaimInvitation(invitation)) {
+      throw new CanonicalIdentityError('This account invitation is no longer available.', {
+        code: 'account_invitation_expired', status: 400
+      });
     }
-  });
+  }
+
+  const canonical = invitation?.target_user_id
+    ? await resolveTargetBoundClaim(client, {
+        invitation,
+        email,
+        emailProofSource,
+        pendingId: pending.id
+      })
+    : await resolveOrCreateOrganizerByEmail(client, {
+        email,
+        name: invitation?.name || null,
+        accountVerification: {
+          verifiedAt: new Date(),
+          verificationSource: emailProofSource
+        }
+      });
   const organizer = (await client.query(
     'SELECT * FROM organizers WHERE id=$1', [canonical.user.id]
   )).rows[0];
@@ -732,9 +937,9 @@ async function completeChallenge(client, req, pending, {
         FOR UPDATE`,
       [pending.id]
     );
-    const invitation = invitations[0];
-    if (!invitation || !invitation.sent_at || invitation.revoked_at || invitation.delivery_failed_at ||
-        invitation.claimed_at || new Date(invitation.expires_at) <= new Date()) {
+    invitation = invitations[0];
+    if (!validClaimInvitation(invitation) ||
+        (invitation.target_user_id && Number(invitation.target_user_id) !== Number(organizer.id))) {
       throw new CanonicalIdentityError('This account invitation is no longer available.', {
         code: 'account_invitation_expired', status: 400
       });
@@ -752,9 +957,24 @@ async function completeChallenge(client, req, pending, {
     await client.query(
       `UPDATE admin_account_invitations
           SET claimed_user_id=$2,claimed_at=NOW()
-        WHERE id=$1`,
+        WHERE id=$1 AND (target_user_id IS NULL OR target_user_id=$2)`,
       [invitation.id, organizer.id]
     );
+    const otherInvitations = await client.query(
+      `UPDATE admin_account_invitations
+          SET revoked_at=COALESCE(revoked_at,NOW())
+        WHERE target_user_id=$1 AND id<>$2 AND claimed_at IS NULL
+          AND revoked_at IS NULL AND delivery_failed_at IS NULL
+        RETURNING magic_link_token_id`,
+      [organizer.id, invitation.id]
+    );
+    if (otherInvitations.rows.length) {
+      await client.query(
+        `UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW())
+          WHERE id=ANY($1::int[])`,
+        [otherInvitations.rows.map(row => Number(row.magic_link_token_id))]
+      );
+    }
     await client.query(
       `INSERT INTO admin_account_audit_log
          (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
@@ -768,7 +988,12 @@ async function completeChallenge(client, req, pending, {
         JSON.stringify({ invitationStatus: 'claimed', prepareHostPage: invitation.prepare_host_page }),
         JSON.stringify({
           invitationId: Number(invitation.id),
-          invitedByUserId: Number(invitation.created_by_user_id)
+          invitedByUserId: invitation.created_by_user_id
+            ? Number(invitation.created_by_user_id)
+            : null,
+          invitedByAdminOperatorId: invitation.created_by_admin_operator_id
+            ? Number(invitation.created_by_admin_operator_id)
+            : null
         }),
         String(req.ip || '').slice(0, 100) || null,
         String(req.get('user-agent') || '').slice(0, 1000) || null
@@ -780,11 +1005,6 @@ async function completeChallenge(client, req, pending, {
     if (!pending.phone_auth_challenge_id) {
       throw new PhoneAuthError('Phone verification expired. Start again.', {
         code: 'phone_verification_expired', status: 400
-      });
-    }
-    if (organizer.is_admin) {
-      throw new PhoneAuthError('For account security, administrators must sign in with email.', {
-        code: 'email_sign_in_required', status: 403
       });
     }
     await bindVerifiedPhone(client, {
@@ -906,10 +1126,11 @@ router.get('/auth/verify', async (req, res, next) => {
       hostName = rows[0]?.org_name || '';
     }
     res.setHeader('Cache-Control', 'private, no-store');
-    // same-origin, not no-referrer: the token-bearing URL still never leaves
-    // the site, but no-referrer would make browsers send `Origin: null` on the
-    // Continue POST and fail the same-origin check below.
-    res.setHeader('Referrer-Policy', 'same-origin');
+    // The query string is a bearer credential. Do not disclose it even to a
+    // same-origin stylesheet/script request or to access logs behind a
+    // separate static-asset origin. Form POST Origin handling is independent
+    // of the Referer policy and remains checked below.
+    res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     res.type('html').send(continuePage({ copy: continuePageCopy(pending, hostName), token, next: legacyNext }));
   } catch (err) { next(err); }
@@ -938,6 +1159,7 @@ router.post('/auth/verify', async (req, res, next) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await lockTargetClaimByLinkToken(client, token);
     const pending = await consumeLink(client, token);
     if (!pending) {
       const usedClaim = token && token.length <= 200
@@ -961,7 +1183,13 @@ router.post('/auth/verify', async (req, res, next) => {
     const fallback = outcome.kind === 'guest' ? '/' : '/dashboard';
     res.redirect(303, outcome.redirect || legacyNext || fallback);
   } catch (err) {
-    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended') {
+    if (err instanceof CanonicalIdentityError &&
+        [
+          'account_suspended',
+          'account_invitation_target_claimed',
+          'account_invitation_target_inactive',
+          'account_invitation_target_mismatch'
+        ].includes(err.code)) {
       // The account-status check runs before identity/session mutations. Keep
       // the consumed bearer token consumed while denying the new session.
       await client.query('COMMIT').catch(() => {});
@@ -1018,7 +1246,9 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
       redirect: outcome.redirect || fallback
     });
   } catch (err) {
-    if (err instanceof CanonicalIdentityError && err.code === 'account_suspended' && consumedPending) {
+    if (err instanceof CanonicalIdentityError &&
+        ['account_suspended', 'account_invitation_target_claimed'].includes(err.code) &&
+        consumedPending) {
       await client.query('COMMIT').catch(() => {});
     } else {
       await client.query('ROLLBACK').catch(() => {});
@@ -1068,6 +1298,11 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const canonicalUserId = Number(req.organizer.user_id || req.organizer.id);
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(canonicalUserId)]
+    );
     await client.query('UPDATE organizers SET sessions_valid_after=$2 WHERE id=$1', [req.organizer.id, new Date()]);
     await revokeIdentityGuestSessions(client, req.organizer.id, req.organizer.user_id);
     const { rows: activeEmails } = await client.query(
@@ -1075,7 +1310,7 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
          FROM user_identities
         WHERE user_id=$1 AND identity_type='email' AND revoked_at IS NULL
           AND verification_scope='account' AND verified_at IS NOT NULL`,
-      [req.organizer.user_id || req.organizer.id]
+      [canonicalUserId]
     );
     const emailValues = activeEmails.map(row => row.email);
     if (!emailValues.includes(String(req.organizer.email || '').trim().toLowerCase())) {
@@ -1086,8 +1321,23 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
           SET used_at=NOW()
         WHERE used_at IS NULL
           AND (LOWER(BTRIM(email))=ANY($2::text[]) OR requested_user_id=$1)`,
-      [req.organizer.user_id || req.organizer.id, emailValues]
+      [canonicalUserId, emailValues]
     );
+    const pendingClaims = await client.query(
+      `UPDATE admin_account_invitations
+          SET revoked_at=COALESCE(revoked_at,NOW())
+        WHERE target_user_id=$1 AND claimed_at IS NULL
+          AND revoked_at IS NULL AND delivery_failed_at IS NULL
+        RETURNING magic_link_token_id`,
+      [canonicalUserId]
+    );
+    if (pendingClaims.rows.length) {
+      await client.query(
+        `UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW())
+          WHERE id=ANY($1::int[])`,
+        [pendingClaims.rows.map(row => Number(row.magic_link_token_id))]
+      );
+    }
     const { rows: activePhones } = await client.query(
       `SELECT phone_e164 AS phone
          FROM account_phone_credentials
@@ -1168,15 +1418,18 @@ router.post('/api/me/identities/step-up/start', requireOrganizer, async (req, re
     const email = normalizeEmail(req.organizer.email);
     if (!limitEmailRequest(req, res, email)) return;
     const userId = Number(req.organizer.user_id || req.organizer.id);
-    const { code, requestToken } = await createSignInChallenge(pool, {
-      email,
-      intent: 'identity_step_up',
-      requestedUserId: userId,
-      returnPath: '/settings/account'
-    });
-    await sendAccountVerificationCode({ to: email, code, purpose: 'identity_step_up' });
-    await logEmail(email, userId);
-    setSignInRequestCookie(res, requestToken);
+    await createAndDeliverSignInChallenge(
+      req,
+      res,
+      {
+        email,
+        intent: 'identity_step_up',
+        requestedUserId: userId,
+        returnPath: '/settings/account'
+      },
+      ({ code }) => sendAccountVerificationCode({ to: email, code, purpose: 'identity_step_up' }),
+      userId
+    );
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) {
@@ -1206,17 +1459,19 @@ router.post(
         });
       }
       if (!limitEmailRequest(req, res, email)) return;
-      const { code, requestToken } = await createSignInChallenge(pool, {
-        email,
-        intent: 'attach_email',
-        requestedUserId: userId,
-        returnPath: '/settings/account'
-      });
-      await sendAccountVerificationCode({ to: email, code, purpose: 'attach_email' });
+      await createAndDeliverSignInChallenge(
+        req,
+        res,
+        {
+          email,
+          intent: 'attach_email',
+          requestedUserId: userId,
+          returnPath: '/settings/account'
+        },
+        ({ code }) => sendAccountVerificationCode({ to: email, code, purpose: 'attach_email' })
+      );
       // Ownership is not known until the code is entered. Do not attach the
       // requester to this delivery snapshot prematurely.
-      await logEmail(email);
-      setSignInRequestCookie(res, requestToken);
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
     } catch (error) {
@@ -1234,12 +1489,6 @@ router.post(
     const startedAt = Date.now();
     let phone;
     try {
-      if (req.organizer.is_admin) {
-        return res.status(403).json({
-          error: 'email_sign_in_required',
-          message: 'Administrators use email sign-in.'
-        });
-      }
       phone = sms.normalizeE164(req.body?.phone);
       const userId = Number(req.organizer.user_id || req.organizer.id);
       const own = await pool.query(

@@ -55,7 +55,7 @@ test('migration safely defaults and constrains flyer presentation on the existin
 test('flyer uploads and event writes reuse authenticated, size-limited infrastructure', () => {
   const uploads = read('src/routes/uploads.js');
   const cloudinary = read('src/lib/cloudinary.js');
-  const events = read('src/routes/events.js');
+  const events = read('src/lib/event-editor.js');
   assert.match(uploads, /router\.post\('\/api\/uploads\/flyer', requireOrganizer, handleUpload/);
   assert.match(uploads, /fileSize: 5 \* 1024 \* 1024/);
   assert.match(cloudinary, /folder: flyerFolder/);
@@ -64,9 +64,9 @@ test('flyer uploads and event writes reuse authenticated, size-limited infrastru
   assert.match(events, /A flyer image is required for Flyer presentation/);
   assert.match(events, /isManagedFlyerUrl/);
   assert.match(events, /presentation_mode, flyer_image_url/);
-  assert.match(events, /e\.presentation_mode \|\| 'standard', e\.flyer_image_url \|\| null/);
+  assert.match(events, /out\.presentation_mode, out\.flyer_image_url/);
   assert.match(events, /cover_fit_mode/);
-  assert.match(events, /e\.cover_fit_mode \|\| 'auto'/);
+  assert.match(events, /out\.cover_fit_mode/);
   assert.match(events, /artwork_accent_color/);
 });
 
@@ -81,7 +81,7 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(html, /Show full flyer/);
   assert.match(html, /Fill the space/);
   assert.match(html, /id="flyer-input"[^>]+image\/jpeg,image\/png,image\/webp,image\/gif/);
-  assert.match(js, /xhr\.open\('POST', '\/api\/uploads\/flyer'\)/);
+  assert.match(js, /xhr\.open\('POST', sgRequestPath\('\/api\/uploads\/flyer'\)\)/);
   assert.match(js, /presentation_mode: presentationMode/);
   assert.match(js, /cover_fit_mode: coverFitMode/);
   assert.match(js, /artwork_accent_color: artworkAccents\.get\(activeArtworkUrl\(\)\) \|\| null/);
@@ -95,7 +95,7 @@ test('create and edit form default to Standard and require an uploaded flyer in 
 test('Flyer designer credit is progressively disclosed, validated inline, and saved with the event', () => {
   const html = read('src/views/event-form.html');
   const js = read('public/js/event-form.js');
-  const events = read('src/routes/events.js');
+  const events = read('src/lib/event-editor.js');
 
   assert.match(html, /id="flyer-credit-fields"[^>]*hidden/);
   assert.match(html, /Who designed this flyer\?/);
@@ -109,7 +109,7 @@ test('Flyer designer credit is progressively disclosed, validated inline, and sa
   assert.match(js, /event\.flyer_designer_instagram_handle \? `@\$\{event\.flyer_designer_instagram_handle\}`/);
   assert.match(events, /cleanInstagramHandle\(body\.flyer_designer_instagram_handle\)/);
   assert.match(events, /flyer_designer_name, flyer_designer_instagram_handle/);
-  assert.match(events, /e\.flyer_designer_name \|\| null, e\.flyer_designer_instagram_handle \|\| null/);
+  assert.match(events, /out\.flyer_designer_name \|\| null, out\.flyer_designer_instagram_handle \|\| null/);
 });
 
 test('event editor keeps the desktop columns and adds a phone-only task flow', () => {

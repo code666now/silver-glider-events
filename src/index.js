@@ -17,8 +17,18 @@ const PORT = process.env.PORT || 3100;
 const VIEWS = path.join(__dirname, 'views');
 const view = name => (req, res) => res.sendFile(path.join(VIEWS, name));
 const safeNext = value => {
-  const next = String(value || '').trim();
-  return next.startsWith('/') && !next.startsWith('//') ? next.slice(0, 700) : '';
+  const next = String(value || '').trim().slice(0, 700);
+  if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || /%5c/i.test(next)) return '';
+  try {
+    const parsed = new URL(next, 'http://silver-glider.local');
+    if (parsed.origin !== 'http://silver-glider.local') return '';
+    const normalized = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//') ||
+        normalized.includes('\\') || /%5c/i.test(normalized)) return '';
+    return normalized;
+  } catch (_) {
+    return '';
+  }
 };
 
 // Payment signature verification needs the unmodified request bytes. Keep both
@@ -41,11 +51,16 @@ app.use(require('./lib/session').sessionMiddleware(pool));
 
 // Routes
 app.use(require('./routes/auth'));
+app.use(require('./routes/admin-auth'));
+app.use(require('./routes/admin-operators'));
+app.use(require('./routes/admin-done-for-you'));
+app.use('/admin-editor', require('./routes/admin-editor'));
 app.use(require('./routes/events'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
 app.use(require('./routes/photos'));
 app.use(require('./routes/feedback'));
+app.use(require('./routes/host-invitation-onboarding'));
 app.use(require('./routes/invites'));
 app.use(require('./routes/follows'));
 app.use(require('./routes/commerce'));
@@ -55,6 +70,7 @@ app.use(require('./routes/email-icons'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
+app.use(require('./routes/admin-identity-changes'));
 app.use(require('./routes/admin-accounts'));
 
 // Auth guards for app pages (server-side redirect to /login when signed out)
@@ -62,6 +78,7 @@ const requireOrganizer = require('./middleware/requireOrganizer');
 const requireAdmin = require('./middleware/requireAdmin');
 const requirePhotoAccess = require('./middleware/requirePhotoAccess');
 const { clearSessionCookie } = require('./lib/session');
+const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-session');
 
 // Public pages
 app.get('/', view('index.html'));
@@ -69,11 +86,35 @@ app.get('/privacy', (req, res) => res.type('html').send(renderLegalPage('privacy
 app.get('/terms', (req, res) => res.type('html').send(renderLegalPage('terms')));
 app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
 app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
+app.get('/account/verify-change', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  res.sendFile(path.join(VIEWS, 'account-verify-change.html'));
+});
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
   if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');
   if (req.sessionStale) clearSessionCookie(res);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
   res.sendFile(path.join(VIEWS, 'login.html'));
+});
+app.get('/admin/login', async (req, res, next) => {
+  try {
+    const requested = safeNext(req.query.next);
+    const requestedPath = requested ? new URL(requested, 'http://localhost').pathname : '';
+    const adminDestination = requestedPath === '/admin' || requestedPath.startsWith('/admin/');
+    const editorDestination = requestedPath === '/admin-editor' || requestedPath.startsWith('/admin-editor/');
+    const destination = (adminDestination || editorDestination) && requestedPath !== '/admin/login'
+      ? requested
+      : '/admin';
+    const dedicated = await loadAdminOperator(pool, req);
+    if (dedicated.operator) return res.redirect(destination);
+    if (dedicated.stale) clearAdminSessionCookie(res);
+    res.sendFile(path.join(VIEWS, 'admin-login.html'));
+  } catch (error) { next(error); }
 });
 
 // Protected app pages — logged-out users are redirected to /login before the page loads
@@ -108,25 +149,15 @@ app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
     );
   } catch (err) { next(err); }
 });
-app.get('/events/new', requireOrganizer, async (req, res, next) => {
+app.get('/events/new', (req, res, next) => {
   const invitationToken = String(req.query.invite || '').trim();
-  if (!invitationToken) {
-    const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
-    return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
+  if (invitationToken && /^[a-z0-9-]{12,220}$/.test(invitationToken)) {
+    return res.redirect(`/host-invitation/${encodeURIComponent(invitationToken)}`);
   }
-  try {
-    if (/^[a-z0-9-]{12,220}$/.test(invitationToken)) {
-      await pool.query(
-        `UPDATE host_invitations
-            SET joined_organizer_id=COALESCE(joined_organizer_id,$2),
-                joined_at=COALESCE(joined_at,NOW()),updated_at=NOW()
-          WHERE token=$1 AND revoked_at IS NULL
-            AND (joined_organizer_id IS NULL OR joined_organizer_id=$2)`,
-        [invitationToken, req.organizer.id]
-      );
-    }
-    res.redirect('/events/new');
-  } catch (err) { next(err); }
+  return next();
+}, requireOrganizer, (req, res) => {
+  const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
+  return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
 });
 // Hosts type or bookmark /events/123 without /manage; send them to the page
 // they meant rather than "Cannot GET". Non-numeric ids fall through to 404.
@@ -142,7 +173,7 @@ app.get('/events/:id/edit', requireOrganizer, async (req, res, next) => {
       [req.params.id, req.organizer.id]
     );
     if (!rows.length) return res.status(404).send('Event not found');
-    res.redirect(302, `/e/${encodeURIComponent(rows[0].slug)}?edit=details`);
+    res.redirect(302, `/events/new?id=${encodeURIComponent(req.params.id)}&advanced=1`);
   } catch (err) { next(err); }
 });
 app.get('/events/:id/manage', requireOrganizer, view('event-manage.html'));
@@ -152,12 +183,23 @@ app.get([
   '/settings/messaging',
   '/settings/host-page'
 ], requireOrganizer, view('settings-v2.html'));
+app.get('/admin', requireAdmin, view('admin-overview.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
+app.get('/admin/done-for-you', requireAdmin, requireAdmin.requireDedicatedAdmin, view('admin-done-for-you.html'));
+app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  return res.sendFile(path.join(VIEWS, 'admin-done-for-you-detail.html'));
+});
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
+app.get('/admin/events', requireAdmin, view('admin-events.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
+app.get('/admin/team', requireAdmin, (req, res) => {
+  if (!requireAdmin.isDedicatedSuperAdmin(req)) return res.redirect('/admin');
+  return res.sendFile(path.join(VIEWS, 'admin-team.html'));
+});
 
 app.get('/health', async (req, res) => {
   let sha = 'unknown';

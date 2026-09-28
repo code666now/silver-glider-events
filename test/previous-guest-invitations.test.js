@@ -28,7 +28,7 @@ test('upcoming events invite past guests as faces inside Familiar Faces, not a o
   const styles = read('public/css/familiar-faces.css');
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
-  // The promotion row stays, but now jumps to the in-page section.
+  // The promotion row stays and opens the same in-page picker on every screen size.
   assert.match(promotion, /id="invite-previous-guests"/);
   assert.match(view, /Invite Familiar Faces/);
   assert.ok(promotion.indexOf('download-qr') < promotion.indexOf('invite-previous-guests'));
@@ -42,6 +42,7 @@ test('upcoming events invite past guests as faces inside Familiar Faces, not a o
   assert.match(section, /id="familiar-people-source"[\s\S]*All past events/);
   assert.match(client, /familiar-faces\/people\?/);
   assert.match(client, /familiar-faces\/people\/invite/);
+  assert.match(client, /setMobileManageView\('guests', \{ focus: false, historyMode: 'push' \}\)/);
   // Nothing is pre-selected; there's a review step before sending.
   assert.match(client, /const peopleSelection = new Map\(\)/);
   assert.doesNotMatch(section, /checked/);

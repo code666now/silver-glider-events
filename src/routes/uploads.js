@@ -2,11 +2,23 @@ const express = require('express');
 const multer = require('multer');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requireAdmin = require('../middleware/requireAdmin');
+const { actorIds, requireDedicatedAdmin } = require('../middleware/requireAdmin');
 const requirePhotoAccess = require('../middleware/requirePhotoAccess');
 const pool = require('../config/db');
-const { uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar, uploadVibePhoto, configured } = require('../lib/cloudinary');
+const {
+  uploadCover,
+  uploadFlyer,
+  uploadHostHeader,
+  uploadHostLogo,
+  uploadAccountAvatar,
+  uploadVibePhoto,
+  managedPublicIdFromUrl,
+  configured
+} = require('../lib/cloudinary');
 const { selectAccentColor } = require('../../public/js/artwork-color');
 const { linkVerifiedRsvps } = require('../lib/account-rsvps');
+const { clientIp } = require('../lib/rate-limit');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 
 const router = express.Router();
 
@@ -168,24 +180,113 @@ function positiveId(value) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function adminHostUpload(kind, uploadImage) {
+let adminHostUploads = {
+  configured,
+  logo: uploadHostLogo,
+  header: uploadHostHeader
+};
+
+function adminMediaState(url) {
+  return {
+    hasMedia: Boolean(url),
+    managedPublicId: managedPublicIdFromUrl(url)
+  };
+}
+
+async function persistAdminHostMedia(db, req, { id, kind, url }) {
+  const column = kind === 'logo' ? 'logo_url' : 'header_image_url';
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const target = (await client.query(
+      'SELECT user_id FROM organizers WHERE id=$1',
+      [id]
+    )).rows[0];
+    if (!target) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(target.user_id)]
+    );
+    const current = (await client.query(
+      `SELECT id,user_id,${column} AS current_url
+         FROM organizers
+        WHERE id=$1 AND user_id=$2
+        FOR UPDATE`,
+      [id, target.user_id]
+    )).rows[0];
+    const canonicalUser = (await client.query(
+      'SELECT account_status FROM users WHERE id=$1 FOR UPDATE',
+      [target.user_id]
+    )).rows[0];
+    if (!current || !canonicalUser || canonicalUser.account_status === 'deleted') {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const { rows } = await client.query(
+      `UPDATE organizers SET ${column}=$2,updated_at=NOW() WHERE id=$1
+       RETURNING id,email,name,org_name,public_slug,logo_url,header_image_url,
+                 bio,website_url,instagram_handle,instagram_url,contact_email,
+                 plan,is_admin,created_at,updated_at`,
+      [id, url]
+    );
+    const actor = actorIds(req);
+    const beforeState = adminMediaState(current.current_url);
+    const afterState = adminMediaState(url);
+    await client.query(
+      `INSERT INTO admin_account_audit_log
+         (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+          before_state,after_state,metadata,request_ip,user_agent)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9,$10)`,
+      [
+        actor.actorUserId,
+        actor.actorAdminOperatorId,
+        current.user_id,
+        kind === 'logo' ? 'host_logo_updated' : 'host_header_updated',
+        `Admin Host Page ${kind} update`,
+        JSON.stringify(beforeState),
+        JSON.stringify(afterState),
+        JSON.stringify({ organizerId: Number(id), mediaKind: kind }),
+        String(clientIp(req) || '').slice(0, 100) || null,
+        String(req.get('user-agent') || '').slice(0, 1000) || null
+      ]
+    );
+    await client.query('COMMIT');
+    return rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function adminHostUpload(kind) {
   return async (req, res) => {
     const id = positiveId(req.params.id);
     if (!id) return res.status(404).json({ error: 'Host account not found' });
-    if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
+    if (!adminHostUploads.configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
     if (!req.file) return res.status(400).json({ error: 'Choose an image (JPG, PNG, WebP, or GIF, max 5 MB)' });
     try {
-      const result = await uploadImage(req.file.buffer);
-      const column = kind === 'logo' ? 'logo_url' : 'header_image_url';
-      const { rows } = await pool.query(
-        `UPDATE organizers SET ${column}=$2, updated_at=NOW() WHERE id=$1
-         RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
-                   bio, website_url, instagram_handle, instagram_url, contact_email,
-                   plan, is_admin, created_at, updated_at`,
-        [id, result.secure_url]
+      // Reject an invalid target before sending bytes to the image provider.
+      const target = await pool.query(
+        `SELECT organizer.id
+           FROM organizers organizer
+           JOIN users canonical_user ON canonical_user.id=organizer.user_id
+          WHERE organizer.id=$1 AND canonical_user.account_status<>'deleted'`,
+        [id]
       );
-      if (!rows.length) return res.status(404).json({ error: 'Host account not found' });
-      res.json({ url: result.secure_url, organizer: rows[0] });
+      if (!target.rows.length) return res.status(404).json({ error: 'Host account not found' });
+      const result = await adminHostUploads[kind](req.file.buffer);
+      const organizer = await persistAdminHostMedia(pool, req, {
+        id,
+        kind,
+        url: result.secure_url
+      });
+      if (!organizer) return res.status(404).json({ error: 'Host account not found' });
+      res.json({ url: result.secure_url, organizer });
     } catch (err) {
       console.error(`[upload:admin-host-${kind}]`, err.name, err.http_code || '', err.message);
       const msg = /certificate|self.signed|ECONN|ETIMEDOUT|ENOTFOUND/i.test(err.message)
@@ -196,7 +297,17 @@ function adminHostUpload(kind, uploadImage) {
   };
 }
 
-router.post('/api/admin/uploads/hosts/:id/logo', requireAdmin, handleUpload, adminHostUpload('logo', uploadHostLogo));
-router.post('/api/admin/uploads/hosts/:id/header', requireAdmin, handleUpload, adminHostUpload('header', uploadHostHeader));
+router.post('/api/admin/uploads/hosts/:id/logo', requireAdmin, requireDedicatedAdmin, handleUpload, adminHostUpload('logo'));
+router.post('/api/admin/uploads/hosts/:id/header', requireAdmin, requireDedicatedAdmin, handleUpload, adminHostUpload('header'));
+
+router.setAdminHostUploadsForTests = overrides => {
+  adminHostUploads = {
+    configured,
+    logo: uploadHostLogo,
+    header: uploadHostHeader,
+    ...(overrides || {})
+  };
+};
+router.persistAdminHostMediaForTests = persistAdminHostMedia;
 
 module.exports = router;

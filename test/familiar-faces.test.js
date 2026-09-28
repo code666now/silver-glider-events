@@ -142,6 +142,7 @@ test('"Your crowd" groups filter the picker, and a public event can invite a who
   }
   assert.match(routes, /p\.event_count >= 2/);
   assert.match(routes, /p\.in_last_event/);
+  assert.match(routes, /p\.first_event_id = p\.last_hosted_event_id/);
   assert.match(routes, /CURRENT_DATE - INTERVAL '6 months'/);
   assert.match(routes, /p\.event_count = 1 AND NOT p\.in_last_event/);
   // One eligibility CTE feeds the list, the counts and a group invitation.
@@ -151,7 +152,33 @@ test('"Your crowd" groups filter the picker, and a public event can invite a who
 
   // Public events get one tap; private events start with nobody selected.
   assert.match(manage, /eventData\?\.visibility === 'public' && count > 0 && !peopleSelection\.size && !peopleBulk/);
-  assert.match(manage, /body: peopleBulk[\s\S]*group: peopleBulk\.group/);
+  assert.match(manage, /group: bulk\.group[\s\S]*search: peopleSearch/);
+  assert.match(routes, /group && target\.visibility !== 'public'/);
   assert.match(view, /id="familiar-people-groups"/);
   assert.match(view, /id="familiar-people-bulk-btn"/);
+});
+
+test('the host sees proof the guest list works: returning counts and per-face visits', () => {
+  const routes = read('src/routes/events.js');
+  const editor = read('src/lib/event-editor.js');
+  const manage = read('public/js/manage.js');
+  const view = read('src/views/event-manage.html');
+
+  // Returning = a confirmed RSVP to an earlier event owned by the same host.
+  assert.match(editor, /AS returning_count/);
+  assert.match(editor, /prior_event\.event_date < e\.event_date/);
+  assert.match(editor, /prior\.status='confirmed'/);
+  // From invites = they answered a Familiar Faces invitation for this event.
+  assert.match(editor, /AS invited_returning_count/);
+  assert.match(editor, /invitation\.message_type='previous_guest_invite'/);
+  assert.match(editor, /invitation\.created_at <= current_rsvp\.created_at/);
+  assert.match(routes, /visitLabel: visits > 1 \? `\$\{ordinal\(visits\)\} time` : 'First time'/);
+
+  assert.match(manage, /returningLine\.textContent/);
+  assert.match(manage, /came from your invites/);
+  assert.match(manage, /returning === 1 \? 'has been' : 'have been'/);
+  assert.match(manage, /\$\('stat-returning'\)\.textContent = returningStat/);
+  assert.match(view, /id="manage-mobile-returning"/);
+  assert.match(view, /id="stat-returning"/);
+  assert.match(view, /<span>Returning guests<\/span>/);
 });

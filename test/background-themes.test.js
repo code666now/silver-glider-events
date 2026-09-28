@@ -24,7 +24,7 @@ test('Match Photo reuses the artwork palette as an explicit adaptive background'
   const ownerClient = source('public/js/event-owner-editor.js');
   const publicClient = source('public/js/public-event.js');
   const publicRoute = source('src/routes/public.js');
-  const eventsRoute = source('src/routes/events.js');
+  const eventEditor = source('src/lib/event-editor.js');
   const brand = source('public/css/brand.css');
 
   assert.match(form, /function updateAdaptiveThemeSwatch\(colors\)/);
@@ -35,13 +35,13 @@ test('Match Photo reuses the artwork palette as an explicit adaptive background'
   assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
   assert.match(publicClient, /background\.classList\.add\('image-palette'\)/);
   assert.match(publicRoute, /adaptiveBackground: theme === 'adaptive'/);
-  assert.match(eventsRoute, /'midnight', 'aurora', 'sunset', 'ocean', 'adaptive'/);
+  assert.match(eventEditor, /'midnight', 'aurora', 'sunset', 'ocean', 'adaptive'/);
   assert.match(brand, /\.sg-swatch\.fx-adaptive/);
   assert.match(brand, /\.bg-adaptive/);
 });
 
 test('seasonal video effects are accepted and render from dedicated assets', () => {
-  assert.match(source('src/routes/events.js'), /'halloween', 'liquid-stardust', 'color-static', 'last-guest'/);
+  assert.match(source('src/lib/event-editor.js'), /'halloween', 'liquid-stardust', 'color-static', 'last-guest'/);
   const publicRoute = source('src/routes/public.js');
   assert.match(publicRoute, /halloween: 'sg-events\/effects\/halloween'/);
   assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
@@ -92,7 +92,7 @@ test('new video backgrounds crossfade their end-to-start seam in both live views
 });
 
 test('After Hours Saloon remains accepted and renders from its dedicated asset', () => {
-  assert.match(source('src/routes/events.js'), /'fog', 'saloon'/);
+  assert.match(source('src/lib/event-editor.js'), /'fog', 'saloon'/);
   assert.match(source('src/routes/public.js'), /'fog', 'saloon'/);
   const standardView = source('src/views/event-public.html');
   assert.match(standardView, /sg-events\/backgrounds\/after-hours-saloon\.png/);

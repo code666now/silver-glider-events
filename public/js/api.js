@@ -1,15 +1,42 @@
 /* Shared fetch helper + app shell for organizer pages */
 
+function sgIsAdminEditorPath(pathname = location.pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return normalized === '/admin-editor' || normalized.startsWith('/admin-editor/');
+}
+
+function sgIsAdminPath(pathname = location.pathname) {
+  const normalized = String(pathname || '').replace(/\/+$/, '') || '/';
+  return normalized === '/admin' || normalized.startsWith('/admin/') || sgIsAdminEditorPath(normalized);
+}
+
+function sgRequestPath(path) {
+  if (!sgIsAdminEditorPath() || typeof path !== 'string' || !path.startsWith('/api/')) return path;
+  return `/admin-editor${path}`;
+}
+
+function sgAdminEditorRecoveryPath() {
+  return '/admin/done-for-you';
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(sgRequestPath(path), {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined
   });
   if (res.status === 401) {
+    if (sgIsAdminEditorPath()) {
+      window.location.replace(sgAdminEditorRecoveryPath());
+      const error = new Error('Admin editor workspace is no longer available');
+      error.status = 401;
+      error.code = 'admin_editor_workspace_unavailable';
+      throw error;
+    }
     const returnTo = `${location.pathname}${location.search}`;
-    window.location.href = `/login?next=${encodeURIComponent(returnTo)}`;
+    const login = sgIsAdminPath() ? '/admin/login' : '/login';
+    window.location.href = `${login}?next=${encodeURIComponent(returnTo)}`;
     throw new Error('Not signed in');
   }
   const data = await res.json().catch(() => ({}));
@@ -21,6 +48,19 @@ async function api(path, opts = {}) {
     throw error;
   }
   return data;
+}
+
+let sgAdminSessionPromise = null;
+
+function getAdminSession({ force = false } = {}) {
+  if (force) sgAdminSessionPromise = null;
+  if (!sgAdminSessionPromise) {
+    sgAdminSessionPromise = api('/api/admin/auth/me').catch(error => {
+      sgAdminSessionPromise = null;
+      throw error;
+    });
+  }
+  return sgAdminSessionPromise;
 }
 
 function sgEscapeHtml(value) {
@@ -91,37 +131,187 @@ function updateNavAccount(organizer) {
     // value as soon as the response arrives instead of requiring a close/reopen.
     if (menuSheet) fillMenuSheet(menuSheet, sgCurrentAccount);
   }
-  const menu = document.querySelector('.sg-account-menu');
-  if (!menu || !organizer) return;
+  if (!organizer) return;
   const account = sgCurrentAccount || organizer;
-  const displayName = String(account.name || account.org_name || account.email || 'Account').trim();
-  const initials = displayName.split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase() || 'SG';
-  const name = menu.querySelector('.sg-account-menu-name');
-  const plan = menu.querySelector('.sg-account-menu-plan');
-  const fallback = menu.querySelector('.sg-account-avatar-fallback');
-  const image = menu.querySelector('.sg-account-avatar-image');
-  name.textContent = displayName;
-  plan.textContent = `${account.plan === 'pro' ? 'Pro' : 'Free'} plan`;
-  fallback.textContent = initials;
-  if (account.avatar_url) {
-    image.src = account.avatar_url;
-    image.hidden = false;
-    fallback.hidden = true;
-  } else {
-    image.removeAttribute('src');
-    image.hidden = true;
-    fallback.hidden = false;
+  document.querySelectorAll('.sg-account-menu').forEach(menu => fillAccountMenu(menu, account));
+}
+
+function fillAccountMenu(menu, account) {
+  if (!menu || !account) return;
+  menu.querySelectorAll('[data-sg-avatar]').forEach(el => sgPaintAvatar(el, account));
+  menu.querySelectorAll('[data-sg-name]').forEach(el => { el.textContent = sgAccountDisplayName(account); });
+  const host = menu.querySelector('[data-sg-account-host]');
+  const hostLabel = host?.querySelector('[data-sg-account-host-label]');
+  const hostValue = host?.querySelector('[data-sg-account-host-value]');
+  if (host) {
+    host.href = account.public_slug ? `/h/${encodeURIComponent(account.public_slug)}` : '/settings/host-page';
+    if (hostLabel) hostLabel.textContent = 'Host Page';
+    if (hostValue) hostValue.textContent = account.public_slug ? 'View' : 'Set up';
   }
+  const credits = Number(account.sms_credits) || 0;
+  const creditValue = menu.querySelector('[data-sg-account-credits]');
+  if (creditValue) creditValue.textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
+}
+
+function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = false } = {}) {
+  const popoverId = `${idPrefix}-popover`;
+  const primaryLinks = includePrimaryLinks ? `
+        <div class="sg-account-popover-group sg-account-popover-primary">
+          <a class="sg-account-menu-row" href="/dashboard" role="menuitem">${menuIcon('dashboard')}<span>Home</span></a>
+          <a class="sg-account-menu-row" href="/events" role="menuitem">${menuIcon('events')}<span>Events</span></a>
+          <a class="sg-account-menu-row" href="/following" role="menuitem">${menuIcon('following')}<span>Hosts</span></a>
+        </div>` : '';
+  return `
+    <div class="sg-account-menu">
+      <button class="sg-account-trigger" type="button" aria-label="Open account menu" aria-expanded="false" aria-haspopup="menu" aria-controls="${popoverId}">
+        <span class="sg-account-avatar" data-sg-avatar aria-hidden="true"><span class="sg-account-avatar-fallback" data-sg-initials>SG</span><img class="sg-account-avatar-image" alt="" hidden></span>
+        <span class="sg-account-trigger-name" data-sg-name>Account</span>
+        <svg class="sg-account-trigger-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+      </button>
+      <div class="sg-account-popover" id="${popoverId}" role="menu" hidden>
+        <a class="sg-account-menu-profile" href="/profile" role="menuitem">
+          <span class="sg-account-menu-profile-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials>SG</span><img alt="" hidden></span>
+          <span class="sg-account-menu-profile-copy"><strong class="sg-account-menu-name" data-sg-name>Account</strong><small>See your profile</small></span>
+          <span class="sg-account-menu-profile-chevron" aria-hidden="true">›</span>
+        </a>
+        <a class="sg-account-menu-new" href="/events/new" role="menuitem">
+          <span class="sg-account-menu-new-label"><span class="sg-account-menu-new-plus" aria-hidden="true">+</span> New event</span>
+          <span class="sg-account-menu-new-art" aria-hidden="true" hidden><img alt=""></span>
+        </a>
+        ${primaryLinks}
+        <div class="sg-account-popover-group">
+          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Host Page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
+          <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits>0 credits</span></a>
+          <button class="sg-account-menu-row" type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
+        </div>
+        <div class="sg-account-popover-group"><a class="sg-account-menu-row" href="/settings" role="menuitem">${menuIcon('settings')}<span>Settings</span></a></div>
+        <div class="sg-account-popover-group" data-sg-account-admin hidden>
+          <a class="sg-account-menu-row" href="/admin" role="menuitem">${menuIcon('admin')}<span>Admin</span></a>
+        </div>
+        <div class="sg-account-popover-group sg-account-popover-signout">
+          <button class="sg-account-menu-row sg-account-menu-signout" type="button" role="menuitem">${menuIcon('signout')}<span>Sign out</span></button>
+        </div>
+        <p class="sg-account-menu-legal"><a href="/privacy" role="menuitem">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms" role="menuitem">Terms</a></p>
+      </div>
+    </div>`;
+}
+
+function bindAccountMenu(menu, { beforeOpen, signOutDestination = '/login' } = {}) {
+  if (!menu) return { close() {} };
+  const trigger = menu.querySelector('.sg-account-trigger');
+  const popover = menu.querySelector('.sg-account-popover');
+  const visibleItems = () => [...popover.querySelectorAll('[role="menuitem"]')]
+    .filter(item => !item.hidden && !item.closest('[hidden]'));
+  const close = ({ restoreFocus = false } = {}) => {
+    if (popover.hidden) return;
+    popover.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', 'Open account menu');
+    if (restoreFocus) trigger.focus();
+  };
+  const open = () => {
+    beforeOpen?.();
+    fillAccountMenu(menu, sgCurrentAccount);
+    loadAccountMenuArt(menu);
+    popover.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    trigger.setAttribute('aria-label', 'Close account menu');
+  };
+  trigger.addEventListener('click', () => {
+    if (popover.hidden) open();
+    else close();
+  });
+  trigger.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    if (popover.hidden) open();
+    const items = visibleItems();
+    const target = event.key === 'ArrowDown' ? items[0] : items[items.length - 1];
+    target?.focus();
+  });
+  popover.addEventListener('keydown', event => {
+    const items = visibleItems();
+    const index = items.indexOf(document.activeElement);
+    let target = null;
+    if (event.key === 'ArrowDown') target = items[(index + 1 + items.length) % items.length];
+    else if (event.key === 'ArrowUp') target = items[(index - 1 + items.length) % items.length];
+    else if (event.key === 'Home') target = items[0];
+    else if (event.key === 'End') target = items[items.length - 1];
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      close({ restoreFocus: true });
+      return;
+    }
+    if (target) {
+      event.preventDefault();
+      target.focus();
+    }
+  });
+  document.addEventListener('click', event => {
+    if (!menu.contains(event.target)) close();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !popover.hidden) close({ restoreFocus: true });
+  });
+  menuSheetMedia.addEventListener('change', event => {
+    const hadMenuFocus = menu.contains(document.activeElement);
+    close();
+    if (!hadMenuFocus || !event.matches) return;
+    const mobileTrigger = document.querySelector('.sg-home-menu-toggle, .sg-nav-toggle');
+    requestAnimationFrame(() => {
+      if (mobileTrigger?.getClientRects().length) mobileTrigger.focus();
+    });
+  });
+  menu.querySelector('[data-sg-account-feedback]')?.addEventListener('click', () => {
+    close();
+    document.getElementById('feedback-bubble')?.click();
+  });
+  menu.querySelector('.sg-account-menu-signout')?.addEventListener('click', async () => {
+    try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+    window.location.href = signOutDestination;
+  });
+  return { close };
+}
+
+let sgAdminAccess = null;
+let sgAdminAccessPromise = null;
+
+function sgApplyAdminAccess(hasAccess) {
+  sgAdminAccess = Boolean(hasAccess);
+  document.querySelectorAll('[data-sg-account-admin], [data-menu-admin]').forEach(group => {
+    group.hidden = !sgAdminAccess;
+  });
+}
+
+function sgLoadAdminAccess() {
+  if (!sgAdminAccessPromise) {
+    sgAdminAccessPromise = fetch('/api/admin/auth/me', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' }
+    }).then(response => response.ok).catch(() => false).then(hasAccess => {
+      sgApplyAdminAccess(hasAccess);
+      return hasAccess;
+    });
+  }
+  return sgAdminAccessPromise;
 }
 
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
+  if (sgIsAdminEditorPath()) {
+    renderAdminEditorNav(el);
+    return;
+  }
+  if (sgIsAdminPath()) {
+    renderAdminNav(el);
+    return;
+  }
   const links = [
     ['dashboard', '/dashboard', 'Home'],
-    ['events', '/events', 'My Events'],
-    ['following', '/following', 'Following'],
-    ['settings', '/settings', 'Settings']
+    ['events', '/events', 'Events'],
+    ['following', '/following', 'Hosts']
   ];
   el.className = 'sg-nav';
   // On phones, signed-in pages keep Feedback and the legal links inside this menu
@@ -131,61 +321,34 @@ function renderNav(active) {
     <a class="sg-nav-brand" href="/dashboard">Silver Glider <span>Events</span></a>
     <div class="sg-nav-links">
       ${links.map(([key, href, label]) =>
-        `<a href="${href}" class="${key === active ? 'active' : ''}${key === 'settings' ? ' sg-nav-settings-link' : ''}">${label}</a>`).join('')}
+        `<a href="${href}" class="${key === active ? 'active' : ''}">${label}</a>`).join('')}
       <button class="sg-nav-feedback" type="button">Send feedback</button>
       <p class="sg-nav-legal"><a href="/privacy">Privacy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
     </div>
     <div class="sg-nav-actions">
-      <div class="sg-account-menu">
-        <button class="sg-account-avatar" type="button" aria-label="Open account menu" aria-expanded="false" aria-haspopup="menu">
-          <span class="sg-account-avatar-fallback" aria-hidden="true">SG</span>
-          <img class="sg-account-avatar-image" alt="" hidden>
-        </button>
-        <div class="sg-account-popover" role="menu" hidden>
-          <div class="sg-account-menu-identity">
-            <strong class="sg-account-menu-name">Account</strong>
-            <span class="sg-account-menu-plan">Free plan</span>
-          </div>
-          <a href="/profile" role="menuitem">Profile</a>
-          <a href="/settings/account" role="menuitem">Settings</a>
-          <button class="sg-account-menu-signout" type="button" role="menuitem">Sign out</button>
-        </div>
-      </div>
+      ${sgAccountMenuMarkup('sg-app-account')}
       <button class="sg-nav-toggle" type="button" aria-label="Open menu" aria-expanded="false">
         <span></span><span></span><span></span>
       </button>
     </div>`;
 
   const toggle = el.querySelector('.sg-nav-toggle');
-  const accountButton = el.querySelector('.sg-account-avatar');
-  const accountPopover = el.querySelector('.sg-account-popover');
-  const closeAccountMenu = () => {
-    accountPopover.hidden = true;
-    accountButton.setAttribute('aria-expanded', 'false');
-    accountButton.setAttribute('aria-label', 'Open account menu');
-  };
   const closeMenu = () => {
     el.classList.remove('open');
     toggle.setAttribute('aria-expanded', 'false');
     toggle.setAttribute('aria-label', 'Open menu');
   };
+  const accountMenu = bindAccountMenu(el.querySelector('.sg-account-menu'), { beforeOpen: closeMenu });
 
   toggle.addEventListener('click', () => {
     if (usesMenuSheet()) {
       openMenuSheet(toggle);
       return;
     }
-    closeAccountMenu();
+    accountMenu.close();
     const isOpen = el.classList.toggle('open');
     toggle.setAttribute('aria-expanded', String(isOpen));
     toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
-  });
-  accountButton.addEventListener('click', () => {
-    closeMenu();
-    const willOpen = accountPopover.hidden;
-    accountPopover.hidden = !willOpen;
-    accountButton.setAttribute('aria-expanded', String(willOpen));
-    accountButton.setAttribute('aria-label', willOpen ? 'Close account menu' : 'Open account menu');
   });
   el.querySelector('.sg-nav-links').addEventListener('click', e => {
     if (e.target.closest('a')) closeMenu();
@@ -197,27 +360,99 @@ function renderNav(active) {
   document.addEventListener('click', e => {
     if (!el.contains(e.target)) {
       closeMenu();
-      closeAccountMenu();
-    } else if (!e.target.closest('.sg-account-menu')) {
-      closeAccountMenu();
     }
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeMenu();
-      closeAccountMenu();
     }
-  });
-  el.querySelector('.sg-account-menu-signout').addEventListener('click', async () => {
-    try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
-    window.location.href = '/login';
   });
 
   api('/api/auth/me').then(({ organizer }) => updateNavAccount(organizer)).catch(() => {});
+  sgLoadAdminAccess();
   // The tab bar belongs only to the four top-level destinations. Focused
   // create, edit, manage, and Settings detail screens reuse the same nav key
   // but keep their own back navigation and bottom action docks.
   if (topLevelTabForPath(window.location.pathname) === active) mountTabBar(active);
+}
+
+async function sgExitAdminEditorWorkspace() {
+  const beforeExit = new CustomEvent('sg:admin-editor-before-exit', { cancelable: true });
+  if (!document.dispatchEvent(beforeExit)) return false;
+  try {
+    const result = await api('/admin-editor/api/workspace/exit', { method: 'POST' });
+    window.location.href = result.redirect || sgAdminEditorRecoveryPath();
+    return true;
+  } catch (error) {
+    if ([401, 403, 404, 409].includes(error.status)) {
+      window.location.replace(sgAdminEditorRecoveryPath());
+      return true;
+    }
+    throw error;
+  }
+}
+
+function renderAdminEditorNav(el) {
+  el.className = 'sg-nav sg-admin-editor-nav';
+  document.body.classList.add('sg-app-page', 'sg-admin-page', 'sg-admin-editor-page');
+  el.innerHTML = `
+    <span class="sg-nav-brand">Silver Glider <span>Admin</span></span>
+    <div class="sg-nav-actions">
+      <span class="sg-admin-operator" data-admin-editor-context>Done For You event</span>
+      <button class="sg-btn sg-btn-ghost sg-admin-signout" type="button" data-admin-editor-exit>Exit setup</button>
+    </div>`;
+
+  const exitButton = el.querySelector('[data-admin-editor-exit]');
+  exitButton.addEventListener('click', async () => {
+    exitButton.disabled = true;
+    exitButton.textContent = 'Exiting…';
+    try {
+      const exiting = await sgExitAdminEditorWorkspace();
+      if (exiting === false) {
+        exitButton.disabled = false;
+        exitButton.textContent = 'Exit setup';
+      }
+    } catch (error) {
+      exitButton.disabled = false;
+      exitButton.textContent = 'Exit setup';
+      if (error.status !== 401) toast(error.message || 'Could not exit event setup');
+    }
+  });
+
+  const paintMobileContext = text => {
+    document.querySelectorAll('[data-admin-editor-mobile-context]').forEach(context => {
+      context.textContent = text;
+      context.hidden = false;
+    });
+  };
+  paintMobileContext('Done For You');
+  api('/admin-editor/api/workspace').then(({ host }) => {
+    const hostName = String(host?.name || host?.org_name || '').trim();
+    if (hostName) {
+      el.querySelector('[data-admin-editor-context]').textContent = `Done For You · ${hostName}`;
+      paintMobileContext(`For ${hostName}`);
+    }
+  }).catch(() => {});
+}
+
+function renderAdminNav(el) {
+  el.className = 'sg-nav';
+  document.body.classList.add('sg-app-page', 'sg-admin-page');
+  el.innerHTML = `
+    <a class="sg-nav-brand" href="/admin">Silver Glider <span>Admin</span></a>
+    <div class="sg-nav-actions">
+      <span class="sg-admin-operator" data-admin-operator>Admin operator</span>
+      <button class="sg-btn sg-btn-ghost sg-admin-signout" type="button">Sign out</button>
+    </div>`;
+  const label = el.querySelector('[data-admin-operator]');
+  el.querySelector('.sg-admin-signout').addEventListener('click', async () => {
+    try { await api('/api/admin/auth/logout', { method:'POST' }); } catch (_) {}
+    window.location.href = '/admin/login';
+  });
+  getAdminSession().then(({ operator }) => {
+    const role = operator.role === 'super_admin' ? 'Super Admin' : 'Support';
+    label.textContent = `${operator.email} · ${role}`;
+  }).catch(() => {});
 }
 
 // Phones: Home, Events, Create, Hosts and You sit in a bottom tab bar, within
@@ -262,8 +497,13 @@ function usesMenuSheet() {
 }
 
 const MENU_ICONS = {
+  dashboard: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-5h4v5"/>',
+  events: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  create: '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M12 8v8M8 12h8"/>',
+  following: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 5.3"/>',
   host: '<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/>',
   messaging: '<path d="M4 5h16v11H9l-5 4z"/>',
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
   feedback: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z"/><path d="M8.5 10h.01M15.5 10h.01M8.5 14.5c1.9 1.6 5.1 1.6 7 0"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
   admin: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/>',
@@ -273,7 +513,8 @@ const menuIcon = name => `<svg class="sg-menu-icon" viewBox="0 0 24 24" aria-hid
 
 let menuSheet = null;
 let menuSheetReturnFocus = null;
-let menuSheetArtLoaded = false;
+let menuArtworkUrlsPromise = null;
+const menuArtworkLoaded = new WeakSet();
 
 function buildMenuSheet() {
   const sheet = document.createElement('div');
@@ -282,6 +523,13 @@ function buildMenuSheet() {
   sheet.setAttribute('aria-modal', 'true');
   sheet.setAttribute('aria-label', 'Menu');
   sheet.hidden = true;
+  const homePrimaryLinks = document.body.classList.contains('sg-home-page')
+    ? `<div class="sg-menu-group sg-menu-primary-group">
+        <a class="sg-menu-row" href="/dashboard">${menuIcon('dashboard')}<span>Home</span></a>
+        <a class="sg-menu-row" href="/events">${menuIcon('events')}<span>Events</span></a>
+        <a class="sg-menu-row" href="/following">${menuIcon('following')}<span>Hosts</span></a>
+      </div>`
+    : '';
   sheet.innerHTML = `
     <div class="sg-menu-sheet-inner">
       <button class="sg-menu-close" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -294,6 +542,7 @@ function buildMenuSheet() {
         <span class="sg-menu-new-label"><span aria-hidden="true">+</span> New event</span>
         <span class="sg-menu-new-art" aria-hidden="true" hidden><img alt=""></span>
       </a>
+      ${homePrimaryLinks}
       <div class="sg-menu-group">
         <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>Host page</span><span class="sg-menu-value" data-menu-host-value></span></a>
         <a class="sg-menu-row" href="/settings/messaging">${menuIcon('messaging')}<span>Messaging</span><span class="sg-menu-value" data-menu-credits></span></a>
@@ -302,13 +551,14 @@ function buildMenuSheet() {
       <div class="sg-menu-group">
         <a class="sg-menu-row" href="/settings">${menuIcon('settings')}<span>Settings</span></a>
       </div>
-      <div class="sg-menu-group" data-menu-admin hidden></div>
+      <div class="sg-menu-group" data-menu-admin hidden><a class="sg-menu-row" href="/admin">${menuIcon('admin')}<span>Admin</span></a></div>
       <div class="sg-menu-group">
         <button class="sg-menu-row" type="button" data-menu-signout>${menuIcon('signout')}<span>Sign out</span></button>
       </div>
       <p class="sg-menu-legal"><a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
     </div>`;
   document.body.appendChild(sheet);
+  sgApplyAdminAccess(sgAdminAccess === true);
 
   sheet.querySelector('.sg-menu-close').addEventListener('click', closeMenuSheet);
   sheet.querySelector('[data-menu-feedback]').addEventListener('click', () => {
@@ -317,7 +567,7 @@ function buildMenuSheet() {
   });
   sheet.querySelector('[data-menu-signout]').addEventListener('click', async () => {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (_) {}
-    window.location.href = '/login';
+    window.location.href = document.body.classList.contains('sg-home-page') ? '/' : '/login';
   });
   sheet.addEventListener('keydown', event => {
     if (event.key === 'Escape') closeMenuSheet();
@@ -345,26 +595,28 @@ function fillMenuSheet(sheet, organizer) {
   }
   const credits = Number(organizer.sms_credits) || 0;
   sheet.querySelector('[data-menu-credits]').textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
-  const admin = sheet.querySelector('[data-menu-admin]');
-  admin.hidden = !organizer.is_admin;
-  // One row; the admin pages have their own section tabs.
-  if (organizer.is_admin && !admin.children.length) {
-    admin.innerHTML = `<a class="sg-menu-row" href="/admin/accounts">${menuIcon('admin')}<span>Admin</span></a>`;
-  }
 }
 
-// The New event card shows the host's latest artwork, so it feels like theirs.
-function loadMenuSheetArt(sheet) {
-  if (menuSheetArtLoaded) return;
-  menuSheetArtLoaded = true;
-  api('/api/events').then(({ events }) => {
-    const artworkUrls = (events || []).map(ev => sgSafeHttpUrl(
+function loadMenuArtworkUrls() {
+  if (!menuArtworkUrlsPromise) {
+    menuArtworkUrlsPromise = api('/api/events').then(({ events }) => (events || []).map(ev => sgSafeHttpUrl(
       ev.presentation_mode === 'flyer'
         ? (ev.flyer_image_url || ev.cover_image_url)
         : (ev.cover_image_url || ev.flyer_image_url)
-    )).filter(Boolean);
+    )).filter(Boolean)).catch(() => []);
+  }
+  return menuArtworkUrlsPromise;
+}
+
+// Both menu surfaces use the host's latest artwork without making duplicate requests.
+function loadMenuArtwork(surface, artSelector) {
+  if (!surface || menuArtworkLoaded.has(surface)) return;
+  menuArtworkLoaded.add(surface);
+  loadMenuArtworkUrls().then(urls => {
+    const artworkUrls = [...urls];
     if (!artworkUrls.length) return;
-    const art = sheet.querySelector('.sg-menu-new-art');
+    const art = surface.querySelector(artSelector);
+    if (!art) return;
     const image = art.querySelector('img');
     const tryArtwork = () => {
       const url = artworkUrls.shift();
@@ -382,8 +634,11 @@ function loadMenuSheetArt(sheet) {
       image.src = url;
     };
     tryArtwork();
-  }).catch(() => {});
+  });
 }
+
+function loadMenuSheetArt(sheet) { loadMenuArtwork(sheet, '.sg-menu-new-art'); }
+function loadAccountMenuArt(menu) { loadMenuArtwork(menu, '.sg-account-menu-new-art'); }
 
 function openMenuSheet(trigger) {
   menuSheet = menuSheet || buildMenuSheet();
@@ -405,7 +660,13 @@ function closeMenuSheet() {
   document.documentElement.classList.remove('sg-menu-sheet-open');
   if (menuSheetReturnFocus) {
     menuSheetReturnFocus.setAttribute('aria-expanded', 'false');
-    menuSheetReturnFocus.focus();
+    const visibleReturnFocus = menuSheetReturnFocus.getClientRects().length ? menuSheetReturnFocus : null;
+    const desktopTrigger = document.querySelector('.sg-account-trigger');
+    const visibleDesktopTrigger = desktopTrigger?.getClientRects().length ? desktopTrigger : null;
+    const focusTarget = visibleReturnFocus || visibleDesktopTrigger;
+    requestAnimationFrame(() => {
+      if (focusTarget?.getClientRects().length) focusTarget.focus();
+    });
   }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   setTimeout(() => { if (!menuSheet.classList.contains('open')) menuSheet.hidden = true; }, reduced ? 0 : 220);
@@ -414,7 +675,7 @@ menuSheetMedia.addEventListener('change', () => { if (!menuSheetMedia.matches) c
 
 // Inject the moving aurora background behind the page (once).
 function mountAurora() {
-  if (document.querySelector('.sg-aurora')) return;
+  if (document.querySelector('.sg-aurora, .aurora')) return;
   const aurora = document.createElement('div');
   aurora.className = 'sg-aurora';
   aurora.setAttribute('aria-hidden', 'true');
@@ -445,6 +706,7 @@ function toast(msg) {
 }
 
 function mountFeedbackBubble() {
+  if (sgIsAdminEditorPath()) return;
   if (document.getElementById('feedback-bubble')) return;
   const draftKey = 'sge_feedback_draft';
   const root = document.createElement('div');
@@ -508,7 +770,7 @@ function mountFeedbackBubble() {
     }
     const bubble = document.getElementById('feedback-bubble');
     // On phones the bubble is hidden and Feedback opens from the menu.
-    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle')]
+    const focusTarget = [bubble, document.querySelector('.sg-legal-feedback'), document.querySelector('.sg-nav-toggle'), document.querySelector('.sg-account-trigger')]
       .find(candidate => {
         if (!candidate || candidate.hidden || !candidate.getClientRects().length) return false;
         const style = window.getComputedStyle(candidate);
@@ -567,5 +829,8 @@ function mountFeedbackBubble() {
   }
 }
 
-if (document.readyState !== 'loading') mountFeedbackBubble();
-else document.addEventListener('DOMContentLoaded', mountFeedbackBubble);
+function autoMountFeedbackBubble() {
+  if (!document.body.classList.contains('sg-home-page')) mountFeedbackBubble();
+}
+if (document.readyState !== 'loading') autoMountFeedbackBubble();
+else document.addEventListener('DOMContentLoaded', autoMountFeedbackBubble);

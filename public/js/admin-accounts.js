@@ -10,15 +10,19 @@ const state = {
   nextCursor: null,
   requestId: 0,
   action: null,
+  identityChangeType: null,
+  canManageIdentities: false,
+  identityChangeRequests: [],
+  audit: [],
   deletion: null,
-  deleteRequest: null,
-  deleteMode: null
+  deleteRequest: null
 };
 
 const list = document.getElementById('accounts-list');
 const empty = document.getElementById('accounts-empty');
 const detailDialog = document.getElementById('account-detail-dialog');
 const actionDialog = document.getElementById('support-action-dialog');
+const identityChangeDialog = document.getElementById('identity-change-dialog');
 const invitationDialog = document.getElementById('invitation-dialog');
 const deleteDialog = document.getElementById('delete-account-dialog');
 const search = document.getElementById('account-search');
@@ -26,6 +30,13 @@ const kindFilter = document.getElementById('account-kind');
 const statusFilter = document.getElementById('account-status');
 const loadMoreButton = document.getElementById('accounts-load-more');
 const dialogReturnFocus = new Map();
+
+const initialFilters = new URLSearchParams(location.search);
+const initialKind = initialFilters.get('type') || initialFilters.get('kind') || '';
+const initialStatus = initialFilters.get('status') || '';
+if ([...kindFilter.options].some(option => option.value === initialKind)) kindFilter.value = initialKind;
+if ([...statusFilter.options].some(option => option.value === initialStatus)) statusFilter.value = initialStatus;
+search.value = initialFilters.get('q') || '';
 
 function showDialog(dialog, trigger = document.activeElement) {
   if (!dialog.open) {
@@ -76,36 +87,28 @@ function accountName(account) {
   return String(firstValue(account, ['name', 'display_name', 'displayName', 'org_name'], 'Unnamed account')).trim() || 'Unnamed account';
 }
 
-function alreadyMasked(value) {
-  return /[•*]/.test(String(value || ''));
-}
-
-function maskEmail(value) {
+function displayEmail(value) {
   const raw = String(value || '').trim();
-  if (!raw) return 'No email';
-  if (alreadyMasked(raw)) return raw;
-  const at = raw.lastIndexOf('@');
-  if (at < 1) return 'Email on file';
-  const local = raw.slice(0, at);
-  const domain = raw.slice(at + 1);
-  const visible = local.length > 1 ? local[0] : '';
-  return `${visible}${visible ? '•••' : '••••'}@${domain}`;
+  return raw || 'No email on file';
 }
 
-function maskPhone(value) {
+function displayPhone(value) {
   const raw = String(value || '').trim();
-  if (!raw) return 'No mobile number';
-  if (alreadyMasked(raw)) return raw;
-  const digits = raw.replace(/\D/g, '');
-  return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : 'Mobile number on file';
+  return raw || 'No phone on file';
 }
 
-function maskedAccountEmail(account) {
-  return maskEmail(firstValue(account, ['primary_email_masked', 'email_masked', 'primary_email', 'email']));
+function accountEmailValue(account) {
+  return displayEmail(firstValue(account, [
+    'primary_email', 'verified_email', 'email', 'contactEmail', 'contact_email',
+    'primary_email_masked', 'email_masked'
+  ]));
 }
 
-function maskedAccountPhone(account) {
-  return maskPhone(firstValue(account, ['primary_phone_masked', 'phone_masked', 'primary_phone', 'phone']));
+function accountPhoneValue(account) {
+  return displayPhone(firstValue(account, [
+    'primary_phone', 'verified_phone', 'phone', 'contactPhone', 'contact_phone',
+    'primary_phone_masked', 'phone_masked'
+  ]));
 }
 
 function statusOf(account) {
@@ -155,9 +158,13 @@ function accountRow(account) {
   const page = hostPageName(account);
   const status = statusOf(account);
   const lastActive = firstValue(account, ['last_login_at', 'last_active_at']);
+  const email = accountEmailValue(account);
+  const phone = accountPhoneValue(account);
+  const emailLabel = firstValue(account, ['emailLabel', 'email_label'], email === 'No email on file' ? 'No email on file' : 'Email');
+  const phoneLabel = firstValue(account, ['phoneLabel', 'phone_label'], phone === 'No phone on file' ? 'No phone on file' : 'Phone');
   return `<button class="accounts-row" type="button" data-account-id="${esc(id)}" aria-label="Open ${esc(accountName(account))} account">
     <span class="accounts-row-person"><strong>${esc(accountName(account))}</strong><span>User ID ${esc(id)}</span></span>
-    <span class="accounts-row-account"><strong>${esc(maskedAccountEmail(account))}</strong><span>${esc(maskedAccountPhone(account))}</span></span>
+    <span class="accounts-row-account"><strong aria-label="${esc(`${emailLabel}: ${email}`)}">${esc(email)}</strong><span aria-label="${esc(`${phoneLabel}: ${phone}`)}">${esc(phone)}</span></span>
     <span class="accounts-row-activity"><strong>${esc(lastActive ? formatDate(lastActive) : 'No sign-in yet')}</strong><span>${rsvps} RSVP${rsvps === 1 ? '' : 's'}</span></span>
     <span class="accounts-row-property"><strong>${esc(page || kindOf(account))}</strong><span>${events} event${events === 1 ? '' : 's'}</span></span>
     <span class="accounts-row-status"><span class="accounts-status-badge ${status}">${esc(statusLabel(account))}</span></span>
@@ -230,46 +237,192 @@ async function loadAccounts({ append = false } = {}) {
 }
 
 function normalizeIdentities(data, account) {
-  if (Array.isArray(data.identities)) return data.identities;
-  if (Array.isArray(account.identities)) return account.identities;
-  return [
-    ...asArray(data.emails || account.emails).map(item => typeof item === 'string' ? { type:'email', value:item, verified:true } : { type:'email', ...item }),
-    ...asArray(data.phones || account.phones).map(item => typeof item === 'string' ? { type:'phone', value:item, verified:true } : { type:'phone', ...item })
-  ];
+  const hasExplicitIdentities = Array.isArray(data.identities) || Array.isArray(account.identities);
+  const verified = hasExplicitIdentities
+    ? asArray(data.identities || account.identities)
+    : [
+      ...asArray(data.emails || account.emails).map(item => typeof item === 'string' ? { type:'email', value:item, verifiedForSignIn:true } : { type:'email', ...item }),
+      ...asArray(data.phones || account.phones).map(item => typeof item === 'string' ? { type:'phone', value:item, verifiedForSignIn:true } : { type:'phone', ...item })
+    ];
+
+  if (!hasExplicitIdentities) {
+    const verifiedEmail = firstValue(account, ['primary_email', 'verified_email', 'email'], null);
+    const verifiedPhone = firstValue(account, ['primary_phone', 'verified_phone', 'phone'], null);
+    if (verifiedEmail) verified.push({ type:'email', value:verifiedEmail, verifiedForSignIn:true, isPrimary:true });
+    if (verifiedPhone) verified.push({ type:'phone', value:verifiedPhone, verifiedForSignIn:true, isPrimary:true });
+  }
+
+  const contacts = asArray(data.contactMethods || data.contact_methods || account.contactMethods).map(item => ({
+    verifiedForSignIn:false,
+    ...item
+  }));
+  const contactEmail = firstValue(account, ['contactEmail', 'contact_email', 'rsvpEmail', 'rsvp_email'], null);
+  const contactPhone = firstValue(account, ['contactPhone', 'contact_phone', 'rsvpPhone', 'rsvp_phone'], null);
+  if (contactEmail) contacts.push({ type:'email', value:contactEmail, label:'Contact/RSVP email (not verified for sign-in)', verifiedForSignIn:false });
+  if (contactPhone) contacts.push({ type:'phone', value:contactPhone, label:'Contact/RSVP phone (not verified for sign-in)', verifiedForSignIn:false });
+
+  const seen = new Set();
+  const items = [...verified, ...contacts].filter(identity => {
+    const type = identityType(identity);
+    const value = identityValue(identity);
+    if (!value) return false;
+    const normalized = type === 'email' ? value.toLowerCase() : value.replace(/\D/g, '');
+    const key = `${type}:${normalized || value}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const summary = data.contactSummary || data.contact_summary || {};
+  for (const type of ['email', 'phone']) {
+    if (items.some(identity => identityType(identity) === type)) continue;
+    const item = summary[type] || {};
+    const value = firstValue(item, ['value'], '');
+    items.push({
+      type,
+      value,
+      label:firstValue(item, ['label'], `No ${type} on file`),
+      unavailable:!value,
+      verifiedForSignIn:Boolean(firstValue(item, ['verifiedForSignIn', 'verified_for_sign_in'], false))
+    });
+  }
+  return items;
 }
 
 function identityType(identity) {
   return String(firstValue(identity, ['type', 'identity_type', 'kind'], 'email')).toLowerCase().includes('phone') ? 'phone' : 'email';
 }
 
-function identityMaskedValue(identity) {
-  const type = identityType(identity);
-  const value = firstValue(identity, ['masked_value', 'maskedValue', 'display_value', 'value', 'normalized_value'], '');
-  return type === 'phone' ? maskPhone(value) : maskEmail(value);
+function identityValue(identity) {
+  return String(firstValue(identity, [
+    'value', 'normalized_value', 'normalizedValue', 'full_value', 'fullValue',
+    'display_value', 'displayValue', 'masked_value', 'maskedValue'
+  ], '') || '').trim();
+}
+
+function identityVerifiedForSignIn(identity) {
+  const explicit = firstValue(identity, [
+    'verifiedForSignIn', 'verified_for_sign_in', 'verified', 'is_verified', 'isVerified'
+  ], null);
+  if (explicit !== null) return Boolean(explicit);
+  return Boolean(identity.verified_at || identity.verifiedAt || identity.verification_scope === 'account' || identity.verificationScope === 'account');
 }
 
 function renderIdentities(identities, account) {
   const items = identities.length ? identities : [
-    { type:'email', value:firstValue(account, ['primary_email_masked','email_masked','primary_email','email']), is_primary:true, verified:true },
-    ...(firstValue(account, ['primary_phone_masked','phone_masked','primary_phone','phone']) ? [{ type:'phone', value:firstValue(account, ['primary_phone_masked','phone_masked','primary_phone','phone']), is_primary:true, verified:true }] : [])
+    { type:'email', value:'', label:'No email on file', unavailable:true },
+    { type:'phone', value:'', label:'No phone on file', unavailable:true }
   ];
   const emailIcon = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m4 7 8 6 8-6"></path></svg>';
   const phoneIcon = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2.5" width="10" height="19" rx="2.5"></rect><path d="M10.5 18.5h3"></path></svg>';
   document.getElementById('account-identities').innerHTML = items.length ? items.map(identity => {
     const type = identityType(identity);
-    const primary = Boolean(firstValue(identity, ['is_primary', 'isPrimary', 'primary'], false));
-    const verified = firstValue(
-      identity,
-      ['verified', 'is_verified', 'isVerified'],
-      Boolean(identity.verified_at || identity.verifiedAt || identity.verification_scope === 'account' || identity.verificationScope === 'account')
-    );
-    const helper = `${primary ? 'Primary' : 'Recovery'} ${type === 'phone' ? 'mobile number' : 'email'}`;
+    const value = identityValue(identity);
+    const unavailable = Boolean(identity.unavailable) || !value;
+    const verified = !unavailable && identityVerifiedForSignIn(identity);
+    const helper = firstValue(identity, ['label'], unavailable
+      ? `No ${type} on file`
+      : (verified
+        ? `Verified sign-in ${type}`
+        : `Contact/RSVP ${type} (not verified for sign-in)`));
+    const stateLabel = unavailable ? '' : (verified ? 'Verified' : 'Contact only');
+    const stateClass = unavailable ? 'unavailable' : (verified ? 'verified' : 'contact');
     return `<div class="accounts-identity-row">
       <span class="accounts-identity-icon">${type === 'phone' ? phoneIcon : emailIcon}</span>
-      <span class="accounts-identity-copy"><strong>${esc(identityMaskedValue(identity))}</strong><span>${esc(helper)}</span></span>
-      <span class="accounts-identity-state">${verified === false ? 'Unverified' : 'Verified'}</span>
+      <span class="accounts-identity-copy"><strong>${esc(unavailable ? helper : value)}</strong>${unavailable ? '' : `<span>${esc(helper)}</span>`}</span>
+      ${stateLabel ? `<span class="accounts-identity-state ${stateClass}">${esc(stateLabel)}</span>` : ''}
     </div>`;
   }).join('') : '<p class="accounts-muted-empty">No verified sign-in methods are available.</p>';
+}
+
+function identityChangeStatus(request) {
+  return String(firstValue(request, ['status'], 'pending') || 'pending').trim().toLowerCase();
+}
+
+function identityChangeId(request) {
+  return firstValue(request, ['id', 'changeId', 'change_id'], '');
+}
+
+function identityChangeValue(request) {
+  return String(firstValue(request, ['value', 'newValue', 'new_value', 'target'], '') || '').trim();
+}
+
+function identityChangeType(request) {
+  return String(firstValue(request, ['type', 'identityType', 'identity_type'], 'email')).toLowerCase() === 'phone'
+    ? 'phone'
+    : 'email';
+}
+
+function identityChangeStatusLabel(status) {
+  return {
+    pending: 'Waiting for verification',
+    sent: 'Waiting for verification',
+    delivery_failed: 'Delivery failed',
+    conflict: 'Needs attention',
+    expired: 'Expired'
+  }[status] || 'Waiting for verification';
+}
+
+function identityChangeTiming(request, status) {
+  const createdAt = firstValue(request, ['createdAt', 'created_at'], null);
+  const expiresAt = firstValue(request, ['expiresAt', 'expires_at'], null);
+  if (status === 'delivery_failed') return 'The verification message could not be delivered. Review the value before resending.';
+  if (status === 'conflict') return 'This value may already belong to another account. The recipient has not been verified.';
+  if (status === 'expired') return `Expired${expiresAt ? ` ${formatDate(expiresAt, true)}` : ''}. Resend only after confirming the recipient still wants this change.`;
+  const sent = createdAt ? `Requested ${formatDate(createdAt, true)}` : 'Verification requested';
+  return `${sent}${expiresAt ? ` · Expires ${formatDate(expiresAt, true)}` : ''}`;
+}
+
+function renderIdentityChanges(requests) {
+  const section = document.getElementById('account-pending-identities');
+  const list = document.getElementById('account-pending-identity-list');
+  const actions = document.getElementById('account-identity-actions');
+  const trustNote = document.getElementById('account-identity-trust-note');
+  actions.hidden = !state.canManageIdentities;
+  trustNote.hidden = !state.canManageIdentities;
+  if (!state.canManageIdentities) {
+    section.hidden = true;
+    list.replaceChildren();
+    document.getElementById('request-email-change').disabled = true;
+    document.getElementById('request-phone-change').disabled = true;
+    return;
+  }
+  const openRequests = asArray(requests).filter(request => !['verified', 'cancelled', 'canceled', 'superseded'].includes(identityChangeStatus(request)));
+  const activeTypes = new Set(openRequests
+    .filter(request => {
+      const status = identityChangeStatus(request);
+      return ['pending', 'sent'].includes(status) || (
+        ['delivery_failed', 'conflict'].includes(status)
+        && firstValue(request, ['canCancel', 'can_cancel'], false) === true
+      );
+    })
+    .map(identityChangeType));
+  const emailButton = document.getElementById('request-email-change');
+  const phoneButton = document.getElementById('request-phone-change');
+  emailButton.disabled = activeTypes.has('email');
+  phoneButton.disabled = activeTypes.has('phone');
+  emailButton.title = emailButton.disabled ? 'Resolve the current email request first.' : '';
+  phoneButton.title = phoneButton.disabled ? 'Resolve the current phone request first.' : '';
+  section.hidden = openRequests.length === 0;
+  list.innerHTML = openRequests.map(request => {
+    const id = identityChangeId(request);
+    const type = identityChangeType(request);
+    const value = identityChangeValue(request);
+    const status = identityChangeStatus(request);
+    const canResend = firstValue(request, ['canResend', 'can_resend'], false) === true;
+    const canCancel = firstValue(request, ['canCancel', 'can_cancel'], false) === true;
+    return `<article class="accounts-pending-identity" data-identity-change-id="${esc(id)}">
+      <div class="accounts-pending-identity-copy">
+        <strong>${esc(value || `New ${type}`)}</strong>
+        <span>${esc(identityChangeStatusLabel(status))}</span>
+        <time>${esc(identityChangeTiming(request, status))}</time>
+      </div>
+      ${(canResend || canCancel) ? `<div class="accounts-pending-identity-actions">
+        ${canResend ? `<button class="sg-btn sg-btn-ghost" type="button" data-identity-request-action="resend" data-identity-change-id="${esc(id)}" aria-label="Resend verification to ${esc(value || type)}">Resend</button>` : ''}
+        ${canCancel ? `<button class="sg-btn sg-btn-ghost accounts-quiet-danger" type="button" data-identity-request-action="cancel" data-identity-change-id="${esc(id)}" aria-label="Cancel verification request for ${esc(value || type)}">Cancel request</button>` : ''}
+      </div>` : ''}
+    </article>`;
+  }).join('');
 }
 
 function ownershipValue(ownership, account, keys, fallback = 0) {
@@ -341,7 +494,13 @@ function renderNotes(notes) {
 }
 
 function renderAudit(audit) {
-  document.getElementById('account-audit').innerHTML = audit.length ? audit.map(item => {
+  const visibleAudit = state.canManageIdentities
+    ? audit
+    : audit.filter(item => !String(firstValue(item, ['action_type','actionType','action','event','label'], ''))
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+      .includes('identity_change'));
+  document.getElementById('account-audit').innerHTML = visibleAudit.length ? visibleAudit.map(item => {
     const rawAction = firstValue(item, ['label','action_label','action','event'], 'Account updated');
     const action = String(rawAction).replace(/_/g, ' ').replace(/^./, character => character.toUpperCase());
     const actor = firstValue(item, ['actor_name','admin_name','actor'], 'Silver Glider');
@@ -352,15 +511,7 @@ function renderAudit(audit) {
 }
 
 function deletionAllowed(deletion) {
-  return Boolean(firstValue(deletion, ['allowed', 'eligible', 'canDelete', 'can_delete'], false));
-}
-
-function deletionCanMark(deletion) {
-  return Boolean(firstValue(deletion, ['canMarkTestAccount', 'can_mark_test_account'], false));
-}
-
-function deletionIsTestAccount(deletion) {
-  return Boolean(firstValue(deletion, ['isTestAccount', 'is_test_account'], false));
+  return firstValue(deletion, ['allowed', 'eligible', 'canDelete', 'can_delete'], true) !== false;
 }
 
 function deletionConfirmation(deletion) {
@@ -371,18 +522,10 @@ function deletionConfirmation(deletion) {
   )).trim();
 }
 
-function designationConfirmation(deletion) {
-  return String(firstValue(
-    deletion,
-    ['designationConfirmationText', 'designation_confirmation_text'],
-    `MARK TEST USER ${state.selectedId}`
-  )).trim();
-}
-
-function deletionBlockerLabel(blocker) {
-  if (typeof blocker === 'string') return blocker;
-  const label = firstValue(blocker, ['label', 'message', 'description', 'code'], 'Deletion is blocked');
-  const count = Number(firstValue(blocker, ['count'], 0));
+function deletionWarningLabel(warning) {
+  if (typeof warning === 'string') return warning;
+  const label = firstValue(warning, ['label', 'message', 'description', 'code'], 'Review this account before deletion.');
+  const count = Number(firstValue(warning, ['count'], 0));
   return count > 0 && !String(label).includes(String(count)) ? `${label} (${count})` : String(label);
 }
 
@@ -394,8 +537,9 @@ function deletionSummaryEntries(summary) {
     identities: 'Sign-in methods', identity_count: 'Sign-in methods', identityCount: 'Sign-in methods',
     follows: 'Host follows', follow_count: 'Host follows', followCount: 'Host follows', following: 'Host follows',
     followers: 'Followers', follower_count: 'Followers', followerCount: 'Followers',
-    photos: 'Photos', photo_count: 'Photos', photoCount: 'Photos',
-    sessions: 'Sessions', session_count: 'Sessions', sessionCount: 'Sessions'
+    photos: 'Photos', photo_count: 'Photos', photoCount: 'Photos', uploadedPhotos: 'Uploaded photos',
+    sessions: 'Sessions', session_count: 'Sessions', sessionCount: 'Sessions',
+    messages: 'Message records', purchases: 'Purchases', smsCredits: 'Text credits'
   };
   const seen = new Set();
   return Object.entries(summary).flatMap(([key, value]) => {
@@ -405,7 +549,7 @@ function deletionSummaryEntries(summary) {
     if (seen.has(normalized)) return [];
     seen.add(normalized);
     return [{ label, value }];
-  }).slice(0, 8);
+  }).slice(0, 12);
 }
 
 function deletionSummaryMarkup(summary) {
@@ -415,58 +559,32 @@ function deletionSummaryMarkup(summary) {
 
 function renderDeletion(deletion) {
   const zone = document.getElementById('account-delete-zone');
-  state.deletion = deletion && typeof deletion === 'object' ? deletion : null;
-  if (!state.deletion) {
-    zone.hidden = true;
-    return;
-  }
-
+  state.deletion = deletion && typeof deletion === 'object' ? deletion : {};
   zone.hidden = false;
   const allowed = deletionAllowed(state.deletion);
-  const canMark = deletionCanMark(state.deletion);
-  const isTestAccount = deletionIsTestAccount(state.deletion);
-  const title = document.getElementById('account-delete-title');
-  const description = document.getElementById('account-delete-description');
-  const blockers = asArray(firstValue(state.deletion, ['blockers', 'blockingReasons', 'blocking_reasons'], []));
+  const blockers = asArray(firstValue(state.deletion, ['blockers'], []));
+  const warnings = asArray(firstValue(state.deletion, ['warnings'], []));
   const summary = firstValue(state.deletion, ['summary', 'counts', 'deleteSummary', 'delete_summary'], {});
-  const readiness = document.getElementById('account-delete-readiness');
-  readiness.className = `accounts-delete-readiness ${allowed || canMark ? 'eligible' : 'blocked'}`;
-  readiness.innerHTML = allowed
-    ? '<strong>Eligible designated test account</strong><span>Automated checks found no protected customer, billing, messaging, or shared data.</span>'
-    : canMark
-      ? '<strong>Ready for test designation</strong><span>First save a permanent, audited test-account designation. Deletion remains a separate confirmed action.</span>'
-      : `<strong>Deletion unavailable</strong><span>${isTestAccount ? 'This designated test account has protected data or activity that must be resolved first.' : 'This account has protected data or activity and cannot be designated as disposable test data.'}</span>`;
-
   const summaryElement = document.getElementById('account-delete-summary');
   summaryElement.innerHTML = deletionSummaryMarkup(summary);
   summaryElement.hidden = !summaryElement.innerHTML;
 
-  const blockerList = document.getElementById('account-delete-blockers');
-  blockerList.innerHTML = blockers.map(blocker => `<li>${esc(deletionBlockerLabel(blocker))}</li>`).join('');
-  blockerList.hidden = blockers.length === 0;
+  const warningList = document.getElementById('account-delete-warnings');
+  const visibleWarnings = allowed ? warnings : [...warnings, ...blockers].slice(0, 3);
+  warningList.innerHTML = visibleWarnings.map(warning => `<li>${esc(deletionWarningLabel(warning))}</li>`).join('');
+  warningList.hidden = visibleWarnings.length === 0;
 
   const verificationNote = document.getElementById('account-delete-verification-note');
-  const requiresFreshVerification = Boolean(firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], false));
-  title.textContent = allowed ? 'Delete test account' : (canMark ? 'Mark test account' : 'Test-account deletion');
-  description.textContent = allowed
-    ? 'This permanently removes eligible test data. Real, paid, or operational accounts are blocked automatically.'
-    : canMark
-      ? 'This saves an audited test-data designation. Nothing is deleted in this step.'
-      : isTestAccount
-        ? 'This designated test account has protected data or activity and cannot be permanently deleted.'
-        : 'Permanent deletion is available only for confirmed test accounts with no protected data or activity.';
-  verificationNote.textContent = allowed || isTestAccount
-    ? 'A fresh email confirmation is required before deletion.'
-    : 'A fresh email confirmation is required before saving the test designation.';
-  verificationNote.hidden = !requiresFreshVerification || !(allowed || canMark);
+  const requiresFreshVerification = firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], true) !== false;
+  verificationNote.hidden = !requiresFreshVerification;
 
-  const button = document.getElementById('delete-test-account');
-  button.disabled = !(allowed || canMark);
-  button.textContent = allowed ? 'Delete test account permanently' : 'Mark as test account';
-  button.className = `sg-btn ${allowed ? 'sg-btn-danger' : 'sg-btn-ghost'} accounts-delete-button`;
+  const button = document.getElementById('delete-account-action');
+  button.disabled = !allowed;
+  button.textContent = allowed ? 'Delete account' : 'This account cannot be deleted';
   button.setAttribute('aria-describedby', [
-    'account-delete-readiness',
-    blockers.length ? 'account-delete-blockers' : '',
+    'account-delete-description',
+    summaryElement.innerHTML ? 'account-delete-summary' : '',
+    visibleWarnings.length ? 'account-delete-warnings' : '',
     requiresFreshVerification ? 'account-delete-verification-note' : ''
   ].filter(Boolean).join(' '));
 }
@@ -478,6 +596,7 @@ function detailCollections(data, account) {
   if (ownership.identity_conflict_count === undefined) ownership.identity_conflict_count = numberValue(data, ['identity_conflict_count','conflict_count'], 0);
   return {
     identities: normalizeIdentities(data, account),
+    identityChangeRequests: asArray(data.identityChangeRequests || data.identity_change_requests),
     ownership,
     notes: asArray(data.notes || data.support_notes || account.notes),
     audit: asArray(data.audit || data.audit_log || data.activity || data.history)
@@ -496,10 +615,14 @@ function renderDetail(data) {
   const badge = document.getElementById('account-detail-status');
   badge.className = `accounts-status-badge ${statusOf(account)}`;
   badge.textContent = statusLabel(account);
+  document.getElementById('account-identity-status').textContent = '';
   renderIdentities(collections.identities, account);
+  state.identityChangeRequests = collections.identityChangeRequests;
+  renderIdentityChanges(state.identityChangeRequests);
   renderOwnership(collections.ownership, account);
   renderNotes(collections.notes);
-  renderAudit(collections.audit);
+  state.audit = collections.audit;
+  renderAudit(state.audit);
   renderDeletion(data.deletion || null);
   document.getElementById('account-display-name').value = accountName(account);
   document.getElementById('account-profile-reason').value = '';
@@ -543,6 +666,81 @@ function closeDetail() {
   if (detailDialog.open) detailDialog.close();
 }
 
+function configureIdentityChangeDialog(type, trigger) {
+  if (!state.canManageIdentities) return;
+  if (!state.selectedId) return;
+  const phone = type === 'phone';
+  state.identityChangeType = phone ? 'phone' : 'email';
+  const form = document.getElementById('identity-change-form');
+  form.reset();
+  const input = document.getElementById('identity-change-value');
+  input.type = phone ? 'tel' : 'email';
+  input.inputMode = phone ? 'tel' : 'email';
+  input.autocomplete = 'off';
+  input.placeholder = phone ? '+1 415 555 0123' : 'name@example.com';
+  input.maxLength = phone ? 32 : 254;
+  document.getElementById('identity-change-value-label').textContent = phone ? 'New mobile number' : 'New email address';
+  document.getElementById('identity-change-title').textContent = phone ? 'Change mobile number' : 'Change sign-in email';
+  document.getElementById('identity-change-description').textContent = phone
+    ? 'We’ll text a verification request to the new number. The account will not change until its recipient enters the code.'
+    : 'We’ll send a private verification link to the new address. The account will not change until its recipient reviews and confirms it.';
+  setFormError('identity-change-error', '');
+  showDialog(identityChangeDialog, trigger);
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeIdentityChangeDialog() {
+  if (identityChangeDialog.open) identityChangeDialog.close();
+}
+
+async function refreshSelectedAccount() {
+  if (!state.selectedId) return;
+  renderDetail(await fetchAccount(state.selectedId));
+}
+
+async function submitIdentityChange(event) {
+  event.preventDefault();
+  if (!state.canManageIdentities) return;
+  if (!state.selectedId || !state.identityChangeType) return;
+  const valueField = document.getElementById('identity-change-value');
+  const reasonField = document.getElementById('identity-change-reason');
+  const value = valueField.value.trim();
+  const reason = reasonField.value.trim();
+  if (!value) {
+    setFormError('identity-change-error', `Enter the new ${state.identityChangeType === 'phone' ? 'mobile number' : 'email address'}.`);
+    valueField.focus();
+    return;
+  }
+  if (state.identityChangeType === 'email' && !valueField.validity.valid) {
+    setFormError('identity-change-error', 'Enter a valid email address.');
+    valueField.focus();
+    return;
+  }
+  if (reason.length < 8) {
+    setFormError('identity-change-error', 'Add a short reason for the permanent audit record.');
+    reasonField.focus();
+    return;
+  }
+  const button = document.getElementById('submit-identity-change');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  setFormError('identity-change-error', '');
+  try {
+    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/identity-changes`, {
+      method:'POST',
+      body:{ type:state.identityChangeType, value, reason }
+    });
+    identityChangeDialog.close();
+    toast('Verification request sent to the recipient');
+    await Promise.all([loadAccounts(), refreshSelectedAccount()]);
+  } catch (error) {
+    setFormError('identity-change-error', error.message || 'The verification request could not be sent.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Send verification request';
+  }
+}
+
 function openSupportAction(action) {
   if (!state.selectedId) return;
   const name = accountName(state.selected || {});
@@ -576,9 +774,39 @@ function openSupportAction(action) {
   document.getElementById('support-action-reason').value = '';
   const confirm = document.getElementById('confirm-support-action');
   confirm.textContent = copy.button;
-  confirm.className = `sg-btn ${action === 'reactivate' ? 'sg-btn-primary' : 'sg-btn-danger'}`;
+  confirm.className = `sg-btn ${state.action.tone === 'primary' || action === 'reactivate' ? 'sg-btn-primary' : 'sg-btn-danger'}`;
   setFormError('support-action-error', '');
   showDialog(actionDialog);
+  requestAnimationFrame(() => document.getElementById('support-action-reason').focus());
+}
+
+function openIdentityRequestAction(action, changeId, trigger) {
+  if (!state.canManageIdentities) return;
+  const requests = asArray(state.detail?.identityChangeRequests || state.detail?.identity_change_requests);
+  const request = requests.find(item => String(identityChangeId(item)) === String(changeId));
+  if (!request || !state.selectedId) return;
+  const value = identityChangeValue(request) || identityChangeType(request);
+  const resend = action === 'resend';
+  state.action = {
+    action:resend ? 'identityResend' : 'identityCancel',
+    title:resend ? 'Resend this verification?' : 'Cancel this verification request?',
+    description:resend
+      ? `A fresh verification message will be sent to ${value}. Only its recipient can complete the change.`
+      : `${value} will no longer be able to complete this request. The account’s current sign-in method will remain unchanged.`,
+    button:resend ? 'Resend verification' : 'Cancel request',
+    path:`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/identity-changes/${encodeURIComponent(changeId)}/${resend ? 'resend' : 'cancel'}`,
+    method:'POST',
+    tone:resend ? 'primary' : 'danger',
+    success:resend ? 'Verification resent to the recipient' : 'Verification request cancelled'
+  };
+  document.getElementById('support-action-title').textContent = state.action.title;
+  document.getElementById('support-action-description').textContent = state.action.description;
+  document.getElementById('support-action-reason').value = '';
+  const confirm = document.getElementById('confirm-support-action');
+  confirm.textContent = state.action.button;
+  confirm.className = `sg-btn ${resend ? 'sg-btn-primary' : 'sg-btn-danger'}`;
+  setFormError('support-action-error', '');
+  showDialog(actionDialog, trigger);
   requestAnimationFrame(() => document.getElementById('support-action-reason').focus());
 }
 
@@ -601,10 +829,11 @@ async function submitSupportAction(event) {
   button.disabled = true;
   button.textContent = 'Saving…';
   try {
-    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${state.action.endpoint}`, { method:state.action.method,body:{ reason } });
+    const path = state.action.path || `/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${state.action.endpoint}`;
+    await api(path, { method:state.action.method,body:{ reason } });
     actionDialog.close();
-    toast(`${original} complete`);
-    await Promise.all([loadAccounts(), openAccount(state.selectedId)]);
+    toast(state.action.success || `${original} complete`);
+    await Promise.all([loadAccounts(), refreshSelectedAccount()]);
   } catch (error) {
     setFormError('support-action-error', error.message);
   } finally {
@@ -624,91 +853,61 @@ function resetDeleteDialog() {
   deleteDialog.setAttribute('aria-labelledby', 'delete-account-title');
   deleteDialog.setAttribute('aria-describedby', 'delete-account-description');
   state.deleteRequest = null;
-  state.deleteMode = null;
 }
 
 function openDeleteAccount(trigger) {
   if (!state.selectedId || !state.deletion) return;
-  const mode = deletionAllowed(state.deletion)
-    ? 'delete'
-    : (deletionCanMark(state.deletion) ? 'designate' : null);
-  if (!mode) return;
+  if (!deletionAllowed(state.deletion)) return;
   resetDeleteDialog();
-  state.deleteMode = mode;
   const name = accountName(state.selected || {});
-  const confirmation = mode === 'delete'
-    ? deletionConfirmation(state.deletion)
-    : designationConfirmation(state.deletion);
+  const confirmation = deletionConfirmation(state.deletion);
   const summary = firstValue(state.deletion, ['summary', 'counts', 'deleteSummary', 'delete_summary'], {});
-  const requiresFreshVerification = Boolean(firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], false));
-  document.getElementById('delete-account-kicker').textContent = mode === 'delete' ? 'Permanent deletion' : 'Test-account designation';
-  document.getElementById('delete-account-title').textContent = mode === 'delete'
-    ? 'Delete this test account?'
-    : 'Mark this as a test account?';
-  document.getElementById('delete-account-description').textContent = mode === 'delete'
-    ? `${name} and the eligible test data attached to User ID ${state.selectedId} will be permanently removed. A minimal audit record keeps the user ID, administrator, date, and reason.${requiresFreshVerification ? ' You will confirm your identity by email before deletion.' : ''}`
-    : `${name} will receive a permanent, audited test-data designation. Nothing is deleted in this step.${requiresFreshVerification ? ' You will confirm your identity by email before saving it.' : ''}`;
-  document.getElementById('delete-account-attestation-title').textContent = mode === 'delete'
-    ? 'I confirm this is test data'
-    : 'I confirm this account contains test data only';
-  document.getElementById('delete-account-attestation-help').textContent = mode === 'delete'
-    ? 'Do not continue for a real customer, paid account, or account with records that must be retained.'
-    : 'This permanent designation is required before deletion can be considered.';
-  document.getElementById('delete-account-reason-label').textContent = mode === 'delete'
-    ? 'Reason for deletion'
-    : 'Reason for test designation';
-  document.getElementById('delete-account-reason').placeholder = mode === 'delete'
-    ? 'Why is this test account being removed?'
-    : 'Why is this account confirmed as test data?';
+  const warnings = asArray(firstValue(state.deletion, ['warnings'], []));
+  document.getElementById('delete-account-title').textContent = `Delete ${name}?`;
+  document.getElementById('delete-account-description').textContent = `${name} and the account data attached to User ID ${state.selectedId} will be permanently removed. Required financial and audit records may be anonymized and retained.`;
   document.getElementById('delete-account-required-text').textContent = confirmation;
-  const confirmButton = document.getElementById('confirm-delete-test-account');
-  confirmButton.textContent = mode === 'delete' ? 'Delete permanently' : 'Mark as test account';
-  confirmButton.setAttribute('aria-label', mode === 'delete' ? 'Delete test account permanently' : 'Mark account as test data');
-  confirmButton.className = `sg-btn ${mode === 'delete' ? 'sg-btn-danger' : 'sg-btn-primary'}`;
-  document.getElementById('verify-delete-account').setAttribute(
-    'aria-label',
-    mode === 'delete' ? 'Verify and delete test account' : 'Verify and mark account as test data'
-  );
   const dialogSummary = document.getElementById('delete-account-dialog-summary');
   dialogSummary.innerHTML = deletionSummaryMarkup(summary);
   dialogSummary.hidden = !dialogSummary.innerHTML;
+  const dialogWarnings = document.getElementById('delete-account-dialog-warnings');
+  dialogWarnings.innerHTML = warnings.map(warning => `<li>${esc(deletionWarningLabel(warning))}</li>`).join('');
+  dialogWarnings.hidden = warnings.length === 0;
   showDialog(deleteDialog, trigger);
-  requestAnimationFrame(() => document.getElementById('delete-account-test-confirmed').focus());
+  requestAnimationFrame(() => document.getElementById('delete-account-reason').focus());
 }
 
 function deleteRequestBody() {
   return {
     reason: document.getElementById('delete-account-reason').value.trim(),
-    confirmation: document.getElementById('delete-account-confirmation').value.trim(),
-    testAccountConfirmed: true
+    confirmation: document.getElementById('delete-account-confirmation').value.trim()
   };
 }
 
 function setDeleteButtonsBusy(busy, label = '') {
-  const confirm = document.getElementById('confirm-delete-test-account');
+  const confirm = document.getElementById('submit-delete-account');
   const verify = document.getElementById('verify-delete-account');
   const cancel = document.getElementById('cancel-delete-account');
   const cancelStepUp = document.getElementById('cancel-delete-step-up');
   [confirm, verify, cancel, cancelStepUp].forEach(button => { button.disabled = busy; });
-  const isDelete = state.deleteMode === 'delete';
-  confirm.textContent = busy && label ? label : (isDelete ? 'Delete permanently' : 'Mark as test account');
-  verify.textContent = busy && label ? label : (isDelete ? 'Verify and delete' : 'Verify and mark');
+  confirm.textContent = busy && label ? label : 'Continue to email confirmation';
+  verify.textContent = busy && label ? label : 'Verify and delete';
 }
 
 async function startDeleteStepUp() {
   setDeleteButtonsBusy(true, 'Sending code…');
   setFormError('delete-account-error', '');
   try {
-    const result = await api('/api/me/identities/step-up/start', { method:'POST' });
+    const result = await api('/api/admin/auth/step-up/start', {
+      method:'POST',
+      body:{ action:'account_delete', targetUserId:Number(state.selectedId) }
+    });
     const destination = firstValue(result, ['maskedEmail', 'masked_email'], 'your primary email');
     document.getElementById('delete-account-review').hidden = true;
     document.getElementById('delete-account-step-up').hidden = false;
     deleteDialog.setAttribute('aria-labelledby', 'delete-account-step-up-title');
     deleteDialog.setAttribute('aria-describedby', 'delete-account-step-up-description delete-account-code-help');
     document.getElementById('delete-account-code-help').textContent = `We sent a code to ${destination}.`;
-    document.getElementById('delete-account-step-up-description').textContent = state.deleteMode === 'delete'
-      ? 'Enter the six-digit code sent to your primary email before deleting this account.'
-      : 'Enter the six-digit code sent to your primary email before marking this as a test account.';
+    document.getElementById('delete-account-step-up-description').textContent = 'Enter the six-digit code sent to your admin email before deleting this account.';
     requestAnimationFrame(() => document.getElementById('delete-account-code').focus());
   } catch (error) {
     setFormError('delete-account-error', error.message || 'A confirmation code could not be sent.');
@@ -717,15 +916,9 @@ async function startDeleteStepUp() {
   }
 }
 
-async function finishAccountDeletion() {
-  const mode = state.deleteMode;
+async function finishAccountDeletion(result = {}) {
   const deletedName = accountName(state.selected || {});
   if (deleteDialog.open) deleteDialog.close();
-  if (mode === 'designate') {
-    toast(`${deletedName} marked as a test account`);
-    renderDetail(await fetchAccount(state.selectedId));
-    return;
-  }
   if (detailDialog.open) detailDialog.close();
   state.selectedId = null;
   state.selected = null;
@@ -733,26 +926,24 @@ async function finishAccountDeletion() {
   state.deletion = null;
   state.deleteRequest = null;
   await loadAccounts();
-  toast(`${deletedName} test account deleted`);
+  const queued = Number(firstValue(result, ['mediaCleanupQueued', 'media_cleanup_queued'], 0)) || 0;
+  toast(`${deletedName} was permanently deleted${queued ? `; ${queued} media cleanup job${queued === 1 ? '' : 's'} queued` : ''}`);
   if (search?.isConnected) requestAnimationFrame(() => search.focus());
 }
 
 async function performAccountDeletion({ allowStepUp = true } = {}) {
   if (!state.selectedId || !state.deleteRequest) return;
-  const mode = state.deleteMode;
-  if (!['delete', 'designate'].includes(mode)) return;
-  setDeleteButtonsBusy(true, mode === 'delete' ? 'Deleting…' : 'Saving…');
+  setDeleteButtonsBusy(true, 'Deleting…');
   setFormError('delete-account-error', '');
   setFormError('delete-account-step-up-error', '');
   try {
-    const endpoint = mode === 'delete' ? 'delete-test-account' : 'mark-test-account';
-    await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/${endpoint}`, {
+    const result = await api(`/api/admin/accounts/${encodeURIComponent(state.selectedId)}/delete-account`, {
       method:'POST',
       body:state.deleteRequest
     });
-    await finishAccountDeletion();
+    await finishAccountDeletion(result);
   } catch (error) {
-    if (allowStepUp && error.code === 'identity_step_up_required') {
+    if (allowStepUp && error.code === 'admin_step_up_required') {
       setDeleteButtonsBusy(false);
       await startDeleteStepUp();
       return;
@@ -762,7 +953,7 @@ async function performAccountDeletion({ allowStepUp = true } = {}) {
       : null);
     if (changedDeletion) {
       renderDeletion(changedDeletion);
-      if (!(deletionAllowed(changedDeletion) || deletionCanMark(changedDeletion))) deleteDialog.close();
+      if (!deletionAllowed(changedDeletion)) deleteDialog.close();
     }
     const errorTarget = document.getElementById('delete-account-step-up').hidden
       ? 'delete-account-error'
@@ -775,21 +966,11 @@ async function performAccountDeletion({ allowStepUp = true } = {}) {
 
 async function submitDeleteAccount(event) {
   event.preventDefault();
-  if (!state.deletion || !['delete', 'designate'].includes(state.deleteMode)) return;
-  if (state.deleteMode === 'delete' && !deletionAllowed(state.deletion)) return;
-  if (state.deleteMode === 'designate' && !deletionCanMark(state.deletion)) return;
-  const checked = document.getElementById('delete-account-test-confirmed').checked;
+  if (!state.deletion || !deletionAllowed(state.deletion)) return;
   const reason = document.getElementById('delete-account-reason').value.trim();
   const confirmation = document.getElementById('delete-account-confirmation').value.trim();
-  const requiredConfirmation = state.deleteMode === 'delete'
-    ? deletionConfirmation(state.deletion)
-    : designationConfirmation(state.deletion);
+  const requiredConfirmation = deletionConfirmation(state.deletion);
   setFormError('delete-account-error', '');
-  if (!checked) {
-    setFormError('delete-account-error', 'Confirm that this account contains test data only.');
-    document.getElementById('delete-account-test-confirmed').focus();
-    return;
-  }
   if (reason.length < 8) {
     setFormError('delete-account-error', 'Add a reason of at least 8 characters for the permanent audit record.');
     document.getElementById('delete-account-reason').focus();
@@ -801,7 +982,9 @@ async function submitDeleteAccount(event) {
     return;
   }
   state.deleteRequest = deleteRequestBody();
-  await performAccountDeletion();
+  const requiresFreshVerification = firstValue(state.deletion, ['requiresFreshVerification', 'requires_fresh_verification'], true) !== false;
+  if (requiresFreshVerification) await startDeleteStepUp();
+  else await performAccountDeletion();
 }
 
 async function submitDeleteStepUp(event) {
@@ -816,8 +999,11 @@ async function submitDeleteStepUp(event) {
   }
   setDeleteButtonsBusy(true, 'Verifying…');
   try {
-    const result = await api('/api/auth/verify-code', { method:'POST', body:{ code } });
-    if (result.kind !== 'identity_step_up') throw new Error('Account confirmation could not be completed.');
+    const result = await api('/api/admin/auth/step-up/complete', { method:'POST',body:{ code } });
+    if (result.kind !== 'admin_action_proof' || result.action !== 'account_delete' ||
+        Number(result.targetUserId) !== Number(state.selectedId)) {
+      throw new Error('Account confirmation could not be completed.');
+    }
   } catch (error) {
     setFormError('delete-account-step-up-error', error.message || 'That code could not be verified.');
     setDeleteButtonsBusy(false);
@@ -950,9 +1136,18 @@ document.getElementById('open-invitation').addEventListener('click', openInvitat
 document.getElementById('cancel-invitation').addEventListener('click', () => invitationDialog.close());
 document.getElementById('invitation-form').addEventListener('submit', submitInvitation);
 document.getElementById('close-account-detail').addEventListener('click', closeDetail);
+document.getElementById('request-email-change').addEventListener('click', event => configureIdentityChangeDialog('email', event.currentTarget));
+document.getElementById('request-phone-change').addEventListener('click', event => configureIdentityChangeDialog('phone', event.currentTarget));
+document.getElementById('cancel-identity-change').addEventListener('click', closeIdentityChangeDialog);
+document.getElementById('identity-change-form').addEventListener('submit', submitIdentityChange);
+document.getElementById('account-pending-identity-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-identity-request-action]');
+  if (!button) return;
+  openIdentityRequestAction(button.dataset.identityRequestAction, button.dataset.identityChangeId, button);
+});
 document.getElementById('account-sign-out-all').addEventListener('click', () => openSupportAction('signOut'));
 document.getElementById('account-status-action').addEventListener('click', event => openSupportAction(event.currentTarget.dataset.action));
-document.getElementById('delete-test-account').addEventListener('click', event => openDeleteAccount(event.currentTarget));
+document.getElementById('delete-account-action').addEventListener('click', event => openDeleteAccount(event.currentTarget));
 document.getElementById('cancel-support-action').addEventListener('click', () => actionDialog.close());
 document.getElementById('support-action-form').addEventListener('submit', submitSupportAction);
 document.getElementById('cancel-delete-account').addEventListener('click', () => deleteDialog.close());
@@ -963,13 +1158,28 @@ document.getElementById('account-note-form').addEventListener('submit', submitNo
 document.getElementById('account-profile-form').addEventListener('submit', submitAccountProfile);
 document.getElementById('host-profile-form').addEventListener('submit', submitHostProfile);
 
-[detailDialog, actionDialog, invitationDialog, deleteDialog].forEach(dialog => {
+[detailDialog, actionDialog, identityChangeDialog, invitationDialog, deleteDialog].forEach(dialog => {
   dialog.addEventListener('click', event => {
     if (event.target === dialog) dialog.close();
   });
   dialog.addEventListener('close', () => restoreDialogFocus(dialog));
 });
 
+identityChangeDialog.addEventListener('close', () => {
+  state.identityChangeType = null;
+  document.getElementById('identity-change-form').reset();
+  setFormError('identity-change-error', '');
+});
 deleteDialog.addEventListener('close', resetDeleteDialog);
+
+window.adminShellSession.then(session => {
+  state.canManageIdentities = session?.capabilities?.manageIdentities === true;
+  renderIdentityChanges(state.identityChangeRequests);
+  renderAudit(state.audit);
+}).catch(() => {
+  state.canManageIdentities = false;
+  renderIdentityChanges([]);
+  renderAudit(state.audit);
+});
 
 loadAccounts();

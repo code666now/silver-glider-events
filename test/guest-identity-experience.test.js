@@ -70,7 +70,7 @@ test('phone feedback returns focus to the menu while desktop feedback returns to
   const styles = read('public/css/main.css');
   const manage = read('public/js/manage.js');
 
-  assert.match(api, /\[bubble, document\.querySelector\('\.sg-legal-feedback'\), document\.querySelector\('\.sg-nav-toggle'\)\]/);
+  assert.match(api, /\[bubble, document\.querySelector\('\.sg-legal-feedback'\), document\.querySelector\('\.sg-nav-toggle'\), document\.querySelector\('\.sg-account-trigger'\)\]/);
   assert.match(api, /document\.querySelector\('\.sg-legal-feedback'\)/);
   assert.match(api, /candidate\.getClientRects\(\)\.length/);
   assert.match(api, /style\.display !== 'none' && style\.visibility !== 'hidden'/);
@@ -116,7 +116,10 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   const profile = read('src/views/profile.html');
   const index = read('src/index.js');
   const auth = read('src/routes/auth.js');
+  const menuSheet = api.slice(api.indexOf('function buildMenuSheet'), api.indexOf('function fillMenuSheet'));
 
+  assert.match(api, /\['dashboard', '\/dashboard', 'Home'/);
+  assert.match(api, /\['events', '\/events', 'Events'/);
   assert.match(api, /\['create', '\/events\/new', 'Create'/);
   assert.match(api, /\['following', '\/following', 'Hosts'/);
   assert.match(api, /\['profile', '\/profile', 'You', null\]/);
@@ -124,6 +127,17 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(api, /setAttribute\('aria-modal', 'true'\)/);
   assert.match(api, /data-menu-feedback/);
   assert.match(api, /data-menu-signout/);
+  assert.match(menuSheet, /class="sg-menu-profile" href="\/profile"/);
+  assert.match(menuSheet, /class="sg-menu-new" href="\/events\/new"/);
+  assert.match(menuSheet, /data-menu-host href="\/settings\/host-page"/);
+  assert.match(menuSheet, /href="\/settings\/messaging"/);
+  assert.match(menuSheet, /data-menu-feedback/);
+  assert.match(menuSheet, /href="\/settings"/);
+  assert.match(menuSheet, /data-menu-admin hidden[\s\S]*href="\/admin"/);
+  assert.match(menuSheet, /data-menu-signout/);
+  assert.match(menuSheet, /href="\/privacy">Privacy Policy<\/a>[\s\S]*href="\/terms">Terms<\/a>/);
+  assert.match(menuSheet, /document\.body\.classList\.contains\('sg-home-page'\)[\s\S]*homePrimaryLinks/);
+  assert.match(menuSheet, /href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Hosts</);
   assert.match(styles, /body\.has-tab-bar \.sg-mobile-sticky-action \{ display: none !important; \}/);
   assert.match(styles, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 879px\) \{[\s\S]*?\.sg-account-menu \{ display: none; \}/);
@@ -142,4 +156,17 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(profile, /profile-stats-status/);
   assert.match(profile, /profile'\)\.setAttribute\('aria-busy', 'false'\)/);
   assert.match(profile, /fetch\('\/api\/uploads\/avatar'/);
+});
+
+test('profile keeps the phone flow and uses a balanced desktop layout', () => {
+  const profile = read('src/views/profile.html');
+
+  assert.match(profile, /\.profile-layout, \.profile-aside \{ display: contents; \}/);
+  assert.match(profile, /@media \(min-width: 880px\) \{[\s\S]*?\.profile-shell \{ max-width: 1080px;[\s\S]*?\.profile-layout \{[\s\S]*?grid-template-columns: minmax\(0, 1\.15fr\) minmax\(300px, \.85fr\);[\s\S]*?\.profile-aside \{ display: block;/);
+  assert.ok(profile.indexOf('id="profile"') < profile.indexOf('class="profile-aside"'));
+  assert.ok(profile.indexOf('class="profile-aside"') < profile.indexOf('id="stat-attended"'));
+  assert.ok(profile.indexOf('id="stat-attended"') < profile.indexOf('id="stat-hosted"'));
+  assert.ok(profile.indexOf('id="stat-hosted"') < profile.indexOf('id="profile-host"'));
+  assert.match(profile, /id="profile-status" role="status" aria-live="polite"/);
+  assert.match(profile, /id="profile-stats-status" role="status" aria-live="polite"/);
 });

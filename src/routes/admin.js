@@ -2,8 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
 const requireAdmin = require('../middleware/requireAdmin');
+const { actorIds, requireDedicatedAdmin, requireSuperAdmin } = require('../middleware/requireAdmin');
 const { normalizeHostProfile } = require('../lib/host-profile');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
+const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 const sms = require('../lib/sms');
 
 const router = express.Router();
@@ -12,7 +14,7 @@ router.use('/api/admin', requireAdmin);
 const smsTestLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   rules: [
-    { name: 'admin', max: 5, key: context => context.organizerId },
+    { name: 'admin', max: 5, key: context => context.adminOperatorId },
     { name: 'ip', max: 10, key: context => context.ip }
   ]
 });
@@ -22,16 +24,27 @@ function positiveId(value) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function sameOriginMutation(req) {
-  const site = req.get('sec-fetch-site');
-  if (site) return site === 'same-origin' || site === 'none';
-  const origin = req.get('origin');
-  if (!origin || origin === 'null') return true;
-  let originHost;
-  try { originHost = new URL(origin).host; } catch (_) { return false; }
-  const allowed = [req.get('host'), req.get('x-forwarded-host')];
-  try { allowed.push(new URL(process.env.APP_URL).host); } catch (_) {}
-  return allowed.filter(Boolean).includes(originHost);
+const ADMIN_EVENT_FILTERS = Object.freeze({
+  status: new Set(['', 'published', 'draft', 'cancelled']),
+  timing: new Set(['', 'upcoming', 'past']),
+  visibility: new Set(['', 'public', 'private', 'secret']),
+  admission: new Set(['', 'free_rsvp', 'external_tickets', 'silver_glider_tickets']),
+  archived: new Set(['', 'active', 'archived'])
+});
+
+function adminEventFilter(value, name) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ADMIN_EVENT_FILTERS[name].has(normalized) ? normalized : null;
+}
+
+function boundedPage(value) {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? Math.min(page, 100000) : 1;
+}
+
+function boundedPerPage(value) {
+  const perPage = Number(value);
+  return Number.isInteger(perPage) && perPage > 0 ? Math.min(perPage, 50) : 25;
 }
 
 function slugify(value) {
@@ -120,8 +133,148 @@ router.get('/api/admin/hosts/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/admin/events — a read-only, platform-wide operations directory.
+// Editing stays inside the audited Done For You draft workspace; this route
+// deliberately returns no customer contact details, secret hashes, or bearer
+// photo-upload tokens.
+router.get('/api/admin/events', async (req, res, next) => {
+  try {
+    const filters = {
+      status: adminEventFilter(req.query.status, 'status'),
+      timing: adminEventFilter(req.query.timing, 'timing'),
+      visibility: adminEventFilter(req.query.visibility, 'visibility'),
+      admission: adminEventFilter(req.query.admission, 'admission'),
+      archived: adminEventFilter(req.query.archived, 'archived')
+    };
+    if (Object.values(filters).some(value => value === null)) {
+      return res.status(400).json({
+        error: 'invalid_event_filter',
+        message: 'Choose a valid event filter.'
+      });
+    }
+    const q = String(req.query.q || '').trim().slice(0, 120);
+    const requestedHostId = String(req.query.host || '').trim();
+    const hostId = requestedHostId ? positiveId(requestedHostId) : null;
+    if (requestedHostId && !hostId) {
+      return res.status(400).json({
+        error: 'invalid_event_filter',
+        message: 'Choose a valid host.'
+      });
+    }
+
+    const values = [];
+    const where = [];
+    const bind = value => {
+      values.push(value);
+      return `$${values.length}`;
+    };
+    if (q) {
+      const parameter = bind(q.toLowerCase());
+      const numericId = /^\d+$/.test(q) ? Number(q) : null;
+      where.push(`(
+        POSITION(${parameter} IN LOWER(COALESCE(e.title,''))) > 0 OR
+        POSITION(${parameter} IN LOWER(COALESCE(e.slug,''))) > 0 OR
+        POSITION(${parameter} IN LOWER(COALESCE(e.venue_name,''))) > 0 OR
+        POSITION(${parameter} IN LOWER(COALESCE(o.org_name,''))) > 0 OR
+        POSITION(${parameter} IN LOWER(COALESCE(o.name,''))) > 0
+        ${numericId ? `OR e.id=${bind(numericId)} OR o.user_id=${bind(numericId)}` : ''}
+      )`);
+    }
+    if (hostId) where.push(`e.organizer_id=${bind(hostId)}`);
+    if (filters.status) where.push(`e.status=${bind(filters.status)}`);
+    const eventToday = `(CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date`;
+    if (filters.timing === 'past') where.push(`e.event_date < ${eventToday}`);
+    if (filters.timing === 'upcoming') where.push(`e.event_date >= ${eventToday}`);
+    if (filters.visibility === 'public') where.push(`e.visibility='public' AND e.secret_show_enabled=FALSE`);
+    if (filters.visibility === 'private') where.push(`e.visibility='private' AND e.secret_show_enabled=FALSE`);
+    if (filters.visibility === 'secret') where.push(`e.secret_show_enabled=TRUE`);
+    if (filters.admission === 'free_rsvp') where.push(`e.admission_type='free_rsvp'`);
+    if (filters.admission === 'external_tickets') {
+      where.push(`e.admission_type IN ('external_tickets','paid','donation','door','vip')`);
+    }
+    if (filters.admission === 'silver_glider_tickets') {
+      where.push(`e.admission_type='silver_glider_tickets'`);
+    }
+    if (filters.archived === 'active') where.push('e.archived_at IS NULL');
+    if (filters.archived === 'archived') where.push('e.archived_at IS NOT NULL');
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const count = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM events e
+         JOIN organizers o ON o.id=e.organizer_id
+         ${whereSql}`,
+      values
+    );
+    const total = Number(count.rows[0]?.total || 0);
+    const perPage = boundedPerPage(req.query.per_page);
+    const pageCount = Math.max(1, Math.ceil(total / perPage));
+    const page = Math.min(boundedPage(req.query.page), pageCount);
+    const dataValues = [...values, perPage, (page - 1) * perPage];
+    const limitParameter = `$${values.length + 1}`;
+    const offsetParameter = `$${values.length + 2}`;
+    const { rows } = await pool.query(
+      `SELECT e.id,e.title,e.slug,e.event_date,e.start_time,e.timezone,
+              e.status,e.visibility,e.secret_show_enabled,e.admission_type,
+              e.archived_at,e.venue_name,e.created_at,e.updated_at,
+              o.id AS organizer_id,o.user_id AS owner_user_id,
+              COALESCE(NULLIF(o.org_name,''),NULLIF(o.name,''),'Host') AS host_name,
+              o.public_slug AS host_slug,u.account_status,
+              e.event_date < ${eventToday} AS is_past,
+              (SELECT COUNT(*)::int FROM rsvps r
+                WHERE r.event_id=e.id AND r.status='confirmed') AS rsvp_count,
+              CASE WHEN e.status='draft' AND u.account_status='active'
+                    THEN marker.id ELSE NULL END AS done_for_you_client_id
+         FROM events e
+         JOIN organizers o ON o.id=e.organizer_id
+         LEFT JOIN users u ON u.id=o.user_id
+         LEFT JOIN admin_done_for_you_clients marker ON marker.target_user_id=o.user_id
+         ${whereSql}
+        ORDER BY e.event_date DESC,e.start_time DESC,e.id DESC
+        LIMIT ${limitParameter} OFFSET ${offsetParameter}`,
+      dataValues
+    );
+    const hosts = await pool.query(
+      `SELECT o.id,COALESCE(NULLIF(o.org_name,''),NULLIF(o.name,''),'Host') AS name,
+              o.user_id AS owner_user_id,COUNT(e.id)::int AS event_count
+         FROM organizers o
+         JOIN events e ON e.organizer_id=o.id
+        GROUP BY o.id
+        ORDER BY LOWER(COALESCE(NULLIF(o.org_name,''),NULLIF(o.name,''),'Host')),o.id
+        LIMIT 500`
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      events: rows.map(row => ({
+        ...row,
+        id: Number(row.id),
+        organizer_id: Number(row.organizer_id),
+        owner_user_id: row.owner_user_id == null ? null : Number(row.owner_user_id),
+        rsvp_count: Number(row.rsvp_count || 0),
+        done_for_you_client_id: row.done_for_you_client_id == null
+          ? null
+          : Number(row.done_for_you_client_id)
+      })),
+      hosts: hosts.rows.map(host => ({
+        id: Number(host.id),
+        name: host.name,
+        owner_user_id: host.owner_user_id == null ? null : Number(host.owner_user_id),
+        event_count: Number(host.event_count || 0)
+      })),
+      pagination: {
+        page,
+        per_page: perPage,
+        total,
+        pages: pageCount,
+        has_previous: page > 1,
+        has_next: page < pageCount
+      }
+    });
+  } catch (err) { next(err); }
+});
+
 // PATCH /api/admin/events/:id/collect-photos — isolated event-level beta flag.
-router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
+router.patch('/api/admin/events/:id/collect-photos', requireSuperAdmin, async (req, res, next) => {
   try {
     const id = positiveId(req.params.id);
     if (!id) return res.status(404).json({ error: 'Event not found' });
@@ -154,8 +307,7 @@ router.patch('/api/admin/events/:id/collect-photos', async (req, res, next) => {
 });
 
 // PUT /api/admin/hosts/:id/profile — targeted public-profile editing only.
-router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
-  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+router.put('/api/admin/hosts/:id/profile', requireDedicatedAdmin, async (req, res, next) => {
   let client;
   try {
     client = await pool.connect();
@@ -165,12 +317,27 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Host account not found' });
     }
-    const { rows: currentRows } = await client.query(
-      'SELECT * FROM organizers WHERE id=$1 FOR UPDATE',
+    const target = (await client.query(
+      'SELECT user_id FROM organizers WHERE id=$1',
       [id]
+    )).rows[0];
+    if (!target) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Host account not found' });
+    }
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      [outboundDeliveryLockKey(target.user_id)]
     );
-    const current = currentRows[0];
-    if (!current) {
+    const current = (await client.query(
+      'SELECT * FROM organizers WHERE id=$1 AND user_id=$2 FOR UPDATE',
+      [id, target.user_id]
+    )).rows[0];
+    const canonicalUser = (await client.query(
+      'SELECT account_status FROM users WHERE id=$1 FOR UPDATE',
+      [target.user_id]
+    )).rows[0];
+    if (!current || !canonicalUser || canonicalUser.account_status === 'deleted') {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Host account not found' });
     }
@@ -223,30 +390,39 @@ router.put('/api/admin/hosts/:id/profile', async (req, res, next) => {
         profile.websiteUrl, profile.instagramHandle, profile.contactEmail
       ]
     );
+    const actor = actorIds(req);
+    const auditState = profile => ({
+      hasName: Boolean(profile.org_name),
+      hasSlug: Boolean(profile.public_slug),
+      hasBio: Boolean(profile.bio),
+      hasWebsite: Boolean(profile.website_url),
+      hasInstagram: Boolean(profile.instagram_handle),
+      hasContactEmail: Boolean(profile.contact_email)
+    });
+    const trackedFields = [
+      ['orgName', 'org_name'],
+      ['publicSlug', 'public_slug'],
+      ['bio', 'bio'],
+      ['website', 'website_url'],
+      ['instagram', 'instagram_handle'],
+      ['contactEmail', 'contact_email']
+    ];
+    const changedFields = trackedFields
+      .filter(([, column]) => (current[column] || null) !== (rows[0][column] || null))
+      .map(([field]) => field);
     await client.query(
       `INSERT INTO admin_account_audit_log
-         (actor_user_id,target_user_id,action_type,reason,before_state,after_state,
-          request_ip,user_agent)
-       VALUES ($1,$2,'host_profile_updated','Admin Host Page update',$3::jsonb,$4::jsonb,$5,$6)`,
+         (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+          before_state,after_state,metadata,request_ip,user_agent)
+       VALUES ($1,$2,$3,'host_profile_updated','Admin Host Page update',
+               $4::jsonb,$5::jsonb,$6::jsonb,$7,$8)`,
       [
-        Number(req.organizer.user_id || req.organizer.id),
+        actor.actorUserId,
+        actor.actorAdminOperatorId,
         Number(current.user_id || current.id),
-        JSON.stringify({
-          orgName: current.org_name || null,
-          publicSlug: current.public_slug || null,
-          bio: current.bio || null,
-          websiteUrl: current.website_url || null,
-          instagramHandle: current.instagram_handle || null,
-          hasContactEmail: Boolean(current.contact_email)
-        }),
-        JSON.stringify({
-          orgName: rows[0].org_name || null,
-          publicSlug: rows[0].public_slug || null,
-          bio: rows[0].bio || null,
-          websiteUrl: rows[0].website_url || null,
-          instagramHandle: rows[0].instagram_handle || null,
-          hasContactEmail: Boolean(rows[0].contact_email)
-        }),
+        JSON.stringify(auditState(current)),
+        JSON.stringify(auditState(rows[0])),
+        JSON.stringify({ organizerId: Number(id), changedFields }),
         String(clientIp(req) || '').slice(0, 100) || null,
         String(req.get('user-agent') || '').slice(0, 1000) || null
       ]
@@ -282,12 +458,13 @@ router.post('/api/admin/invitations', async (req, res, next) => {
     }
 
     const token = `${slugify(hostName)}-${crypto.randomBytes(8).toString('hex')}`;
+    const actor = actorIds(req);
     const { rows } = await pool.query(
       `INSERT INTO host_invitations
-         (token, host_name, personal_note, created_by_organizer_id)
+         (token, host_name, personal_note, created_by_admin_operator_id)
        VALUES ($1,$2,$3,$4)
        RETURNING *`,
-      [token, hostName, personalNote, req.organizer.id]
+      [token, hostName, personalNote, actor.actorAdminOperatorId]
     );
     res.status(201).json({ invitation: { ...rows[0], path: `/i/${token}` } });
   } catch (err) { next(err); }
@@ -316,7 +493,7 @@ router.patch('/api/admin/invitations/:id', async (req, res, next) => {
 });
 
 // POST /api/admin/sms/test — one fixed, admin-only Messaging Service proof.
-router.post('/api/admin/sms/test', async (req, res, next) => {
+router.post('/api/admin/sms/test', requireSuperAdmin, async (req, res, next) => {
   let recipient = null;
   try {
     res.setHeader('Cache-Control', 'no-store');
@@ -325,7 +502,7 @@ router.post('/api/admin/sms/test', async (req, res, next) => {
     }
     recipient = sms.normalizeE164(req.body?.to);
     const limit = smsTestLimiter.consume({
-      organizerId: String(req.organizer.id),
+      adminOperatorId: String(req.adminOperator.id),
       ip: clientIp(req)
     });
     if (!limit.allowed) {
