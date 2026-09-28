@@ -10108,3 +10108,74 @@ test('Done For You event mutation serializes behind permanent account deletion',
     blocker.release();
   }
 });
+
+test('past guests can be filtered by group and invited as a whole group', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const older = await createEvent({ slug: 'crowd-older', title: 'Crowd Older', event_date: '2019-02-02' });
+  const sameDayEarlier = await createEvent({ slug: 'crowd-same-day', title: 'Crowd Same Day', event_date: '2020-02-02' });
+  const lastOne = await createEvent({ slug: 'crowd-last', title: 'Crowd Last', event_date: '2020-02-02' });
+  const target = await createEvent({ slug: 'crowd-target', title: 'Crowd Target', event_date: '2031-02-02' });
+
+  // A regular (both events), someone from last time only, and a one-timer from long ago.
+  await createRsvp(older.id, { first_name: 'Rita', email: 'rita-crowd@example.test' });
+  await createRsvp(lastOne.id, { first_name: 'Rita', email: 'rita-crowd@example.test' });
+  await createRsvp(lastOne.id, { first_name: 'Neo', email: 'neo-crowd@example.test' });
+  await createRsvp(older.id, { first_name: 'Odie', email: 'odie-crowd@example.test' });
+  await createRsvp(sameDayEarlier.id, { first_name: 'Dax', email: 'dax-crowd@example.test' });
+
+  const load = async query => (await fetch(
+    `${baseUrl}/api/events/${target.id}/familiar-faces/people${query || ''}`, { headers: { cookie } }
+  )).json();
+
+  const all = await load();
+  const counts = Object.fromEntries(all.groups.map(group => [group.key, group.count]));
+  assert.equal(counts.all, 4);
+  assert.equal(counts.regulars, 1, 'Rita came twice');
+  assert.equal(counts.last_time, 2, 'Rita and Neo were at the most recent event');
+  assert.equal(counts.new_faces, 1, 'Neo first appeared at the exact most recent event');
+  assert.equal(counts.came_once, 2, 'Odie and Dax came once, and not last time');
+  assert.equal(counts.been_a_while, 4, 'every past event here is older than six months');
+
+  assert.deepEqual((await load('?group=regulars')).people.map(person => person.name), ['Rita Person']);
+  assert.deepEqual((await load('?group=new_faces')).people.map(person => person.name), ['Neo Person']);
+  const searched = await load('?group=came_once&search=Odie');
+  assert.deepEqual(searched.people.map(person => person.name), ['Odie Person']);
+  assert.equal(searched.groups.find(group => group.key === 'came_once').count, 1);
+  assert.equal((await load('?group=not-a-group')).group, 'all', 'an unknown group falls back to everyone');
+
+  const invite = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people/invite`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ group: 'came_once', search: 'Odie' })
+  });
+  assert.equal(invite.status, 202);
+  assert.equal((await invite.json()).queued, 1);
+
+  let recipients = [];
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    recipients = (await pool.query(
+      `SELECT recipient, status FROM message_log
+        WHERE event_id=$1 AND message_type='previous_guest_invite' ORDER BY recipient`, [target.id]
+    )).rows;
+    if (recipients.length === 1 && recipients[0].status === 'sent') break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.deepEqual(recipients, [{ recipient: 'odie-crowd@example.test', status: 'sent' }]);
+
+  const after = await load();
+  assert.equal(after.groups.find(group => group.key === 'all').count, 3, 'the invited person moves out of the picker');
+
+  const empty = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people/invite`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ group: 'came_once', search: 'Odie' })
+  });
+  assert.equal(empty.status, 400, 'nobody left in that group');
+
+  const privateTarget = await createEvent({
+    slug: 'crowd-private', title: 'Crowd Private', event_date: '2031-03-03', visibility: 'private'
+  });
+  const privateBulk = await fetch(`${baseUrl}/api/events/${privateTarget.id}/familiar-faces/people/invite`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ group: 'all' })
+  });
+  assert.equal(privateBulk.status, 400, 'private events require deliberate individual selection');
+});

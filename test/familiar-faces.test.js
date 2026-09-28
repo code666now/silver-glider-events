@@ -131,6 +131,33 @@ test('SMS lifecycle copy is untouched by the photo opportunity', () => {
   assert.doesNotMatch(smsLifecycle, /Add (?:your |a )?photo|friends recognize/);
 });
 
+test('"Your crowd" groups filter the picker, and a public event can invite a whole group in one tap', () => {
+  const routes = read('src/routes/events.js');
+  const manage = read('public/js/manage.js');
+  const view = read('src/views/event-manage.html');
+
+  // The five ways a host thinks about past guests, in their words.
+  for (const label of ['Regulars', 'Last time', 'Been a while', 'New faces', 'Came once']) {
+    assert.ok(routes.includes(`'${label}'`), `${label} group is defined`);
+  }
+  assert.match(routes, /p\.event_count >= 2/);
+  assert.match(routes, /p\.in_last_event/);
+  assert.match(routes, /p\.first_event_id = p\.last_hosted_event_id/);
+  assert.match(routes, /CURRENT_DATE - INTERVAL '6 months'/);
+  assert.match(routes, /p\.event_count = 1 AND NOT p\.in_last_event/);
+  // One eligibility CTE feeds the list, the counts and a group invitation.
+  assert.match(routes, /const ELIGIBLE_PEOPLE_CTE/);
+  assert.match(routes, /PEOPLE_GROUP_KEYS\.includes\(requestedGroup\)/);
+  assert.match(routes, /LIMIT 501/, 'a group invitation still respects the 500 cap');
+
+  // Public events get one tap; private events start with nobody selected.
+  assert.match(manage, /eventData\?\.visibility === 'public' && count > 0 && !peopleSelection\.size && !peopleBulk/);
+  assert.match(manage, /group: bulk\.group[\s\S]*search: peopleSearch/);
+  assert.match(routes, /group && target\.visibility !== 'public'/);
+  assert.match(view, /id="familiar-people-groups"/);
+  assert.match(view, /id="familiar-people-bulk-btn"/);
+});
+
 test('the host sees proof the guest list works: returning counts and per-face visits', () => {
   const routes = read('src/routes/events.js');
   const editor = read('src/lib/event-editor.js');

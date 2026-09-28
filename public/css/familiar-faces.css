@@ -36,6 +36,19 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
 .familiar-people-head { display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px; }
 .familiar-people-intro { margin:0;color:var(--sg-text-dim);font-size:13px; }
 .familiar-people-source .sg-input { width:min(260px,40vw);min-height:42px; }
+.familiar-people-groups { display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px; }
+.familiar-people-group {
+  min-height:38px;display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--sg-border-soft);
+  border-radius:999px;background:transparent;color:var(--sg-text-dim);font:700 13px var(--sg-font-body);cursor:pointer;
+}
+.familiar-people-group span { color:var(--sg-text-faint);font-weight:800; }
+.familiar-people-group[aria-pressed="true"] { border-color:var(--sg-accent);background:rgba(28,197,190,.1);color:var(--sg-accent); }
+.familiar-people-group[aria-pressed="true"] span { color:var(--sg-accent); }
+.familiar-people-group:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
+@media (hover: hover) { .familiar-people-group:hover { border-color:rgba(28,197,190,.42);color:var(--sg-text); } }
+.familiar-people-bulk { margin:0 0 18px; }
+.familiar-people-bulk[hidden] { display:none; }
+.familiar-people-bulk .sg-btn { width:100%;min-height:52px; }
 .familiar-people-more { display:flex;justify-content:center;margin-top:16px; }
 .familiar-people-more .sg-btn[hidden] { display:none; }
 .familiar-people-note { margin:14px 0 0;color:var(--sg-text-faint);font-size:12px;text-align:center; }
@@ -152,6 +165,10 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   .manage-shell .familiar-people-head { align-items:stretch;flex-direction:column;gap:16px; }
   .manage-shell .familiar-people-intro { font-size:15px;line-height:1.5; }
   .manage-shell .familiar-people-source .sg-input { width:100%;min-height:58px;font-size:16px; }
+  .manage-shell .familiar-people-groups { flex-wrap:nowrap;overflow-x:auto;margin:0 -22px 18px;padding:0 22px 4px;scrollbar-width:none; }
+  .manage-shell .familiar-people-groups::-webkit-scrollbar { display:none; }
+  .manage-shell .familiar-people-group { min-height:44px;flex:0 0 auto;font-size:14px; }
+  .manage-shell .familiar-people-bulk .sg-btn { min-height:58px;font-size:16px; }
   .manage-shell .familiar-people-more .sg-btn { width:100%;min-height:54px; }
   .manage-shell .familiar-people-note { font-size:13px;line-height:1.5; }
   .manage-shell .familiar-faces-selection {

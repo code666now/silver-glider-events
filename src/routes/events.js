@@ -866,6 +866,71 @@ const PAST_RSVPS = `
      AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
      AND r.status='confirmed' AND NULLIF(TRIM(r.email),'') IS NOT NULL`;
 
+// "Your crowd": the five ways a host thinks about their past guests. Each is a
+// SQL predicate over the eligible-people CTE below. $5 is the host's most
+// recent past event id.
+const PEOPLE_GROUPS = [
+  ['all', 'Everyone', 'TRUE', 'Invite everyone'],
+  ['regulars', 'Regulars', 'p.event_count >= 2', 'Invite your regulars'],
+  ['last_time', 'Last time', 'p.in_last_event', 'Invite last time’s crowd'],
+  ['been_a_while', 'Been a while', "p.last_event_date < (CURRENT_DATE - INTERVAL '6 months')", 'Invite the ones who haven’t been in a while'],
+  ['new_faces', 'New faces', 'p.last_hosted_event_id IS NOT NULL AND p.first_event_id = p.last_hosted_event_id', 'Invite your new faces'],
+  ['came_once', 'Came once', 'p.event_count = 1 AND NOT p.in_last_event', 'Invite the ones who came once']
+];
+const PEOPLE_GROUP_KEYS = PEOPLE_GROUPS.map(([key]) => key);
+function peopleGroupPredicate(key) {
+  return (PEOPLE_GROUPS.find(([groupKey]) => groupKey === key) || PEOPLE_GROUPS[0])[2];
+}
+
+// The host's most recent past event, which "Last time" and "New faces" hang off.
+async function lastHostedEvent(queryable, { organizerId, targetEventId }) {
+  const { rows } = await queryable.query(
+    `SELECT e.id
+       FROM events e
+      WHERE e.organizer_id=$1 AND e.id<>$2 AND e.status='published'
+        AND e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date
+        AND EXISTS (SELECT 1 FROM rsvps r WHERE r.event_id=e.id AND r.status='confirmed')
+      ORDER BY e.event_date DESC, e.id DESC LIMIT 1`,
+    [organizerId, targetEventId]
+  );
+  return rows[0] || null;
+}
+
+// Everyone this host could still invite to the target event, one row per
+// person. $1 organizer, $2 target event, $3 optional source event, $4 search
+// pattern, $5 last hosted event id.
+const ELIGIBLE_PEOPLE_CTE = `
+  WITH past AS (${PAST_RSVPS}),
+  grouped AS (
+    SELECT person_key,
+           (ARRAY_AGG(email ORDER BY event_date DESC, id DESC))[1] AS email,
+           (ARRAY_AGG(user_id ORDER BY event_date DESC, id DESC)
+             FILTER (WHERE user_id IS NOT NULL))[1] AS user_id,
+           COALESCE(
+             (ARRAY_AGG(id ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
+             (ARRAY_AGG(id ORDER BY event_date DESC, id DESC))[1]) AS rsvp_id,
+           (ARRAY_AGG(first_name ORDER BY event_date DESC, id DESC))[1] AS first_name,
+           (ARRAY_AGG(last_name ORDER BY event_date DESC, id DESC))[1] AS last_name,
+           COALESCE(
+             (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
+             (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC))[1]) AS context_title,
+           (ARRAY_AGG(account_id ORDER BY event_date DESC, id DESC) FILTER (WHERE account_id IS NOT NULL))[1] AS account_id,
+           MAX(event_date) AS last_event_date,
+           (ARRAY_AGG(event_id ORDER BY event_date ASC, event_id ASC))[1] AS first_event_id,
+           COUNT(DISTINCT event_id)::int AS event_count,
+           BOOL_OR(event_id=$3) AS in_source,
+           BOOL_OR($5::int IS NOT NULL AND event_id=$5) AS in_last_event,
+           $5::int AS last_hosted_event_id
+      FROM past GROUP BY person_key
+  ),
+  eligible AS (
+    SELECT g.* FROM grouped g
+     WHERE NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=g.email)
+       AND NOT ${connectedToTarget('g.email', 'g.user_id')}
+       AND ($3::int IS NULL OR g.in_source)
+       AND ($4 = '' OR CONCAT_WS(' ', g.first_name, g.last_name) ILIKE $4 OR g.email ILIKE $4)
+  )`;
+
 function candidateDetail(row, sourceEventId) {
   if (sourceEventId || Number(row.event_count) <= 1) return row.context_title;
   return `${row.event_count} of your events`;
@@ -883,39 +948,28 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
     const pattern = search ? `%${search.replace(/[\\%_]/g, ch => `\\${ch}`)}%` : '';
     const sourceEventId = Number.parseInt(req.query.sourceEventId, 10) || null;
     const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
-    const params = [req.organizer.id, target.id, sourceEventId, pattern, PEOPLE_PAGE_SIZE, offset];
+    const requestedGroup = String(req.query.group || 'all');
+    const group = PEOPLE_GROUP_KEYS.includes(requestedGroup) ? requestedGroup : 'all';
+    const lastEvent = await lastHostedEvent(pool, { organizerId: req.organizer.id, targetEventId: target.id });
+    const groupParams = [req.organizer.id, target.id, sourceEventId, pattern, lastEvent?.id || null];
+    const params = [...groupParams, PEOPLE_PAGE_SIZE, offset];
 
     const { rows: people } = await pool.query(
-      `WITH past AS (${PAST_RSVPS}),
-       grouped AS (
-         SELECT person_key,
-                (ARRAY_AGG(email ORDER BY event_date DESC, id DESC))[1] AS email,
-                (ARRAY_AGG(user_id ORDER BY event_date DESC, id DESC)
-                  FILTER (WHERE user_id IS NOT NULL))[1] AS user_id,
-                COALESCE(
-                  (ARRAY_AGG(id ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
-                  (ARRAY_AGG(id ORDER BY event_date DESC, id DESC))[1]) AS rsvp_id,
-                (ARRAY_AGG(first_name ORDER BY event_date DESC, id DESC))[1] AS first_name,
-                (ARRAY_AGG(last_name ORDER BY event_date DESC, id DESC))[1] AS last_name,
-                COALESCE(
-                  (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
-                  (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC))[1]) AS context_title,
-                (ARRAY_AGG(account_id ORDER BY event_date DESC, id DESC) FILTER (WHERE account_id IS NOT NULL))[1] AS account_id,
-                MAX(event_date) AS last_event_date,
-                COUNT(DISTINCT event_id)::int AS event_count,
-                BOOL_OR(event_id=$3) AS in_source
-           FROM past GROUP BY person_key
-       )
-       SELECT g.*, o.avatar_url, COUNT(*) OVER ()::int AS total
-         FROM grouped g
-         LEFT JOIN organizers o ON o.id=g.account_id
-        WHERE NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=g.email)
-          AND NOT ${connectedToTarget('g.email', 'g.user_id')}
-          AND ($3::int IS NULL OR g.in_source)
-          AND ($4 = '' OR CONCAT_WS(' ', g.first_name, g.last_name) ILIKE $4 OR g.email ILIKE $4)
-        ORDER BY g.event_count DESC, g.last_event_date DESC, LOWER(COALESCE(g.first_name, g.email))
-        LIMIT $5 OFFSET $6`,
+      `${ELIGIBLE_PEOPLE_CTE}
+       SELECT p.*, o.avatar_url, COUNT(*) OVER ()::int AS total
+         FROM eligible p
+         LEFT JOIN organizers o ON o.id=p.account_id
+        WHERE (${peopleGroupPredicate(group)})
+        ORDER BY p.event_count DESC, p.last_event_date DESC, LOWER(COALESCE(p.first_name, p.email))
+        LIMIT $6 OFFSET $7`,
       params
+    );
+    // Counts for the chips, over the same eligible set (search included).
+    const { rows: groupCountRows } = await pool.query(
+      `${ELIGIBLE_PEOPLE_CTE}
+       SELECT ${PEOPLE_GROUPS.map(([key]) => `COUNT(*) FILTER (WHERE ${peopleGroupPredicate(key)})::int AS ${key}`).join(', ')}
+         FROM eligible p`,
+      groupParams
     );
     const total = people[0]?.total || 0;
 
@@ -981,7 +1035,9 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
       }),
       total,
       hasMore: offset + people.length < total,
-      unsubscribedCount: optoutRows[0]?.n || 0
+      unsubscribedCount: optoutRows[0]?.n || 0,
+      group,
+      groups: PEOPLE_GROUPS.map(([key, label, , action]) => ({ key, label, action, count: groupCountRows[0]?.[key] || 0 }))
     });
   } catch (err) { next(err); }
 });
@@ -991,8 +1047,15 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
 // the past event their selected RSVP came from (one batch per source event).
 router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, next) => {
   const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
-  const rsvpIds = parseFamiliarFaceIds(faceIds).rsvpIds;
-  if (!rsvpIds.length) return res.status(400).json({ error: 'Choose at least one person' });
+  // A host can send an explicit selection, or a whole group ("Invite all 87"),
+  // which the server resolves so it also covers people past the first page.
+  const requestedGroup = typeof req.body?.group === 'string' ? req.body.group : null;
+  const group = requestedGroup && PEOPLE_GROUP_KEYS.includes(requestedGroup) ? requestedGroup : null;
+  const sourceEventId = Number.parseInt(req.body?.sourceEventId, 10) || null;
+  const search = String(req.body?.search || '').trim().slice(0, 120);
+  const pattern = search ? `%${search.replace(/[\\%_]/g, ch => `\\${ch}`)}%` : '';
+  let rsvpIds = parseFamiliarFaceIds(faceIds).rsvpIds;
+  if (!rsvpIds.length && !group) return res.status(400).json({ error: 'Choose at least one person' });
   if (rsvpIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
   const client = await pool.connect();
   try {
@@ -1008,6 +1071,31 @@ router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, nex
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invitations can only be sent to an upcoming published event' });
     }
+    if (group && target.visibility !== 'public') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Choose people individually for a private event' });
+    }
+    if (group) {
+      const lastEvent = await lastHostedEvent(client, { organizerId: req.organizer.id, targetEventId: target.id });
+      const { rows: groupRows } = await client.query(
+        `${ELIGIBLE_PEOPLE_CTE}
+         SELECT p.rsvp_id FROM eligible p
+          WHERE (${peopleGroupPredicate(group)})
+          ORDER BY p.event_count DESC, p.last_event_date DESC
+          LIMIT 501`,
+        [req.organizer.id, target.id, sourceEventId, pattern, lastEvent?.id || null]
+      );
+      if (groupRows.length > 500) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
+      }
+      rsvpIds = groupRows.map(row => row.rsvp_id);
+      if (!rsvpIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Nobody in that group can be invited right now' });
+      }
+    }
+
     const { rows: selected } = await client.query(
       `SELECT past.* FROM (${PAST_RSVPS}) past
         WHERE past.id=ANY($3::int[])
