@@ -852,6 +852,10 @@ function shortEventDate(value) {
 const peopleSelection = new Map();
 let peopleState = { canInvite: false, people: [], plusOnes: [], total: 0, hasMore: false, sources: [] };
 let peopleSearch = '';
+let peopleGroup = 'all';
+// A whole group being invited in one tap ("Invite everyone (87)"), which the
+// server resolves so it also covers people past the first page.
+let peopleBulk = null;
 let peopleConfirming = false;
 let peopleRequest = 0;
 
@@ -878,6 +882,7 @@ function renderPeople() {
   $('familiar-people-empty').textContent = peopleSearch
     ? 'No one from your past events matches that search.'
     : 'Everyone from your past events is already here.';
+  renderPeopleGroups();
   $('familiar-people-more').hidden = !peopleState.hasMore;
   const unsubscribed = Number(peopleState.unsubscribedCount) || 0;
   $('familiar-people-note').hidden = !unsubscribed;
@@ -887,8 +892,28 @@ function renderPeople() {
   renderPeopleBar();
 }
 
+// "Your crowd" chips, and the one-tap invite for public events.
+function renderPeopleGroups() {
+  const groups = (peopleState.groups || []).filter(group => group.key === 'all' || group.count > 0);
+  const chips = $('familiar-people-groups');
+  chips.hidden = groups.length < 2;
+  chips.innerHTML = groups.map(group =>
+    `<button class="familiar-people-group" type="button" data-group="${escapeHtml(group.key)}" aria-pressed="${group.key === peopleGroup}">${escapeHtml(group.label)} <span>${group.count}</span></button>`
+  ).join('');
+
+  // A promoter filling a public room can send to the whole group in one tap.
+  // A private event starts with nobody selected, so the host picks.
+  const active = groups.find(group => group.key === peopleGroup);
+  const count = active?.count || 0;
+  const bulkAvailable = eventData?.visibility === 'public' && count > 0 && !peopleSelection.size && !peopleBulk;
+  $('familiar-people-bulk').hidden = !bulkAvailable;
+  if (bulkAvailable) {
+    $('familiar-people-bulk-btn').textContent = `${active.action || 'Invite everyone'} (${count})`;
+  }
+}
+
 function renderPeopleBar() {
-  const count = peopleSelection.size;
+  const count = peopleBulk ? peopleBulk.count : peopleSelection.size;
   $('familiar-people-bar').hidden = count === 0;
   if (!count) peopleConfirming = false;
   $('familiar-people-bar').classList.toggle('is-confirming', peopleConfirming);
@@ -919,6 +944,7 @@ async function loadPeople({ append = false } = {}) {
   const params = new URLSearchParams();
   if (peopleSearch) params.set('search', peopleSearch);
   if ($('familiar-people-source').value) params.set('sourceEventId', $('familiar-people-source').value);
+  if (peopleGroup !== 'all') params.set('group', peopleGroup);
   if (append) params.set('offset', String(peopleState.people.length));
   const data = await api(`/api/events/${eventId}/familiar-faces/people?${params}`);
   if (request !== peopleRequest) return;
@@ -960,14 +986,38 @@ $('familiar-people-grid').addEventListener('click', async event => {
   card.setAttribute('aria-pressed', String(selected));
   card.setAttribute('aria-label', `${selected ? 'Remove' : 'Select'} ${card.dataset.name}${card.dataset.detail ? `, ${card.dataset.detail}` : ''}`);
   peopleConfirming = false;
+  peopleBulk = null;
   renderPeopleBar();
+});
+
+$('familiar-people-groups').addEventListener('click', event => {
+  const chip = event.target.closest('[data-group]');
+  if (!chip || chip.dataset.group === peopleGroup) return;
+  peopleGroup = chip.dataset.group;
+  peopleBulk = null;
+  peopleConfirming = false;
+  loadPeople().catch(error => toast(error.message));
+});
+
+$('familiar-people-bulk-btn').addEventListener('click', () => {
+  const active = (peopleState.groups || []).find(group => group.key === peopleGroup);
+  if (!active?.count) return;
+  peopleSelection.clear();
+  peopleBulk = { group: peopleGroup, count: active.count, label: active.label };
+  peopleConfirming = true;
+  renderPeople();
+  $('familiar-people-send').focus();
 });
 
 $('familiar-people-source').addEventListener('change', () => loadPeople().catch(error => toast(error.message)));
 $('familiar-people-more').addEventListener('click', () => loadPeople({ append: true }).catch(error => toast(error.message)));
 
 $('familiar-people-secondary').addEventListener('click', () => {
-  if (peopleConfirming) {
+  if (peopleBulk) {
+    peopleBulk = null;
+    peopleConfirming = false;
+    renderPeople();
+  } else if (peopleConfirming) {
     peopleConfirming = false;
     renderPeopleBar();
   } else {
@@ -989,11 +1039,15 @@ $('familiar-people-send').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = 'Sending…';
   try {
+    const source = $('familiar-people-source').value;
     const data = await api(`/api/events/${eventId}/familiar-faces/people/invite`, {
       method: 'POST',
-      body: { faceIds: [...peopleSelection.keys()] }
+      body: peopleBulk
+        ? { group: peopleBulk.group, sourceEventId: source ? Number(source) : null }
+        : { faceIds: [...peopleSelection.keys()] }
     });
     peopleSelection.clear();
+    peopleBulk = null;
     peopleConfirming = false;
     toast(`${data.queued} ${data.queued === 1 ? 'invitation is' : 'invitations are'} on the way`);
     await Promise.allSettled([loadGuests(peopleSearch), loadPeople()]);
