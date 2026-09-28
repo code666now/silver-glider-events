@@ -382,6 +382,14 @@ function familiarPersonKey({ userId, email }) {
 }
 
 // A named +1 came with a friend; say whose, so the card makes sense.
+// 1st, 2nd, 3rd, 4th…
+function ordinal(value) {
+  const number = Number(value) || 0;
+  const tens = number % 100;
+  if (tens >= 11 && tens <= 13) return `${number}th`;
+  return `${number}${['th', 'st', 'nd', 'rd'][number % 10] || 'th'}`;
+}
+
 function plusOneLabel(primaryFirstName) {
   const first = String(primaryFirstName || '').trim().split(/\s+/)[0];
   return first ? `${first}’s +1` : 'Guest +1';
@@ -507,6 +515,20 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
       `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
               r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
               r.created_at, o.avatar_url,
+              (SELECT COUNT(DISTINCT seen.event_id) FROM rsvps seen
+                 JOIN events seen_event ON seen_event.id=seen.event_id
+                 JOIN events target_event ON target_event.id=$1
+                WHERE seen_event.organizer_id=$2 AND seen.status='confirmed'
+                  AND (seen.event_id=$1
+                       OR seen_event.event_date < target_event.event_date
+                       OR (seen_event.event_date=target_event.event_date
+                           AND seen_event.start_time < target_event.start_time)
+                       OR (seen_event.event_date=target_event.event_date
+                           AND seen_event.start_time=target_event.start_time
+                           AND seen_event.id < target_event.id))
+                  AND ((r.user_id IS NOT NULL AND seen.user_id=r.user_id)
+                       OR ((r.user_id IS NULL OR seen.user_id IS NULL)
+                           AND LOWER(TRIM(seen.email))=LOWER(TRIM(r.email)))))::int AS visit_count,
               NOT EXISTS (
                 SELECT 1 FROM follower_optouts fo
                  WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
@@ -571,10 +593,14 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     for (const rsvp of rsvps) {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
       const hasEmail = Boolean(String(rsvp.email || '').trim());
+      const visits = Number(rsvp.visit_count) || 1;
       faces.push({
         id: familiarFaceKey('rsvp', rsvp.id),
         name,
         status: 'RSVP’d',
+        // "First time" or "4th time with you" — the host's own memory, in a label.
+        visitLabel: visits > 1 ? `${ordinal(visits)} time` : 'First time',
+        visitCount: visits,
         // Why a face can't be selected for an invitation, so the picker never
         // looks broken.
         note: !hasEmail ? 'No email' : (!rsvp.host_email_allowed ? 'Unsubscribed' : null),

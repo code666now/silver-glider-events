@@ -7581,6 +7581,42 @@ test('a stale never-sent invitation is revoked before its replacement is created
   )).rows.map(row => row.action_type), ['account_invitation_stale_revoked']);
 });
 
+test('an event reports how many guests are returning and how many came from invites', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const past = await createEvent({ slug: 'returning-past', title: 'Returning Past', event_date: '2020-06-06' });
+  const target = await createEvent({ slug: 'returning-next', title: 'Returning Next', event_date: '2031-06-06' });
+  await createRsvp(past.id, { first_name: 'Rae', email: 'rae-returning@example.test' });
+  await createRsvp(past.id, { first_name: 'Ivo', email: 'ivo-returning@example.test' });
+  await createRsvp(past.id, { first_name: 'Nell', email: 'nell-returning@example.test', status: 'cancelled' });
+
+  // Rae comes back on her own; Ivo comes back after a Familiar Faces invite.
+  await createRsvp(target.id, { first_name: 'Rae', email: 'rae-returning@example.test' });
+  await pool.query(
+    `INSERT INTO message_log (event_id, recipient, recipient_name, message_type, channel, status, created_at)
+     VALUES ($1,'ivo-returning@example.test','Ivo','previous_guest_invite','email','sent', NOW() - INTERVAL '1 hour')`,
+    [target.id]
+  );
+  await createRsvp(target.id, { first_name: 'Ivo', email: 'ivo-returning@example.test' });
+  await createRsvp(target.id, { first_name: 'Sam', email: 'sam-new@example.test' });
+  await createRsvp(target.id, { first_name: 'Nell', email: 'nell-returning@example.test' });
+  const future = await createEvent({ slug: 'returning-future', title: 'Returning Future', event_date: '2032-06-06' });
+  await createRsvp(future.id, { first_name: 'Rae', email: 'rae-returning@example.test' });
+
+  const { event } = await (await fetch(`${baseUrl}/api/events/${target.id}`, { headers: { cookie } })).json();
+  assert.equal(event.rsvp_count, 4);
+  assert.equal(event.returning_count, 2, 'Rae and Ivo; a cancelled earlier RSVP does not count');
+  assert.equal(event.invited_returning_count, 1, 'only Ivo answered an invitation');
+
+  const earlier = await (await fetch(`${baseUrl}/api/events/${past.id}`, { headers: { cookie } })).json();
+  assert.equal(earlier.event.returning_count, 0, 'the first event has nobody to return from');
+
+  const { faces } = await (await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces`, { headers: { cookie } })).json();
+  const labels = Object.fromEntries(faces.map(face => [face.name, face.visitLabel]));
+  assert.equal(labels['Rae Person'], '2nd time');
+  assert.equal(labels['Ivo Person'], '2nd time');
+  assert.equal(labels['Sam Person'], 'First time');
+});
+
 test('recipient-verified admin email replacement preserves recovery aliases and never signs the recipient in', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('identity-support@example.test', 'support');

@@ -115,6 +115,20 @@ function updateMobileManageSummaries() {
       : 'No RSVPs yet. Share your link to get the first one.';
   }
 
+  // The proof line: how much of tonight's room already knows this host.
+  const returning = Number(eventData.returning_count) || 0;
+  const fromInvites = Number(eventData.invited_returning_count) || 0;
+  const returningLine = $('manage-mobile-returning');
+  if (returning) {
+    const verb = eventData.is_past ? 'had been' : returning === 1 ? 'has been' : 'have been';
+    returningLine.textContent = fromInvites
+      ? `${returning} of them ${verb} to one of your events before. ${fromInvites} came from your invites.`
+      : `${returning} of them ${verb} to one of your events before.`;
+    returningLine.hidden = false;
+  } else {
+    returningLine.hidden = true;
+  }
+
   const connected = Number(familiarFaceState?.totalCount);
   const guestCount = Number.isFinite(connected) && connected > 0 ? connected : rsvps;
   $('manage-mobile-summary-guests').textContent = guestCount
@@ -303,7 +317,7 @@ function showManageLoadError() {
   $('manage-hero-placeholder').hidden = false;
   $('title').textContent = 'Event unavailable';
   $('meta').textContent = 'Try loading this page again.';
-  ['stat-rsvps', 'stat-attendance', 'stat-guests', 'stat-comments'].forEach(id => { $(id).textContent = '—'; });
+  ['stat-rsvps', 'stat-attendance', 'stat-returning', 'stat-guests', 'stat-comments'].forEach(id => { $(id).textContent = '—'; });
   $('familiar-faces-grid').innerHTML = '';
   $('no-guests').textContent = 'We could not load Familiar Faces. Try loading the page again.';
   $('no-guests').hidden = false;
@@ -350,6 +364,12 @@ async function loadEvent() {
   $('stat-attendance').textContent = event.total_attendance;
   $('stat-guests').textContent = event.guest_count;
   $('stat-comments').textContent = event.comment_count;
+  const returningStat = Number(event.returning_count) || 0;
+  const invitedStat = Number(event.invited_returning_count) || 0;
+  $('stat-returning').textContent = returningStat;
+  $('stat-returning-note').textContent = invitedStat
+    ? `${invitedStat} from your invites`
+    : 'Guests who came before';
   const smsEligibleCount = Number(event.sms_eligible_count) || 0;
   $('sms-audience').hidden = !event.sms_reminder_enabled;
   $('sms-audience-count').textContent = smsEligibleCount.toLocaleString('en-US');
@@ -498,6 +518,7 @@ function renderFamiliarFaces() {
     const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.status)}</span>
+      ${face.visitLabel ? `<span class="familiar-face-visits${face.visitCount > 1 ? ' is-returning' : ''}">${escapeHtml(face.visitLabel)}</span>` : ''}
       ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}
       ${familiarSelectionMode && !face.canInvite && face.note ? `<span class="familiar-face-note">${escapeHtml(face.note)}</span>` : ''}`;
     if (face.canInvite && familiarFaceState.canStartInvitation) {

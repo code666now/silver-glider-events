@@ -83,6 +83,8 @@ const EDITOR_EVENT_FIELDS = Object.freeze([
   'total_attendance',
   'sms_eligible_count',
   'comment_count',
+  'returning_count',
+  'invited_returning_count',
   'latest_notification'
 ]);
 
@@ -483,7 +485,62 @@ async function getEventForEditor(db, { organizerId, eventId }) {
                          AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
                          AND sms_consent_version='${SMS_CONSENT_VERSION}'
                          AND phone ~ '^\\+[1-9][0-9]{7,14}$'), 0)::int AS sms_eligible_count,
-            COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
+            COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count,
+            COALESCE((SELECT COUNT(*) FROM rsvps current_rsvp
+                       WHERE current_rsvp.event_id=e.id AND current_rsvp.status='confirmed'
+                         AND EXISTS (
+                           SELECT 1 FROM rsvps prior
+                            JOIN events prior_event ON prior_event.id=prior.event_id
+                            WHERE prior_event.organizer_id=e.organizer_id
+                              AND prior_event.id<>e.id
+                              AND (
+                                prior_event.event_date < e.event_date
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time < e.start_time)
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time=e.start_time
+                                    AND prior_event.id < e.id)
+                              )
+                              AND prior.status='confirmed'
+                              AND ((current_rsvp.user_id IS NOT NULL
+                                    AND prior.user_id=current_rsvp.user_id)
+                                   OR ((current_rsvp.user_id IS NULL OR prior.user_id IS NULL)
+                                       AND LOWER(TRIM(prior.email))=LOWER(TRIM(current_rsvp.email))))
+                         )), 0)::int AS returning_count,
+            COALESCE((SELECT COUNT(*) FROM rsvps current_rsvp
+                       WHERE current_rsvp.event_id=e.id AND current_rsvp.status='confirmed'
+                         AND EXISTS (
+                           SELECT 1 FROM rsvps prior
+                            JOIN events prior_event ON prior_event.id=prior.event_id
+                            WHERE prior_event.organizer_id=e.organizer_id
+                              AND prior_event.id<>e.id
+                              AND (
+                                prior_event.event_date < e.event_date
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time < e.start_time)
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time=e.start_time
+                                    AND prior_event.id < e.id)
+                              )
+                              AND prior.status='confirmed'
+                              AND ((current_rsvp.user_id IS NOT NULL
+                                    AND prior.user_id=current_rsvp.user_id)
+                                   OR ((current_rsvp.user_id IS NULL OR prior.user_id IS NULL)
+                                       AND LOWER(TRIM(prior.email))=LOWER(TRIM(current_rsvp.email))))
+                         )
+                         AND EXISTS (
+                           SELECT 1 FROM message_log invitation
+                            WHERE invitation.event_id=e.id
+                              AND invitation.message_type='previous_guest_invite'
+                              AND invitation.status IN ('pending','sent')
+                              AND invitation.created_at <= current_rsvp.created_at
+                              AND ((invitation.recipient_user_id IS NOT NULL
+                                    AND invitation.recipient_user_id=current_rsvp.user_id)
+                                   OR ((invitation.recipient_user_id IS NULL
+                                        OR current_rsvp.user_id IS NULL)
+                                       AND LOWER(TRIM(invitation.recipient))=
+                                           LOWER(TRIM(current_rsvp.email))))
+                         )), 0)::int AS invited_returning_count
             ,(SELECT json_build_object(
                 'id', b.id, 'kind', b.kind, 'status', b.status,
                 'recipientCount', b.recipient_count, 'sentCount', b.sent_count,
