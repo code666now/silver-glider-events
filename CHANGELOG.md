@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.142
+
+Released September 28, 2026. Built and deployed by Codex.
+
+### Clear pay-at-the-door pricing
+
+* Flyer events that collect an RSVP for paid admission now show the price as prominent, high-contrast supporting information directly beside the RSVP decision.
+* Door pricing uses clearer copy such as **$14 · Pay at the door**, while free-RSVP helper text keeps its quieter hierarchy.
+* Desktop uses an 18px price treatment and phone layouts use 16px, with additional contrast protection for TV Static and After Hours Saloon backgrounds.
+* RSVP behavior, event data, guest lists, emails, Standard pages, and external-ticket events are unchanged.
+
+### Verification
+
+* Static checks and all 478 automated tests pass, including focused action-copy and responsive visual-hierarchy regressions.
+
 ## 1.0.141
 
 Released September 28, 2026. Built and deployed by Codex.
