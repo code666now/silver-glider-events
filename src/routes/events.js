@@ -493,7 +493,35 @@ router.get('/api/events/:id', async (req, res, next) => {
                            AND sms_consent_at IS NOT NULL AND sms_opted_out_at IS NULL
                            AND sms_consent_version='${SMS_CONSENT_VERSION}'
                            AND phone ~ '^\\+[1-9][0-9]{7,14}$'), 0)::int AS sms_eligible_count,
-              COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count
+              COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count,
+              -- Proof the guest list is working: how many of tonight's guests
+              -- have been to one of this host's earlier events, and how many
+              -- of those RSVP'd after a Familiar Faces invitation for it.
+              COALESCE((SELECT COUNT(*) FROM rsvps r
+                         WHERE r.event_id=e.id AND r.status='confirmed'
+                           AND EXISTS (
+                             SELECT 1 FROM rsvps prior
+                              JOIN events prior_event ON prior_event.id=prior.event_id
+                              WHERE prior_event.organizer_id=e.organizer_id
+                                AND prior_event.id<>e.id
+                                AND prior_event.event_date < e.event_date
+                                AND prior.status='confirmed'
+                                AND ((r.user_id IS NOT NULL AND prior.user_id=r.user_id)
+                                     OR ((r.user_id IS NULL OR prior.user_id IS NULL)
+                                         AND LOWER(TRIM(prior.email))=LOWER(TRIM(r.email))))
+                           )), 0)::int AS returning_count,
+              COALESCE((SELECT COUNT(*) FROM rsvps r
+                         WHERE r.event_id=e.id AND r.status='confirmed'
+                           AND EXISTS (
+                             SELECT 1 FROM message_log ml
+                              WHERE ml.event_id=e.id
+                                AND ml.message_type='previous_guest_invite'
+                                AND ml.status IN ('pending','sent')
+                                AND ml.created_at <= r.created_at
+                                AND ((ml.recipient_user_id IS NOT NULL AND ml.recipient_user_id=r.user_id)
+                                     OR ((ml.recipient_user_id IS NULL OR r.user_id IS NULL)
+                                         AND LOWER(TRIM(ml.recipient))=LOWER(TRIM(r.email))))
+                           )), 0)::int AS invited_returning_count
               ,(SELECT json_build_object(
                   'id', b.id, 'kind', b.kind, 'status', b.status,
                   'recipientCount', b.recipient_count, 'sentCount', b.sent_count,
@@ -826,6 +854,14 @@ function familiarPersonKey({ userId, email }) {
 }
 
 // A named +1 came with a friend; say whose, so the card makes sense.
+// 1st, 2nd, 3rd, 4th…
+function ordinal(value) {
+  const number = Number(value) || 0;
+  const tens = number % 100;
+  if (tens >= 11 && tens <= 13) return `${number}th`;
+  return `${number}${['th', 'st', 'nd', 'rd'][number % 10] || 'th'}`;
+}
+
 function plusOneLabel(primaryFirstName) {
   const first = String(primaryFirstName || '').trim().split(/\s+/)[0];
   return first ? `${first}’s +1` : 'Guest +1';
@@ -951,6 +987,12 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
       `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
               r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
               r.created_at, o.avatar_url,
+              (SELECT COUNT(DISTINCT seen.event_id) FROM rsvps seen
+                 JOIN events seen_event ON seen_event.id=seen.event_id
+                WHERE seen_event.organizer_id=$2 AND seen.status='confirmed'
+                  AND ((r.user_id IS NOT NULL AND seen.user_id=r.user_id)
+                       OR ((r.user_id IS NULL OR seen.user_id IS NULL)
+                           AND LOWER(TRIM(seen.email))=LOWER(TRIM(r.email)))))::int AS visit_count,
               NOT EXISTS (
                 SELECT 1 FROM follower_optouts fo
                  WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
@@ -1015,10 +1057,14 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     for (const rsvp of rsvps) {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
       const hasEmail = Boolean(String(rsvp.email || '').trim());
+      const visits = Number(rsvp.visit_count) || 1;
       faces.push({
         id: familiarFaceKey('rsvp', rsvp.id),
         name,
         status: 'RSVP’d',
+        // "First time" or "4th time with you" — the host's own memory, in a label.
+        visitLabel: visits > 1 ? `${ordinal(visits)} time` : 'First time',
+        visitCount: visits,
         // Why a face can't be selected for an invitation, so the picker never
         // looks broken.
         note: !hasEmail ? 'No email' : (!rsvp.host_email_allowed ? 'Unsubscribed' : null),

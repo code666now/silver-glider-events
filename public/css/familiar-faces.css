@@ -28,6 +28,8 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
 .familiar-face-emoji { font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:34px;font-weight:400;line-height:1; }
 .familiar-face-name { width:100%;overflow:hidden;color:var(--sg-text);font-size:14px;font-weight:800;line-height:1.35;text-overflow:ellipsis;white-space:nowrap; }
 .familiar-face-status { margin-top:5px;color:var(--sg-text-dim);font-size:12px; }
+.familiar-face-visits { margin-top:4px;color:var(--sg-text-faint);font-size:11px;font-weight:700; }
+.familiar-face-visits.is-returning { color:var(--sg-accent); }
 .familiar-face-note { margin-top:10px;padding:3px 9px;border:1px solid var(--sg-border-soft);border-radius:999px;color:var(--sg-text-faint);font-size:10px;font-weight:700;letter-spacing:.02em; }
 .familiar-people { margin-top:34px;padding-top:28px;border-top:1px solid var(--sg-border-soft); }
 .familiar-people[hidden] { display:none; }
@@ -139,6 +141,7 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   .manage-shell .familiar-faces-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
   .manage-shell .familiar-face-card { min-height:178px;padding:18px 12px;border-radius:20px; }
   .manage-shell .familiar-face-name { font-size:15px; }
+  .manage-shell .familiar-face-visits { margin-top:2px;font-size:10px; }
   .manage-shell .familiar-face-status { font-size:13px;line-height:1.4; }
   .manage-shell .familiar-face-share { min-height:44px;display:inline-flex;align-items:center;padding:9px 14px;font-size:12px; }
   .manage-shell .familiar-faces-empty { padding:46px 18px;font-size:15px;line-height:1.55; }
