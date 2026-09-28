@@ -10179,3 +10179,65 @@ test('past guests can be filtered by group and invited as a whole group', async 
   });
   assert.equal(privateBulk.status, 400, 'private events require deliberate individual selection');
 });
+
+test('an artist can claim a lineup spot, or take their name off the event', async () => {
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const event = await createEvent({
+    slug: 'lineup-night', title: 'Lineup Night', event_date: '2031-03-03',
+    event_vibe_label: 'DJ Claimer', event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678'
+  });
+
+  // The host adds the artist's email, which sends exactly one invitation.
+  const save = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ event_vibe_label: 'DJ Claimer', event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678', event_vibe_email: 'dj-claimer@example.test' })
+  });
+  assert.equal(save.status, 200);
+  const claims = (await pool.query('SELECT id, slot, email, status FROM event_artist_claims WHERE event_id=$1', [event.id])).rows;
+  assert.deepEqual(claims.map(row => [row.slot, row.email, row.status]), [[1, 'dj-claimer@example.test', 'invited']]);
+
+  // Saving again with the same email must not send a second invitation.
+  const before = mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length;
+  await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ event_vibe_label: 'DJ Claimer', event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678', event_vibe_email: 'dj-claimer@example.test' })
+  });
+  assert.equal(mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length, before);
+
+  // Somebody else signed in cannot read or act on the invitation.
+  const strangerCookie = `sge_session=${signSession(organizerId)}`;
+  const stranger = await fetch(`${baseUrl}/api/lineup/${claims[0].id}`, { headers: { cookie: strangerCookie } });
+  assert.equal(stranger.status, 403);
+
+  // The artist follows the emailed link, which signs them in on the claim screen.
+  const invite = lastDevEmail('dj-claimer@example.test', 'lineup_claim');
+  const signIn = await followSignInLink(invite.link);
+  assert.equal(signIn.status, 303);
+  assert.equal(signIn.headers.get('location'), `/lineup/${claims[0].id}`);
+  const artistCookie = signIn.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+
+  const view = await (await fetch(`${baseUrl}/api/lineup/${claims[0].id}`, { headers: { cookie: artistCookie } })).json();
+  assert.equal(view.claim.artistName, 'DJ Claimer');
+  assert.equal(view.claim.status, 'invited');
+  assert.equal(view.claim.event.title, 'Lineup Night');
+
+  const claimed = await fetch(`${baseUrl}/api/lineup/${claims[0].id}/claim`, { method: 'POST', headers: { cookie: artistCookie } });
+  assert.equal(claimed.status, 200);
+  const afterClaim = (await pool.query('SELECT status, organizer_id FROM event_artist_claims WHERE id=$1', [claims[0].id])).rows[0];
+  assert.equal(afterClaim.status, 'claimed');
+  assert.ok(afterClaim.organizer_id, 'the slot is linked to the artist account');
+
+  // A claimed slot is never re-invited, even if the host edits the email.
+  const beforeEdit = mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length;
+  await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ event_vibe_label: 'DJ Claimer', event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678', event_vibe_email: 'someone-else@example.test' })
+  });
+  assert.equal(mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length, beforeEdit);
+
+  // "Not me" takes the name off the public page.
+  const declined = await fetch(`${baseUrl}/api/lineup/${claims[0].id}/decline`, { method: 'POST', headers: { cookie: artistCookie } });
+  assert.equal(declined.status, 200);
+  const page = await (await fetch(`${baseUrl}/e/lineup-night`)).text();
+  assert.doesNotMatch(page, /DJ Claimer/, 'a declined artist is not shown publicly');
+});

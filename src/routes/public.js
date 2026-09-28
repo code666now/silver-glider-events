@@ -8,6 +8,7 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
+const { declinedLineupSlots } = require('../lib/lineup-claims');
 const { clearSessionCookie } = require('../lib/session');
 const { ensureGuestIdentity } = require('../lib/guest-identity');
 const { resolveGuestInvitation } = require('../lib/guest-invitations');
@@ -204,12 +205,15 @@ function renderVibeEntry(entry, { showLabel = false } = {}) {
   return `<div class="vibe-artist-unit">${nameHtml}${content}</div>`;
 }
 
-function renderVibe(event) {
+function renderVibe(event, { declinedSlots = new Set() } = {}) {
   const entries = [
-    { label: event.event_vibe_label, url: event.event_vibe_url, image: event.event_vibe_image_url },
-    { label: event.event_vibe_label_2, url: event.event_vibe_url_2, image: event.event_vibe_image_url_2 },
-    { label: event.event_vibe_label_3, url: event.event_vibe_url_3, image: event.event_vibe_image_url_3 }
-  ].map(entry => ({ ...entry, html: renderVibeEntry(entry) })).filter(entry => entry.html);
+    { slot: 1, label: event.event_vibe_label, url: event.event_vibe_url, image: event.event_vibe_image_url },
+    { slot: 2, label: event.event_vibe_label_2, url: event.event_vibe_url_2, image: event.event_vibe_image_url_2 },
+    { slot: 3, label: event.event_vibe_label_3, url: event.event_vibe_url_3, image: event.event_vibe_image_url_3 }
+  ]
+    // "Not me" on a lineup invitation takes that artist off the public page.
+    .filter(entry => !declinedSlots.has(entry.slot))
+    .map(entry => ({ ...entry, html: renderVibeEntry(entry) })).filter(entry => entry.html);
   if (!entries.length) return '';
   if (entries.length === 1) {
     const entryHtml = renderVibeEntry(entries[0], { showLabel: true });
@@ -731,7 +735,7 @@ router.get('/e/:slug', async (req, res, next) => {
       : isPaid
       ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
-    const vibeHtml = renderVibe(event);
+    const vibeHtml = renderVibe(event, { declinedSlots: await declinedLineupSlots(pool, event.id) });
     const flyerAction = flyerPrimaryAction(event);
     const recapHref = featuredPhotos.length ? '#event-recap' : '';
     const endedActionHtml = recapHref

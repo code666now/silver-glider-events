@@ -187,6 +187,16 @@ Codex and Claude Code both work here. Claude Code works in its own clone (`~/sge
 
 This repository is a continuation of the same Silver Glider Events project, not a restart. Treat the code, migrations, tests, and current production health response as the source of truth.
 
+### Lineup claims — rules to keep (Claude)
+
+- **The host owns the guest list, always.** A lineup claim gives an artist credit, their own copy of the night, and (later) followers. It never grants any access to the host's RSVPs. `src/lib/lineup-claims.js` deliberately touches no RSVP data.
+- **Artist emails are not event columns.** They live in `event_artist_claims` (migration `057`), one row per `(event_id, slot)`, so the Event Vibe columns stay as they are. The editor reads them back through `event.lineup` on `GET /api/events/:id`.
+- **One invitation per artist per slot**, sent only to an address the host typed. A save that repeats the same address sends nothing; a **claimed** slot is never re-invited or re-pointed, even if the host edits the email; removing the artist's name deletes the row.
+- **No new token plumbing.** The invitation is an ordinary sign-in magic link (`intent: 'sign_in'`, `withCode: false`, 14-day TTL) whose `returnPath` is `/lineup/<claimId>`, so `GET /auth/verify` stays read-only and the POST still does the signing in.
+- **The claim screen checks the email owner**, not just the session: the signed-in account's email must equal the claim's email, otherwise 403. `/api/lineup` is behind `requireOrganizer`.
+- **"Not me" is always available** and takes the artist off the public page: `renderVibe(event, { declinedSlots })` filters declined slots. Both answers email the host.
+- Not built yet: Follow the artist, the **Playing** section on `/h/<slug>`, and "tell your followers".
+
 ### Phone polish — rules to keep (Claude, branch `claude/mobile-polish`)
 
 - **Hover styles are mouse-only.** Every `:hover` rule sits inside `@media (hover: hover)` so a tapped button doesn't stay lit on iPhone. Write new hover rules the same way; `:focus-visible` stays outside the query.

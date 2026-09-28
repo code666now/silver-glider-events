@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>You're on the lineup — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .claim-shell { max-width: 560px; }
+    .claim-card { display: grid; gap: 18px; padding: 26px 22px; border: 1px solid var(--sg-border-soft); border-radius: 24px; background: rgba(255,255,255,.02); }
+    .claim-art { width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 18px; background: var(--sg-surface); }
+    .claim-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .claim-art[hidden] { display: none; }
+    .claim-kicker { color: var(--sg-accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .claim-title { margin: 8px 0 0; font-size: clamp(26px, 7vw, 34px); line-height: 1.1; }
+    .claim-meta { margin: 10px 0 0; color: var(--sg-text-dim); font-size: 15px; line-height: 1.5; }
+    .claim-actions { display: grid; gap: 10px; }
+    .claim-actions .sg-btn { width: 100%; min-height: 56px; }
+    .claim-note { margin: 0; color: var(--sg-text-faint); font-size: 13px; line-height: 1.6; }
+    .claim-status { min-height: 20px; margin: 0; color: var(--sg-text-dim); font-size: 14px; }
+    .claim-done { display: grid; gap: 14px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="sg-shell claim-shell">
+    <nav id="nav"></nav>
+    <main id="claim-main" aria-busy="true">
+      <p class="claim-status" id="claim-error" role="status"></p>
+
+      <section class="claim-card" id="claim-card" hidden>
+        <div class="claim-art" id="claim-art" hidden><img id="claim-art-img" alt=""></div>
+        <div>
+          <p class="claim-kicker" id="claim-kicker">You're on the lineup</p>
+          <h1 class="claim-title" id="claim-title">&nbsp;</h1>
+          <p class="claim-meta" id="claim-meta"></p>
+        </div>
+        <div class="claim-actions" id="claim-actions">
+          <button class="sg-btn sg-btn-primary" id="claim-yes" type="button">That's me</button>
+          <button class="sg-btn sg-btn-ghost" id="claim-no" type="button">Not me</button>
+        </div>
+        <div class="claim-done" id="claim-done" hidden>
+          <p class="claim-meta" id="claim-done-copy"></p>
+          <a class="sg-btn sg-btn-ghost" id="claim-view" href="/events">View the event</a>
+        </div>
+        <p class="claim-note" id="claim-note">Claiming adds this night to your account and lets guests follow you. It never shares the host's guest list.</p>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script>
+    renderNav('');
+    const $ = id => document.getElementById(id);
+    const claimId = location.pathname.split('/').filter(Boolean)[1];
+
+    function showError(message) {
+      $('claim-main').setAttribute('aria-busy', 'false');
+      $('claim-error').textContent = message;
+    }
+
+    function eventLine(event) {
+      const date = new Date(`${String(event.eventDate).slice(0, 10)}T12:00:00Z`);
+      const when = Number.isNaN(date.getTime())
+        ? ''
+        : date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      return [when, event.venueName].filter(Boolean).join(' · ');
+    }
+
+    function renderClaimed(status, eventUrl) {
+      $('claim-actions').hidden = true;
+      $('claim-note').hidden = true;
+      $('claim-done').hidden = false;
+      $('claim-view').href = eventUrl || '/events';
+      if (status === 'claimed') {
+        $('claim-kicker').textContent = 'You’re on this lineup';
+        $('claim-done-copy').textContent = 'This night is on your account now. Add your photo and link on the event page, and guests can follow you from there.';
+      } else {
+        $('claim-kicker').textContent = 'Name removed';
+        $('claim-done-copy').textContent = 'Your name has been taken off this event, and the host has been told.';
+        $('claim-view').textContent = 'Go to my events';
+        $('claim-view').href = '/events';
+      }
+    }
+
+    api(`/api/lineup/${encodeURIComponent(claimId)}`).then(({ claim }) => {
+      $('claim-main').setAttribute('aria-busy', 'false');
+      $('claim-card').hidden = false;
+      $('claim-title').textContent = claim.event.title;
+      $('claim-meta').textContent = `${claim.hostLabel} listed ${claim.artistName}. ${eventLine(claim.event)}`;
+      if (claim.event.artworkUrl) {
+        $('claim-art-img').src = claim.event.artworkUrl;
+        $('claim-art').hidden = false;
+      }
+      if (claim.status !== 'invited') renderClaimed(claim.status, claim.event.url);
+    }).catch(error => showError(error.message || 'That lineup invitation could not be loaded.'));
+
+    for (const [id, action, busyLabel] of [['claim-yes', 'claim', 'Claiming…'], ['claim-no', 'decline', 'Removing…']]) {
+      $(id).addEventListener('click', async () => {
+        const button = $(id);
+        if (button.dataset.busy === 'true') return;
+        button.dataset.busy = 'true';
+        button.disabled = true;
+        const label = button.textContent;
+        button.textContent = busyLabel;
+        try {
+          const result = await api(`/api/lineup/${encodeURIComponent(claimId)}/${action}`, { method: 'POST' });
+          renderClaimed(result.status, result.eventUrl);
+        } catch (error) {
+          showError(error.message || 'That did not go through. Try again.');
+          button.textContent = label;
+          button.disabled = false;
+        } finally {
+          delete button.dataset.busy;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

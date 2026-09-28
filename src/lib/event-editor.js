@@ -280,6 +280,14 @@ function cleanFloat(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// The artist's own email, read straight from the request body by the routes.
+const ARTIST_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function cleanArtistEmail(value) {
+  const email = String(value ?? '').trim().toLowerCase().slice(0, 254);
+  if (!email) return null;
+  return ARTIST_EMAIL_RE.test(email) ? email : null;
+}
+
 function validateEventBody(body, { partial = false } = {}) {
   const errors = [];
   const out = {};
@@ -714,5 +722,6 @@ module.exports = {
   toEditorEventDto,
   updateEventInTransaction,
   validateCreateEventInput,
-  validateEventBody
+  validateEventBody,
+  cleanArtistEmail
 };

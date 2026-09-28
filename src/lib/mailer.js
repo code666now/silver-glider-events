@@ -787,6 +787,47 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
   });
 }
 
+// An artist credited on an event's lineup is invited to claim the slot. The
+// link signs them in; the page then offers "That's me" or "Not me".
+async function sendLineupClaim({ to, event, artistName, hostLabel, link }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  recordDevEmail({ to, kind: 'lineup_claim', link });
+  return send({
+    to,
+    subject: `${hostLabel} added you to the lineup for ${event.title}`,
+    html: layout({
+      kicker: 'You’re on the lineup',
+      headline: event.title,
+      sub: `${esc(hostLabel)} listed ${esc(artistName)} on this event.`,
+      bodyHtml: eventCard(event),
+      cta: 'That’s me',
+      ctaUrl: link,
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">Claiming adds this night to your own Silver Glider account and lets guests follow you. It never shares the host’s guest list.<br>Not you? <a href="${esc(link)}" style="color:#777;text-decoration:underline">Take your name off this event</a>.<br><a href="${esc(baseUrl)}" style="color:#777;text-decoration:underline">Silver Glider Events</a></p>`
+    })
+  });
+}
+
+// Tells the host what the artist did with their lineup invitation.
+async function sendLineupClaimOutcome({ to, event, artistName, status }) {
+  const claimed = status === 'claimed';
+  return send({
+    to,
+    subject: claimed
+      ? `${artistName} claimed their spot on ${event.title}`
+      : `${artistName} took their name off ${event.title}`,
+    html: layout({
+      kicker: 'Lineup',
+      headline: event.title,
+      sub: claimed
+        ? `${esc(artistName)} confirmed they're on your lineup. Guests can follow them from your event page.`
+        : `${esc(artistName)} said this isn't them, so their name no longer appears on your event page.`,
+      bodyHtml: eventCard(event),
+      cta: claimed ? 'View your event' : 'Edit your lineup',
+      ctaUrl: `${String(process.env.APP_URL || '').replace(/\/$/, '')}/e/${event.slug}${claimed ? '' : '?edit=details'}`
+    })
+  });
+}
+
 function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLabel, sourceEventTitle, unsubscribeUrl, invitationUrl }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const firstName = String(recipientName || '').trim().split(/\s+/)[0];
@@ -867,7 +908,7 @@ module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendAdminIdentityChangeVerification,
   sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation,
+  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
   sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,

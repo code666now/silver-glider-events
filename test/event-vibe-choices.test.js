@@ -59,7 +59,8 @@ test('public Event Vibe switches complete artist units and uses photos as YouTub
   const standard = read('src/views/event-public.html');
   const flyer = read('public/css/event-public-flyer.css');
 
-  assert.match(route, /function renderVibe\(event\)/);
+  // renderVibe now also takes the slots an artist declined, so they can be hidden.
+  assert.match(route, /function renderVibe\(event, \{ declinedSlots = new Set\(\) \} = \{\}\)/);
   assert.match(route, /function renderVibeEntry\(entry/);
   assert.match(route, /role="tablist" aria-label="Choose an artist"/);
   assert.equal((route.match(/data-vibe-player/g) || []).length, 1);
