@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.141
+
+Released September 28, 2026. Built and deployed by Codex.
+
+### Your crowd
+
+* Familiar Faces now groups eligible past guests into Everyone, Regulars, Last time, Been a while, New faces, and Came once, with live counts and server-side filtering.
+* Public events can prepare an entire displayed group for invitation while retaining the existing confirmation step and 500-person limit. Private events continue to require deliberate individual selection, enforced by both the interface and server.
+* Search and past-event filters carry through to bulk recipient resolution, so the audience confirmed by the host is the audience queued by the server. Exact event IDs keep New faces correct when multiple events share a date.
+* Existing RSVP eligibility, opt-outs, deduplication, invitation email content, and database schema remain unchanged.
+
+### Verification
+
+* Static checks and all 477 automated tests pass, including database-backed coverage for group counts, same-day events, filtered bulk sends, post-invite eligibility, private-event protection, and the returning-guest behavior from v1.0.140.
+
 ## 1.0.140
 
 Released September 28, 2026. Built and deployed by Codex.
