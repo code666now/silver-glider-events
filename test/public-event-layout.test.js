@@ -244,6 +244,16 @@ test('secondary text and form focus use readable shared contrast tokens', () => 
   assert.match(brand, /\.sg-input:focus[\s\S]*outline: 2px solid rgba\(28, 197, 190, 0\.32\)/);
 });
 
+test('door pricing is visually prominent without enlarging ordinary RSVP helper text', () => {
+  const route = source('src/routes/public.js');
+  const flyerStyles = source('public/css/event-public-flyer.css');
+
+  assert.match(route, /isPaid && flyerAction\.type === 'rsvp'[\s\S]*is-admission-price/);
+  assert.match(flyerStyles, /\.primary-action-support \{[^}]*font-size: 12px;/);
+  assert.match(flyerStyles, /\.primary-action-support\.is-admission-price \{[\s\S]*color: rgba\(255,255,255,\.94\);[\s\S]*font-size: 18px;[\s\S]*font-weight: 750;/);
+  assert.match(flyerStyles, /@media \(max-width: 599px\)[\s\S]*\.primary-action-support\.is-admission-price \{ font-size: 16px; \}/);
+});
+
 test('public descriptions and essential RSVP surfaces stay readable over artwork', () => {
   for (const templatePath of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
     const styles = source(templatePath);

@@ -239,6 +239,14 @@
 .event-ended-note { color: var(--sg-text-dim); font-size: 14px; }
 .flyer-primary-cta { padding: 17px; font-size: 17px; }
 .primary-action-support { margin: 9px 0 0; color: var(--sg-text-dim); font-size: 12px; font-weight: 600; }
+.primary-action-support.is-admission-price {
+  margin-top: 10px;
+  color: rgba(255,255,255,.94);
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.35;
+  letter-spacing: .01em;
+}
 .flyer-secondary-rsvp {
   margin-top: 11px;
   padding: 4px 8px;
@@ -999,6 +1007,11 @@ body.guest-list-modal-open { overflow: hidden; }
   text-shadow: var(--flyer-static-shadow);
 }
 .event-bg.fx-static ~ .flyer-layout .flyer-primary-cta { font-weight: 800; }
+.event-bg.fx-static ~ .flyer-layout .primary-action-support.is-admission-price {
+  color: #fff !important;
+  font-weight: 800;
+  text-shadow: var(--flyer-static-shadow);
+}
 
 .event-bg.fx-saloon ~ .flyer-layout .desc,
 .event-bg.fx-saloon ~ .flyer-layout .flyer-design-credit,
@@ -1012,6 +1025,10 @@ body.guest-list-modal-open { overflow: hidden; }
   color: rgba(255,255,255,.78);
   font-weight: 500;
   text-shadow: 0 1px 4px rgba(0,0,0,.92);
+}
+.event-bg.fx-saloon ~ .flyer-layout .primary-action-support.is-admission-price {
+  color: rgba(255,255,255,.94);
+  font-weight: 750;
 }
 
 @media (max-width: 599px) {
@@ -1028,6 +1045,7 @@ body.guest-list-modal-open { overflow: hidden; }
     padding: 9px 14px;
     font-size: 12px;
   }
+  .primary-action-support.is-admission-price { font-size: 16px; }
   .actions { gap: 8px; }
   .actions .sg-btn { padding-inline: 10px; }
   #rsvp-form-box,

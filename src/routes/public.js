@@ -769,7 +769,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
       : '';
     const flyerActionSupportHtml = !ownerDraft && !event.is_past && flyerAction.supportingText
-      ? `<p class="primary-action-support">${esc(flyerAction.supportingText)}</p>`
+      ? `<p class="primary-action-support${isPaid && flyerAction.type === 'rsvp' ? ' is-admission-price' : ''}">${esc(flyerAction.supportingText)}</p>`
       : '';
     const flyerMobileActionHtml = ownerDraft
       ? ''

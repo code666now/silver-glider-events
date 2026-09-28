@@ -47,6 +47,6 @@ test('Silver Glider ticket events use the stable Events-owned handoff without RS
 });
 
 test('pay-at-the-door and invalid ticket destinations keep RSVP primary', () => {
-  assert.equal(flyerPrimaryAction({ admission_type: 'paid', ticket_price: 15 }).supportingText, '$15 at the door');
+  assert.equal(flyerPrimaryAction({ admission_type: 'paid', ticket_price: 15 }).supportingText, '$15 · Pay at the door');
   assert.equal(flyerPrimaryAction({ admission_type: 'paid', ticket_price: 15, ticket_url: 'javascript:alert(1)' }).type, 'rsvp');
 });

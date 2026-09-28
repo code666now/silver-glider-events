@@ -47,7 +47,7 @@ function flyerPrimaryAction(event = {}) {
       type: 'rsvp',
       label: 'RSVP',
       url: null,
-      supportingText: hasPrice ? `${price} at the door` : 'Pay at the door',
+      supportingText: hasPrice ? `${price} · Pay at the door` : 'Pay at the door',
       secondaryRsvp: false
     };
   }
