@@ -1101,6 +1101,8 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .event-mobile-flow-heading small { display: block; overflow: hidden; margin-top: 2px; color: var(--sg-text-faint); font-size: 10px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+      .event-mobile-flow-heading small[hidden] { display: none; }
       .event-mobile-flow-back {
         width: 44px;
         height: 44px;
@@ -1589,6 +1591,7 @@
           <button class="event-mobile-flow-back" id="event-mobile-flow-back" type="button" aria-label="Back">‹</button>
           <div class="event-mobile-flow-heading">
             <h1 id="event-mobile-flow-title">Create event</h1>
+            <small data-admin-editor-mobile-context hidden></small>
           </div>
           <button class="event-mobile-flow-preview" id="event-mobile-flow-preview" type="button" disabled>Preview</button>
         </header>

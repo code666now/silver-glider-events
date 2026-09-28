@@ -5,7 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'auth-hardening-unit-secret';
-const { signSession, parseSession, sessionRevoked, MAX_AGE_SECONDS } = require('../src/lib/session');
+const {
+  signSession,
+  parseSession,
+  readSessionCookie,
+  sessionRevoked,
+  MAX_AGE_SECONDS
+} = require('../src/lib/session');
+const { signAdminSession, parseAdminSession, setAdminSessionCookie } = require('../src/lib/admin-session');
 const { maskEmail, normalizeCode } = require('../src/lib/sign-in-challenges');
 const { signPhotoAccess, readPhotoAccess } = require('../src/lib/photo-access');
 
@@ -28,6 +35,8 @@ test('session cookies carry an issue time and still accept pre-v1.0.85 cookies',
 
   assert.equal(parseSession(`42.${issuedAt}.${exp}.${'0'.repeat(64)}`), null);
   assert.equal(parseSession('not-a-cookie'), null);
+  assert.equal(readSessionCookie({ headers: { cookie: 'sge_session=%' } }), null,
+    'a malformed percent-encoded cookie is treated as absent instead of throwing');
 });
 
 test('"sign out of all devices" rejects every cookie issued before it', () => {
@@ -36,6 +45,24 @@ test('"sign out of all devices" rejects every cookie issued before it', () => {
   assert.equal(sessionRevoked(session, { sessions_valid_after: new Date() }), true);
   const fresh = parseSession(signSession(7, Date.now() + 1000));
   assert.equal(sessionRevoked(fresh, { sessions_valid_after: new Date() }), false);
+});
+
+test('admin operator sessions use a separate signature domain from customer sessions', () => {
+  const issuedAt = Date.now() - 1000;
+  const adminSession = signAdminSession(17, issuedAt);
+  assert.deepEqual(parseAdminSession(adminSession), {
+    operatorId: 17,
+    issuedAt,
+    expiresAt: parseAdminSession(adminSession).expiresAt
+  });
+  assert.equal(parseSession(adminSession), null);
+  assert.equal(parseAdminSession(signSession(17, issuedAt)), null);
+
+  let cookie = '';
+  setAdminSessionCookie({ append: (_, value) => { cookie = value; } }, 17, issuedAt);
+  const refreshed = parseAdminSession(decodeURIComponent(cookie.match(/^sge_admin_session=([^;]+)/)[1]));
+  assert.equal(refreshed.issuedAt, issuedAt,
+    'sliding expiry must preserve the credential issue time used for revocation');
 });
 
 test('photo-only grants are signed, short-lived, and not account sessions', () => {

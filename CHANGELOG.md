@@ -2,6 +2,201 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.136
+
+Released September 24, 2026. Built and deployed by Codex.
+
+### Separate customer and administrator authentication
+
+* Customer authentication now answers only **who is this person?** Verified email and verified phone work the same for every customer account, including a person whose normal account also carries an administrative permission. Successful verification always resolves the canonical User ID and creates only the ordinary Silver Glider customer session.
+* The administrator realm now accepts only the independent operator login and `sge_admin_session`. The transitional customer-session fallback, configuration switch, customer Admin links, and all email-only restrictions tied to `organizers.is_admin` are removed.
+* Admin invitations, account support, Events, Hosts, Ticketing, SMS testing, identity support, Done For You, and isolated event preparation now attribute work only to the dedicated operator identity.
+
+### Reliable one-time codes
+
+* The reported valid-code failure came from the phone-to-email completion path rejecting an otherwise valid challenge when the resolved customer record had `is_admin`. That authorization check has been removed from authentication.
+* Customer email resends now rotate the exact browser-bound challenge transactionally. The old link and code fail, unrelated pending challenges remain intact, failed delivery leaves the previous challenge usable, and the newest delivered code resolves the canonical account session.
+* Dedicated administrator resends likewise rotate one browser-bound login challenge so the prior passcode fails and the newest succeeds. Expiry, purpose, attempt limits, normalization, malformed-cookie handling, and the separation between customer and administrator cookies are covered by regression tests.
+
+### Verification
+
+* The release passes static validation and all 472 automated tests, including 106 PostgreSQL/HTTP integration scenarios for customer email, returning phone, admin-permission customer login, dedicated admin login, expired and superseded codes, latest resend, invitations, support controls, and Done For You.
+
+## 1.0.135
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Copy-and-paste verification codes
+
+* Six-digit email verification codes now contain six contiguous digits, so copying from an email pastes the complete code without an invisible formatting trap. The existing visual letter spacing remains for readability.
+* Email-code fields now normalize spaces, hyphens, and nonbreaking spaces before the browser's six-character limit can truncate a pasted code. This covers customer sign-in, RSVP and Host follow verification, account email verification, administrator sign-in, and administrator security confirmations.
+* SMS verification and private-event access codes remain unchanged. Focused paste and email-rendering regressions were added alongside the full release suite.
+
+## 1.0.134
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning phone sign-in
+
+* A verified phone can now sign in from the ordinary Silver Glider login and return to the requested same-origin app page, instead of being incorrectly limited to the Create Event journey. Desktop remains email-first with a clear **Use phone instead** choice; phone-sized screens lead with phone verification and retain **Use email instead**.
+* First-time or unbound phones still require both SMS proof and a one-time verified email before an account is created or connected. Administrator accounts remain email-only, and suspension, rate limits, session revocation, replay protection, and collision safeguards are unchanged.
+
+### Redirect and regression safety
+
+* Phone authentication now rejects external, protocol-relative, backslash, and encoded-backslash destinations before sending a text. Create Event and personalized Host invitation copy and destinations are preserved.
+* The corrected flow was verified at desktop and phone sizes, including Dashboard/Profile returns, email/phone switching, unsafe destinations, new-phone enrollment, returning-phone sessions, and administrator rejection.
+
+## 1.0.133
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Desktop Profile composition
+
+* The signed-in Profile page now expands into a balanced desktop workspace: identity and profile actions sit in one column while event activity and Host Page access sit in a second. The shared navigation uses the wider desktop frame instead of remaining inside a phone-sized column.
+* Phone layout, account data, profile-photo behavior, event totals, and Host Page destinations remain unchanged. The responsive transition was verified at 879px and 880px with no horizontal overflow, and the full 463-test suite passed.
+
+## 1.0.132
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Wide-desktop account alignment
+
+* The homepage account control now aligns with the browser's right edge on wide desktop screens instead of stopping at the centered content column. The hero remains centered, while the existing phone header spacing and navigation behavior are unchanged.
+
+## 1.0.131
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning account navigation
+
+* The public homepage now gives signed-out visitors a direct **Sign in** path to the dashboard. Returning people see their real RSVP photo—or initials and account name—without needing to enter the Create Event flow first.
+* Desktop opens a compact account menu with Dashboard, My Events, Create Event, Hosts, Host Page, Messaging, Profile, Settings, Feedback, and Sign out. The Admin destination appears only when the browser also has an authorized, separate admin session.
+* Phone-sized screens use the same identity in a thumb-friendly avatar and hamburger entry, then open the established full-screen Silver Glider menu with the matching destinations. Existing event-creation and authentication behavior is unchanged.
+
+### Accessibility and release safety
+
+* The desktop menu supports arrow keys, Home/End, Escape, outside-click dismissal, visible focus, and 44px minimum targets. Host Page links adapt to whether the person has already created a public page.
+* The release was verified signed out and signed in at desktop and phone sizes, at both sides of the 880px breakpoint, and through the shared dashboard navigation. The full 462-test suite passed.
+
+## 1.0.130
+
+Released September 23, 2026. Built and deployed by Codex.
+
+### Returning RSVP state
+
+* Reloading a public event now restores a guest’s existing answer from that event’s scoped attendee cookie, while unrelated event pages receive no attendee identity. Signed-in event owners who also RSVP’d keep the live owner editor while seeing their own attendance state.
+* Returning guests consistently remain in their personalized RSVP status after confirming or changing an answer. External-ticket events keep the outbound ticket action, including its mobile dock, while suppressing the redundant RSVP action.
+
+### Reliability and compatibility
+
+* The fix applies to existing Standard and Flyer event pages and reads only existing confirmed or cancelled RSVP records. It does not change event data, capacity, comments, Cloudinary assets, emails, reminders, Host Pages, discovery, or database schema.
+* The full 460-test release suite contains 355 unit tests and 105 HTTP/PostgreSQL integration tests.
+
+## 1.0.129
+
+Released September 22, 2026. Built and deployed by Codex.
+
+### Contextual Host invitation onboarding
+
+* Personalized Host invitation links now lead through one contextual journey: the invitation explains the product, phone-sized screens emphasize phone verification, desktop emphasizes email, and both established sign-in methods remain available. The exact invitation destination survives authentication, returning 30-day sessions skip sign-in, and ordinary Create Event authentication is unchanged.
+* After signing in, recipients explicitly accept the invitation, see a focused welcome, and can create their Host Page with only a name required before continuing to the existing event editor or dashboard. Existing Host Pages are preserved, partial legacy profiles recover safely, and setup reuses the canonical profile, logo upload, and public Host Page rather than adding another owner, page model, or editor.
+* Invitation reads are private and mutation-free. Acceptance is a same-origin, row-locked POST that is idempotent for the rightful account and rejects revoked, missing, or already-claimed links. The full 456-test release suite contains 353 unit tests and 103 HTTP/PostgreSQL integration tests, plus a real mobile/desktop browser pass through sign-in, setup, the public Host Page, and persistent return.
+
+## 1.0.128
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Admin Events workspace
+
+* Dedicated Support and Super Admin operators can now see every event across the platform at `/admin/events`, search by event or Host Page, and filter by host, live/draft status, upcoming/past timing, visibility, admission, and archive state. Each result includes its confirmed RSVP count and opens a focused responsive detail view.
+* Safe links reuse the existing Preview, Host Page, Accounts & Support, and isolated Done For You draft-editor flows. Ordinary customer events remain read-only to administrators, and no duplicate editor or customer impersonation path was added.
+* The API is admin-session protected, paginated, includes cancelled and archived records intentionally, and returns only operational event fields—never attendee contact data, Secret Show credentials, or media bearer tokens. The full 442-test release suite contains 342 unit tests and 100 HTTP/PostgreSQL integration tests.
+
+## 1.0.127
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Done For You loading recovery
+
+* The Done For You client detail loading skeleton now disappears as soon as the client request settles. Returning from event setup no longer leaves an animated placeholder covering the already-loaded account, Host Page, and event content.
+* Added focused regression coverage for the loader's hidden state. Account, ownership, Host Page, event, and publishing behavior are unchanged. The full 437-test release suite contains 338 unit tests and 99 HTTP/PostgreSQL integration tests.
+
+## 1.0.126
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Isolated Done For You event editor
+
+* Dedicated Support and Super Admin operators can now create an event—or continue an existing draft—from a Done For You client detail page, reuse the established quick-create and advanced editor, publish the finished event, and return directly to that client. The shared customer editor remains unchanged.
+* Event setup runs under `/admin-editor` with a separate, short-lived, operator-bound workspace cookie scoped to one exact Done For You client, global User ID, Host Page, and optional draft. It never creates or borrows a customer session, cannot be retargeted, forces new events to begin as drafts, and rejects events outside the bound Host Page.
+* The focused admin shell preserves Host Page context while removing customer-only Preview, Commerce waitlist, Feedback, legal, settings, and public-page controls. Unsaved exits require confirmation, stale or expired document links recover to Done For You, and scoped API failures remain structured JSON.
+
+### Transaction and release safety
+
+* Draft creation, updates, uploads, and publishing reuse the existing event validation and media boundaries while remaining workspace-scoped. Publishing completes the workspace atomically, administrator edits never send attendee-change notices, and immutable audit entries record identifiers and changed field names without retaining event content or client contact details.
+* Workspace expiry, operator access changes, account suspension/deletion, concurrent creation, replay, and cross-client draft recovery are fail-closed and covered by the release suite. The full 436-test release suite contains 337 unit tests and 99 HTTP/PostgreSQL integration tests.
+
+## 1.0.125
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Done For You client setup
+
+* Dedicated Support and Super Admin operators can now find an exact existing owner—or safely create an unclaimed canonical user—and prepare that client’s Host Page from `/admin/done-for-you`. The permanent global User ID owns the Host Page and events; the administrator session never becomes the customer and never receives a customer session cookie.
+* The client detail workspace shows complete, truthfully labeled verified and unverified contact values, claimed state, owned events, and public Host Page information. Staff can prepare the Host Page profile, logo, and header while preserving existing client values.
+* A recipient can receive a target-bound claim invitation and prove ownership of the exact attached email. Opening the link is scanner-safe, successful proof claims the existing User ID rather than creating another account, and other attached phone or contact values remain unverified until their owners separately prove them.
+
+### Identity and operational safety
+
+* Exact email and verified-phone matches are used for ownership; RSVP data, names, and fuzzy matching never select or merge an account. Split owners, legacy projection drift, unverified-phone ambiguity, and a changed account after preview stop the workflow for review.
+* Provisioning, claim, profile/media support, suspension, sign-out-everywhere, and deletion share deterministic account locking. Stale, replaced, replayed, inactive, or mismatched claim links become terminal, while deletion removes the Done For You marker and its pending claim credentials.
+* Immutable audits identify the dedicated operator and affected record without retaining raw claim tokens or unnecessary profile/contact data. The full 410-test release suite covers concurrency, account boundaries, cleanup, public ownership, and existing organizer/guest behavior.
+
+## 1.0.124
+
+Released September 21, 2026. Built and deployed by Codex.
+
+### Recipient-verified support changes
+
+* Dedicated Support and Super Admin operators can prepare a replacement email address or mobile number from Accounts & Support, but the requested value does not become a sign-in method until its recipient proves ownership. Email changes use an explicit confirmation link; phone changes require both a private link and a Twilio verification code.
+* Successful replacement keeps the permanent user ID, events, Host Page, RSVPs, followers, and active customer session ownership intact. An email change revokes only the former primary address while preserving unrelated verified recovery addresses; phone replacement atomically retires the old credential only after the new proof succeeds.
+
+### Identity safety and auditability
+
+* Verification links are hashed, short-lived, scanner-safe, rate-limited, and never returned through administrator APIs. Recipient confirmation never signs in, switches, or impersonates a customer account, and ownership collisions roll back without transferring an identity.
+* Pending requests can be reviewed, resent, or cancelled and are invalidated by suspension, sign-out-everywhere, or deletion. Every administrator and recipient step is attributed in account history, while legacy emergency administrators retain ordinary account access without seeing or changing proposed sign-in values.
+
+## 1.0.123
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Administrator control center
+
+* `/admin` is now a focused operational overview with live account, Host Page, event, RSVP, support, and invitation counts plus direct shortcuts into the existing work queues. The new shared dark-theme shell gives every administrator page one consistent desktop and responsive navigation system; The Line is intentionally omitted.
+* The account directory accepts bookmarked filters, and Settings now points staff to one control-center entry instead of exposing a loose collection of administration links.
+
+### Super Admin team management
+
+* Super Admins can add support or Super Admin operators, change roles, disable or reactivate access, and revoke administrator sessions from `/admin/team`. Support operators can use the customer-support workspace but cannot manage the team or permanently delete accounts.
+* Every team mutation requires a fresh, one-time email passcode bound to the exact operator being changed. Session invalidation, final-Super-Admin protections, and immutable audit records preserve accountability without connecting an administrator identity to customer-owned events or Host Pages.
+
+## 1.0.122
+
+Released September 20, 2026. Built and deployed by Codex.
+
+### Independent administrator access
+
+* Administrators now sign in at `/admin/login` with an operator email and a six-digit passcode. The short-lived admin cookie is separate from every customer session, and an operator does not own a Host Page, event, RSVP, or other customer property.
+* Independent `super_admin` and `support` roles replace customer-account administrator access by default. Existing active administrator emails are copied into the new operator realm during migration, while the old organizer-admin path is available only through an explicit emergency environment switch.
+* Unknown and disabled operator emails receive the same response, codes expire and lock after repeated failures, operator sessions can be revoked, and destructive account deletion requires a fresh one-time proof bound to that exact operator, action, and user.
+* Passcode delivery is tracked outside login-response timing, every authenticated admin write uses one same-origin guard, and changing an operator between active and disabled database-invalidates prior sessions, pending passcodes, and one-time action proofs.
+
+### Direct, audited account deletion
+
+* Super Admins can now delete an ordinary customer account after reviewing the exact impact, entering a support reason, typing the account-specific confirmation, and completing the fresh operator passcode. The previous test-account designation and artificial activity blockers have been removed.
+* The deletion transaction revokes authentication, removes or anonymizes customer-owned data, forfeits any remaining SMS balance, cancels queued outbound work, and records the accountable operator. Genuine protections remain for the active administrator and administrator identities.
+* Verified sign-in methods, unverified contact details, and unavailable values are now labeled truthfully. Race-safe delivery checks prevent queued emails or texts from escaping after suspension or deletion, and managed-media cleanup remains durable and reference-safe.
+
 ## 1.0.121
 
 Released September 20, 2026. Built and deployed by Codex.

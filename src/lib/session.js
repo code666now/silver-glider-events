@@ -42,7 +42,12 @@ function parseSession(cookieVal) {
 function readSessionCookie(req) {
   const header = req.headers.cookie || '';
   const part = header.split(';').map(c => c.trim()).find(c => c.startsWith(COOKIE_NAME + '='));
-  return part ? decodeURIComponent(part.split('=').slice(1).join('=')) : null;
+  if (!part) return null;
+  try {
+    return decodeURIComponent(part.split('=').slice(1).join('='));
+  } catch (_) {
+    return null;
+  }
 }
 
 // Appended rather than set, so one response can carry the account session

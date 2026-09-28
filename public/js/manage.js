@@ -120,7 +120,7 @@ function updateMobileManageSummaries() {
   const fromInvites = Number(eventData.invited_returning_count) || 0;
   const returningLine = $('manage-mobile-returning');
   if (returning) {
-    const verb = eventData.is_past ? 'had been' : 'have been';
+    const verb = eventData.is_past ? 'had been' : returning === 1 ? 'has been' : 'have been';
     returningLine.textContent = fromInvites
       ? `${returning} of them ${verb} to one of your events before. ${fromInvites} came from your invites.`
       : `${returning} of them ${verb} to one of your events before.`;
@@ -233,7 +233,7 @@ function initializeMobileManage() {
   $('manage-mobile-back').addEventListener('click', () => {
     if (activeMobileManageView !== 'home') {
       const current = mobileManageHistoryEntry();
-      if (current?.view === activeMobileManageView && current.fromView === 'home') history.back();
+      if (current?.view === activeMobileManageView && current.fromView) history.back();
       else setMobileManageView('home', { historyMode: 'replace' });
     }
     else window.location.assign('/events?view=hosting');
@@ -242,7 +242,7 @@ function initializeMobileManage() {
     if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
       event.preventDefault();
       const current = mobileManageHistoryEntry();
-      if (current?.view === activeMobileManageView && current.fromView === 'home') history.back();
+      if (current?.view === activeMobileManageView && current.fromView) history.back();
       else setMobileManageView('home', { historyMode: 'replace' });
     }
   });
@@ -386,7 +386,7 @@ async function loadEvent() {
   }
 
   $('view-link').href = eventUrl();
-  $('edit-link').href = `/e/${encodeURIComponent(event.slug)}?edit=details`;
+  $('edit-link').href = `/events/${encodeURIComponent(event.id)}/edit`;
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
@@ -1029,11 +1029,22 @@ $('familiar-people-send').addEventListener('click', async () => {
 });
 
 $('invite-previous-guests').addEventListener('click', () => {
-  $('familiar-people').scrollIntoView({
-    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    block: 'start'
-  });
-  $('search').focus({ preventScroll: true });
+  const familiarPeople = $('familiar-people');
+  const openPicker = () => {
+    familiarPeople.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start'
+    });
+    (mobileManageLayout.matches ? familiarPeople : $('search')).focus({ preventScroll: true });
+  };
+
+  if (mobileManageLayout.matches) {
+    setMobileManageView('guests', { focus: false, historyMode: 'push' });
+    // Wait until the Guests task is visible and has a measurable position.
+    window.requestAnimationFrame(() => window.requestAnimationFrame(openPicker));
+    return;
+  }
+  openPicker();
 });
 
 function renderSmsAction(preview) {

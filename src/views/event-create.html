@@ -69,7 +69,10 @@
       }
       .quick-create-mobile-back:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
       .quick-create-mobile-back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-      .quick-create-mobile-top strong { align-self: center; font: 700 var(--sg-mobile-nav-title-size)/1.2 var(--sg-font-display); }
+      .quick-create-mobile-heading { min-width: 0; align-self: center; }
+      .quick-create-mobile-top strong { display: block; font: 700 var(--sg-mobile-nav-title-size)/1.2 var(--sg-font-display); }
+      .quick-create-mobile-context { display: block; overflow: hidden; margin-top: 2px; color: var(--sg-text-faint); font-size: 10px; font-weight: 700; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+      .quick-create-mobile-context[hidden] { display: none; }
       .quick-create-mobile-progress { align-self: center; color: var(--sg-text-dim); font-size: var(--sg-mobile-meta-size); font-weight: 700; }
       .quick-create-card {
         margin: 0;
@@ -167,7 +170,10 @@
     <button class="quick-create-mobile-back" id="quick-create-mobile-back" type="button" aria-label="Back to My Events">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
     </button>
-    <strong>Create event</strong>
+    <div class="quick-create-mobile-heading">
+      <strong>Create event</strong>
+      <small class="quick-create-mobile-context" data-admin-editor-mobile-context hidden></small>
+    </div>
     <span class="quick-create-mobile-progress" id="quick-create-mobile-progress" aria-live="polite">Step 1 of 3</span>
   </header>
   <main class="quick-create-shell">

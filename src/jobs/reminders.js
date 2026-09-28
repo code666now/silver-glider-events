@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendDayBeforeReminder, sendDayOfReminder } = require('../lib/mailer');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
 let _running = false;
 
@@ -45,10 +46,21 @@ async function processReminders(messageType, targetHour, dayOffset) {
 
 async function deliver(logId, messageType, event, rsvp) {
   try {
-    const result = await SENDERS[messageType]({ to: rsvp.email, event, rsvp });
+    const deliveryResult = await withActiveHostAccount(
+      pool,
+      event.organizer_id,
+      () => SENDERS[messageType]({ to: rsvp.email, event, rsvp })
+    );
+    if (!deliveryResult.allowed) {
+      await pool.query(
+        `UPDATE message_log SET status='failed', error=$2 WHERE id=$1`,
+        [logId, `cancelled: ${HOST_ACCOUNT_INACTIVE}`]
+      );
+      return;
+    }
     await pool.query(
       `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,
-      [logId, result?.id || null]
+      [logId, deliveryResult.result?.id || null]
     );
   } catch (err) {
     console.error(`[reminders] ${messageType} to ${rsvp.email} failed:`, err.message);
@@ -73,16 +85,27 @@ async function retryFailed() {
       WHERE ml.status='failed'
         AND ml.message_type IN ('reminder_day_before','reminder_day_of')
         AND ml.created_at > NOW() - INTERVAL '20 hours'
-        AND (ml.error IS NULL OR ml.error NOT LIKE 'retried:%')`
+        AND (ml.error IS NULL OR (ml.error NOT LIKE 'retried:%' AND ml.error NOT LIKE 'cancelled:%'))`
   );
   for (const row of rows) {
     const event = row;
     const rsvp = { id: row.rsvp_id2, email: row.rsvp_email, manage_token: row.manage_token };
     try {
-      const result = await SENDERS[row.message_type]({ to: rsvp.email, event, rsvp });
+      const deliveryResult = await withActiveHostAccount(
+        pool,
+        event.organizer_id,
+        () => SENDERS[row.message_type]({ to: rsvp.email, event, rsvp })
+      );
+      if (!deliveryResult.allowed) {
+        await pool.query(
+          `UPDATE message_log SET error=$2 WHERE id=$1`,
+          [row.log_id, `cancelled: ${HOST_ACCOUNT_INACTIVE}`]
+        );
+        continue;
+      }
       await pool.query(
         `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,
-        [row.log_id, result?.id || null]
+        [row.log_id, deliveryResult.result?.id || null]
       );
     } catch (err) {
       await pool.query(

@@ -1,15 +1,125 @@
-const requireOrganizer = require('./requireOrganizer');
+const pool = require('../config/db');
+const {
+  clearAdminSessionCookie,
+  loadAdminOperator,
+  setAdminSessionCookie,
+  MAX_AGE_SECONDS: ADMIN_MAX_AGE
+} = require('../lib/admin-session');
 
-function requireAdmin(req, res, next) {
-  requireOrganizer(req, res, () => {
-    if (!req.organizer.is_admin) {
-      if (req.path.startsWith('/api/') || req.baseUrl.startsWith('/api/')) {
-        return res.status(403).json({ error: 'Admin only' });
+function isApi(req) {
+  return req.path.startsWith('/api/') || req.baseUrl.startsWith('/api/');
+}
+
+function isAdminRealmPath(value) {
+  const path = String(value || '');
+  return path === '/admin' || path.startsWith('/admin/') ||
+    path === '/admin-editor' || path.startsWith('/admin-editor/');
+}
+
+function reject(req, res, status = 401) {
+  if (isApi(req)) {
+    return res.status(status).json({
+      error: status === 403 ? 'admin_forbidden' : 'admin_auth_required',
+      message: status === 403 ? 'Administrator access is required.' : 'Sign in as an administrator.'
+    });
+  }
+  const next = isAdminRealmPath(req.originalUrl?.split('?')[0])
+    ? `?next=${encodeURIComponent(req.originalUrl)}`
+    : '';
+  return res.redirect(`/admin/login${next}`);
+}
+
+function sameOriginMutation(req) {
+  const site = req.get('sec-fetch-site');
+  if (site) return site === 'same-origin' || site === 'none';
+  const origin = req.get('origin');
+  if (!origin || origin === 'null') return true;
+
+  let parsedOrigin;
+  try { parsedOrigin = new URL(origin).origin; } catch (_) { return false; }
+  const allowed = new Set();
+  const host = req.get('host');
+  if (host) allowed.add(`${req.protocol}://${host}`);
+  try { allowed.add(new URL(process.env.APP_URL).origin); } catch (_) {}
+  return allowed.has(parsedOrigin);
+}
+
+function continueAuthenticated(req, res, next) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || sameOriginMutation(req)) {
+    return next();
+  }
+  return res.status(403).json({ error: 'forbidden' });
+}
+
+function actorIds(req) {
+  return {
+    actorUserId: null,
+    actorAdminOperatorId: req.adminActor?.type === 'admin_operator'
+      ? Number(req.adminActor.operatorId)
+      : null
+  };
+}
+
+function isDedicatedSuperAdmin(req) {
+  return req.adminActor?.type === 'admin_operator' && req.adminOperator?.role === 'super_admin';
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (isDedicatedSuperAdmin(req)) return next();
+  if (isApi(req)) {
+    return res.status(403).json({
+      error: 'super_admin_required',
+      message: 'Super Admin access is required.'
+    });
+  }
+  return res.redirect('/admin/accounts');
+}
+
+function requireDedicatedAdmin(req, res, next) {
+  if (req.adminActor?.type === 'admin_operator' && req.adminOperator) return next();
+  if (isApi(req)) {
+    return res.status(403).json({
+      error: 'dedicated_admin_required',
+      message: 'Sign in through the dedicated admin login.'
+    });
+  }
+  const nextPath = isAdminRealmPath(req.originalUrl?.split('?')[0])
+    ? `&next=${encodeURIComponent(req.originalUrl)}`
+    : '';
+  return res.redirect(`/admin/login?dedicated=1${nextPath}`);
+}
+
+async function requireAdmin(req, res, next) {
+  try {
+    const dedicated = await loadAdminOperator(pool, req);
+    if (dedicated.operator) {
+      const remaining = dedicated.session.expiresAt - Math.floor(Date.now() / 1000);
+      if (remaining < ADMIN_MAX_AGE / 2) {
+        setAdminSessionCookie(res, dedicated.operator.id, dedicated.session.issuedAt);
       }
-      return res.redirect('/dashboard');
+      req.adminOperator = dedicated.operator;
+      req.adminSession = dedicated.session;
+      req.adminActor = {
+        type: 'admin_operator',
+        operatorId: Number(dedicated.operator.id),
+        email: dedicated.operator.email,
+        role: dedicated.operator.role
+      };
+      return continueAuthenticated(req, res, next);
     }
-    next();
-  });
+    req.adminOperator = null;
+    req.adminSession = null;
+    req.adminActor = null;
+    if (dedicated.stale) clearAdminSessionCookie(res);
+    return reject(req, res);
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = requireAdmin;
+module.exports.actorIds = actorIds;
+module.exports.isDedicatedSuperAdmin = isDedicatedSuperAdmin;
+module.exports.requireDedicatedAdmin = requireDedicatedAdmin;
+module.exports.requireSuperAdmin = requireSuperAdmin;
+module.exports.sameOriginMutation = sameOriginMutation;

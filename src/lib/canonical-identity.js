@@ -822,10 +822,12 @@ async function resolveOrCreateOrganizerByEmail(db, {
 
 async function readOrganizerForIdentity(db, userId) {
   const { rows } = await db.query(
-    `SELECT id,user_id,email,name,created_at,last_login_at
-       FROM organizers
-      WHERE id=$1
-      FOR UPDATE`,
+    `SELECT organizer.id,organizer.user_id,organizer.email,organizer.name,
+            organizer.created_at,organizer.last_login_at,canonical.account_status
+       FROM organizers organizer
+       JOIN users canonical ON canonical.id=organizer.user_id
+      WHERE organizer.id=$1
+      FOR UPDATE OF organizer,canonical`,
     [userId]
   );
   if (!rows[0]) {
@@ -918,6 +920,11 @@ async function attachVerifiedPhoneIdentity(db, {
     let createdCredential = false;
 
     const organizer = await readOrganizerForIdentity(client, userId);
+    if (organizer.account_status !== 'active') {
+      throw new CanonicalIdentityError('This account is not active.', {
+        code: 'account_inactive', status: 409
+      });
+    }
     await ensureOrganizerUserRecord(client, organizer);
 
     if (!credential) {

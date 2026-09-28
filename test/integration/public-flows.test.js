@@ -27,6 +27,11 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
+const { parseAdminSession } = require('../../src/lib/admin-session');
+const {
+  AdminEditorWorkspaceError,
+  openAdminEditorWorkspace
+} = require('../../src/lib/admin-editor-workspace');
 const { signIdentityStepUp } = require('../../src/lib/identity-step-up');
 const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
@@ -40,6 +45,12 @@ const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
 const adminAccountsRoutes = require('../../src/routes/admin-accounts');
+const adminAuthRoutes = require('../../src/routes/admin-auth');
+const adminIdentityChangeRoutes = require('../../src/routes/admin-identity-changes');
+const adminDoneForYouRoutes = require('../../src/routes/admin-done-for-you');
+const adminEditorRoutes = require('../../src/routes/admin-editor');
+const uploadRoutes = require('../../src/routes/uploads');
+const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
 
 let server;
 let baseUrl;
@@ -83,10 +94,21 @@ function resetRateLimits() {
   publicRoutes.resetRateLimitsForTests();
   adminAccountsRoutes.resetRateLimitsForTests();
   adminAccountsRoutes.setAccountClaimSenderForTests();
+  adminAuthRoutes.resetRateLimitsForTests();
+  adminIdentityChangeRoutes.resetRateLimitsForTests();
+  adminDoneForYouRoutes.resetRateLimitsForTests();
+  adminDoneForYouRoutes.setClaimSenderForTests();
+  adminEditorRoutes.setEventUploadsForTests({
+    configured: false,
+    cover: require('../../src/lib/cloudinary').uploadCover,
+    flyer: require('../../src/lib/cloudinary').uploadFlyer,
+    vibe: require('../../src/lib/cloudinary').uploadVibePhoto
+  });
+  uploadRoutes.setAdminHostUploadsForTests();
 }
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -211,6 +233,185 @@ async function signInAccount(email, next = '/settings/account') {
   };
 }
 
+async function createAdminOperator(email, role = 'super_admin', status = 'active') {
+  return (await pool.query(
+    `INSERT INTO admin_operators (email,role,status)
+     VALUES ($1,$2,$3) RETURNING *`,
+    [email, role, status]
+  )).rows[0];
+}
+
+async function addVerifiedEmailIdentity(userId, email, { primary = false, source = 'integration_test' } = {}) {
+  const identity = (await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'email',$2,$2,NOW(),'account',$3,$4)
+     RETURNING id`,
+    [userId, email, source, primary]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identity_verifications
+       (user_identity_id,verification_scope,verified_at,verification_source)
+     VALUES ($1,'account',NOW(),$2)`,
+    [identity.id, source]
+  );
+  return identity;
+}
+
+async function signInAdminOperator(email) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  assert.equal(started.status, 200);
+  const requestCookie = responseCookie(started, 'sge_admin_sign_in');
+  assert.ok(requestCookie);
+  await adminAuthRoutes.settleBackgroundWork();
+  const { code } = lastDevEmail(email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const sessionCookie = responseCookie(completed, 'sge_admin_session');
+  assert.ok(sessionCookie);
+  return sessionCookie;
+}
+
+async function adminDeletionProof(sessionCookie, targetUserId) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/step-up/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ action: 'account_delete', targetUserId })
+  });
+  assert.equal(started.status, 200);
+  const requestCookie = responseCookie(started, 'sge_admin_step_up');
+  assert.ok(requestCookie);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  const operator = (await me.json()).operator;
+  const { code } = lastDevEmail(operator.email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/step-up/complete`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(sessionCookie, requestCookie)
+    },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const proofCookie = responseCookie(completed, 'sge_admin_action');
+  assert.ok(proofCookie);
+  return cookieHeader(sessionCookie, proofCookie);
+}
+
+async function adminOperatorProof(sessionCookie, targetKey) {
+  const started = await fetch(`${baseUrl}/api/admin/auth/step-up/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ action: 'operator_manage', targetKey })
+  });
+  assert.equal(started.status, 200);
+  const startedBody = await started.json();
+  assert.equal(startedBody.action, 'operator_manage');
+  assert.equal(startedBody.targetKey, targetKey);
+  const requestCookie = responseCookie(started, 'sge_admin_step_up');
+  assert.ok(requestCookie);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.equal(me.status, 200);
+  const operator = (await me.json()).operator;
+  const { code } = lastDevEmail(operator.email, 'admin_passcode');
+  const completed = await fetch(`${baseUrl}/api/admin/auth/step-up/complete`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(sessionCookie, requestCookie)
+    },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(completed.status, 200);
+  const completedBody = await completed.json();
+  assert.equal(completedBody.action, 'operator_manage');
+  assert.equal(completedBody.targetKey, targetKey);
+  assert.equal(completedBody.targetUserId, null);
+  const proofCookie = responseCookie(completed, 'sge_admin_action');
+  assert.ok(proofCookie);
+  return cookieHeader(sessionCookie, proofCookie);
+}
+
+async function doneForYouLookup(sessionCookie, { email, phone = null }) {
+  return fetch(`${baseUrl}/api/admin/done-for-you/lookup`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ email, phone })
+  });
+}
+
+async function provisionDoneForYou(sessionCookie, {
+  hostName,
+  contactName,
+  email,
+  phone = null,
+  expectedUserId
+}) {
+  return fetch(`${baseUrl}/api/admin/done-for-you`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ hostName, contactName, email, phone, expectedUserId })
+  });
+}
+
+async function createDoneForYouClient(sessionCookie, input) {
+  const lookup = await doneForYouLookup(sessionCookie, input);
+  assert.equal(lookup.status, 200);
+  const preview = await lookup.json();
+  const provisioned = await provisionDoneForYou(sessionCookie, {
+    ...input,
+    expectedUserId: preview.expectedUserId
+  });
+  assert.ok([200, 201].includes(provisioned.status));
+  return { preview, response: provisioned, client: (await provisioned.json()).client };
+}
+
+async function openDoneForYouEditor(sessionCookie, markerId, eventId = null) {
+  const response = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${markerId}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: sessionCookie },
+      body: JSON.stringify(eventId == null ? {} : { eventId })
+    }
+  );
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  const editorCookie = responseCookie(response, 'sge_admin_editor');
+  assert.ok(editorCookie);
+  return { response, body, editorCookie };
+}
+
+async function waitUntilOutboundLockHeld(userId) {
+  const probe = await pool.connect();
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const acquired = (await probe.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        [outboundDeliveryLockKey(userId)]
+      )).rows[0].acquired;
+      if (!acquired) return;
+      await probe.query(
+        'SELECT pg_advisory_unlock(hashtext($1))',
+        [outboundDeliveryLockKey(userId)]
+      );
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.fail(`outbound account lock was not acquired for user ${userId}`);
+  } finally {
+    probe.release();
+  }
+}
+
 test.before(async () => {
   await migrate();
   await resetDatabase();
@@ -224,12 +425,14 @@ test.before(async () => {
 // it finish so it can't deadlock with the TRUNCATE.
 test.beforeEach(async () => {
   await publicRoutes.settleBackgroundWork();
+  await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   await resetDatabase();
 });
 
 test.after(async () => {
   await publicRoutes.settleBackgroundWork();
+  await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
@@ -990,6 +1193,28 @@ test('enabled day-before reminders send automatically once when the full balance
   }
 });
 
+test('an event owner keeps the live editor while their own confirmed RSVP is recognized', async () => {
+  const event = await createEvent({ slug: 'owner-rsvp-night', title: 'Owner RSVP Night' });
+  await createRsvp(event.id, {
+    first_name: 'Test',
+    last_name: 'Host',
+    email: 'host@example.test',
+    account_id: organizerId,
+    manage_token: 'owner-rsvp-token'
+  });
+
+  const page = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  const html = await page.text();
+
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('cache-control') || '', /private, no-store/);
+  assert.match(html, /id="owner-edit-trigger"/);
+  assert.match(html, /id="owner-editor"/);
+  assert.match(html, /"returningGuest":\{"firstName":"Test","source":"account","response":"going","calendarUrl":"\/r\/owner-rsvp-token\/calendar\.ics"\}/);
+});
+
 test('live event editing is visible only to the owner and saves through the protected event API', async () => {
   const event = await createEvent({ slug: 'owner-edit-night', title: 'Owner Edit Night' });
   const sessionCookie = `sge_session=${signSession(organizerId)}`;
@@ -1614,14 +1839,15 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(stored.rows[0].count, 1);
 
   const denied = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
-  assert.equal(denied.status, 403);
+  assert.equal(denied.status, 401);
 
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
-  const adminPage = await fetch(`${baseUrl}/admin/ticketing`, { headers: { cookie } });
+  const operator = await createAdminOperator('ticketing-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const adminPage = await fetch(`${baseUrl}/admin/ticketing`, { headers: { cookie: adminCookie } });
   assert.equal(adminPage.status, 200);
   assert.match(await adminPage.text(), /Ticketing interest/);
 
-  const adminList = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  const adminList = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie: adminCookie } });
   assert.equal(adminList.status, 200);
   const adminData = await adminList.json();
   assert.equal(adminData.counts.interested, 1);
@@ -1629,14 +1855,14 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(adminData.interests[0].email, 'host@example.test');
 
   const testEmail = await fetch(`${baseUrl}/api/admin/commerce-interest/test`, {
-    method: 'POST', headers: { cookie }
+    method: 'POST', headers: { cookie: adminCookie }
   });
   assert.equal(testEmail.status, 200);
-  assert.equal((await testEmail.json()).recipient, 'host@example.test');
+  assert.equal((await testEmail.json()).recipient, operator.email);
 
   const prematureLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
   });
   assert.equal(prematureLaunch.status, 409);
@@ -1652,7 +1878,7 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   try {
     const launch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
     });
     assert.equal(launch.status, 200);
@@ -1660,7 +1886,7 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
 
     const retryLaunch = await fetch(`${baseUrl}/api/admin/commerce-interest/send`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ confirm: 'SEND_LAUNCH' })
     });
     assert.equal(retryLaunch.status, 200);
@@ -1686,7 +1912,9 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.equal(remove.status, 200);
   assert.equal((await remove.json()).interest.interested, false);
 
-  const afterRemoval = await fetch(`${baseUrl}/api/admin/commerce-interest`, { headers: { cookie } });
+  const afterRemoval = await fetch(`${baseUrl}/api/admin/commerce-interest`, {
+    headers: { cookie: adminCookie }
+  });
   const afterRemovalData = await afterRemoval.json();
   assert.equal(afterRemovalData.counts.interested, 0);
   assert.ok(afterRemovalData.interests[0].removed_at);
@@ -2031,6 +2259,340 @@ test('keeps ordinary Create Event magic-link destinations unchanged', async () =
   )).rows[0].count, 0);
 });
 
+test('host invitation onboarding preserves context through email auth and claims only on its authenticated POST', async () => {
+  resetRateLimits();
+  const token = 'heat-34b8bbbbb785ec87';
+  const personalNote = 'Chosen for the <script>alert("private")</script> community you built.';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Heat',$2)`,
+    [token, personalNote]
+  );
+
+  const landing = await fetch(`${baseUrl}/i/${token}`);
+  assert.equal(landing.status, 200);
+  assert.match(landing.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal(landing.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(landing.headers.get('x-robots-tag') || '', /noindex/);
+  const landingHtml = await landing.text();
+  assert.match(landingHtml, /Accept invitation/);
+  assert.match(landingHtml, /Publish unique event pages and collect RSVPs\./);
+  assert.match(landingHtml, /href="\/login\?next=%2Fhost-invitation%2Fheat-34b8bbbbb785ec87"/);
+  assert.match(landingHtml, /&lt;script&gt;alert\(&quot;private&quot;\)&lt;\/script&gt;/);
+  assert.doesNotMatch(landingHtml, /<script>alert\("private"\)<\/script>/);
+  assert.deepEqual((await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1',
+    [token]
+  )).rows[0], { joined_organizer_id: null, joined_at: null });
+
+  const publicContext = await fetch(`${baseUrl}/api/public/host-invitations/${token}`);
+  assert.equal(publicContext.status, 200);
+  assert.match(publicContext.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal(publicContext.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(publicContext.headers.get('x-robots-tag') || '', /noindex/);
+  assert.equal((await publicContext.json()).invitation.hostName, 'Heat');
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'the public context endpoint is read-only');
+
+  const signedOutOnboarding = await fetch(`${baseUrl}/host-invitation/${token}`, { redirect: 'manual' });
+  assert.equal(signedOutOnboarding.status, 302);
+  assert.equal(
+    signedOutOnboarding.headers.get('location'),
+    `/login?next=${encodeURIComponent(`/host-invitation/${token}`)}`
+  );
+  assert.match(signedOutOnboarding.headers.get('cache-control') || '', /private, no-store/);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'opening onboarding before login does not accept it');
+
+  const existingHostCookie = `sge_session=${signSession(organizerId)}`;
+  const signedInOnboarding = await fetch(`${baseUrl}/host-invitation/${token}`, {
+    headers: { cookie: existingHostCookie }
+  });
+  assert.equal(signedInOnboarding.status, 200);
+  assert.match(await signedInOnboarding.text(), /id="welcome-panel"/);
+  const signedInState = await fetch(`${baseUrl}/api/host-invitations/${token}`, {
+    headers: { cookie: existingHostCookie }
+  });
+  assert.equal(signedInState.status, 200);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'authenticated reads remain read-only');
+  assert.equal((await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    headers: { cookie: existingHostCookie }
+  })).status, 404, 'acceptance is not exposed as a GET');
+
+  const crossOrigin = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingHostCookie,
+      origin: 'https://attacker.example',
+      'sec-fetch-site': 'cross-site'
+    },
+    body: '{}'
+  });
+  assert.equal(crossOrigin.status, 403);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id, null, 'a cross-origin request cannot claim the invitation');
+
+  const invitedEmail = 'heat-invitation@example.test';
+  const nextPath = `/host-invitation/${token}`;
+  const signInStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: invitedEmail, next: nextPath })
+  });
+  assert.equal(signInStart.status, 200);
+  assert.equal((await pool.query(
+    `SELECT return_path FROM magic_link_tokens
+      WHERE email=$1 ORDER BY id DESC LIMIT 1`,
+    [invitedEmail]
+  )).rows[0].return_path, nextPath);
+  const completedSignIn = await followSignInLink(lastDevEmail(invitedEmail, 'magic_link').link);
+  assert.equal(completedSignIn.status, 303);
+  assert.equal(completedSignIn.headers.get('location'), nextPath);
+  const invitedCookie = responseCookie(completedSignIn, 'sge_session');
+  assert.ok(invitedCookie);
+  const invitedAccount = (await pool.query(
+    'SELECT id FROM organizers WHERE LOWER(email)=LOWER($1)', [invitedEmail]
+  )).rows[0];
+  assert.ok(invitedAccount);
+
+  const acceptHeaders = {
+    'content-type': 'application/json',
+    cookie: invitedCookie,
+    origin: baseUrl,
+    'sec-fetch-site': 'same-origin'
+  };
+  const accepted = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST', headers: acceptHeaders, body: '{}'
+  });
+  assert.equal(accepted.status, 200);
+  const firstClaim = (await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1', [token]
+  )).rows[0];
+  assert.equal(Number(firstClaim.joined_organizer_id), Number(invitedAccount.id));
+  assert.ok(firstClaim.joined_at instanceof Date);
+
+  const acceptedAgain = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST', headers: acceptHeaders, body: '{}'
+  });
+  assert.equal(acceptedAgain.status, 200);
+  const idempotentClaim = (await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1', [token]
+  )).rows[0];
+  assert.equal(Number(idempotentClaim.joined_organizer_id), Number(invitedAccount.id));
+  assert.equal(idempotentClaim.joined_at.getTime(), firstClaim.joined_at.getTime());
+
+  const otherAccount = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingHostCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(otherAccount.status, 409);
+  assert.equal(Number((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [token]
+  )).rows[0].joined_organizer_id), Number(invitedAccount.id));
+
+  const legacyToken = 'legacy-host-1234567890';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Legacy Host','This invitation must remain unclaimed on a legacy GET.')`,
+    [legacyToken]
+  );
+  const signedOutLegacy = await fetch(`${baseUrl}/events/new?invite=${legacyToken}`, {
+    redirect: 'manual'
+  });
+  assert.equal(signedOutLegacy.status, 302);
+  assert.equal(signedOutLegacy.headers.get('location'), `/host-invitation/${legacyToken}`);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [legacyToken]
+  )).rows[0].joined_organizer_id, null, 'a signed-out legacy GET preserves context without claiming');
+
+  const legacy = await fetch(`${baseUrl}/events/new?invite=${legacyToken}`, {
+    redirect: 'manual', headers: { cookie: existingHostCookie }
+  });
+  assert.equal(legacy.status, 302);
+  assert.equal(legacy.headers.get('location'), `/host-invitation/${legacyToken}`);
+  assert.equal((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [legacyToken]
+  )).rows[0].joined_organizer_id, null, 'the legacy compatibility redirect never claims an invitation');
+});
+
+test('host invitation onboarding handles revoked and missing links without mutating account ownership', async () => {
+  const revokedToken = 'revoked-host-123456789';
+  const missingToken = 'missing-host-123456789';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note,revoked_at)
+     VALUES ($1,'Revoked Host','This invitation was intentionally revoked.',NOW())`,
+    [revokedToken]
+  );
+  const cookie = `sge_session=${signSession(organizerId)}`;
+
+  for (const path of [
+    `/i/${revokedToken}`,
+    `/i/${missingToken}`,
+    '/i/INVALID'
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get('cache-control') || '', /private, no-store/);
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('x-robots-tag') || '', /noindex/);
+  }
+  assert.equal((await fetch(`${baseUrl}/host-invitation/${revokedToken}`)).status, 410);
+  assert.equal((await fetch(`${baseUrl}/host-invitation/${missingToken}`)).status, 404);
+
+  for (const [path, expected] of [
+    [`/api/public/host-invitations/${revokedToken}`, 410],
+    [`/api/public/host-invitations/${missingToken}`, 404]
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, expected);
+    assert.match(response.headers.get('cache-control') || '', /private, no-store/);
+    assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+  }
+
+  for (const [token, expected] of [[revokedToken, 410], [missingToken, 404]]) {
+    const state = await fetch(`${baseUrl}/api/host-invitations/${token}`, {
+      headers: { cookie }
+    });
+    assert.equal(state.status, expected);
+    const accept = await fetch(`${baseUrl}/api/host-invitations/${token}/accept`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie,
+        origin: baseUrl,
+        'sec-fetch-site': 'same-origin'
+      },
+      body: '{}'
+    });
+    assert.equal(accept.status, expected);
+  }
+  assert.deepEqual((await pool.query(
+    'SELECT joined_organizer_id,joined_at FROM host_invitations WHERE token=$1',
+    [revokedToken]
+  )).rows[0], { joined_organizer_id: null, joined_at: null });
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM host_invitations WHERE token=$1', [missingToken]
+  )).rows[0].count, 0);
+});
+
+test('host invitation onboarding preserves existing hosts and reuses settings to create one new Host Page', async () => {
+  const existingToken = 'existing-host-123456789';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Should Not Replace Test Host','An existing Host Page must remain unchanged.')`,
+    [existingToken]
+  );
+  const existingBefore = (await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0];
+  const existingCookie = `sge_session=${signSession(organizerId)}`;
+  const existingAccept = await fetch(`${baseUrl}/api/host-invitations/${existingToken}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: existingCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(existingAccept.status, 200);
+  assert.deepEqual((await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0], existingBefore);
+  assert.equal(Number((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE token=$1', [existingToken]
+  )).rows[0].joined_organizer_id), Number(organizerId));
+
+  const noSlugAccount = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('host-page-onboarding@example.test','Profile Keeper')
+     RETURNING id`
+  )).rows[0];
+  const noSlugCookie = `sge_session=${signSession(noSlugAccount.id)}`;
+  const setupToken = 'setup-host-123456789012';
+  await pool.query(
+    `INSERT INTO host_invitations (token,host_name,personal_note)
+     VALUES ($1,'Invite Ready Host','This account should create its Host Page through existing settings.')`,
+    [setupToken]
+  );
+
+  const accepted = await fetch(`${baseUrl}/api/host-invitations/${setupToken}/accept`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: noSlugCookie,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: '{}'
+  });
+  assert.equal(accepted.status, 200);
+  assert.deepEqual((await pool.query(
+    'SELECT name,org_name,public_slug FROM organizers WHERE id=$1', [noSlugAccount.id]
+  )).rows[0], { name: 'Profile Keeper', org_name: null, public_slug: null });
+
+  const saved = await fetch(`${baseUrl}/api/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: noSlugCookie },
+    body: JSON.stringify({
+      name: 'Profile Keeper',
+      org_name: 'Invite Ready Host',
+      bio: 'Independent gatherings and thoughtful rooms.',
+      instagram_handle: '@InviteReady',
+      website_url: ''
+    })
+  });
+  assert.equal(saved.status, 200);
+  const firstSavedProfile = (await pool.query(
+    `SELECT name,org_name,public_slug,bio,instagram_handle
+       FROM organizers WHERE id=$1`,
+    [noSlugAccount.id]
+  )).rows[0];
+  assert.equal(firstSavedProfile.name, 'Profile Keeper');
+  assert.equal(firstSavedProfile.org_name, 'Invite Ready Host');
+  assert.match(firstSavedProfile.public_slug, /^invite-ready-host(?:-[a-f0-9]{4})?$/);
+  assert.equal(firstSavedProfile.bio, 'Independent gatherings and thoughtful rooms.');
+  assert.equal(firstSavedProfile.instagram_handle, 'inviteready');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM organizers
+      WHERE id=$1 AND public_slug IS NOT NULL`,
+    [noSlugAccount.id]
+  )).rows[0].count, 1);
+
+  const savedAgain = await fetch(`${baseUrl}/api/settings`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: noSlugCookie },
+    body: JSON.stringify({
+      name: 'Profile Keeper',
+      org_name: 'Invite Ready Host',
+      bio: 'Independent gatherings and thoughtful rooms.',
+      instagram_handle: '@InviteReady',
+      website_url: ''
+    })
+  });
+  assert.equal(savedAgain.status, 200);
+  const savedAgainProfile = (await pool.query(
+    'SELECT name,public_slug FROM organizers WHERE id=$1', [noSlugAccount.id]
+  )).rows[0];
+  assert.deepEqual(savedAgainProfile, {
+    name: 'Profile Keeper',
+    public_slug: firstSavedProfile.public_slug
+  });
+});
+
 test('serves two labeled Event Vibe choices in both public presentations', async () => {
   const vibeFields = {
     event_vibe_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
@@ -2280,19 +2842,20 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
     headers: { 'content-type': 'application/json', cookie: organizerCookie },
     body: JSON.stringify({ enabled: true })
   });
-  assert.equal(forbidden.status, 403);
+  assert.equal(forbidden.status, 401);
 
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const operator = await createAdminOperator('collect-photos-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
   const futureEnable = await fetch(`${baseUrl}/api/admin/events/${future.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: true })
   });
   assert.equal(futureEnable.status, 400);
 
   const enabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: true })
   });
   assert.equal(enabled.status, 200);
@@ -2434,7 +2997,7 @@ test('keeps Collect Photos isolated to one Super-Admin-enabled past event', asyn
 
   const disabled = await fetch(`${baseUrl}/api/admin/events/${past.id}/collect-photos`, {
     method: 'PATCH',
-    headers: { 'content-type': 'application/json', cookie: organizerCookie },
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
     body: JSON.stringify({ enabled: false })
   });
   assert.equal(disabled.status, 200);
@@ -2785,9 +3348,9 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
 });
 
 test('admin-only SMS test route normalizes one recipient and cannot accept custom copy', async () => {
-  const cookie = `sge_session=${signSession(organizerId)}`;
-  const { rows: currentRows } = await pool.query('SELECT is_admin FROM organizers WHERE id=$1', [organizerId]);
-  const wasAdmin = currentRows[0].is_admin;
+  const customerCookie = `sge_session=${signSession(organizerId)}`;
+  const operator = await createAdminOperator('sms-test-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
   const originalSendTestSms = sms.sendTestSms;
   let deliveredTo = null;
 
@@ -2797,19 +3360,17 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
       return { sid: `SM${'d'.repeat(32)}`, status: 'accepted', recipient };
     };
 
-    await pool.query('UPDATE organizers SET is_admin=FALSE WHERE id=$1', [organizerId]);
     const denied = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: customerCookie },
       body: JSON.stringify({ to: '+14155551234', confirm: 'SEND_TEST_SMS' })
     });
-    assert.equal(denied.status, 403);
+    assert.equal(denied.status, 401);
     assert.equal(deliveredTo, null);
 
-    await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
     const unconfirmed = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ to: '+14155551234' })
     });
     assert.equal(unconfirmed.status, 400);
@@ -2817,7 +3378,7 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
 
     const invalid = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ to: 'not-a-phone', confirm: 'SEND_TEST_SMS' })
     });
     assert.equal(invalid.status, 400);
@@ -2825,7 +3386,7 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
 
     const sent = await fetch(`${baseUrl}/api/admin/sms/test`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({
         to: '(415) 555-1234',
         message: 'This browser-supplied text must never be sent.',
@@ -2842,7 +3403,6 @@ test('admin-only SMS test route normalizes one recipient and cannot accept custo
     });
   } finally {
     sms.sendTestSms = originalSendTestSms;
-    await pool.query('UPDATE organizers SET is_admin=$2 WHERE id=$1', [organizerId, wasAdmin]);
   }
 });
 
@@ -3183,7 +3743,7 @@ test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempo
 // Sign-in hardening and returning guests (v1.0.85)
 // ---------------------------------------------------------------------------
 
-test('creator phone onboarding requires phone and inbox proof, then remembers the verified phone', async () => {
+test('phone sign-in requires phone and inbox proof, then remembers the verified phone', async () => {
   resetRateLimits();
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
@@ -3214,16 +3774,27 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     assert.equal(crossSite.status, 403, 'another site cannot trigger verification texts');
     assert.equal(providerStarts, 0);
 
-    const outOfScope = await fetch(`${baseUrl}/api/auth/phone/start`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/dashboard' })
-    });
-    assert.equal(outOfScope.status, 400, 'phone-first auth is creator-only');
-    assert.equal(providerStarts, 0);
+    for (const unsafeNext of [
+      'https://evil.example/dashboard',
+      '//evil.example/dashboard',
+      '/\\evil.example/dashboard',
+      '/%5Cevil.example/dashboard',
+      '/.//evil.example/dashboard',
+      '/..//evil.example/dashboard',
+      '/%2e%2e//evil.example/dashboard'
+    ]) {
+      const unsafeStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ phone, next: unsafeNext })
+      });
+      assert.equal(unsafeStart.status, 400, `unsafe return path is rejected: ${unsafeNext}`);
+      assert.equal((await unsafeStart.json()).error, 'invalid_return_path');
+    }
+    assert.equal(providerStarts, 0, 'an unsafe destination never triggers a verification text');
 
     const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone: '(415) 555-0188', next: '/events/new' })
+      body: JSON.stringify({ phone: '(415) 555-0188', next: '/dashboard' })
     });
     assert.equal(started.status, 200);
     const firstStartBody = await started.json();
@@ -3288,10 +3859,19 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
       body: JSON.stringify({ code: emailMessage.code })
     });
     assert.equal(completed.status, 200);
-    assert.equal((await completed.json()).redirect, '/events/new');
+    assert.equal((await completed.json()).redirect, '/dashboard');
     const sessionCookie = responseCookie(completed, 'sge_session');
     assert.ok(sessionCookie);
-    assert.equal((await fetch(`${baseUrl}/events/new`, { headers: { cookie: sessionCookie } })).status, 200);
+    assert.equal((await fetch(`${baseUrl}/dashboard`, { headers: { cookie: sessionCookie } })).status, 200);
+    for (const poisonedNext of ['/.//evil.example/path', '/..//evil.example/path', '/%2e%2e//evil.example/path']) {
+      const loginRedirect = await fetch(
+        `${baseUrl}/login?next=${encodeURIComponent(poisonedNext)}`,
+        { redirect: 'manual', headers: { cookie: sessionCookie } }
+      );
+      assert.equal(loginRedirect.status, 302);
+      assert.equal(loginRedirect.headers.get('location'), '/dashboard',
+        'normalized dot segments cannot become a protocol-relative redirect');
+    }
     const credential = (await pool.query(
       'SELECT organizer_id,phone_e164 FROM account_phone_credentials WHERE revoked_at IS NULL'
     )).rows[0];
@@ -3326,7 +3906,7 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
     );
     const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone, next: '/profile' })
     });
     assert.equal(returningStart.status, 200);
     assert.deepEqual(await returningStart.clone().json(), firstStartBody,
@@ -3343,7 +3923,7 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
       body: JSON.stringify({ code: '123456' })
     });
     assert.equal(returningVerify.status, 200);
-    assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/events/new' });
+    assert.deepEqual(await returningVerify.json(), { ok: true, redirect: '/profile' });
     assert.equal(providerChecks, 2);
     const returningSession = responseCookie(returningVerify, 'sge_session');
     assert.ok(returningSession);
@@ -3361,10 +3941,15 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
 
     const pendingStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone })
     });
     assert.equal(pendingStart.status, 200);
     assert.equal(providerStarts, 3);
+    assert.equal((await pool.query(
+      `SELECT return_path FROM phone_auth_challenges
+        WHERE phone_e164=$1 AND used_at IS NULL ORDER BY id DESC LIMIT 1`,
+      [phone]
+    )).rows[0].return_path, '/dashboard', 'plain phone sign-in defaults to Dashboard');
     const logoutAll = await fetch(`${baseUrl}/api/auth/logout-all`, {
       method: 'POST', headers: { cookie: returningSession }
     });
@@ -3403,63 +3988,130 @@ test('creator phone onboarding requires phone and inbox proof, then remembers th
   }
 });
 
-test('administrator identities remain email-only even if a phone was previously bound', async () => {
+test('a user with admin permission authenticates normally by verified email and phone while admin login stays separate', async () => {
   resetRateLimits();
   await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
   const verificationSid = `VE${'e'.repeat(32)}`;
   const phone = '+14155550191';
-  phoneVerification.startVerification = async () => ({ verificationSid, phone, status: 'pending' });
-  phoneVerification.checkVerification = async () => ({ approved: true, verificationSid, phone, status: 'approved' });
+  phoneVerification.startVerification = async recipient => {
+    assert.equal(recipient, phone);
+    return { verificationSid, phone, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async input => {
+    assert.equal(input.code, '123456');
+    return {
+      approved: true,
+      verificationSid: input.verificationSid,
+      phone,
+      status: 'approved'
+    };
+  };
 
   try {
-    const started = await fetch(`${baseUrl}/api/auth/phone/start`, {
+    const emailStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ email: '  HOST@Example.Test  ', next: '/profile' })
     });
-    const phoneCookie = responseCookie(started, 'sge_phone_auth');
-    await fetch(`${baseUrl}/api/auth/phone/verify`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
-      body: JSON.stringify({ code: '123456' })
-    });
-    const emailStep = await fetch(`${baseUrl}/api/auth/phone/email`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: phoneCookie },
-      body: JSON.stringify({ email: 'host@example.test' })
-    });
-    const emailCookie = responseCookie(emailStep, 'sge_sign_in');
-    const emailCode = lastDevEmail('host@example.test', 'account_verification_code').code;
-    const bindAttempt = await fetch(`${baseUrl}/api/auth/verify-code`, {
-      method: 'POST', headers: { 'content-type': 'application/json', cookie: emailCookie },
+    assert.equal(emailStart.status, 200);
+    const emailRequestCookie = responseCookie(emailStart, 'sge_sign_in');
+    const emailCode = lastDevEmail('host@example.test', 'magic_link').code;
+    const emailVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: emailRequestCookie },
       body: JSON.stringify({ code: emailCode })
     });
-    assert.equal(bindAttempt.status, 403);
-    assert.equal((await bindAttempt.json()).error, 'email_sign_in_required');
-    assert.equal(responseCookie(bindAttempt, 'sge_session'), '');
-    assert.equal((await pool.query(
-      'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE organizer_id=$1 AND revoked_at IS NULL', [organizerId]
-    )).rows[0].count, 0);
+    assert.equal(emailVerify.status, 200);
+    assert.equal((await emailVerify.clone().json()).redirect, '/profile');
+    const emailSession = responseCookie(emailVerify, 'sge_session');
+    const identityStepUp = responseCookie(emailVerify, 'sge_identity_step_up');
+    assert.ok(emailSession);
+    assert.ok(identityStepUp);
+    assert.equal(responseCookie(emailVerify, 'sge_admin_session'), '',
+      'normal email authentication never creates an administrator session');
+    const emailMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: emailSession } });
+    assert.equal(emailMe.status, 200);
+    assert.equal(Number((await emailMe.json()).organizer.id), Number(organizerId));
+    const verifiedEmail = (await pool.query(
+      `SELECT user_id,verification_scope,verified_at
+         FROM user_identities
+        WHERE identity_type='email' AND normalized_value='host@example.test'
+          AND revoked_at IS NULL`
+    )).rows[0];
+    assert.equal(Number(verifiedEmail.user_id), Number(organizerId));
+    assert.equal(verifiedEmail.verification_scope, 'account');
+    assert.ok(verifiedEmail.verified_at);
 
-    await pool.query(
-      `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
-       VALUES ($1,$2,NOW())`,
-      [organizerId, phone]
-    );
+    const accountCookies = cookieHeader(emailSession, identityStepUp);
+    const identityState = await fetch(`${baseUrl}/api/me/identities`, {
+      headers: { cookie: accountCookies }
+    });
+    assert.equal(identityState.status, 200);
+    assert.equal((await identityState.json()).capabilities.canAddPhone, true);
+
+    const addPhoneStart = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: accountCookies },
+      body: JSON.stringify({ phone })
+    });
+    assert.equal(addPhoneStart.status, 200);
+    const addPhoneCookie = responseCookie(addPhoneStart, 'sge_phone_auth');
+    const addPhoneVerify = await fetch(`${baseUrl}/api/me/identities/phone/verify`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookieHeader(accountCookies, addPhoneCookie)
+      },
+      body: JSON.stringify({ code: '123456' })
+    });
+    assert.equal(addPhoneVerify.status, 200);
+    const addedPhone = (await addPhoneVerify.json()).identities.find(identity => identity.type === 'phone');
+    assert.equal(addedPhone.value, phone);
+    assert.ok(addedPhone.verifiedAt);
+
+    const emailDeliveriesBeforePhoneSignIn = mailer.devOutbox.length;
     const returningStart = await fetch(`${baseUrl}/api/auth/phone/start`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ phone, next: '/events/new' })
+      body: JSON.stringify({ phone, next: '/events' })
     });
     assert.equal(returningStart.status, 200);
-    const returningAttempt = await fetch(`${baseUrl}/api/auth/phone/verify`, {
+    const returningVerify = await fetch(`${baseUrl}/api/auth/phone/verify`, {
       method: 'POST', headers: {
         'content-type': 'application/json',
         cookie: responseCookie(returningStart, 'sge_phone_auth')
       },
       body: JSON.stringify({ code: '123456' })
     });
-    assert.equal(returningAttempt.status, 403);
-    assert.equal((await returningAttempt.json()).error, 'email_sign_in_required');
-    assert.equal(responseCookie(returningAttempt, 'sge_session'), '');
+    assert.equal(returningVerify.status, 200);
+    const returningBody = await returningVerify.json();
+    assert.deepEqual(returningBody, { ok: true, redirect: '/events' });
+    assert.equal('needsEmail' in returningBody, false,
+      'a returning verified phone never repeats inbox verification');
+    assert.equal(mailer.devOutbox.length, emailDeliveriesBeforePhoneSignIn,
+      'returning phone sign-in sends no email code');
+    const phoneSession = responseCookie(returningVerify, 'sge_session');
+    assert.ok(phoneSession);
+    assert.equal(responseCookie(returningVerify, 'sge_admin_session'), '',
+      'normal phone authentication never creates an administrator session');
+    const phoneMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: phoneSession } });
+    assert.equal(phoneMe.status, 200);
+    assert.equal(Number((await phoneMe.json()).organizer.id), Number(organizerId));
+
+    const normalSessionAtAdminApi = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { cookie: phoneSession }
+    });
+    assert.equal(normalSessionAtAdminApi.status, 401,
+      'a normal session cannot authorize the dedicated admin dashboard');
+
+    const operator = await createAdminOperator('host@example.test', 'super_admin');
+    const adminSession = await signInAdminOperator(operator.email);
+    assert.match(adminSession, /^sge_admin_session=/);
+    const adminMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+      headers: { cookie: adminSession }
+    });
+    assert.equal(adminMe.status, 200);
+    assert.equal(Number((await adminMe.json()).operator.id), Number(operator.id));
   } finally {
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
@@ -3722,6 +4374,117 @@ test('a 6-digit code signs in only the browser that asked for it and locks after
     body: JSON.stringify({ code: lockCode })
   });
   assert.equal((await tooLate.json()).error, 'locked');
+});
+
+test('expired and superseded email codes fail while the latest resent code creates the canonical normal session', async () => {
+  resetRateLimits();
+
+  const expiredEmail = 'expired-code@example.test';
+  const expiredStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: expiredEmail, next: '/dashboard' })
+  });
+  assert.equal(expiredStart.status, 200);
+  const expiredCookie = responseCookie(expiredStart, 'sge_sign_in');
+  const expiredCode = lastDevEmail(expiredEmail, 'magic_link').code;
+  await pool.query(
+    `UPDATE magic_link_tokens SET expires_at=NOW() - INTERVAL '1 second'
+      WHERE email=$1 AND used_at IS NULL`,
+    [expiredEmail]
+  );
+  const expiredVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: expiredCookie },
+    body: JSON.stringify({ code: expiredCode })
+  });
+  assert.equal(expiredVerify.status, 400);
+  assert.equal((await expiredVerify.json()).error, 'expired');
+  assert.equal(responseCookie(expiredVerify, 'sge_session'), '');
+
+  const email = 'resent-code@example.test';
+  const firstStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, next: '/events' })
+  });
+  assert.equal(firstStart.status, 200);
+  const firstCookie = responseCookie(firstStart, 'sge_sign_in');
+  const firstEmail = lastDevEmail(email, 'magic_link');
+  const firstCode = firstEmail.code;
+
+  const unrelatedEmail = 'unrelated-pending-code@example.test';
+  const unrelatedStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: unrelatedEmail, next: '/profile' })
+  });
+  assert.equal(unrelatedStart.status, 200);
+
+  const resentStart = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstCookie },
+    body: JSON.stringify({ email, next: '/events' })
+  });
+  assert.equal(resentStart.status, 200);
+  const latestCookie = responseCookie(resentStart, 'sge_sign_in');
+  const latestCode = lastDevEmail(email, 'magic_link').code;
+  const challenges = (await pool.query(
+    `SELECT id,used_at FROM magic_link_tokens
+      WHERE email=$1 ORDER BY id`,
+    [email]
+  )).rows;
+  assert.equal(challenges.length, 1,
+    'a same-context resend rotates the browser-bound challenge in place');
+  assert.equal(challenges[0].used_at, null);
+  assert.equal(latestCookie, firstCookie,
+    'the stable request cookie cannot drift from concurrent resend delivery');
+  assert.equal((await pool.query(
+    `SELECT used_at FROM magic_link_tokens WHERE email=$1 ORDER BY id DESC LIMIT 1`,
+    [unrelatedEmail]
+  )).rows[0].used_at, null, 'an unrelated pending challenge remains valid');
+
+  const supersededLink = await fetch(
+    `${baseUrl}/auth/verify?token=${tokenFromLink(firstEmail.link)}`,
+    { redirect: 'manual' }
+  );
+  assert.equal(supersededLink.status, 302);
+  assert.match(supersededLink.headers.get('location') || '', /^\/login\?error=expired/);
+
+  const supersededVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstCookie },
+    body: JSON.stringify({ code: firstCode })
+  });
+  assert.equal(supersededVerify.status, 400);
+  assert.equal((await supersededVerify.json()).error, 'invalid');
+  assert.equal(responseCookie(supersededVerify, 'sge_session'), '');
+
+  const latestVerify = await fetch(`${baseUrl}/api/auth/verify-code`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: latestCookie },
+    body: JSON.stringify({ code: latestCode })
+  });
+  assert.equal(latestVerify.status, 200);
+  assert.deepEqual(await latestVerify.clone().json(), {
+    ok: true,
+    kind: 'account',
+    firstName: null,
+    redirect: '/events'
+  });
+  const sessionCookie = responseCookie(latestVerify, 'sge_session');
+  assert.ok(sessionCookie);
+  assert.equal(responseCookie(latestVerify, 'sge_admin_session'), '');
+  const canonicalUserId = Number((await pool.query(
+    `SELECT user_id FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1
+        AND verification_scope='account' AND verified_at IS NOT NULL
+        AND revoked_at IS NULL`,
+    [email]
+  )).rows[0].user_id);
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.equal(me.status, 200);
+  assert.equal(Number((await me.json()).organizer.id), canonicalUserId);
 });
 
 test('sign out of all devices rejects older cookies everywhere, including pre-upgrade cookies', async () => {
@@ -4091,39 +4854,6 @@ test('verified email ownership conflicts are quarantined without merging either 
   )).rows[0].used_at, 'the conflicted proof is consumed instead of remaining replayable');
 });
 
-test('administrators cannot add phone sign-in even after fresh account proof', async () => {
-  resetRateLimits();
-  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
-  const account = await signInAccount('host@example.test');
-  const cookies = cookieHeader(account.sessionCookie, account.stepUpCookie);
-  const state = await fetch(`${baseUrl}/api/me/identities`, { headers: { cookie: cookies } });
-  assert.equal(state.status, 200);
-  assert.equal((await state.json()).capabilities.canAddPhone, false);
-
-  const originalStartVerification = phoneVerification.startVerification;
-  let providerStarts = 0;
-  phoneVerification.startVerification = async () => {
-    providerStarts += 1;
-    return { verificationSid: `VE${'f'.repeat(32)}`, phone: '+14155550195', status: 'pending' };
-  };
-  try {
-    const response = await fetch(`${baseUrl}/api/me/identities/phone/start`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: cookies },
-      body: JSON.stringify({ phone: '+1 (415) 555-0195' })
-    });
-    assert.equal(response.status, 403);
-    assert.equal((await response.json()).error, 'email_sign_in_required');
-    assert.equal(providerStarts, 0);
-    assert.equal((await pool.query(
-      `SELECT COUNT(*)::int AS count FROM phone_auth_challenges
-        WHERE purpose='add_phone'`
-    )).rows[0].count, 0);
-  } finally {
-    phoneVerification.startVerification = originalStartVerification;
-  }
-});
-
 test('a freshly verified replacement phone revokes the old credential without changing the user', async () => {
   resetRateLimits();
   const account = await signInAccount('host@example.test');
@@ -4410,18 +5140,141 @@ test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only
   assert.equal(dana.canInvite, false);
   assert.equal(faces.faces.find(face => face.name === 'Gia Going').status, 'RSVP’d');
 
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at) VALUES ('hosts-admin@example.test','Hosts Admin',TRUE,NOW()) RETURNING id`
-  )).rows[0];
+  const operator = await createAdminOperator('hosts-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   await pool.query(`INSERT INTO organizers (email,name) VALUES ('rsvp-only-identity@example.test','RSVP Only')`);
   const hosts = await (await fetch(`${baseUrl}/api/admin/hosts`, {
-    headers: { cookie: `sge_session=${signSession(admin.id)}` }
+    headers: { cookie: adminCookie }
   })).json();
   const emails = hosts.hosts.map(host => host.email);
   assert.ok(emails.includes('host@example.test'));
-  assert.ok(emails.includes('hosts-admin@example.test'));
+  assert.ok(!emails.includes(operator.email));
   assert.ok(!emails.includes('rsvp-only-identity@example.test'));
   assert.ok(hosts.guestIdentityCount >= 1);
+});
+
+test('Admin Events securely searches and filters every host event while reusing only eligible draft workspaces', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('events-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const signedOutPage = await fetch(`${baseUrl}/admin/events`, { redirect: 'manual' });
+  assert.equal(signedOutPage.status, 302);
+  assert.match(signedOutPage.headers.get('location') || '', /^\/admin\/login/);
+  const signedOutApi = await fetch(`${baseUrl}/api/admin/events`);
+  assert.equal(signedOutApi.status, 401);
+  const customerApi = await fetch(`${baseUrl}/api/admin/events`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(customerApi.status, 401);
+  const page = await fetch(`${baseUrl}/admin/events`, { headers: { cookie: adminCookie } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /data-admin-section="events"/);
+
+  await pool.query(
+    `UPDATE organizers SET name='Harbor Host',org_name='Harbor House',public_slug='harbor-house'
+      WHERE id=$1`,
+    [organizerId]
+  );
+  const secondHost = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug,last_login_at)
+     VALUES ('north-star@example.test','Nora Star','North Star Studio','north-star-studio',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  secondHost.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [secondHost.id]
+  )).rows[0].user_id;
+  const insertEvent = async (hostId, values) => (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,timezone,venue_name,visibility,
+        secret_show_enabled,admission_type,status,archived_at)
+     VALUES ($1,$2,$3,$4,$5,'America/Los_Angeles',$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [hostId, values.slug, values.title, values.date, values.time || '19:00', values.venue || 'Main Hall',
+      values.visibility || 'public', Boolean(values.secret), values.admission || 'free_rsvp',
+      values.status || 'published', values.archived || null]
+  )).rows[0];
+
+  const live = await insertEvent(organizerId, {
+    slug: 'admin-events-live', title: 'Harbor Future', date: '2099-06-10'
+  });
+  const ownerDraft = await insertEvent(organizerId, {
+    slug: 'admin-events-owner-draft', title: 'Owner Draft', date: '2099-07-10', status: 'draft'
+  });
+  await insertEvent(organizerId, {
+    slug: 'admin-events-past', title: 'Harbor Archive Night', date: '2001-04-12',
+    visibility: 'private', admission: 'paid'
+  });
+  await insertEvent(organizerId, {
+    slug: 'admin-events-archived', title: 'Cancelled Archive', date: '2099-08-10',
+    admission: 'external_tickets', status: 'cancelled', archived: '2026-09-01T12:00:00Z'
+  });
+  await insertEvent(secondHost.id, {
+    slug: 'admin-events-secret', title: 'North Star Secret', date: '2099-09-10',
+    visibility: 'private', secret: true
+  });
+  const dfyDraft = await insertEvent(secondHost.id, {
+    slug: 'admin-events-dfy-draft', title: 'North Star Draft', date: '2099-10-10',
+    visibility: 'private', admission: 'silver_glider_tickets', status: 'draft'
+  });
+  const marker = (await pool.query(
+    `INSERT INTO admin_done_for_you_clients (target_user_id,created_by_admin_operator_id)
+     VALUES ($1,$2) RETURNING id`,
+    [secondHost.user_id, operator.id]
+  )).rows[0];
+  await createRsvp(live.id, { email: 'confirmed-admin-events@example.test', status: 'confirmed' });
+  await createRsvp(live.id, { email: 'cancelled-admin-events@example.test', status: 'cancelled' });
+
+  const load = async query => {
+    const response = await fetch(`${baseUrl}/api/admin/events${query || ''}`, {
+      headers: { cookie: adminCookie }
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const all = await load();
+  assert.equal(all.pagination.total, 6, 'default includes drafts, cancelled, past, and archived events');
+  assert.equal(all.events.length, 6);
+  assert.equal(all.events.find(event => event.id === live.id).rsvp_count, 1,
+    'only confirmed RSVP records are counted');
+  assert.equal(all.events.find(event => event.id === ownerDraft.id).done_for_you_client_id, null,
+    'ordinary owner drafts are never granted an admin editor workspace');
+  assert.equal(all.events.find(event => event.id === dfyDraft.id).done_for_you_client_id, Number(marker.id));
+  assert.equal(all.events.find(event => event.slug === 'admin-events-secret').done_for_you_client_id, null,
+    'published Done For You events remain outside the draft editor');
+  assert.ok(all.hosts.some(host => host.id === Number(secondHost.id) && host.event_count === 2));
+  const serialized = JSON.stringify(all);
+  for (const forbidden of ['photo_upload_token', 'photo_short_token', 'secret_show_code_hash',
+    'confirmed-admin-events@example.test', 'cancelled-admin-events@example.test']) {
+    assert.equal(serialized.includes(forbidden), false, `${forbidden} must stay out of the directory response`);
+  }
+
+  assert.equal((await load('?status=published')).pagination.total, 3);
+  assert.equal((await load('?status=draft')).pagination.total, 2);
+  assert.equal((await load('?status=cancelled')).pagination.total, 1);
+  assert.equal((await load('?timing=past')).pagination.total, 1);
+  assert.equal((await load('?timing=upcoming')).pagination.total, 5);
+  assert.equal((await load('?visibility=public')).pagination.total, 3);
+  assert.equal((await load('?visibility=private')).pagination.total, 2);
+  assert.equal((await load('?visibility=secret')).pagination.total, 1);
+  assert.equal((await load('?admission=external_tickets')).pagination.total, 2,
+    'legacy paid events normalize into the external-ticket filter');
+  assert.equal((await load('?archived=archived')).pagination.total, 1);
+  assert.equal((await load(`?host=${secondHost.id}`)).pagination.total, 2);
+  assert.equal((await load('?q=north%20star')).pagination.total, 2);
+  assert.equal((await load(`?host=${secondHost.id}&status=published&timing=upcoming&visibility=secret`)).pagination.total, 1);
+  const secondPage = await load('?per_page=2&page=2');
+  assert.deepEqual({ page: secondPage.pagination.page, pages: secondPage.pagination.pages,
+    count: secondPage.events.length }, { page: 2, pages: 3, count: 2 });
+
+  const invalid = await fetch(`${baseUrl}/api/admin/events?visibility=members-only`, {
+    headers: { cookie: adminCookie }
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error, 'invalid_event_filter');
+
+  const opened = await openDoneForYouEditor(adminCookie, marker.id, dfyDraft.id);
+  assert.equal(opened.body.workspace.eventId, Number(dfyDraft.id));
+  assert.match(opened.body.redirect, new RegExp(`id=${dfyDraft.id}`));
 });
 
 test('upcoming events offer every past guest once as a face and invite them without leaving the event', async () => {
@@ -4620,6 +5473,43 @@ test('past-event pickers explain why a face can’t be selected', async () => {
   assert.equal(faces.faces.find(face => face.name === 'Ok Person').note, null);
 });
 
+test('an event-scoped attendee cookie restores that RSVP on reload and nowhere else', async () => {
+  resetRateLimits();
+  const event = await createEvent({
+    slug: 'attendee-cookie-reload',
+    title: 'Attendee Cookie Reload',
+    comments_enabled: true
+  });
+  const other = await createEvent({
+    slug: 'attendee-cookie-other',
+    title: 'Attendee Cookie Other'
+  });
+
+  const created = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Cookie Guest', email: 'cookie-guest@example.test' })
+  });
+  assert.equal(created.status, 201);
+  const payload = await created.json();
+  const attendeeCookie = responseCookie(created, `sge_attendee_${event.id}`);
+  assert.ok(attendeeCookie);
+
+  const reloaded = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: attendeeCookie }
+  });
+  const reloadedHtml = await reloaded.text();
+  assert.match(reloaded.headers.get('cache-control') || '', /private, no-store/);
+  assert.match(reloadedHtml, new RegExp(
+    `"returningGuest":\\{"firstName":"Cookie","source":"attendee","response":"going","calendarUrl":"\\/r\\/${payload.rsvpToken}\\/calendar\\.ics"\\}`
+  ));
+
+  const unrelatedHtml = await (await fetch(`${baseUrl}/e/${other.slug}`, {
+    headers: { cookie: attendeeCookie }
+  })).text();
+  assert.match(unrelatedHtml, /"returningGuest":null/);
+});
+
 test('a personal link from the guest’s own email shows their RSVP on that event only', async () => {
   resetRateLimits();
   const event = await createEvent({ slug: 'personal-link-night', title: 'Personal Link Night' });
@@ -4694,7 +5584,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
   const edit = await fetch(`${baseUrl}/events/${event.id}/edit`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(edit.status, 302);
-  assert.equal(edit.headers.get('location'), `/e/${event.slug}?edit=details`);
+  assert.equal(edit.headers.get('location'), `/events/new?id=${event.id}&advanced=1`);
 
   const signedOut = await fetch(`${baseUrl}/events/${event.id}`, { redirect: 'manual' });
   assert.equal(signedOut.headers.get('location'), '/login');
@@ -4704,6 +5594,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
   // Unchanged flow: the home CTA still goes through sign-in, but lands in the builder.
   const home = await (await fetch(`${baseUrl}/`)).text();
+  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);
   assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event</);
   const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(signedInLogin.headers.get('location'), '/events/new');
@@ -4744,17 +5635,705 @@ test('profile stats count past events attended elsewhere and past events hosted'
   assert.equal((await fetch(`${baseUrl}/api/me/stats`)).status, 401);
 });
 
-test('Accounts & Support finds every canonical user but returns only masked identity data', async () => {
-  const admin = (await pool.query(
+test('admin login returns while passcode delivery is still pending', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('nonblocking-admin@example.test', 'super_admin');
+  let releaseDelivery;
+  let deliveryStarted = false;
+  let deliveryFinished = false;
+  const deliveryGate = new Promise(resolve => { releaseDelivery = resolve; });
+  adminAuthRoutes.setAdminPasscodeSenderForTests(async () => {
+    deliveryStarted = true;
+    await deliveryGate;
+    deliveryFinished = true;
+  });
+
+  let timeout;
+  try {
+    const response = await Promise.race([
+      fetch(`${baseUrl}/api/admin/auth/start`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: operator.email })
+      }),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('login waited for the email provider')), 2500);
+      })
+    ]);
+    clearTimeout(timeout);
+    assert.equal(response.status, 200);
+    assert.equal(deliveryStarted, true);
+    assert.equal(deliveryFinished, false, 'provider completion is outside the response path');
+  } finally {
+    clearTimeout(timeout);
+    releaseDelivery();
+    await adminAuthRoutes.settleBackgroundWork();
+    adminAuthRoutes.setAdminPasscodeSenderForTests();
+  }
+});
+
+test('dedicated admin operators sign in without enumerating unknown or disabled emails', async () => {
+  resetRateLimits();
+  const activeEmail = 'dedicated-admin@example.test';
+  const disabledEmail = 'disabled-admin@example.test';
+  const operator = await createAdminOperator(activeEmail, 'super_admin');
+  await createAdminOperator(disabledEmail, 'support', 'disabled');
+  const normalUserWithAdminPermission = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('accounts-admin@example.test','Accounts Admin',TRUE,NOW()) RETURNING id,user_id`
+     VALUES ('legacy-boundary-admin@example.test','Legacy Boundary Admin',TRUE,NOW()) RETURNING id`
   )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
+  const normalSession = `sge_session=${signSession(normalUserWithAdminPermission.id)}`;
+  const normalApi = await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalApi.status, 401);
+  const normalPage = await fetch(`${baseUrl}/admin/accounts`, {
+    redirect: 'manual',
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalPage.status, 302);
+  assert.equal(normalPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
+  const outboxBefore = mailer.devOutbox.length;
+
+  const unknown = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'unknown-admin@example.test' })
+  });
+  assert.equal(unknown.status, 200);
+  const unknownBody = await unknown.json();
+  assert.deepEqual(unknownBody, { ok: true, codeLength: 6 });
+  const unknownRequestCookie = responseCookie(unknown, 'sge_admin_sign_in');
+  assert.ok(unknownRequestCookie);
+  assert.equal(mailer.devOutbox.length, outboxBefore);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_operators
+      WHERE email='unknown-admin@example.test'`
+  )).rows[0].count, 0, 'an unknown admin email is never provisioned');
+
+  const disabled = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: disabledEmail })
+  });
+  assert.equal(disabled.status, 200);
+  assert.deepEqual(await disabled.json(), unknownBody);
+  assert.equal(mailer.devOutbox.length, outboxBefore);
+
+  const started = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: activeEmail })
+  });
+  assert.equal(started.status, 200);
+  assert.deepEqual(await started.json(), unknownBody);
+  const requestCookie = responseCookie(started, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const code = lastDevEmail(activeEmail, 'admin_passcode').code;
+  const unknownVerify = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: unknownRequestCookie },
+    body: JSON.stringify({ code: '000000' })
+  });
+  const knownWrongVerify = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code: code === '000000' ? '111111' : '000000' })
+  });
+  assert.equal(unknownVerify.status, 400);
+  assert.equal(knownWrongVerify.status, unknownVerify.status);
+  assert.deepEqual(await knownWrongVerify.json(), await unknownVerify.json(),
+    'verification cannot turn the generic login start into an email-enumeration oracle');
+  const verified = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: requestCookie },
+    body: JSON.stringify({ code })
+  });
+  assert.equal(verified.status, 200);
+  const setCookie = verified.headers.get('set-cookie') || '';
+  assert.match(setCookie, /sge_admin_session=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+  assert.deepEqual(await verified.json(), { ok: true, redirect: '/admin' });
+  const sessionCookie = responseCookie(verified, 'sge_admin_session');
+  assert.equal((await fetch(`${baseUrl}/admin/accounts`, {
+    redirect: 'manual'
+  })).headers.get('location'), '/admin/login?next=%2Fadmin%2Faccounts');
+  assert.equal((await fetch(`${baseUrl}/admin/accounts`, {
+    headers: { cookie: sessionCookie }
+  })).status, 200);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: sessionCookie } });
+  assert.deepEqual(await me.json(), {
+    operator: {
+      id: Number(operator.id), email: activeEmail, role: 'super_admin', status: 'active'
+    },
+    capabilities: {
+      manageAccounts: true,
+      manageIdentities: true,
+      manageDoneForYou: true,
+      suspendAccounts: true,
+      deleteAccounts: true,
+      manageOperators: true
+    }
+  });
+
+  const proofTarget = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('operator-proof-target@example.test','Operator Proof Target',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  proofTarget.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [proofTarget.id]
   )).rows[0].user_id;
+  const deletionCookie = await adminDeletionProof(sessionCookie, proofTarget.user_id);
+
+  const proofClient = await pool.connect();
+  try {
+    await proofClient.query('BEGIN');
+    assert.equal(await adminAuthRoutes.consumeAdminActionProof(
+      proofClient,
+      { headers: { cookie: deletionCookie } },
+      { operatorId: operator.id, action: 'account_delete', targetUserId: proofTarget.user_id }
+    ), true);
+    await proofClient.query('ROLLBACK');
+  } finally {
+    proofClient.release();
+  }
+  assert.equal((await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].consumed_at, null, 'rolling back the destructive transaction restores the proof');
+
+  const pendingLogin = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: activeEmail })
+  });
+  assert.equal(pendingLogin.status, 200);
+  const pendingRequestCookie = responseCookie(pendingLogin, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const pendingCode = lastDevEmail(activeEmail, 'admin_passcode').code;
+  const beforeDisable = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1', [operator.id]
+  )).rows[0].sessions_valid_after;
+
+  const disabledOperator = (await pool.query(
+    `UPDATE admin_operators SET status='disabled' WHERE id=$1
+     RETURNING status,sessions_valid_after`,
+    [operator.id]
+  )).rows[0];
+  assert.equal(disabledOperator.status, 'disabled');
+  assert.ok(disabledOperator.sessions_valid_after > beforeDisable);
+  assert.ok((await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].consumed_at, 'disabling consumes pending destructive-action proofs');
+  assert.ok((await pool.query(
+    `SELECT used_at FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].used_at, 'disabling invalidates pending passcode challenges');
+
+  const disabledSession = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(disabledSession.status, 401);
+  assert.match(disabledSession.headers.get('set-cookie') || '', /sge_admin_session=;/);
+
+  const reenabled = (await pool.query(
+    `UPDATE admin_operators SET status='active' WHERE id=$1
+     RETURNING sessions_valid_after`,
+    [operator.id]
+  )).rows[0];
+  assert.ok(reenabled.sessions_valid_after > disabledOperator.sessions_valid_after,
+    're-enabling advances the credential cutoff again');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: sessionCookie }
+  })).status, 401, 're-enabling never resurrects a disabled session');
+
+  const invalidatedChallenge = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: pendingRequestCookie },
+    body: JSON.stringify({ code: pendingCode })
+  });
+  assert.equal(invalidatedChallenge.status, 400);
+
+  const freshSession = await signInAdminOperator(activeEmail);
+  const actionProofCookie = deletionCookie.split('; ')
+    .find(cookie => cookie.startsWith('sge_admin_action='));
+  const invalidatedProof = await fetch(
+    `${baseUrl}/api/admin/accounts/${proofTarget.user_id}/delete-account`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: cookieHeader(freshSession, actionProofCookie)
+      },
+      body: JSON.stringify({
+        reason: 'This disabled operator proof must remain revoked',
+        confirmation: `DELETE USER ${proofTarget.user_id}`
+      })
+    }
+  );
+  assert.equal(invalidatedProof.status, 403);
+  assert.equal((await invalidatedProof.json()).error, 'admin_step_up_required');
+});
+
+test('dedicated admin login resends retire the older passcode and accept the newest one', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('admin-resend@example.test', 'support');
+  const start = cookie => fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(cookie ? { cookie } : {})
+    },
+    body: JSON.stringify({ email: operator.email })
+  });
+
+  const first = await start();
+  assert.equal(first.status, 200);
+  const firstCookie = responseCookie(first, 'sge_admin_sign_in');
+  await adminAuthRoutes.settleBackgroundWork();
+  const firstCode = lastDevEmail(operator.email, 'admin_passcode').code;
+
+  const resent = await start(firstCookie);
+  assert.equal(resent.status, 200);
+  const resentCookie = responseCookie(resent, 'sge_admin_sign_in');
+  assert.equal(resentCookie, firstCookie,
+    'a resend keeps one browser-bound challenge rather than creating parallel valid codes');
+  await adminAuthRoutes.settleBackgroundWork();
+  const latestCode = lastDevEmail(operator.email, 'admin_passcode').code;
+  assert.notEqual(latestCode, firstCode);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' AND used_at IS NULL`,
+    [operator.id]
+  )).rows[0].count, 1);
+
+  const oldAttempt = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: resentCookie },
+    body: JSON.stringify({ code: firstCode })
+  });
+  assert.equal(oldAttempt.status, 400);
+
+  const latestAttempt = await fetch(`${baseUrl}/api/admin/auth/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: resentCookie },
+    body: JSON.stringify({ code: latestCode })
+  });
+  assert.equal(latestAttempt.status, 200);
+  assert.ok(responseCookie(latestAttempt, 'sge_admin_session'));
+});
+
+test('operator roster access and mutations require dedicated target-bound Super Admin proof', async () => {
+  resetRateLimits();
+  const actor = await createAdminOperator('roster-actor@example.test', 'super_admin');
+  const peer = await createAdminOperator('roster-peer@example.test', 'super_admin');
+  const support = await createAdminOperator('roster-support@example.test', 'support');
+  const actorSession = await signInAdminOperator(actor.email);
+  const supportSession = await signInAdminOperator(support.email);
+  const normalUserWithAdminPermission = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('roster-legacy@example.test','Roster Legacy',TRUE,NOW()) RETURNING id`
+  )).rows[0];
+  const normalSession = `sge_session=${signSession(normalUserWithAdminPermission.id)}`;
+
+  const signedOutOverview = await fetch(`${baseUrl}/admin`, { redirect: 'manual' });
+  assert.equal(signedOutOverview.status, 302);
+  assert.equal(signedOutOverview.headers.get('location'), '/admin/login?next=%2Fadmin');
+  assert.equal((await fetch(`${baseUrl}/admin`, {
+    headers: { cookie: supportSession }
+  })).status, 200, 'support operators can use the control-center overview');
+  const supportTeamPage = await fetch(`${baseUrl}/admin/team`, {
+    redirect: 'manual',
+    headers: { cookie: supportSession }
+  });
+  assert.equal(supportTeamPage.status, 302);
+  assert.equal(supportTeamPage.headers.get('location'), '/admin');
+  assert.equal((await fetch(`${baseUrl}/admin/team`, {
+    headers: { cookie: actorSession }
+  })).status, 200, 'dedicated Super Admins can manage the operator roster');
+  const normalTeamPage = await fetch(`${baseUrl}/admin/team`, {
+    redirect: 'manual',
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalTeamPage.status, 302);
+  assert.equal(normalTeamPage.headers.get('location'), '/admin/login?next=%2Fadmin%2Fteam');
+  const exactOverviewNext = await fetch(`${baseUrl}/admin/login?next=%2Fadmin`, {
+    redirect: 'manual',
+    headers: { cookie: actorSession }
+  });
+  assert.equal(exactOverviewNext.headers.get('location'), '/admin');
+  const loginLoopNext = await fetch(`${baseUrl}/admin/login?next=%2Fadmin%2Flogin%3Fx%3D1`, {
+    redirect: 'manual',
+    headers: { cookie: actorSession }
+  });
+  assert.equal(loginLoopNext.headers.get('location'), '/admin');
+
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`)).status, 401);
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: supportSession }
+  })).status, 403);
+  assert.equal((await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: normalSession }
+  })).status, 401, 'normal customer sessions cannot manage independent operators');
+
+  const actorMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: actorSession }
+  });
+  assert.equal((await actorMe.json()).capabilities.manageOperators, true);
+  const supportMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  });
+  const supportCapabilities = (await supportMe.json()).capabilities;
+  assert.equal(supportCapabilities.manageAccounts, true);
+  assert.equal(supportCapabilities.suspendAccounts, true);
+  assert.equal(supportCapabilities.deleteAccounts, false);
+  assert.equal(supportCapabilities.manageOperators, false);
+  const normalMe = await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: normalSession }
+  });
+  assert.equal(normalMe.status, 401);
+
+  const initial = await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: actorSession }
+  });
+  assert.equal(initial.status, 200);
+  const initialBody = await initial.json();
+  assert.equal(initialBody.operators.length, 3);
+  assert.equal(initialBody.activeSuperAdminCount, 2);
+  assert.deepEqual(initialBody.audit, []);
+
+  const missingProof = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: actorSession },
+    body: JSON.stringify({
+      email: 'new-operator@example.test',
+      role: 'support',
+      reason: 'Cover the weekend support rotation'
+    })
+  });
+  assert.equal(missingProof.status, 403);
+  assert.equal((await missingProof.json()).error, 'admin_step_up_required');
+
+  const creationProof = await adminOperatorProof(
+    actorSession,
+    'new:new-operator@example.test'
+  );
+  const created = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: creationProof },
+    body: JSON.stringify({
+      email: 'New-Operator@Example.Test',
+      role: 'support',
+      reason: 'Cover the weekend support rotation'
+    })
+  });
+  assert.equal(created.status, 201);
+  const createdOperator = (await created.json()).operator;
+  assert.equal(createdOperator.email, 'new-operator@example.test');
+  assert.equal(createdOperator.role, 'support');
+  assert.equal(createdOperator.status, 'active');
+
+  const reusedForAnotherTarget = await fetch(`${baseUrl}/api/admin/operators`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: creationProof },
+    body: JSON.stringify({
+      email: 'wrong-target@example.test',
+      role: 'support',
+      reason: 'This target was never verified'
+    })
+  });
+  assert.equal(reusedForAnotherTarget.status, 403);
+  assert.equal((await reusedForAnotherTarget.json()).error, 'admin_step_up_required');
+
+  const supportProof = await adminOperatorProof(actorSession, `operator:${support.id}`);
+  const wrongTarget = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: supportProof },
+    body: JSON.stringify({ role: 'support', reason: 'Wrong target rollback check' })
+  });
+  assert.equal(wrongTarget.status, 403);
+  assert.equal((await wrongTarget.json()).error, 'admin_step_up_required');
+  const pendingProof = (await pool.query(
+    `SELECT consumed_at FROM admin_action_proofs
+      WHERE operator_id=$1 AND target_key=$2 ORDER BY id DESC LIMIT 1`,
+    [actor.id, `operator:${support.id}`]
+  )).rows[0];
+  assert.equal(pendingProof.consumed_at, null,
+    'a target mismatch rolls back without consuming the one-time proof');
+
+  const promoted = await fetch(`${baseUrl}/api/admin/operators/${support.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: supportProof },
+    body: JSON.stringify({ role: 'super_admin', reason: 'Promote the on-call lead' })
+  });
+  assert.equal(promoted.status, 200);
+  assert.equal((await promoted.json()).operator.role, 'super_admin');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  })).status, 401, 'a role change invalidates sessions minted for the previous role');
+
+  const roster = await fetch(`${baseUrl}/api/admin/operators`, {
+    headers: { cookie: actorSession }
+  });
+  const rosterBody = await roster.json();
+  assert.deepEqual(rosterBody.audit.map(entry => entry.action), [
+    'operator_updated',
+    'operator_created'
+  ]);
+  assert.ok(rosterBody.audit.every(entry => entry.actorOperatorId === Number(actor.id)));
+  assert.deepEqual(rosterBody.audit.map(entry => entry.actorEmail), [actor.email, actor.email]);
+
+  await assert.rejects(
+    pool.query(
+      `UPDATE admin_operator_audit_log SET reason='rewritten history' WHERE id=$1`,
+      [rosterBody.audit[0].id]
+    ),
+    /append-only|immutable/i
+  );
+  await assert.rejects(
+    pool.query('DELETE FROM admin_operators WHERE id=$1', [createdOperator.id]),
+    /retained for immutable audit attribution/i
+  );
+});
+
+test('operator roster protects self/final Super Admin and explicitly revokes target sessions', async () => {
+  resetRateLimits();
+  const actor = await createAdminOperator('guard-actor@example.test', 'super_admin');
+  const peer = await createAdminOperator('guard-peer@example.test', 'super_admin');
+  const support = await createAdminOperator('guard-support@example.test', 'support');
+  const actorSession = await signInAdminOperator(actor.email);
+  const peerSession = await signInAdminOperator(peer.email);
+  const supportSession = await signInAdminOperator(support.email);
+
+  const selfProof = await adminOperatorProof(actorSession, `operator:${actor.id}`);
+  const selfDemotion = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ role: 'support', reason: 'Self demotion must be blocked' })
+  });
+  assert.equal(selfDemotion.status, 409);
+  assert.equal((await selfDemotion.json()).error, 'cannot_demote_self');
+  const selfDisable = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ status: 'disabled', reason: 'Self disable must be blocked' })
+  });
+  assert.equal(selfDisable.status, 409);
+  assert.equal((await selfDisable.json()).error, 'cannot_disable_self');
+
+  const disablePeerProof = await adminOperatorProof(actorSession, `operator:${peer.id}`);
+  const disabledPeer = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: disablePeerProof },
+    body: JSON.stringify({ status: 'disabled', reason: 'Remove access during leave' })
+  });
+  assert.equal(disabledPeer.status, 200);
+  assert.equal((await disabledPeer.json()).operator.status, 'disabled');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: peerSession }
+  })).status, 401);
+
+  const finalSuperAdmin = await fetch(`${baseUrl}/api/admin/operators/${actor.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: selfProof },
+    body: JSON.stringify({ role: 'support', reason: 'Final administrator guard' })
+  });
+  assert.equal(finalSuperAdmin.status, 409);
+  assert.equal((await finalSuperAdmin.json()).error, 'last_active_super_admin');
+
+  const enablePeerProof = await adminOperatorProof(actorSession, `operator:${peer.id}`);
+  const enabledPeer = await fetch(`${baseUrl}/api/admin/operators/${peer.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: enablePeerProof },
+    body: JSON.stringify({ status: 'active', reason: 'Restore access after leave' })
+  });
+  assert.equal(enabledPeer.status, 200);
+  assert.equal((await enabledPeer.json()).operator.status, 'active');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: peerSession }
+  })).status, 401, 're-enabling cannot revive the session invalidated at disable time');
+
+  const revokeProof = await adminOperatorProof(actorSession, `operator:${support.id}`);
+  const revoked = await fetch(`${baseUrl}/api/admin/operators/${support.id}/revoke-sessions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: revokeProof },
+    body: JSON.stringify({ reason: 'End sessions after device loss' })
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: supportSession }
+  })).status, 401);
+  const audit = (await pool.query(
+    `SELECT action_type,actor_email,target_email
+       FROM admin_operator_audit_log ORDER BY id`
+  )).rows;
+  assert.deepEqual(audit.map(entry => entry.action_type), [
+    'operator_updated',
+    'operator_updated',
+    'operator_sessions_revoked'
+  ]);
+  assert.equal(audit[2].actor_email, actor.email);
+  assert.equal(audit[2].target_email, support.email);
+});
+
+test('dedicated admin mutations enforce same-origin and retain the operator audit actor', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('audited-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('operator-audit-target@example.test','Operator Audit Target',NOW())
+     RETURNING id,user_id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+
+  const crossOriginLogout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: { cookie: adminSession, origin: 'https://attacker.example' }
+  });
+  assert.equal(crossOriginLogout.status, 403);
+  assert.doesNotMatch(crossOriginLogout.headers.get('set-cookie') || '', /sge_admin_session=;/);
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: adminSession }
+  })).status, 200, 'a rejected logout leaves the valid operator session intact');
+
+  const crossOriginInvitation = await fetch(`${baseUrl}/api/admin/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: adminSession,
+      'sec-fetch-site': 'same-site'
+    },
+    body: JSON.stringify({
+      host_name: 'Cross Origin Host',
+      personal_note: 'This request must be rejected before mutation.'
+    })
+  });
+  assert.equal(crossOriginInvitation.status, 403);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM host_invitations
+      WHERE host_name='Cross Origin Host'`
+  )).rows[0].count, 0);
+
+  const hostInvitation = await fetch(`${baseUrl}/api/admin/invitations`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: adminSession,
+      origin: baseUrl,
+      'sec-fetch-site': 'same-origin'
+    },
+    body: JSON.stringify({
+      host_name: 'Dedicated Operator Host',
+      personal_note: 'Invited after a direct conversation with the host.'
+    })
+  });
+  assert.equal(hostInvitation.status, 201);
+  const hostInvitationId = (await hostInvitation.json()).invitation.id;
+  assert.deepEqual((await pool.query(
+    `SELECT created_by_organizer_id,created_by_admin_operator_id
+       FROM host_invitations WHERE id=$1`,
+    [hostInvitationId]
+  )).rows[0], {
+    created_by_organizer_id: null,
+    created_by_admin_operator_id: operator.id
+  });
+
+  const suspended = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ reason: 'Dedicated operator security review' })
+  });
+  assert.equal(suspended.status, 200);
+  assert.deepEqual((await pool.query(
+    `SELECT suspended_by_user_id,suspended_by_admin_operator_id
+       FROM users WHERE id=$1`,
+    [target.user_id]
+  )).rows[0], {
+    suspended_by_user_id: null,
+    suspended_by_admin_operator_id: operator.id
+  });
+
+  const reactivated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/reactivate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ reason: 'Dedicated operator review completed' })
+  });
+  assert.equal(reactivated.status, 200);
+
+  const note = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/notes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ note: 'Reviewed with the account owner.' })
+  });
+  assert.equal(note.status, 201);
+  assert.deepEqual((await pool.query(
+    `SELECT author_user_id,author_admin_operator_id
+       FROM admin_account_support_notes WHERE target_user_id=$1`,
+    [target.user_id]
+  )).rows[0], {
+    author_user_id: null,
+    author_admin_operator_id: operator.id
+  });
+
+  const accountInvitation = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({
+      name: 'Dedicated Invitee',
+      email: 'dedicated-invitee@example.test',
+      prepareHostPage: true
+    })
+  });
+  assert.equal(accountInvitation.status, 201);
+  assert.deepEqual((await pool.query(
+    `SELECT created_by_user_id,created_by_admin_operator_id
+       FROM admin_account_invitations WHERE email='dedicated-invitee@example.test'`
+  )).rows[0], {
+    created_by_user_id: null,
+    created_by_admin_operator_id: operator.id
+  });
+
+  const audits = (await pool.query(
+    `SELECT actor_user_id,actor_admin_operator_id,action_type
+       FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+      ORDER BY id`,
+    [operator.id]
+  )).rows;
+  assert.deepEqual(audits.map(row => row.action_type), [
+    'account_suspended',
+    'account_reactivated',
+    'support_note_added',
+    'account_invitation_created',
+    'account_invitation_sent'
+  ]);
+  assert.ok(audits.every(row => row.actor_user_id === null));
+  assert.ok(audits.every(row => row.actor_admin_operator_id === operator.id));
+
+  const logout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: { cookie: adminSession, origin: baseUrl, 'sec-fetch-site': 'same-origin' }
+  });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get('set-cookie') || '', /sge_admin_session=;/);
+});
+
+test('Accounts & Support returns complete verified and contact-only identity data to admins', async () => {
+  const operator = await createAdminOperator('accounts-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const guest = (await pool.query(
-    `INSERT INTO organizers (email,name)
-     VALUES ('rsvp-only-support@example.test','RSVP Only Support') RETURNING id,user_id`
+    `INSERT INTO organizers (email,name,contact_email)
+     VALUES ('rsvp-only-support@example.test','RSVP Only Support','booking-support@example.test')
+     RETURNING id,user_id`
   )).rows[0];
   guest.user_id = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [guest.id]
@@ -4772,14 +6351,14 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   const attended = await createEvent({ slug: 'support-guest-rsvp', title: 'Support Guest RSVP' });
   await createRsvp(attended.id, {
     first_name: 'RSVP', last_name: 'Only Support',
-    email: 'rsvp-only-support@example.test', account_id: guest.id, user_id: guest.user_id
+    email: 'rsvp-contact@example.test', phone: '+14155550188',
+    account_id: guest.id, user_id: guest.user_id
   });
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts`)).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts`, {
     headers: { cookie: `sge_session=${signSession(organizerId)}` }
-  })).status, 403);
+  })).status, 401);
 
   const page = await fetch(`${baseUrl}/admin/accounts`, { headers: { cookie: adminCookie } });
   assert.equal(page.status, 200);
@@ -4796,10 +6375,11 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   assert.equal(searchPayload.accounts[0].id, Number(guest.user_id));
   assert.equal(searchPayload.accounts[0].kind, 'guest');
   assert.equal(searchPayload.accounts[0].rsvpCount, 1);
-  assert.equal(searchPayload.accounts[0].email, 'r•••@example.test');
-  assert.equal(searchPayload.accounts[0].phone, '••• ••• 0129');
-  assert.ok(!JSON.stringify(searchPayload).includes('rsvp-only-support@example.test'));
-  assert.ok(!JSON.stringify(searchPayload).includes('+14155550129'));
+  assert.equal(searchPayload.accounts[0].email, 'rsvp-only-support@example.test');
+  assert.equal(searchPayload.accounts[0].phone, '+14155550129');
+  assert.equal(searchPayload.accounts[0].emailLabel, 'Verified sign-in email');
+  assert.equal(searchPayload.accounts[0].phoneLabel, 'Verified sign-in phone');
+  assert.equal(searchPayload.accounts[0].contactEmail, 'booking-support@example.test');
 
   const detail = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}`, {
     headers: { cookie: adminCookie }
@@ -4808,23 +6388,39 @@ test('Accounts & Support finds every canonical user but returns only masked iden
   assert.match(detail.headers.get('cache-control'), /no-store/);
   const detailPayload = await detail.json();
   assert.equal(detailPayload.account.id, Number(guest.user_id));
-  assert.equal(detailPayload.account.email, 'r•••@example.test');
-  assert.equal(detailPayload.account.phone, '••• ••• 0129');
+  assert.equal(detailPayload.account.email, 'rsvp-only-support@example.test');
+  assert.equal(detailPayload.account.phone, '+14155550129');
+  assert.equal(detailPayload.account.contactEmail, 'booking-support@example.test');
+  assert.equal(detailPayload.account.contactPhone, '+14155550188');
   assert.deepEqual(
-    detailPayload.identities.map(identity => [identity.type, identity.maskedValue]).sort(),
-    [['email', 'r•••@example.test'], ['phone', '••• ••• 0129']]
+    detailPayload.identities.map(identity => [identity.type, identity.value, identity.label]).sort(),
+    [
+      ['email', 'rsvp-only-support@example.test', 'Verified sign-in email'],
+      ['phone', '+14155550129', 'Verified sign-in phone']
+    ]
   );
-  assert.ok(detailPayload.identities.every(identity => !('value' in identity) && !('normalizedValue' in identity)));
-  assert.ok(!JSON.stringify(detailPayload).includes('rsvp-only-support@example.test'));
-  assert.ok(!JSON.stringify(detailPayload).includes('+14155550129'));
-  assert.equal(typeof detailPayload.deletion.allowed, 'boolean');
-  assert.ok(Array.isArray(detailPayload.deletion.blockers));
+  assert.deepEqual(
+    detailPayload.contactMethods.map(method => [method.type, method.value, method.label]),
+    [
+      ['email', 'booking-support@example.test', 'Contact email (not verified for sign-in)'],
+      ['email', 'rsvp-contact@example.test', 'RSVP email (not verified for sign-in)'],
+      ['phone', '+14155550188', 'RSVP phone (not verified for sign-in)']
+    ]
+  );
+  assert.equal(detailPayload.contactSummary.email.value, 'rsvp-only-support@example.test');
+  assert.equal(detailPayload.contactSummary.email.verifiedForSignIn, true);
+  assert.equal(detailPayload.contactSummary.phone.value, '+14155550129');
+  assert.equal(detailPayload.deletion.allowed, false);
+  assert.deepEqual(
+    detailPayload.deletion.blockers.map(blocker => blocker.code),
+    ['dedicated_super_admin_session']
+  );
+  assert.ok(Array.isArray(detailPayload.deletion.warnings));
   assert.equal(detailPayload.deletion.confirmationText, `DELETE USER ${guest.user_id}`);
-  assert.equal(detailPayload.deletion.designationConfirmationText, `MARK TEST USER ${guest.user_id}`);
-  assert.equal(detailPayload.deletion.isTestAccount, false);
-  assert.equal(typeof detailPayload.deletion.canMarkTestAccount, 'boolean');
   assert.equal(detailPayload.deletion.requiresFreshVerification, true);
-  for (const key of ['events', 'rsvps', 'following', 'followers', 'identities']) {
+  for (const key of ['events', 'rsvps', 'ownedEventRsvps', 'ownedEventGuestSessions',
+    'ownedEventInvitations', 'ownedEventComments', 'ownedEventMessages',
+    'ownedEventPhotos', 'ownedEventRecipients', 'following', 'followers', 'identities']) {
     assert.equal(typeof detailPayload.deletion.summary[key], 'number', `missing deletion summary: ${key}`);
   }
 
@@ -4850,11 +6446,6 @@ test('Accounts & Support finds every canonical user but returns only masked iden
     reason: 'Correcting the display name at their request'
   }]);
 
-  const selfSignOut = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/sign-out-all`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
-    body: JSON.stringify({ reason: 'This should use Account settings instead' })
-  });
-  assert.equal(selfSignOut.status, 400);
   const guestOldCookie = `sge_session=${signSession(guest.id, Date.now() - 5000)}`;
   assert.equal((await fetch(`${baseUrl}/profile`, { headers: { cookie: guestOldCookie } })).status, 200);
   const signedOutEverywhere = await fetch(`${baseUrl}/api/admin/accounts/${guest.user_id}/sign-out-all`, {
@@ -4881,13 +6472,8 @@ test('Accounts & Support finds every canonical user but returns only masked iden
 
 test('admin suspension is audited, revokes access, preserves public property, and can be reversed safely', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('suspension-admin@example.test','Suspension Admin',TRUE,NOW()) RETURNING id,user_id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
+  const operator = await createAdminOperator('suspension-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const target = (await pool.query(
     `INSERT INTO organizers (email,name,org_name,public_slug,last_login_at)
      VALUES ('suspended-host@example.test','Suspended Host','Suspended Host','suspended-host',NOW())
@@ -4913,7 +6499,6 @@ test('admin suspension is audited, revokes access, preserves public property, an
   )).rows[0];
   assert.ok(publicEvent.id);
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
   const oldTargetCookie = `sge_session=${signSession(target.id, Date.now() - 5000)}`;
   const oldPhotoCookie = `sge_photo=${signPhotoAccess(target.id)}`;
   const photoScopeBeforeSuspension = await fetch(`${baseUrl}/api/me`, {
@@ -4939,12 +6524,6 @@ test('admin suspension is audited, revokes access, preserves public property, an
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
       WHERE target_user_id=$1 AND action_type='account_suspended'`, [target.user_id]
   )).rows[0].count, 0);
-
-  const selfSuspend = await fetch(`${baseUrl}/api/admin/accounts/${admin.user_id}/suspend`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
-    body: JSON.stringify({ reason: 'Accidental self action' })
-  });
-  assert.equal(selfSuspend.status, 400);
 
   const suspended = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/suspend`, {
     method: 'POST', headers: {
@@ -5012,7 +6591,8 @@ test('admin suspension is audited, revokes access, preserves public property, an
   assert.deepEqual(actions, ['account_suspended', 'account_reactivated']);
 });
 
-test('permanent test-account deletion requires admin auth, fresh proof, and every exact confirmation guard', async () => {
+test('permanent account deletion requires admin auth, fresh proof, and exact confirmation', async () => {
+  resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-guard-admin@example.test','Delete Guard Admin',TRUE,NOW()) RETURNING id`
@@ -5035,94 +6615,59 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
     'SELECT user_id FROM organizers WHERE id=$1', [otherAdmin.id]
   )).rows[0].user_id;
 
-  const adminSession = `sge_session=${signSession(admin.id)}`;
-  const freshAdmin = cookieHeader(
-    adminSession,
+  const operator = await createAdminOperator('delete-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const support = await createAdminOperator('delete-support@example.test', 'support');
+  const supportSession = await signInAdminOperator(support.email);
+  assert.equal((await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: supportSession }
+  })).status, 200, 'support operators retain read-only support access');
+  const supportSms = await fetch(`${baseUrl}/api/admin/sms/test`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: supportSession },
+    body: JSON.stringify({ confirm: 'SEND_TEST_SMS', to: '+14155551234' })
+  });
+  assert.equal(supportSms.status, 403);
+  assert.equal((await supportSms.json()).error, 'super_admin_required');
+  const legacyAdminSession = cookieHeader(
+    `sge_session=${signSession(admin.id)}`,
     `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
   );
   const validBody = id => ({
-    reason: 'Remove a disposable integration-test account',
-    testAccountConfirmed: true,
+    reason: 'Owner requested permanent account deletion',
     confirmation: `DELETE USER ${id}`
   });
-  const requestDelete = (id, { cookie = freshAdmin, body = validBody(id), headers = {} } = {}) => fetch(
-    `${baseUrl}/api/admin/accounts/${id}/delete-test-account`,
+  const requestDelete = (id, { cookie = adminSession, body = validBody(id), headers = {} } = {}) => fetch(
+    `${baseUrl}/api/admin/accounts/${id}/delete-account`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
       body: JSON.stringify(body)
     }
   );
-  const validMarkBody = id => ({
-    reason: 'Confirmed disposable integration-test account',
-    testAccountConfirmed: true,
-    confirmation: `MARK TEST USER ${id}`
-  });
-  const requestMark = (id, { cookie = freshAdmin, body = validMarkBody(id), headers = {} } = {}) => fetch(
-    `${baseUrl}/api/admin/accounts/${id}/mark-test-account`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
-      body: JSON.stringify(body)
-    }
-  );
-
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    method: 'DELETE', headers: { cookie: freshAdmin }
+    method: 'DELETE', headers: { cookie: adminSession }
   })).status, 404, 'the generic account DELETE endpoint stays absent');
   assert.equal((await requestDelete(target.user_id, { cookie: '' })).status, 401);
   assert.equal((await requestDelete(target.user_id, {
     cookie: `sge_session=${signSession(organizerId)}`
-  })).status, 403);
+  })).status, 401);
 
-  const unmarkedDelete = await requestDelete(target.user_id);
-  assert.equal(unmarkedDelete.status, 409);
-  const unmarkedPayload = await unmarkedDelete.json();
-  assert.equal(unmarkedPayload.error, 'account_not_deletable');
-  assert.equal(unmarkedPayload.deletion.isTestAccount, false);
-  assert.equal(unmarkedPayload.deletion.canMarkTestAccount, true);
-  assert.ok(unmarkedPayload.deletion.blockers.some(blocker => blocker.code === 'not_designated_test_account'));
+  const legacyAttempt = await requestDelete(target.user_id, { cookie: legacyAdminSession });
+  assert.equal(legacyAttempt.status, 401);
+  assert.equal((await legacyAttempt.json()).error, 'admin_auth_required');
+  const supportAttempt = await requestDelete(target.user_id, { cookie: supportSession });
+  assert.equal(supportAttempt.status, 403);
+  assert.equal((await supportAttempt.json()).error, 'dedicated_super_admin_required');
 
-  const markWithoutFreshProof = await requestMark(target.user_id, { cookie: adminSession });
-  assert.equal(markWithoutFreshProof.status, 403);
-  assert.equal((await markWithoutFreshProof.json()).error, 'identity_step_up_required');
-  const markWrongPhrase = await requestMark(target.user_id, {
-    body: { ...validMarkBody(target.user_id), confirmation: `MARK TEST USER ${target.user_id + 1}` }
-  });
-  assert.equal(markWrongPhrase.status, 400);
-  const markUnchecked = await requestMark(target.user_id, {
-    body: { ...validMarkBody(target.user_id), testAccountConfirmed: false }
-  });
-  assert.equal(markUnchecked.status, 400);
-  const marked = await requestMark(target.user_id);
-  assert.equal(marked.status, 200);
-  assert.deepEqual(await marked.json(), { ok: true, isTestAccount: true });
-  const durableDesignation = (await pool.query(
-    `SELECT is_test_account,test_account_marked_at,test_account_marked_by_user_id,
-            test_account_mark_reason
-       FROM users WHERE id=$1`, [target.user_id]
-  )).rows[0];
-  assert.equal(durableDesignation.is_test_account, true);
-  assert.ok(durableDesignation.test_account_marked_at);
-  assert.equal(durableDesignation.test_account_marked_by_user_id, admin.user_id);
-  assert.equal(durableDesignation.test_account_mark_reason, validMarkBody(target.user_id).reason);
-  assert.equal((await pool.query(
-    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_designated'`, [target.user_id]
-  )).rows[0].count, 1);
-
-  const withoutFreshProof = await requestDelete(target.user_id, { cookie: adminSession });
+  const withoutFreshProof = await requestDelete(target.user_id);
   assert.equal(withoutFreshProof.status, 403);
-  assert.equal((await withoutFreshProof.json()).error, 'identity_step_up_required');
+  assert.equal((await withoutFreshProof.json()).error, 'admin_step_up_required');
 
   const wrongPhrase = await requestDelete(target.user_id, {
     body: { ...validBody(target.user_id), confirmation: `DELETE USER ${target.user_id + 1}` }
   });
   assert.equal(wrongPhrase.status, 400);
-  const unchecked = await requestDelete(target.user_id, {
-    body: { ...validBody(target.user_id), testAccountConfirmed: false }
-  });
-  assert.equal(unchecked.status, 400);
   const shortReason = await requestDelete(target.user_id, {
     body: { ...validBody(target.user_id), reason: 'testing' }
   });
@@ -5137,15 +6682,16 @@ test('permanent test-account deletion requires admin auth, fresh proof, and ever
   assert.ok([400, 409].includes(adminDelete.status));
 
   assert.deepEqual((await pool.query(
-    'SELECT account_status,name,is_test_account FROM users WHERE id=$1', [target.user_id]
-  )).rows[0], { account_status: 'active', name: 'Delete Guard Target', is_test_account: true });
+    'SELECT account_status,name FROM users WHERE id=$1', [target.user_id]
+  )).rows[0], { account_status: 'active', name: 'Delete Guard Target' });
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
+      WHERE target_user_id=$1 AND action_type='account_deleted'`, [target.user_id]
   )).rows[0].count, 0, 'failed guard checks never create a deletion audit');
 });
 
-test('test-account deletion recomputes every protected-property blocker on the server', async () => {
+test('ordinary account history becomes deletion warnings instead of eligibility blockers', async () => {
+  resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
      VALUES ('delete-blocker-admin@example.test','Delete Blocker Admin',TRUE,NOW()) RETURNING id`
@@ -5162,14 +6708,6 @@ test('test-account deletion recomputes every protected-property blocker on the s
   target.user_id = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [target.id]
   )).rows[0].user_id;
-  await pool.query(
-    `UPDATE users
-        SET is_test_account=TRUE,test_account_marked_at=NOW(),
-            test_account_marked_by_user_id=$2,
-            test_account_mark_reason='Protected-data integration test'
-      WHERE id=$1`,
-    [target.user_id, admin.user_id]
-  );
   await pool.query(
     `INSERT INTO user_identities
        (user_id,identity_type,value,normalized_value,verified_at,
@@ -5211,12 +6749,55 @@ test('test-account deletion recomputes every protected-property blocker on the s
      VALUES ($1,$2,'purchase',100,100,500,'USD','paypal','blocked-delete-ledger')`,
     [target.id, purchase.id]
   );
-  await pool.query(
+  const smsBatch = (await pool.query(
     `INSERT INTO sms_notification_batches
        (event_id,organizer_id,kind,message_body,segment_count,recipient_count,
         credit_cost,status)
-     VALUES ($1,$2,'event_tomorrow','Blocked SMS history',1,1,1,'sent')`,
+     VALUES ($1,$2,'event_tomorrow','Blocked SMS history',1,1,1,'sent')
+     RETURNING id`,
     [commerceEvent.id, target.id]
+  )).rows[0];
+  const ownedDependentRsvp = await createRsvp(commerceEvent.id, {
+    first_name: 'Owned', last_name: 'Dependent', email: 'owned-dependent@example.test'
+  });
+  const ownedDependentMessage = (await pool.query(
+    `INSERT INTO message_log
+       (rsvp_id,event_id,recipient,message_type,channel,status)
+     VALUES ($1,$2,'owned-dependent@example.test','announcement','email','pending')
+     RETURNING id`,
+    [ownedDependentRsvp.id, commerceEvent.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO guest_sessions
+       (identity_id,token_hash,display_first_name,display_name,verified_at,
+        verified_event_id,expires_at)
+     VALUES ($1,'owned-dependent-session','Owned','Owned Dependent',NOW(),$2,
+             NOW() + INTERVAL '1 day')`,
+    [target.id, commerceEvent.id]
+  );
+  await pool.query(
+    `INSERT INTO guest_invitation_tokens
+       (message_log_id,target_event_id,identity_id,token_hash)
+     VALUES ($1,$2,$3,'owned-dependent-invitation')`,
+    [ownedDependentMessage.id, commerceEvent.id, target.id]
+  );
+  await pool.query(
+    `INSERT INTO event_comments (event_id,rsvp_id,message)
+     VALUES ($1,$2,'Owned event comment')`,
+    [commerceEvent.id, ownedDependentRsvp.id]
+  );
+  await pool.query(
+    `INSERT INTO event_photos
+       (event_id,cloudinary_id,image_url,contributor_name)
+     VALUES ($1,'unmanaged-owned-dependent-photo',
+             'https://images.example.test/owned-dependent.jpg','Owned Dependent')`,
+    [commerceEvent.id]
+  );
+  await pool.query(
+    `INSERT INTO sms_notification_recipients
+       (batch_id,rsvp_id,recipient,recipient_name,segment_count,status)
+     VALUES ($1,$2,'+14155550888','Owned Dependent',1,'sent')`,
+    [smsBatch.id, ownedDependentRsvp.id]
   );
   await pool.query(
     `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,follower_user_id)
@@ -5271,60 +6852,113 @@ test('test-account deletion recomputes every protected-property blocker on the s
     [externalEvent.id, target.user_id]
   );
 
-  const cookie = cookieHeader(
-    `sge_session=${signSession(admin.id)}`,
-    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
-  );
-  const blocked = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+  const operator = await createAdminOperator('delete-history-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const impact = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: adminSession }
+  });
+  assert.equal(impact.status, 200);
+  const impactState = (await impact.json()).deletion;
+  assert.equal(impactState.allowed, true);
+  assert.deepEqual(impactState.blockers, []);
+  assert.equal(impactState.confirmationText, `DELETE USER ${target.user_id}`);
+  assert.equal(impactState.requiresFreshVerification, true);
+  const warnings = impactState.warnings.map(item => item.code);
+  for (const expected of [
+    'owned_events',
+    'owned_event_rsvps',
+    'owned_event_guest_sessions',
+    'owned_event_invitations',
+    'owned_event_comments',
+    'owned_event_messages',
+    'owned_event_photos',
+    'owned_event_recipients',
+    'followers',
+    'uploaded_photos',
+    'sms_credit_balance',
+    'financial_history_retained',
+    'support_history_retained',
+    'commerce_links'
+  ]) assert.ok(warnings.includes(expected), `missing deletion warning: ${expected}`);
+  assert.equal(impactState.summary.ownedEventRsvps, 1);
+  assert.equal(impactState.summary.ownedEventGuestSessions, 1);
+  assert.equal(impactState.summary.ownedEventInvitations, 1);
+  assert.equal(impactState.summary.ownedEventComments, 1);
+  assert.equal(impactState.summary.ownedEventMessages, 1);
+  assert.equal(impactState.summary.ownedEventPhotos, 1);
+  assert.equal(impactState.summary.ownedEventRecipients, 1);
+
+  const deletionCookie = await adminDeletionProof(adminSession, target.user_id);
+  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
     body: JSON.stringify({
-      reason: 'This request must be blocked by protected account history',
-      testAccountConfirmed: true,
+      reason: 'Owner requested deletion despite retained transaction history',
       confirmation: `DELETE USER ${target.user_id}`
     })
   });
-  assert.equal(blocked.status, 409);
-  const payload = await blocked.json();
-  assert.equal(payload.error, 'account_not_deletable');
-  assert.equal(payload.deletion.allowed, false);
-  assert.equal(payload.deletion.confirmationText, `DELETE USER ${target.user_id}`);
-  assert.equal(payload.deletion.requiresFreshVerification, true);
-  const blockers = payload.deletion.blockers.map(item => typeof item === 'string' ? item : item.code);
-  for (const expected of [
-    'non_free_plan',
-    'sms_credit_balance',
-    'sms_financial_history',
-    'sms_delivery_history',
-    'commerce_events',
-    'active_followers',
-    'unresolved_identity_conflicts',
-    'support_notes',
-    'external_contributed_photos',
-    'historical_identities',
-    'external_optout_history',
-    'external_event_relationships',
-    'external_delivery_history'
-  ]) assert.ok(blockers.includes(expected), `missing deletion blocker: ${expected}`);
+  assert.equal(deleted.status, 200);
+  assert.equal((await deleted.json()).ok, true);
 
   assert.deepEqual((await pool.query(
     'SELECT account_status,name FROM users WHERE id=$1', [target.user_id]
-  )).rows[0], { account_status: 'active', name: 'Blocked Test Account' });
+  )).rows[0], { account_status: 'deleted', name: null });
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [externalRsvp.id])).rows[0].count, 1,
+    'an unrelated RSVP snapshot with the same email is never a destructive match');
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_sessions WHERE id=$1', [externalSession.id])).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_invitation_tokens WHERE id=$1', [externalInvitation.id])).rows[0].count, 0);
+  const retainedMessage = (await pool.query(
+    'SELECT recipient,recipient_user_id FROM message_log WHERE id=$1', [externalMessage.id]
+  )).rows[0];
+  assert.equal(retainedMessage.recipient, 'delete-blocked@example.test',
+    'an unrelated delivery snapshot with the same email remains untouched');
+  assert.equal(retainedMessage.recipient_user_id, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2',
+    [organizerId, 'delete-blocked@example.test']
+  )).rows[0].count, 1, 'another host’s opt-out history is not matched by contact email');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM sms_credit_purchases WHERE id=$1 AND organizer_id=$2',
+    [purchase.id, target.id]
+  )).rows[0].count, 1, 'financial history remains attached to the anonymized organizer shell');
+  const organizerTombstone = (await pool.query(
+    `SELECT email,name,org_name,public_slug,plan,sms_credits,is_admin
+       FROM organizers WHERE id=$1`, [target.id]
+  )).rows[0];
+  assert.deepEqual(organizerTombstone, {
+    email: `deleted+${target.user_id}@example.invalid`,
+    name: null,
+    org_name: null,
+    public_slug: null,
+    plan: 'free',
+    sms_credits: 0,
+    is_admin: false
+  });
+  assert.deepEqual((await pool.query(
+    `SELECT kind,credits_delta,balance_after,external_key
+       FROM sms_credit_transactions
+      WHERE external_key=$1`,
+    [`account-deletion:${target.user_id}:sms-credit-forfeiture`]
+  )).rows, [{
+    kind: 'adjustment',
+    credits_delta: -9,
+    balance_after: 0,
+    external_key: `account-deletion:${target.user_id}:sms-credit-forfeiture`
+  }]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_support_notes WHERE target_user_id=$1',
+    [target.user_id]
   )).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [externalRsvp.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_sessions WHERE id=$1', [externalSession.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM guest_invitation_tokens WHERE id=$1', [externalInvitation.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM message_log WHERE id=$1', [externalMessage.id])).rows[0].count, 1);
-  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2', [organizerId, 'delete-blocked@example.test'])).rows[0].count, 1);
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`, [target.user_id]
-  )).rows[0].count, 0);
+      WHERE target_user_id=$1 AND action_type='account_deleted'`, [target.user_id]
+  )).rows[0].count, 1);
 });
 
-test('eligible test-account deletion purges disposable property and leaves only an audited canonical tombstone', async () => {
+test('direct account deletion purges property, revokes access, and leaves an audited tombstone', async () => {
   resetRateLimits();
   const admin = (await pool.query(
     `INSERT INTO organizers (email,name,is_admin,last_login_at)
@@ -5407,51 +7041,54 @@ test('eligible test-account deletion purges disposable property and leaves only 
     headers: { cookie: oldPhotoGrant }
   })).status, 200);
 
-  const reason = 'Remove the completed disposable integration-test account';
-  const adminCookie = cookieHeader(
-    `sge_session=${signSession(admin.id)}`,
-    `sge_identity_step_up=${signIdentityStepUp(admin.user_id)}`
+  const reason = 'Owner requested permanent removal of this completed account';
+  const operator = await createAdminOperator('delete-success-operator@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  await pool.query(
+    `INSERT INTO admin_account_identity_change_requests
+       (target_user_id,identity_type,value,normalized_value,request_token_hash,
+        requested_by_admin_operator_id,reason,sent_at,expires_at)
+     VALUES ($1,'email','delete-pending@example.test','delete-pending@example.test',
+             $2,$3,'Recipient requested an email update before deletion',NOW(),
+             NOW() + INTERVAL '30 minutes')`,
+    [target.user_id, 'd'.repeat(64), operator.id]
   );
-  const beforeDesignation = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    headers: { cookie: adminCookie }
+  const beforeDeletion = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: adminSession }
   });
-  assert.equal(beforeDesignation.status, 200);
-  const beforeDesignationState = (await beforeDesignation.json()).deletion;
-  assert.equal(beforeDesignationState.allowed, false);
-  assert.equal(beforeDesignationState.isTestAccount, false);
-  assert.equal(beforeDesignationState.canMarkTestAccount, true, JSON.stringify(beforeDesignationState.blockers));
-  assert.equal(beforeDesignationState.designationConfirmationText, `MARK TEST USER ${target.user_id}`);
+  assert.equal(beforeDeletion.status, 200);
+  const beforeDeletionState = (await beforeDeletion.json()).deletion;
+  assert.equal(beforeDeletionState.allowed, true);
+  assert.deepEqual(beforeDeletionState.blockers, []);
+  assert.equal(beforeDeletionState.confirmationText, `DELETE USER ${target.user_id}`);
 
-  const designationReason = 'Confirmed disposable integration fixture';
-  const designated = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/mark-test-account`, {
+  const deletionCookie = await adminDeletionProof(adminSession, target.user_id);
+  const otherTarget = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('other-proof-target@example.test','Other Proof Target',NOW()) RETURNING id,user_id`
+  )).rows[0];
+  otherTarget.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [otherTarget.id]
+  )).rows[0].user_id;
+  const wrongTarget = await fetch(`${baseUrl}/api/admin/accounts/${otherTarget.user_id}/delete-account`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
     body: JSON.stringify({
-      reason: designationReason,
-      testAccountConfirmed: true,
-      confirmation: `MARK TEST USER ${target.user_id}`
+      reason: 'This proof belongs to a different account',
+      confirmation: `DELETE USER ${otherTarget.user_id}`
     })
   });
-  assert.equal(designated.status, 200);
-  assert.deepEqual(await designated.json(), { ok: true, isTestAccount: true });
-  assert.deepEqual((await pool.query(
-    `SELECT is_test_account,test_account_marked_by_user_id,test_account_mark_reason
-       FROM users WHERE id=$1`, [target.user_id]
-  )).rows[0], {
-    is_test_account: true,
-    test_account_marked_by_user_id: admin.user_id,
-    test_account_mark_reason: designationReason
-  });
+  assert.equal(wrongTarget.status, 403);
+  assert.equal((await wrongTarget.json()).error, 'admin_step_up_required');
 
-  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-test-account`, {
+  const deleted = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/delete-account`, {
     method: 'POST',
     headers: {
-      'content-type': 'application/json', cookie: adminCookie,
-      'user-agent': 'Silver Glider Test Deletion Integration'
+      'content-type': 'application/json', cookie: deletionCookie,
+      'user-agent': 'Silver Glider Account Deletion Integration'
     },
     body: JSON.stringify({
       reason,
-      testAccountConfirmed: true,
       confirmation: `DELETE USER ${target.user_id}`
     })
   });
@@ -5460,27 +7097,61 @@ test('eligible test-account deletion purges disposable property and leaves only 
   assert.equal(deletedPayload.ok, true);
   assert.equal(deletedPayload.deletedUserId, Number(target.user_id));
   assert.equal(deletedPayload.mediaCleanupQueued, 1);
+  const proof = (await pool.query(
+    `SELECT action,target_user_id,consumed_at
+       FROM admin_action_proofs
+      WHERE operator_id=$1 ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0];
+  assert.equal(proof.action, 'account_delete');
+  assert.equal(proof.target_user_id, target.user_id);
+  assert.ok(proof.consumed_at, 'the proof commits as consumed with the deletion');
+  const reusedProof = await fetch(`${baseUrl}/api/admin/accounts/${otherTarget.user_id}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
+    body: JSON.stringify({
+      reason: 'A consumed proof must not delete another account',
+      confirmation: `DELETE USER ${otherTarget.user_id}`
+    })
+  });
+  assert.equal(reusedProof.status, 403);
+  assert.equal((await reusedProof.json()).error, 'admin_step_up_required');
 
   const tombstone = (await pool.query(
-    `SELECT id,name,account_status,deleted_at,deleted_by_user_id,deletion_reason
+    `SELECT id,name,account_status,deleted_at,deleted_by_user_id,
+            deleted_by_admin_operator_id,deletion_reason
        FROM users WHERE id=$1`, [target.user_id]
   )).rows[0];
   assert.equal(tombstone.id, target.user_id);
   assert.equal(tombstone.name, null);
   assert.equal(tombstone.account_status, 'deleted');
   assert.ok(tombstone.deleted_at);
-  assert.equal(tombstone.deleted_by_user_id, admin.user_id);
+  assert.equal(tombstone.deleted_by_user_id, null);
+  assert.equal(tombstone.deleted_by_admin_operator_id, operator.id);
   assert.equal(tombstone.deletion_reason, reason);
 
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM organizers WHERE id=$1', [target.id]
-  )).rows[0].count, 0);
+  )).rows[0].count, 1, 'an anonymized organizer shell retains financial referential integrity');
+  assert.deepEqual((await pool.query(
+    'SELECT email,name,org_name,public_slug FROM organizers WHERE id=$1', [target.id]
+  )).rows[0], {
+    email: `deleted+${target.user_id}@example.invalid`,
+    name: null,
+    org_name: null,
+    public_slug: null
+  });
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM user_identities WHERE user_id=$1', [target.user_id]
   )).rows[0].count, 0);
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM magic_link_tokens WHERE LOWER(email)=$1', [targetEmail]
   )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_identity_change_requests
+      WHERE target_user_id=$1`, [target.user_id]
+  )).rows[0].count, 0,
+  'tombstone deletion removes proposed identity PII instead of relying on FK cascade');
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM events WHERE organizer_id=$1', [target.id]
   )).rows[0].count, 0);
@@ -5507,7 +7178,7 @@ test('eligible test-account deletion purges disposable property and leaves only 
   assert.deepEqual(mediaJobs, [{
     public_id: 'sg-events-dev/event-photos/disposable-unique-photo',
     status: 'pending',
-    source_kind: 'test_account_deletion',
+    source_kind: 'account_deletion',
     source_user_id: target.user_id
   }]);
   assert.equal((await pool.query(
@@ -5533,31 +7204,32 @@ test('eligible test-account deletion purges disposable property and leaves only 
 
   const hiddenFromList = await fetch(
     `${baseUrl}/api/admin/accounts?q=${encodeURIComponent(targetEmail)}`,
-    { headers: { cookie: adminCookie } }
+    { headers: { cookie: adminSession } }
   );
   assert.equal(hiddenFromList.status, 200);
   assert.deepEqual((await hiddenFromList.json()).accounts, []);
   assert.equal((await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
-    headers: { cookie: adminCookie }
+    headers: { cookie: adminSession }
   })).status, 404);
 
   const actionHistory = (await pool.query(
     `SELECT action_type FROM admin_account_audit_log
       WHERE target_user_id=$1 ORDER BY id`, [target.user_id]
   )).rows.map(row => row.action_type);
-  assert.deepEqual(actionHistory, ['test_account_designated', 'test_account_deleted']);
+  assert.deepEqual(actionHistory, ['account_deleted']);
   const audits = (await pool.query(
-    `SELECT actor_user_id,target_user_id,action_type,reason,before_state,after_state,
-            metadata,user_agent
+    `SELECT actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+            before_state,after_state,metadata,user_agent
        FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+      WHERE target_user_id=$1 AND action_type='account_deleted'`,
     [target.user_id]
   )).rows;
   assert.equal(audits.length, 1);
-  assert.equal(audits[0].actor_user_id, admin.user_id);
+  assert.equal(audits[0].actor_user_id, null);
+  assert.equal(audits[0].actor_admin_operator_id, operator.id);
   assert.equal(audits[0].reason, reason);
   assert.equal(audits[0].after_state.status, 'deleted');
-  assert.equal(audits[0].user_agent, 'Silver Glider Test Deletion Integration');
+  assert.equal(audits[0].user_agent, 'Silver Glider Account Deletion Integration');
   const recordedAudit = JSON.stringify(audits[0]);
   assert.ok(!recordedAudit.includes(targetEmail));
   assert.ok(!recordedAudit.includes('+14155550171'));
@@ -5565,27 +7237,21 @@ test('eligible test-account deletion purges disposable property and leaves only 
   await assert.rejects(
     pool.query(
       `UPDATE admin_account_audit_log SET reason='tampered'
-        WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+        WHERE target_user_id=$1 AND action_type='account_deleted'`,
       [target.user_id]
     ),
     /append-only|immutable|cannot be updated/i
   );
   assert.equal((await pool.query(
     `SELECT reason FROM admin_account_audit_log
-      WHERE target_user_id=$1 AND action_type='test_account_deleted'`,
+      WHERE target_user_id=$1 AND action_type='account_deleted'`,
     [target.user_id]
   )).rows[0].reason, reason);
 });
 
 test('admin account invitations create no identity until the recipient claims the one-use link', async () => {
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('invitation-admin@example.test','Invitation Admin',TRUE,NOW()) RETURNING id,user_id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('invitation-admin@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
   const invitedEmail = 'future-host-support@example.test';
 
   assert.equal((await pool.query(
@@ -5608,7 +7274,7 @@ test('admin account invitations create no identity until the recipient claims th
   assert.equal(invited.status, 201);
   const invitedBody = await invited.json();
   const invitationPayload = invitedBody.invitation;
-  assert.equal(invitationPayload.email, 'f•••@example.test');
+  assert.equal(invitationPayload.email, invitedEmail);
   assert.equal(invitationPayload.status, 'sent');
   assert.ok(invitationPayload.sentAt);
   assert.equal(invitationPayload.prepareHostPage, true);
@@ -5667,7 +7333,8 @@ test('admin account invitations create no identity until the recipient claims th
   assert.doesNotMatch(secondUse.headers.get('set-cookie') || '', /sge_session=/);
 
   const audit = (await pool.query(
-    `SELECT action_type,actor_user_id,target_user_id,reason,metadata
+    `SELECT action_type,actor_user_id,actor_admin_operator_id,
+            target_user_id,reason,metadata
        FROM admin_account_audit_log
       WHERE metadata->>'invitationId'=$1 OR target_user_id=$2
       ORDER BY id`,
@@ -5680,9 +7347,13 @@ test('admin account invitations create no identity until the recipient claims th
   assert.equal(audit[1].target_user_id, null);
   assert.equal(audit[2].target_user_id, claimed.user_id);
   assert.deepEqual(audit.map(row => row.actor_user_id), [
-    admin.user_id, admin.user_id, claimed.user_id
+    null, null, claimed.user_id
   ]);
-  assert.equal(Number(audit[2].metadata.invitedByUserId), Number(admin.user_id));
+  assert.deepEqual(audit.map(row => row.actor_admin_operator_id), [
+    operator.id, operator.id, null
+  ]);
+  assert.equal(audit[2].metadata.invitedByUserId, null);
+  assert.equal(Number(audit[2].metadata.invitedByAdminOperatorId), Number(operator.id));
 
   const duplicate = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: adminCookie },
@@ -5694,14 +7365,7 @@ test('admin account invitations create no identity until the recipient claims th
 });
 
 test('an RSVP-only shell claims an invitation into the same canonical user without duplication', async () => {
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('shell-invitation-admin@example.test','Shell Invitation Admin',TRUE,NOW()) RETURNING id`
-  )).rows[0];
-  const adminUserId = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
-  assert.ok(adminUserId);
+  const operator = await createAdminOperator('shell-invitation-admin@example.test', 'support');
 
   const invitedEmail = 'rsvp-shell-invite@example.test';
   const shell = (await pool.query(
@@ -5726,7 +7390,7 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
         AND revoked_at IS NULL`, [shellUserId]
   )).rows[0].count, 0);
 
-  const adminCookie = `sge_session=${signSession(admin.id)}`;
+  const adminCookie = await signInAdminOperator(operator.email);
   const shellDetailBeforeClaim = await fetch(
     `${baseUrl}/api/admin/accounts/${shellUserId}`,
     { headers: { cookie: adminCookie } }
@@ -5735,6 +7399,9 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
   const shellDetailPayload = await shellDetailBeforeClaim.json();
   assert.equal(shellDetailPayload.account.email, null,
     'a legacy RSVP email is not presented as a verified sign-in method');
+  assert.equal(shellDetailPayload.account.contactEmail, invitedEmail);
+  assert.equal(shellDetailPayload.contactSummary.email.label,
+    'Contact email (not verified for sign-in)');
   assert.deepEqual(shellDetailPayload.identities, []);
 
   const invited = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
@@ -5746,7 +7413,7 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
   });
   assert.equal(invited.status, 201);
   const invitation = (await invited.json()).invitation;
-  assert.equal(invitation.email, 'r•••@example.test');
+  assert.equal(invitation.email, invitedEmail);
   assert.ok(!('claimUrl' in invitation));
   assert.ok(!('token' in invitation));
   assert.equal((await pool.query(
@@ -5787,12 +7454,8 @@ test('an RSVP-only shell claims an invitation into the same canonical user witho
 
 test('concurrent account invitations serialize by normalized email and mint one live link', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('concurrent-invite-admin@example.test','Concurrent Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  const cookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('concurrent-invite-admin@example.test', 'support');
+  const cookie = await signInAdminOperator(operator.email);
   const email = 'same-invite@example.test';
   const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
@@ -5825,12 +7488,8 @@ test('concurrent account invitations serialize by normalized email and mint one 
 test('failed account-invitation delivery consumes its token and permits an immediate retry', async t => {
   resetRateLimits();
   t.after(() => adminAccountsRoutes.setAccountClaimSenderForTests());
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('failed-invite-admin@example.test','Failed Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  const cookie = `sge_session=${signSession(admin.id)}`;
+  const operator = await createAdminOperator('failed-invite-admin@example.test', 'support');
+  const cookie = await signInAdminOperator(operator.email);
   const email = 'retry-invite@example.test';
   const request = () => fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
@@ -5872,14 +7531,7 @@ test('failed account-invitation delivery consumes its token and permits an immed
 
 test('a stale never-sent invitation is revoked before its replacement is created', async () => {
   resetRateLimits();
-  const admin = (await pool.query(
-    `INSERT INTO organizers (email,name,is_admin,last_login_at)
-     VALUES ('stale-invite-admin@example.test','Stale Invite Admin',TRUE,NOW())
-     RETURNING id`
-  )).rows[0];
-  admin.user_id = (await pool.query(
-    'SELECT user_id FROM organizers WHERE id=$1', [admin.id]
-  )).rows[0].user_id;
+  const operator = await createAdminOperator('stale-invite-admin@example.test', 'support');
   const email = 'stale-invite@example.test';
   const token = (await pool.query(
     `INSERT INTO magic_link_tokens
@@ -5891,18 +7543,20 @@ test('a stale never-sent invitation is revoked before its replacement is created
   )).rows[0];
   const stale = (await pool.query(
     `INSERT INTO admin_account_invitations
-       (email,name,magic_link_token_id,created_by_user_id,expires_at,created_at)
+       (email,name,magic_link_token_id,created_by_admin_operator_id,expires_at,created_at)
      VALUES ($1,'Stale Recipient',$2,$3,NOW() + INTERVAL '7 days',
              NOW() - INTERVAL '6 minutes')
      RETURNING id`,
-    [email, token.id, admin.user_id]
+    [email, token.id, operator.id]
   )).rows[0];
+
+  const adminCookie = await signInAdminOperator(operator.email);
 
   const response = await fetch(`${baseUrl}/api/admin/accounts/invitations`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      cookie: `sge_session=${signSession(admin.id)}`
+      cookie: adminCookie
     },
     body: JSON.stringify({ name: 'Stale Recipient', email })
   });
@@ -5945,6 +7599,8 @@ test('an event reports how many guests are returning and how many came from invi
   await createRsvp(target.id, { first_name: 'Ivo', email: 'ivo-returning@example.test' });
   await createRsvp(target.id, { first_name: 'Sam', email: 'sam-new@example.test' });
   await createRsvp(target.id, { first_name: 'Nell', email: 'nell-returning@example.test' });
+  const future = await createEvent({ slug: 'returning-future', title: 'Returning Future', event_date: '2032-06-06' });
+  await createRsvp(future.id, { first_name: 'Rae', email: 'rae-returning@example.test' });
 
   const { event } = await (await fetch(`${baseUrl}/api/events/${target.id}`, { headers: { cookie } })).json();
   assert.equal(event.rsvp_count, 4);
@@ -5959,4 +7615,2496 @@ test('an event reports how many guests are returning and how many came from invi
   assert.equal(labels['Rae Person'], '2nd time');
   assert.equal(labels['Ivo Person'], '2nd time');
   assert.equal(labels['Sam Person'], 'First time');
+});
+
+test('recipient-verified admin email replacement preserves recovery aliases and never signs the recipient in', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('identity-primary-a@example.test','Identity Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const primary = await addVerifiedEmailIdentity(
+    target.user_id,
+    'identity-primary-a@example.test',
+    { primary: true, source: 'identity_fixture_primary' }
+  );
+  const recovery = await addVerifiedEmailIdentity(
+    target.user_id,
+    'identity-recovery-b@example.test',
+    { source: 'identity_fixture_recovery' }
+  );
+  const oldMagic = (await pool.query(
+    `INSERT INTO magic_link_tokens (token,email,expires_at,intent,return_path)
+     VALUES ('identity-old-primary-link','identity-primary-a@example.test',
+             NOW() + INTERVAL '30 minutes','sign_in','/dashboard')
+     RETURNING id`
+  )).rows[0];
+  const recoveryMagic = (await pool.query(
+    `INSERT INTO magic_link_tokens (token,email,expires_at,intent,return_path)
+     VALUES ('identity-recovery-link','identity-recovery-b@example.test',
+             NOW() + INTERVAL '30 minutes','sign_in','/dashboard')
+     RETURNING id`
+  )).rows[0];
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'identity-new-c@example.test',
+        reason: 'Account owner requested a new primary email'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestedBody = await requested.json();
+  assert.equal(requestedBody.identityChangeRequest.status, 'pending');
+  assert.equal(requestedBody.identityChangeRequest.value, 'identity-new-c@example.test');
+  const recipientToken = tokenFromLink(
+    lastDevEmail('identity-new-c@example.test', 'admin_identity_change').link
+  );
+  assert.ok(recipientToken);
+
+  const unchangedBeforeProof = (await pool.query(
+    `SELECT email FROM organizers WHERE user_id=$1`, [target.user_id]
+  )).rows[0];
+  assert.equal(unchangedBeforeProof.email, 'identity-primary-a@example.test');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND normalized_value='identity-new-c@example.test'
+        AND revoked_at IS NULL`, [target.user_id]
+  )).rows[0].count, 0, 'admin delivery alone never grants ownership');
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const preview = await fetch(
+      `${baseUrl}/api/account/identity-change?token=${encodeURIComponent(recipientToken)}`
+    );
+    assert.equal(preview.status, 200);
+    const previewBody = await preview.json();
+    assert.deepEqual(
+      { type: previewBody.request.type, status: previewBody.request.status, requiresCode: previewBody.request.requiresCode },
+      { type: 'email', status: 'pending', requiresCode: false }
+    );
+    assert.equal(JSON.stringify(previewBody).includes(recipientToken), false,
+      'preview never reflects the bearer token');
+  }
+
+  const otherCustomerCookie = cookieHeader(
+    `sge_session=${signSession(organizerId)}`,
+    `sge_identity_step_up=${signIdentityStepUp(organizerId)}`
+  );
+  const verified = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: otherCustomerCookie },
+    body: JSON.stringify({ token: recipientToken })
+  });
+  assert.equal(verified.status, 200);
+  assert.deepEqual(await verified.json(), { ok: true, type: 'email' });
+  const verificationCookies = verified.headers.get('set-cookie') || '';
+  assert.doesNotMatch(verificationCookies, /sge_session=/);
+  assert.doesNotMatch(verificationCookies, /sge_identity_step_up=/);
+  const stillOtherCustomer = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { cookie: otherCustomerCookie }
+  });
+  assert.equal(stillOtherCustomer.status, 200);
+  assert.equal(Number((await stillOtherCustomer.json()).organizer.id), Number(organizerId));
+
+  const identities = (await pool.query(
+    `SELECT id,normalized_value,is_primary,revoked_at
+       FROM user_identities WHERE user_id=$1 AND identity_type='email'
+      ORDER BY normalized_value`,
+    [target.user_id]
+  )).rows;
+  const oldPrimary = identities.find(row => row.normalized_value === 'identity-primary-a@example.test');
+  const preservedRecovery = identities.find(row => row.normalized_value === 'identity-recovery-b@example.test');
+  const newPrimary = identities.find(row => row.normalized_value === 'identity-new-c@example.test');
+  assert.equal(Number(oldPrimary.id), Number(primary.id));
+  assert.ok(oldPrimary.revoked_at);
+  assert.equal(oldPrimary.is_primary, false);
+  assert.equal(Number(preservedRecovery.id), Number(recovery.id));
+  assert.equal(preservedRecovery.revoked_at, null);
+  assert.equal(preservedRecovery.is_primary, false);
+  assert.equal(newPrimary.revoked_at, null);
+  assert.equal(newPrimary.is_primary, true);
+  assert.equal((await pool.query(
+    'SELECT email FROM organizers WHERE user_id=$1', [target.user_id]
+  )).rows[0].email, 'identity-new-c@example.test');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identity_verifications
+      WHERE user_identity_id=$1 AND revoked_at IS NULL`, [primary.id]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identity_verifications
+      WHERE user_identity_id=$1 AND revoked_at IS NULL`, [recovery.id]
+  )).rows[0].count, 1);
+  assert.ok((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE id=$1', [oldMagic.id]
+  )).rows[0].used_at);
+  assert.equal((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE id=$1', [recoveryMagic.id]
+  )).rows[0].used_at, null, 'recovery-address sign-in proof remains usable');
+
+  const completionAudit = (await pool.query(
+    `SELECT actor_user_id,actor_admin_operator_id,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='identity_change_recipient_verified'`,
+    [target.user_id]
+  )).rows[0];
+  assert.equal(completionAudit.actor_user_id, null);
+  assert.equal(Number(completionAudit.actor_admin_operator_id), Number(operator.id));
+  assert.equal(completionAudit.metadata.performedBy, 'recipient');
+
+  const replay = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: recipientToken })
+  });
+  assert.equal(replay.status, 400);
+});
+
+test('identity collision rolls back the replacement and remains dismissible without transferring ownership', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-conflict-admin@example.test', 'super_admin');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('collision-old@example.test','Collision Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  await addVerifiedEmailIdentity(target.user_id, 'collision-old@example.test', {
+    primary: true,
+    source: 'collision_fixture'
+  });
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'collision-new@example.test',
+        reason: 'Owner requested this replacement email address'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestId = (await requested.json()).identityChangeRequest.id;
+  const token = tokenFromLink(
+    lastDevEmail('collision-new@example.test', 'admin_identity_change').link
+  );
+
+  const competing = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('collision-new@example.test','Competing Owner',NOW())
+     RETURNING id`
+  )).rows[0];
+  competing.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [competing.id]
+  )).rows[0].user_id;
+  await addVerifiedEmailIdentity(competing.user_id, 'collision-new@example.test', {
+    primary: true,
+    source: 'collision_competing_fixture'
+  });
+
+  const verification = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  assert.equal(verification.status, 409);
+  assert.equal((await verification.json()).error, 'verification_conflict');
+  assert.equal((await pool.query(
+    'SELECT email FROM organizers WHERE user_id=$1', [target.user_id]
+  )).rows[0].email, 'collision-old@example.test');
+  const oldPrimary = (await pool.query(
+    `SELECT is_primary,revoked_at FROM user_identities
+      WHERE user_id=$1 AND normalized_value='collision-old@example.test'`,
+    [target.user_id]
+  )).rows[0];
+  assert.equal(oldPrimary.is_primary, true);
+  assert.equal(oldPrimary.revoked_at, null);
+  assert.equal((await pool.query(
+    `SELECT user_id FROM user_identities
+      WHERE identity_type='email' AND normalized_value='collision-new@example.test'
+        AND revoked_at IS NULL`
+  )).rows[0].user_id, competing.user_id);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'conflict');
+  const conflict = (await pool.query(
+    `SELECT candidate_user_id,conflicting_user_id,reason
+       FROM user_identity_conflicts
+      WHERE verification_source='admin_identity_change.email_link'
+        AND source_record_id=$1`, [requestId]
+  )).rows[0];
+  assert.deepEqual({
+    candidate: Number(conflict.candidate_user_id),
+    owner: Number(conflict.conflicting_user_id),
+    reason: conflict.reason
+  }, {
+    candidate: Number(target.user_id),
+    owner: Number(competing.user_id),
+    reason: 'already_claimed'
+  });
+
+  const cancelled = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/cancel`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Conflict reviewed and dismissed by support' })
+    }
+  );
+  assert.equal(cancelled.status, 200);
+  assert.equal((await cancelled.json()).identityChangeRequest.status, 'cancelled');
+});
+
+test('customer sessions never expose or mutate dedicated account-support APIs', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-dedicated@example.test', 'support');
+  const dedicatedCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('legacy-gated-target@example.test','Legacy Gated Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const pending = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: dedicatedCookie },
+      body: JSON.stringify({
+        type: 'email',
+        value: 'legacy-gated-new@example.test',
+        reason: 'Recipient asked support to prepare this email'
+      })
+    }
+  );
+  assert.equal(pending.status, 201);
+
+  const legacy = (await pool.query(
+    `INSERT INTO organizers (email,name,is_admin,last_login_at)
+     VALUES ('legacy-identity-admin@example.test','Legacy Identity Admin',TRUE,NOW())
+     RETURNING id`
+  )).rows[0];
+  const legacyCookie = `sge_session=${signSession(legacy.id)}`;
+  const customerList = await fetch(`${baseUrl}/api/admin/accounts`, {
+    headers: { cookie: legacyCookie }
+  });
+  assert.equal(customerList.status, 401);
+  assert.equal((await customerList.json()).error, 'admin_auth_required');
+  const customerDetail = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
+    headers: { cookie: legacyCookie }
+  });
+  assert.equal(customerDetail.status, 401);
+  assert.equal((await customerDetail.json()).error, 'admin_auth_required');
+
+  const dedicatedList = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    { headers: { cookie: legacyCookie } }
+  );
+  assert.equal(dedicatedList.status, 401);
+  assert.equal((await dedicatedList.json()).error, 'admin_auth_required');
+  const dedicatedMutation = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: legacyCookie },
+      body: JSON.stringify({
+        type: 'phone', value: '+14155550121', reason: 'Legacy sessions cannot prepare changes'
+      })
+    }
+  );
+  assert.equal(dedicatedMutation.status, 401);
+  assert.equal((await dedicatedMutation.json()).error, 'admin_auth_required');
+});
+
+test('admin-prepared phone replacement rotates recipient proof on resend and accepts only the latest Twilio check', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('phone-change-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('phone-change-target@example.test','Phone Change Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const oldPhone = '+14155550131';
+  const newPhone = '+14155550132';
+  const oldCredential = (await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW()) RETURNING id`,
+    [target.id, oldPhone]
+  )).rows[0];
+  const oldIdentity = (await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,source_record_id,is_primary)
+     VALUES ($1,'phone',$2,$2,NOW(),'account','phone_change_fixture',$3,TRUE)
+     RETURNING id`,
+    [target.user_id, oldPhone, oldCredential.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identity_verifications
+       (user_identity_id,verification_scope,verified_at,verification_source,source_record_id)
+     VALUES ($1,'account',NOW(),'phone_change_fixture',$2)`,
+    [oldIdentity.id, oldCredential.id]
+  );
+
+  const originalStart = phoneVerification.startVerification;
+  const originalCheck = phoneVerification.checkVerification;
+  const originalSendSms = sms.sendSms;
+  const firstSid = `VE${'1'.repeat(32)}`;
+  const secondSid = `VE${'2'.repeat(32)}`;
+  const startedSids = [];
+  const checkedSids = [];
+  const recipientMessages = [];
+  let signalStaleCheck;
+  let releaseStaleCheck;
+  const staleCheckStarted = new Promise(resolve => { signalStaleCheck = resolve; });
+  const staleCheckGate = new Promise(resolve => { releaseStaleCheck = resolve; });
+  phoneVerification.startVerification = async phone => {
+    assert.equal(phone, newPhone);
+    const verificationSid = startedSids.length ? secondSid : firstSid;
+    startedSids.push(verificationSid);
+    return { verificationSid, phone, status: 'pending' };
+  };
+  phoneVerification.checkVerification = async ({ verificationSid, code }) => {
+    checkedSids.push(verificationSid);
+    if (code === '000000') {
+      throw new phoneVerification.PhoneVerificationError('That verification code is invalid', {
+        code: 'invalid_phone_verification_code', status: 400
+      });
+    }
+    if (code === '111111') {
+      signalStaleCheck();
+      await staleCheckGate;
+      throw new phoneVerification.PhoneVerificationError('That verification code is invalid', {
+        code: 'invalid_phone_verification_code', status: 400
+      });
+    }
+    if (code === '999999') {
+      throw new phoneVerification.PhoneVerificationError('Phone verification is temporarily unavailable', {
+        code: 'phone_verification_unavailable', status: 502
+      });
+    }
+    assert.equal(code, '246810');
+    return { approved: true, verificationSid, phone: newPhone, status: 'approved' };
+  };
+  sms.sendSms = async payload => {
+    recipientMessages.push(payload);
+    return { sid: `SM${String(recipientMessages.length).repeat(32)}`, status: 'accepted', recipient: payload.to };
+  };
+  t.after(() => {
+    phoneVerification.startVerification = originalStart;
+    phoneVerification.checkVerification = originalCheck;
+    sms.sendSms = originalSendSms;
+  });
+
+  const requested = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'phone', value: newPhone,
+        reason: 'Account owner requested a replacement mobile number'
+      })
+    }
+  );
+  assert.equal(requested.status, 201);
+  const requestId = (await requested.json()).identityChangeRequest.id;
+  assert.deepEqual(startedSids, [firstSid]);
+  assert.equal(recipientMessages.length, 1);
+  assert.equal(recipientMessages[0].to, newPhone);
+  const firstLink = recipientMessages[0].body.match(/https?:\/\/\S+/)?.[0];
+  const firstToken = tokenFromLink(firstLink);
+  assert.ok(firstToken, 'recipient—not the administrator—receives the high-entropy page token');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2
+        AND revoked_at IS NULL`, [target.user_id, newPhone]
+  )).rows[0].count, 0);
+
+  const wrongCode = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '000000' })
+  });
+  assert.equal(wrongCode.status, 400);
+  assert.equal((await wrongCode.json()).error, 'verification_invalid');
+  assert.equal((await pool.query(
+    `SELECT verification_attempts,status FROM admin_account_identity_change_requests WHERE id=$1`,
+    [requestId]
+  )).rows[0].verification_attempts, 1);
+
+  const inFlightOldCheck = fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '111111' })
+  });
+  await staleCheckStarted;
+  const resent = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/resend`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Recipient requested a fresh phone verification code' })
+    }
+  );
+  assert.equal(resent.status, 200);
+  releaseStaleCheck();
+  const staleCheck = await inFlightOldCheck;
+  assert.equal(staleCheck.status, 400);
+  assert.deepEqual(startedSids, [firstSid, secondSid]);
+  assert.equal(recipientMessages.length, 2);
+  const secondLink = recipientMessages[1].body.match(/https?:\/\/\S+/)?.[0];
+  const secondToken = tokenFromLink(secondLink);
+  assert.ok(secondToken);
+  assert.notEqual(secondToken, firstToken);
+  const rotated = (await pool.query(
+    `SELECT provider_sid,verification_attempts,status FROM admin_account_identity_change_requests
+      WHERE id=$1`, [requestId]
+  )).rows[0];
+  assert.equal(rotated.provider_sid, secondSid);
+  assert.equal(rotated.verification_attempts, 0);
+  assert.equal(rotated.status, 'pending');
+
+  const checksBeforeOldToken = checkedSids.length;
+  const oldToken = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: firstToken, code: '246810' })
+  });
+  assert.equal(oldToken.status, 400);
+  assert.equal(checkedSids.length, checksBeforeOldToken,
+    'a rotated token is rejected before contacting Twilio');
+
+  const providerOutage = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: secondToken, code: '999999' })
+  });
+  assert.equal(providerOutage.status, 502);
+  assert.equal((await providerOutage.json()).error, 'phone_verification_unavailable');
+  assert.equal((await pool.query(
+    'SELECT verification_attempts FROM admin_account_identity_change_requests WHERE id=$1',
+    [requestId]
+  )).rows[0].verification_attempts, 0,
+  'provider outages must not consume the recipient\'s proof attempts');
+
+  const verified = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: secondToken, code: '246810' })
+  });
+  assert.equal(verified.status, 200);
+  assert.deepEqual(await verified.json(), { ok: true, type: 'phone' });
+  assert.deepEqual(checkedSids, [firstSid, firstSid, secondSid, secondSid]);
+  assert.doesNotMatch(verified.headers.get('set-cookie') || '', /sge_(?:session|identity_step_up)=/);
+
+  const phoneIdentities = (await pool.query(
+    `SELECT normalized_value,is_primary,revoked_at FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' ORDER BY id`, [target.user_id]
+  )).rows;
+  assert.equal(phoneIdentities.length, 2);
+  assert.equal(phoneIdentities[0].normalized_value, oldPhone);
+  assert.ok(phoneIdentities[0].revoked_at);
+  assert.equal(phoneIdentities[1].normalized_value, newPhone);
+  assert.equal(phoneIdentities[1].revoked_at, null);
+  assert.equal(phoneIdentities[1].is_primary, true);
+  const credentials = (await pool.query(
+    `SELECT phone_e164,revoked_at FROM account_phone_credentials
+      WHERE organizer_id=$1 ORDER BY id`, [target.id]
+  )).rows;
+  assert.equal(credentials[0].phone_e164, oldPhone);
+  assert.ok(credentials[0].revoked_at);
+  assert.equal(credentials[1].phone_e164, newPhone);
+  assert.equal(credentials[1].revoked_at, null);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'verified');
+});
+
+test('sign-out-all serializes behind recipient delivery and cancels the proof before it can be used', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('identity-race-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator(operator.email);
+  const target = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('identity-race-old@example.test','Identity Race Target',NOW())
+     RETURNING id`
+  )).rows[0];
+  target.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [target.id]
+  )).rows[0].user_id;
+  const created = await fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({
+        type: 'email', value: 'identity-race-new@example.test',
+        reason: 'Owner asked support to prepare a new email'
+      })
+    }
+  );
+  assert.equal(created.status, 201);
+  const requestId = (await created.json()).identityChangeRequest.id;
+
+  const originalSender = mailer.sendAdminIdentityChangeVerification;
+  let releaseDelivery;
+  let deliveryStarted;
+  const deliveryGate = new Promise(resolve => { releaseDelivery = resolve; });
+  const startedGate = new Promise(resolve => { deliveryStarted = resolve; });
+  let resendLink = null;
+  mailer.sendAdminIdentityChangeVerification = async payload => {
+    resendLink = payload.link;
+    deliveryStarted();
+    await deliveryGate;
+    return { id: 'race-delivery' };
+  };
+  t.after(() => { mailer.sendAdminIdentityChangeVerification = originalSender; });
+
+  const resendPromise = fetch(
+    `${baseUrl}/api/admin/accounts/${target.user_id}/identity-changes/${requestId}/resend`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminCookie },
+      body: JSON.stringify({ reason: 'Recipient requested another verification email' })
+    }
+  );
+  await startedGate;
+  let signOutSettled = false;
+  const signOutPromise = fetch(`${baseUrl}/api/admin/accounts/${target.user_id}/sign-out-all`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminCookie },
+    body: JSON.stringify({ reason: 'Owner reported that all existing access should be revoked' })
+  }).then(response => {
+    signOutSettled = true;
+    return response;
+  });
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(signOutSettled, false,
+    'access invalidation waits for the serialized outbound delivery section');
+  releaseDelivery();
+
+  const [resent, signedOut] = await Promise.all([resendPromise, signOutPromise]);
+  assert.equal(resent.status, 200);
+  assert.equal(signedOut.status, 200);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_account_identity_change_requests WHERE id=$1', [requestId]
+  )).rows[0].status, 'cancelled');
+  const token = tokenFromLink(resendLink);
+  const blocked = await fetch(`${baseUrl}/api/account/identity-change/verify`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  assert.equal(blocked.status, 400);
+  assert.equal((await pool.query(
+    `SELECT (after_state->>'identityChangesCancelled')::int AS cancelled
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='sessions_revoked'`,
+    [target.user_id]
+  )).rows[0].cancelled, 1);
+});
+
+test('Done For You provisioning is dedicated-admin only, aligned, unverified, idempotent, and session-free', async () => {
+  resetRateLimits();
+  const support = await createAdminOperator('dfy-support@example.test', 'support');
+  const supportCookie = await signInAdminOperator(support.email);
+  const me = await fetch(`${baseUrl}/api/admin/auth/me`, { headers: { cookie: supportCookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).capabilities.manageDoneForYou, true);
+
+  const contact = {
+    hostName: 'Moonlight Social',
+    contactName: 'Maya Client',
+    email: 'maya.dfy@example.test',
+    phone: '+14155550191'
+  };
+  assert.equal((await doneForYouLookup('', contact)).status, 401);
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const legacy = await doneForYouLookup(`sge_session=${signSession(organizerId)}`, contact);
+  assert.equal(legacy.status, 401);
+  assert.equal((await legacy.json()).error, 'admin_auth_required');
+
+  const invalid = await doneForYouLookup(supportCookie, { email: 'not-an-email', phone: 'nope' });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error, 'invalid_done_for_you_contact');
+  const previewResponse = await doneForYouLookup(supportCookie, contact);
+  assert.equal(previewResponse.status, 200);
+  const preview = await previewResponse.json();
+  assert.equal(preview.expectedUserId, null);
+  assert.equal(preview.matched, false);
+
+  const skippedPreview = await fetch(`${baseUrl}/api/admin/done-for-you`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: supportCookie },
+    body: JSON.stringify(contact)
+  });
+  assert.equal(skippedPreview.status, 409);
+  assert.equal((await skippedPreview.json()).error, 'done_for_you_lookup_required');
+
+  const created = await provisionDoneForYou(supportCookie, { ...contact, expectedUserId: null });
+  assert.equal(created.status, 201);
+  assert.doesNotMatch(created.headers.get('set-cookie') || '', /sge_session=/);
+  const first = (await created.json()).client;
+  assert.equal(first.userId, first.organizerId);
+  assert.equal(first.userCreated, true);
+  assert.equal(first.claimed, false);
+  const stored = (await pool.query(
+    `SELECT canonical_user.name,canonical_user.account_status,
+            organizer.id,organizer.user_id,organizer.org_name,organizer.public_slug,
+            organizer.last_login_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [first.userId]
+  )).rows[0];
+  assert.equal(stored.id, first.userId);
+  assert.equal(stored.user_id, first.userId);
+  assert.equal(stored.name, contact.contactName);
+  assert.equal(stored.org_name, contact.hostName);
+  assert.equal(stored.account_status, 'active');
+  assert.equal(stored.last_login_at, null);
+  const identities = (await pool.query(
+    `SELECT identity_type,normalized_value,verification_scope,verified_at,is_primary
+       FROM user_identities WHERE user_id=$1 ORDER BY identity_type`,
+    [first.userId]
+  )).rows;
+  assert.deepEqual(identities.map(row => ({
+    type: row.identity_type,
+    value: row.normalized_value,
+    scope: row.verification_scope,
+    verified: Boolean(row.verified_at),
+    primary: row.is_primary
+  })), [
+    { type: 'email', value: contact.email, scope: 'unverified', verified: false, primary: false },
+    { type: 'phone', value: contact.phone, scope: 'unverified', verified: false, primary: false }
+  ]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE organizer_id=$1',
+    [first.userId]
+  )).rows[0].count, 0);
+
+  const repeatPreview = await doneForYouLookup(supportCookie, contact);
+  const repeatPreviewBody = await repeatPreview.json();
+  assert.equal(repeatPreviewBody.expectedUserId, first.userId);
+  const repeated = await provisionDoneForYou(supportCookie, {
+    ...contact,
+    expectedUserId: first.userId
+  });
+  assert.equal(repeated.status, 200);
+  assert.equal((await repeated.json()).client.noOp, true);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [first.userId]
+  )).rows[0].count, 1);
+  const audit = (await pool.query(
+    `SELECT before_state,after_state,metadata FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type LIKE 'done_for_you_client_%'`,
+    [first.userId]
+  )).rows;
+  assert.equal(audit.length, 1);
+  assert.doesNotMatch(JSON.stringify(audit), /Maya Client|Moonlight Social|maya\.dfy|50191/);
+
+  const list = await fetch(`${baseUrl}/api/admin/done-for-you`, { headers: { cookie: supportCookie } });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).clients[0].userId, first.userId);
+  const detail = await fetch(`${baseUrl}/api/admin/done-for-you/${first.id}`, {
+    headers: { cookie: supportCookie }
+  });
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json()).owner.userId, first.userId);
+});
+
+test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-race@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const contact = {
+    hostName: 'Race Safe Host',
+    contactName: 'Race Safe Client',
+    email: 'dfy-race-client@example.test',
+    phone: '+14155550192',
+    expectedUserId: null
+  };
+  const responses = await Promise.all([
+    provisionDoneForYou(session, contact),
+    provisionDoneForYou(session, contact)
+  ]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409]);
+  const conflictBody = await responses.find(response => response.status === 409).json();
+  assert.equal(conflictBody.error, 'done_for_you_lookup_changed');
+  assert.equal(typeof conflictBody.actualUserId, 'number');
+  const ownerId = conflictBody.actualUserId;
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM user_identities
+      WHERE identity_type='email' AND normalized_value=$1 AND revoked_at IS NULL`,
+    [contact.email]
+  )).rows[0].count, 1);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM organizers WHERE user_id=$1', [ownerId]
+  )).rows[0].count, 1);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1', [ownerId]
+  )).rows[0].count, 1);
+});
+
+test('Done For You exact ownership handles unverified contacts, split owners, and legacy projection drift safely', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-identity@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  async function createCompat(email, name) {
+    const inserted = (await pool.query(
+      'INSERT INTO organizers (email,name) VALUES ($1,$2) RETURNING id',
+      [email, name]
+    )).rows[0];
+    return (await pool.query('SELECT id,user_id FROM organizers WHERE id=$1', [inserted.id])).rows[0];
+  }
+  async function addUnverified(userId, type, value) {
+    await pool.query(
+      `INSERT INTO user_identities
+         (user_id,identity_type,value,normalized_value,verification_scope,
+          verification_source,is_primary)
+       VALUES ($1,$2,$3,$3,'unverified','integration_test',FALSE)`,
+      [userId, type, value]
+    );
+  }
+
+  const ownerA = await createCompat('owner-a-compat@example.test', 'Owner A');
+  await addUnverified(ownerA.user_id, 'email', 'owner-a@example.test');
+  await addUnverified(ownerA.user_id, 'phone', '+14155550201');
+  const sameOwner = await doneForYouLookup(session, {
+    email: 'owner-a@example.test', phone: '+14155550201'
+  });
+  assert.equal(sameOwner.status, 200);
+  assert.equal((await sameOwner.json()).expectedUserId, ownerA.user_id);
+
+  const phoneAlone = await doneForYouLookup(session, {
+    email: 'new-email@example.test', phone: '+14155550201'
+  });
+  assert.equal(phoneAlone.status, 409);
+  assert.deepEqual((await phoneAlone.json()).ownerUserIds, [ownerA.user_id]);
+
+  const ownerB = await createCompat('owner-b-compat@example.test', 'Owner B');
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verified_at,
+        verification_scope,verification_source,is_primary)
+     VALUES ($1,'phone',$2,$2,NOW(),'account','integration_test',TRUE)`,
+    [ownerB.user_id, '+14155550202']
+  );
+  const split = await doneForYouLookup(session, {
+    email: 'owner-a@example.test', phone: '+14155550202'
+  });
+  assert.equal(split.status, 409);
+  const splitBody = await split.json();
+  assert.equal(splitBody.error, 'split_identity_owners');
+  assert.equal(splitBody.emailOwnerUserId, ownerA.user_id);
+  assert.equal(splitBody.phoneOwnerUserId, ownerB.user_id);
+  assert.doesNotMatch(JSON.stringify(splitBody), /owner-a@example|55550202/);
+
+  const legacyConflict = await createCompat('owner-a@example.test', 'Legacy Conflict');
+  const disagreement = await doneForYouLookup(session, { email: 'owner-a@example.test' });
+  assert.equal(disagreement.status, 409);
+  const disagreementBody = await disagreement.json();
+  assert.equal(disagreementBody.error, 'identity_projection_conflict');
+  assert.deepEqual(new Set(disagreementBody.ownerUserIds), new Set([ownerA.user_id, legacyConflict.user_id]));
+
+  const legacyEmail = await createCompat('legacy-only@example.test', 'Legacy Email');
+  const userCountBeforeEmail = Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count);
+  const legacyEmailPreview = await doneForYouLookup(session, { email: 'legacy-only@example.test' });
+  assert.equal(legacyEmailPreview.status, 200);
+  const legacyEmailBody = await legacyEmailPreview.json();
+  assert.equal(legacyEmailBody.expectedUserId, legacyEmail.user_id);
+  assert.ok(legacyEmailBody.matchedBy.includes('legacy_email'));
+  const legacyEmailProvision = await provisionDoneForYou(session, {
+    hostName: 'Legacy Email Host', contactName: 'Legacy Email',
+    email: 'legacy-only@example.test', expectedUserId: legacyEmail.user_id
+  });
+  assert.equal(legacyEmailProvision.status, 201);
+  assert.equal(Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count), userCountBeforeEmail);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2`,
+    [legacyEmail.user_id, 'legacy-only@example.test']
+  )).rows[0].verification_scope, 'unverified');
+
+  const legacyPhone = await createCompat('legacy-phone@example.test', 'Legacy Phone');
+  await pool.query(
+    `INSERT INTO account_phone_credentials (organizer_id,phone_e164,verified_at)
+     VALUES ($1,$2,NOW())`,
+    [legacyPhone.id, '+14155550203']
+  );
+  const userCountBeforePhone = Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count);
+  const legacyPhonePreview = await doneForYouLookup(session, {
+    email: 'legacy-phone-new@example.test', phone: '+14155550203'
+  });
+  assert.equal(legacyPhonePreview.status, 200);
+  const legacyPhoneBody = await legacyPhonePreview.json();
+  assert.equal(legacyPhoneBody.expectedUserId, legacyPhone.user_id);
+  assert.ok(legacyPhoneBody.matchedBy.includes('legacy_verified_phone'));
+  const legacyPhoneProvision = await provisionDoneForYou(session, {
+    hostName: 'Legacy Phone Host', contactName: 'Legacy Phone',
+    email: 'legacy-phone-new@example.test', phone: '+14155550203',
+    expectedUserId: legacyPhone.user_id
+  });
+  assert.equal(legacyPhoneProvision.status, 201);
+  assert.equal(Number((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count), userCountBeforePhone);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND identity_type='phone' AND normalized_value=$2`,
+    [legacyPhone.user_id, '+14155550203']
+  )).rows[0].verification_scope, 'account');
+});
+
+test('target-bound Done For You claims are scanner-safe, revoke old links, and claim the exact prepared user', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-claim@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Claimed Host', contactName: 'Casey Claim',
+    email: 'casey-claim@example.test', phone: '+14155550211'
+  });
+  const links = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { links.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+
+  const sendClaim = () => fetch(`${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: session },
+    body: '{}'
+  });
+  const first = await sendClaim();
+  assert.equal(first.status, 201);
+  const firstBody = await first.json();
+  assert.doesNotMatch(JSON.stringify(firstBody), /token|auth\/verify/i);
+  const firstToken = tokenFromLink(links[0]);
+  const second = await sendClaim();
+  assert.equal(second.status, 201);
+  const secondBody = await second.json();
+  assert.doesNotMatch(JSON.stringify(secondBody), /token|auth\/verify/i);
+  const secondToken = tokenFromLink(links[1]);
+  assert.notEqual(firstToken, secondToken);
+
+  const oldPost = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: firstToken })
+  });
+  assert.equal(oldPost.status, 400);
+  const scanOne = await fetch(`${baseUrl}/auth/verify?token=${secondToken}`, { redirect: 'manual' });
+  const scanTwo = await fetch(`${baseUrl}/auth/verify?token=${secondToken}`, { redirect: 'manual' });
+  assert.equal(scanOne.status, 200);
+  assert.equal(scanTwo.status, 200);
+  assert.equal(scanOne.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE token=$1',
+    [require('../../src/lib/guest-session').tokenHash(secondToken)]
+  )).rows[0].used_at, null);
+
+  const claimed = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(claimed.status, 303);
+  const customerCookie = responseCookie(claimed, 'sge_session');
+  assert.ok(customerCookie);
+  const customerMe = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: customerCookie } });
+  assert.equal(customerMe.status, 200);
+  assert.equal((await customerMe.json()).organizer.id, prepared.client.userId);
+  const ownerRows = await pool.query(
+    `SELECT invitation.target_user_id,invitation.claimed_user_id,invitation.claimed_at,
+            identity.identity_type,identity.verification_scope,identity.verified_at,
+            identity.is_primary
+       FROM admin_account_invitations invitation
+       JOIN user_identities identity ON identity.user_id=invitation.target_user_id
+      WHERE invitation.id=$1 ORDER BY identity.identity_type`,
+    [secondBody.invitation.id]
+  );
+  assert.equal(ownerRows.rows[0].target_user_id, prepared.client.userId);
+  assert.equal(ownerRows.rows[0].claimed_user_id, prepared.client.userId);
+  assert.ok(ownerRows.rows[0].claimed_at);
+  const claimedEmail = ownerRows.rows.find(row => row.identity_type === 'email');
+  const untouchedPhone = ownerRows.rows.find(row => row.identity_type === 'phone');
+  assert.equal(claimedEmail.verification_scope, 'account');
+  assert.ok(claimedEmail.verified_at);
+  assert.equal(claimedEmail.is_primary, true);
+  assert.equal(untouchedPhone.verification_scope, 'unverified');
+  assert.equal(untouchedPhone.verified_at, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM users WHERE id=$1', [prepared.client.userId]
+  )).rows[0].count, 1);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token: secondToken })
+  });
+  assert.equal(replay.status, 400);
+
+  await assert.rejects(
+    pool.query(
+      `UPDATE admin_account_invitations
+          SET target_user_id=$2,claimed_user_id=$2
+        WHERE id=$1`,
+      [secondBody.invitation.id, organizerId]
+    ),
+    /target is immutable/
+  );
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM message_log
+      WHERE recipient_user_id=$1 AND message_type='magic_link' AND status='sent'`,
+    [prepared.client.userId]
+  )).rows[0].count, 2);
+  const claimAudit = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type LIKE 'done_for_you_claim_invitation_%'`,
+    [prepared.client.userId]
+  )).rows;
+  assert.ok(claimAudit.length >= 2);
+  assert.doesNotMatch(JSON.stringify(claimAudit), /casey-claim@example\.test/);
+});
+
+test('a target-bound claim becomes terminal if the owner claims through another identity first', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-stale-claim@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Stale Claim Host', contactName: 'Riley Owner',
+    email: 'stale-claim@example.test'
+  });
+  let link = '';
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { link = message.link; });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  const sent = await fetch(`${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}'
+  });
+  assert.equal(sent.status, 201);
+  const invitationId = (await sent.json()).invitation.id;
+  await addVerifiedEmailIdentity(prepared.client.userId, 'other-owner-proof@example.test');
+  const token = tokenFromLink(link);
+  const stale = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(stale.status, 409);
+  const invitation = (await pool.query(
+    'SELECT claimed_at,revoked_at FROM admin_account_invitations WHERE id=$1', [invitationId]
+  )).rows[0];
+  assert.equal(invitation.claimed_at, null);
+  assert.ok(invitation.revoked_at);
+  assert.ok((await pool.query(
+    'SELECT used_at FROM magic_link_tokens WHERE token=$1',
+    [require('../../src/lib/guest-session').tokenHash(token)]
+  )).rows[0].used_at);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(replay.status, 400);
+  assert.equal((await pool.query(
+    `SELECT verification_scope FROM user_identities
+      WHERE user_id=$1 AND normalized_value='stale-claim@example.test'`,
+    [prepared.client.userId]
+  )).rows[0].verification_scope, 'unverified');
+});
+
+test('Done For You claim links are revoked by sign-out-all, suspension, reactivation, and deletion cleanup', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-cleanup@example.test', 'super_admin');
+  const session = await signInAdminOperator(operator.email);
+  const delivered = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { delivered.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  async function preparedClaim(email, suffix) {
+    const prepared = await createDoneForYouClient(session, {
+      hostName: `Cleanup Host ${suffix}`,
+      contactName: `Cleanup Client ${suffix}`,
+      email
+    });
+    const response = await fetch(
+      `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+      { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+    );
+    assert.equal(response.status, 201);
+    return { ...prepared, invitation: (await response.json()).invitation, link: delivered.at(-1) };
+  }
+  async function postClaim(link) {
+    return fetch(`${baseUrl}/auth/verify`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokenFromLink(link) })
+    });
+  }
+
+  const signout = await preparedClaim('dfy-signout@example.test', 'Signout');
+  const signedOut = await fetch(`${baseUrl}/api/admin/accounts/${signout.client.userId}/sign-out-all`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Owner requested every pending access path be revoked' })
+  });
+  assert.equal(signedOut.status, 200);
+  assert.equal((await postClaim(signout.link)).status, 400);
+  assert.ok((await pool.query(
+    'SELECT revoked_at FROM admin_account_invitations WHERE id=$1', [signout.invitation.id]
+  )).rows[0].revoked_at);
+
+  const suspended = await preparedClaim('dfy-suspend@example.test', 'Suspend');
+  const suspend = await fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/suspend`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Support is temporarily securing this client account' })
+  });
+  assert.equal(suspend.status, 200);
+  assert.equal((await postClaim(suspended.link)).status, 400);
+  const reactivate = await fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/reactivate`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+    body: JSON.stringify({ reason: 'Support completed the client security review' })
+  });
+  assert.equal(reactivate.status, 200);
+  assert.equal((await postClaim(suspended.link)).status, 400,
+    'reactivation never resurrects a revoked claim link');
+
+  const deleted = await preparedClaim('dfy-delete@example.test', 'Delete');
+  const deletionCookie = await adminDeletionProof(session, deleted.client.userId);
+  const removed = await fetch(`${baseUrl}/api/admin/accounts/${deleted.client.userId}/delete-account`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: deletionCookie },
+    body: JSON.stringify({
+      reason: 'Client requested permanent deletion of the prepared account',
+      confirmation: `DELETE USER ${deleted.client.userId}`
+    })
+  });
+  assert.equal(removed.status, 200);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [deleted.client.userId]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [deleted.client.userId]
+  )).rows[0].count, 0);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM magic_link_tokens
+      WHERE token=$1`,
+    [require('../../src/lib/guest-session').tokenHash(tokenFromLink(deleted.link))]
+  )).rows[0].count, 0);
+  const deliveryLog = (await pool.query(
+    `SELECT recipient,recipient_user_id FROM message_log
+      WHERE message_type='magic_link' AND recipient LIKE $1 ORDER BY id DESC LIMIT 1`,
+    [`deleted+${deleted.client.userId}+message-%`]
+  )).rows[0];
+  assert.ok(deliveryLog);
+  assert.equal(deliveryLog.recipient_user_id, null);
+  const deletedClaim = await postClaim(deleted.link);
+  assert.equal(deletedClaim.status, 303);
+  assert.match(deletedClaim.headers.get('location') || '', /^\/login\?error=expired/);
+
+  let uploadCalls = 0;
+  uploadRoutes.setAdminHostUploadsForTests({
+    configured: true,
+    logo: async () => { uploadCalls += 1; return { secure_url: 'https://example.test/should-not-upload.png' }; }
+  });
+  t.after(() => uploadRoutes.setAdminHostUploadsForTests());
+  const deletedLogo = new FormData();
+  deletedLogo.set('image', new Blob([Buffer.from('not-reached')], { type: 'image/png' }), 'logo.png');
+  const blockedUpload = await fetch(
+    `${baseUrl}/api/admin/uploads/hosts/${deleted.client.organizerId}/logo`,
+    { method: 'POST', headers: { cookie: session }, body: deletedLogo }
+  );
+  assert.equal(blockedUpload.status, 404);
+  assert.equal(uploadCalls, 0);
+  const blockedProfile = await fetch(
+    `${baseUrl}/api/admin/hosts/${deleted.client.organizerId}/profile`,
+    {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({ orgName: 'Must Not Return' })
+    }
+  );
+  assert.equal(blockedProfile.status, 404);
+});
+
+test('Done For You preserves established profile values, fills blanks, and rejects a stale preview after signup', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-fill-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+
+  const established = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('dfy-established@example.test','Established Person','Established Host','established-host')
+     RETURNING id,user_id`
+  )).rows[0];
+  established.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [established.id]
+  )).rows[0].user_id;
+  const establishedPreview = await doneForYouLookup(session, {
+    email: 'dfy-established@example.test'
+  });
+  assert.equal(establishedPreview.status, 200);
+  const establishedProvision = await provisionDoneForYou(session, {
+    hostName: 'Submitted Replacement Host',
+    contactName: 'Submitted Replacement Person',
+    email: 'dfy-established@example.test',
+    expectedUserId: established.user_id
+  });
+  assert.equal(establishedProvision.status, 201);
+  const preserved = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name,
+            organizer.org_name,organizer.public_slug
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [established.user_id]
+  )).rows[0];
+  assert.equal(preserved.name, 'Established Person');
+  assert.equal(preserved.organizer_name, 'Established Person');
+  assert.equal(preserved.org_name, 'Established Host');
+  assert.equal(preserved.public_slug, 'established-host');
+
+  const blank = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('dfy-fill-blank@example.test','Temporary Name')
+     RETURNING id,user_id`
+  )).rows[0];
+  blank.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [blank.id]
+  )).rows[0].user_id;
+  await pool.query('UPDATE users SET name=NULL WHERE id=$1', [blank.user_id]);
+  await pool.query(
+    `UPDATE organizers
+        SET name=NULL,org_name=NULL,public_slug=NULL
+      WHERE id=$1`,
+    [blank.id]
+  );
+  const blankPreview = await doneForYouLookup(session, { email: 'dfy-fill-blank@example.test' });
+  assert.equal(blankPreview.status, 200);
+  const filledResponse = await provisionDoneForYou(session, {
+    hostName: 'Filled Host',
+    contactName: 'Filled Person',
+    email: 'dfy-fill-blank@example.test',
+    expectedUserId: blank.user_id
+  });
+  assert.equal(filledResponse.status, 201);
+  const filled = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name,
+            organizer.org_name,organizer.public_slug,marker.updated_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+       JOIN admin_done_for_you_clients marker ON marker.target_user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [blank.user_id]
+  )).rows[0];
+  assert.equal(filled.name, 'Filled Person');
+  assert.equal(filled.organizer_name, 'Filled Person');
+  assert.equal(filled.org_name, 'Filled Host');
+  assert.match(filled.public_slug, /^filled-host/);
+
+  await new Promise(resolve => setTimeout(resolve, 10));
+  await pool.query('UPDATE users SET name=NULL WHERE id=$1', [blank.user_id]);
+  const repaired = await provisionDoneForYou(session, {
+    hostName: 'Must Not Replace Filled Host',
+    contactName: 'Repaired Person',
+    email: 'dfy-fill-blank@example.test',
+    expectedUserId: blank.user_id
+  });
+  assert.equal(repaired.status, 201);
+  assert.equal((await repaired.json()).client.noOp, false);
+  const touched = (await pool.query(
+    `SELECT canonical_user.name,organizer.org_name,marker.updated_at
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+       JOIN admin_done_for_you_clients marker ON marker.target_user_id=canonical_user.id
+      WHERE canonical_user.id=$1`,
+    [blank.user_id]
+  )).rows[0];
+  assert.equal(touched.name, 'Repaired Person');
+  assert.equal(touched.org_name, 'Filled Host');
+  assert.ok(new Date(touched.updated_at) > new Date(filled.updated_at));
+
+  const staleInput = {
+    hostName: 'Signup Won Host',
+    contactName: 'Signup Won Owner',
+    email: 'dfy-signup-won@example.test'
+  };
+  const stalePreview = await doneForYouLookup(session, staleInput);
+  assert.equal(stalePreview.status, 200);
+  assert.equal((await stalePreview.json()).expectedUserId, null);
+  const signupWinner = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ($1,$2,NOW()) RETURNING id,user_id`,
+    [staleInput.email, staleInput.contactName]
+  )).rows[0];
+  signupWinner.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [signupWinner.id]
+  )).rows[0].user_id;
+  const usersBefore = (await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count;
+  const staleProvision = await provisionDoneForYou(session, {
+    ...staleInput,
+    expectedUserId: null
+  });
+  assert.equal(staleProvision.status, 409);
+  const staleBody = await staleProvision.json();
+  assert.equal(staleBody.error, 'done_for_you_lookup_changed');
+  assert.equal(staleBody.actualUserId, signupWinner.user_id);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM users')).rows[0].count, usersBefore);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_clients WHERE target_user_id=$1',
+    [signupWinner.user_id]
+  )).rows[0].count, 0);
+});
+
+test('Done For You Host Page support edits and media are dedicated, audited, and target-isolated', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-host-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const first = await createDoneForYouClient(session, {
+    hostName: 'First Managed Host', contactName: 'First Client',
+    email: 'first-managed-host@example.test'
+  });
+  const second = await createDoneForYouClient(session, {
+    hostName: 'Second Managed Host', contactName: 'Second Client',
+    email: 'second-managed-host@example.test'
+  });
+
+  await pool.query('UPDATE organizers SET is_admin=TRUE WHERE id=$1', [organizerId]);
+  const legacyCookie = `sge_session=${signSession(organizerId)}`;
+  const legacyDenied = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: legacyCookie },
+      body: JSON.stringify({ org_name: 'Legacy Must Not Edit' })
+    }
+  );
+  assert.equal(legacyDenied.status, 401);
+  assert.equal((await legacyDenied.json()).error, 'admin_auth_required');
+  const crossOriginDenied = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json', cookie: session,
+        origin: 'https://attacker.example'
+      },
+      body: JSON.stringify({ org_name: 'Cross Origin Must Not Edit' })
+    }
+  );
+  assert.equal(crossOriginDenied.status, 403);
+
+  const profile = await fetch(
+    `${baseUrl}/api/admin/hosts/${first.client.organizerId}/profile`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({
+        org_name: 'First Managed Host Updated',
+        bio: 'A support-prepared public description.',
+        website_url: 'https://first-managed.example',
+        instagram_handle: '@firstmanaged',
+        contact_email: 'public-contact@example.test'
+      })
+    }
+  );
+  assert.equal(profile.status, 200);
+  assert.equal((await profile.json()).host.org_name, 'First Managed Host Updated');
+  const unchangedSecond = (await pool.query(
+    'SELECT org_name,logo_url,header_image_url FROM organizers WHERE id=$1',
+    [second.client.organizerId]
+  )).rows[0];
+  assert.equal(unchangedSecond.org_name, 'Second Managed Host');
+  assert.equal(unchangedSecond.logo_url, null);
+  assert.equal(unchangedSecond.header_image_url, null);
+
+  const logoUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v123/sg-events-dev/hosts/first-logo.png';
+  const headerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v124/sg-events-dev/hosts/headers/first-header.jpg';
+  uploadRoutes.setAdminHostUploadsForTests({
+    configured: true,
+    logo: async () => ({ secure_url: logoUrl }),
+    header: async () => ({ secure_url: headerUrl })
+  });
+  t.after(() => uploadRoutes.setAdminHostUploadsForTests());
+  async function upload(kind) {
+    const form = new FormData();
+    form.set('image', new Blob([Buffer.from(kind)], { type: 'image/png' }), `${kind}.png`);
+    return fetch(
+      `${baseUrl}/api/admin/uploads/hosts/${first.client.organizerId}/${kind}`,
+      { method: 'POST', headers: { cookie: session }, body: form }
+    );
+  }
+  const logo = await upload('logo');
+  assert.equal(logo.status, 200);
+  assert.equal((await logo.json()).url, logoUrl);
+  const header = await upload('header');
+  assert.equal(header.status, 200);
+  assert.equal((await header.json()).url, headerUrl);
+
+  const firstStored = (await pool.query(
+    'SELECT logo_url,header_image_url FROM organizers WHERE id=$1',
+    [first.client.organizerId]
+  )).rows[0];
+  assert.equal(firstStored.logo_url, logoUrl);
+  assert.equal(firstStored.header_image_url, headerUrl);
+  const supportAuditRows = (await pool.query(
+    `SELECT action_type,target_user_id,actor_admin_operator_id,
+            before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN ('host_profile_updated','host_logo_updated','host_header_updated')
+      ORDER BY id`,
+    [first.client.userId]
+  )).rows;
+  assert.doesNotMatch(
+    JSON.stringify(supportAuditRows),
+    /First Managed Host Updated|support-prepared|first-managed\.example|public-contact@example|res\.cloudinary\.com/
+  );
+  assert.deepEqual(supportAuditRows.map(row => ({
+    action: row.action_type,
+    target: Number(row.target_user_id),
+    operator: Number(row.actor_admin_operator_id),
+    mediaKind: row.metadata?.mediaKind || null,
+    managedAfter: row.after_state?.managedPublicId || null
+  })), [
+    { action: 'host_profile_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: null, managedAfter: null },
+    { action: 'host_logo_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: 'logo', managedAfter: 'sg-events-dev/hosts/first-logo' },
+    { action: 'host_header_updated', target: first.client.userId, operator: Number(operator.id), mediaKind: 'header', managedAfter: 'sg-events-dev/hosts/headers/first-header' }
+  ]);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN ('host_profile_updated','host_logo_updated','host_header_updated')`,
+    [second.client.userId]
+  )).rows[0].count, 0);
+});
+
+test('Done For You claims serialize behind suspension and deletion without issuing a customer session', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-race-super@example.test', 'super_admin');
+  const session = await signInAdminOperator(operator.email);
+  const delivered = [];
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { delivered.push(message.link); });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+
+  async function preparedClaim(email, label) {
+    const prepared = await createDoneForYouClient(session, {
+      hostName: `${label} Host`, contactName: `${label} Client`, email
+    });
+    const sent = await fetch(
+      `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+      { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+    );
+    assert.equal(sent.status, 201);
+    return { ...prepared, link: delivered.at(-1) };
+  }
+  async function claim(link) {
+    return fetch(`${baseUrl}/auth/verify`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: tokenFromLink(link) })
+    });
+  }
+  async function withBlockedUser(userId, work) {
+    const blocker = await pool.connect();
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+    try {
+      return await work(async () => {
+        await blocker.query('COMMIT');
+      });
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      blocker.release();
+    }
+  }
+
+  const suspended = await preparedClaim('dfy-claim-suspend-race@example.test', 'Suspend Race');
+  await withBlockedUser(suspended.client.userId, async release => {
+    const suspension = fetch(`${baseUrl}/api/admin/accounts/${suspended.client.userId}/suspend`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: session },
+      body: JSON.stringify({ reason: 'Serialize account suspension before recipient claim completion' })
+    });
+    await waitUntilOutboundLockHeld(suspended.client.userId);
+    let claimSettled = false;
+    const attemptedClaim = claim(suspended.link).then(response => {
+      claimSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(claimSettled, false);
+    await release();
+    const [suspendResponse, claimResponse] = await Promise.all([suspension, attemptedClaim]);
+    assert.equal(suspendResponse.status, 200);
+    assert.equal(claimResponse.status, 400);
+    assert.doesNotMatch(claimResponse.headers.get('set-cookie') || '', /sge_session=/);
+  });
+
+  const deleted = await preparedClaim('dfy-claim-delete-race@example.test', 'Delete Race');
+  const deletionCookie = await adminDeletionProof(session, deleted.client.userId);
+  await withBlockedUser(deleted.client.userId, async release => {
+    const deletion = fetch(`${baseUrl}/api/admin/accounts/${deleted.client.userId}/delete-account`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: deletionCookie },
+      body: JSON.stringify({
+        reason: 'Serialize permanent deletion before recipient claim completion',
+        confirmation: `DELETE USER ${deleted.client.userId}`
+      })
+    });
+    await waitUntilOutboundLockHeld(deleted.client.userId);
+    let claimSettled = false;
+    const attemptedClaim = claim(deleted.link).then(response => {
+      claimSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(claimSettled, false);
+    await release();
+    const [deleteResponse, claimResponse] = await Promise.all([deletion, attemptedClaim]);
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(claimResponse.status, 303);
+    assert.match(claimResponse.headers.get('location') || '', /^\/login\?error=expired/);
+    assert.doesNotMatch(claimResponse.headers.get('set-cookie') || '', /sge_session=/);
+  });
+});
+
+test('a target-bound Done For You claim is terminal after its exact email is reassigned', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('dfy-mismatch-support@example.test', 'support');
+  const session = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(session, {
+    hostName: 'Mismatch Host', contactName: 'Mismatch Client',
+    email: 'dfy-target-mismatch@example.test'
+  });
+  let claimLink = '';
+  adminDoneForYouRoutes.setClaimSenderForTests(async message => { claimLink = message.link; });
+  t.after(() => adminDoneForYouRoutes.setClaimSenderForTests());
+  const sent = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${prepared.client.id}/claim-invitation`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: session }, body: '{}' }
+  );
+  assert.equal(sent.status, 201);
+  const invitationId = (await sent.json()).invitation.id;
+  const other = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('different-target@example.test','Different Target') RETURNING id`
+  )).rows[0];
+  const otherUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [other.id]
+  )).rows[0].user_id;
+  await pool.query(
+    `UPDATE user_identities SET user_id=$2,updated_at=NOW()
+      WHERE user_id=$1 AND identity_type='email'
+        AND normalized_value='dfy-target-mismatch@example.test'`,
+    [prepared.client.userId, otherUserId]
+  );
+  const token = tokenFromLink(claimLink);
+  const mismatch = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(mismatch.status, 409);
+  assert.doesNotMatch(mismatch.headers.get('set-cookie') || '', /sge_session=/);
+  const terminal = (await pool.query(
+    `SELECT invitation.revoked_at,challenge.used_at
+       FROM admin_account_invitations invitation
+       JOIN magic_link_tokens challenge ON challenge.id=invitation.magic_link_token_id
+      WHERE invitation.id=$1`,
+    [invitationId]
+  )).rows[0];
+  assert.ok(terminal.revoked_at);
+  assert.ok(terminal.used_at);
+  const replay = await fetch(`${baseUrl}/auth/verify`, {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token })
+  });
+  assert.equal(replay.status, 400);
+});
+
+test('Done For You editor workspaces are operator-bound, expiring, audited, and never customer sessions', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('editor-support@example.test', 'super_admin');
+  const otherOperator = await createAdminOperator('other-editor-support@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const parsedAdminSession = parseAdminSession(adminSession.slice('sge_admin_session='.length));
+  assert.ok(parsedAdminSession);
+  const otherAdminSession = await signInAdminOperator(otherOperator.email);
+  const signedOutEditor = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual'
+  });
+  assert.equal(signedOutEditor.status, 302);
+  assert.equal(signedOutEditor.headers.get('location'),
+    '/admin/login?next=%2Fadmin-editor%2Fevents%2Fnew');
+  const editorLoginReturn = await fetch(
+    `${baseUrl}/admin/login?next=%2Fadmin-editor%2Fevents%2Fnew`,
+    { redirect: 'manual', headers: { cookie: adminSession } }
+  );
+  assert.equal(editorLoginReturn.headers.get('location'), '/admin-editor/events/new');
+  const missingWorkspacePage = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual',
+    headers: { cookie: adminSession, accept: 'text/html' }
+  });
+  assert.equal(missingWorkspacePage.status, 302);
+  assert.equal(missingWorkspacePage.headers.get('location'),
+    '/admin/done-for-you?editor=expired');
+  const missingWorkspaceApi = await fetch(`${baseUrl}/admin-editor/api/workspace`, {
+    redirect: 'manual', headers: { cookie: adminSession, accept: 'text/html' }
+  });
+  assert.equal(missingWorkspaceApi.status, 401,
+    'editor APIs keep structured JSON errors even when the caller accepts HTML');
+  assert.equal((await missingWorkspaceApi.json()).error, 'admin_editor_workspace_required');
+  for (const hostileNext of [
+    'https://evil.example/admin-editor/events/new',
+    '//evil.example/admin-editor/events/new',
+    '/\\evil.example/admin-editor/events/new',
+    '/%5Cevil.example/admin-editor/events/new'
+  ]) {
+    const rejectedNext = await fetch(
+      `${baseUrl}/admin/login?next=${encodeURIComponent(hostileNext)}`,
+      { redirect: 'manual', headers: { cookie: adminSession } }
+    );
+    assert.equal(rejectedNext.headers.get('location'), '/admin',
+      `admin login rejects external return URL ${hostileNext}`);
+  }
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Scoped Editor Host',
+    contactName: 'Scoped Editor Client',
+    email: 'scoped-editor-client@example.test'
+  });
+  const markerId = prepared.client.id;
+  const organizerId = prepared.client.organizerId;
+
+  const start = (cookie, body = {}) => fetch(
+    `${baseUrl}/api/admin/done-for-you/${markerId}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify(body)
+    }
+  );
+
+  const customerOnly = await start(`sge_session=${signSession(organizerId)}`);
+  assert.equal(customerOnly.status, 401,
+    'a customer account cannot enter the independent admin editor realm');
+
+  const opened = await start(adminSession);
+  assert.equal(opened.status, 201);
+  const openedBody = await opened.json();
+  assert.equal(openedBody.redirect, '/admin-editor/events/new');
+  assert.equal(openedBody.workspace.doneForYouClientId, Number(markerId));
+  assert.equal(openedBody.workspace.organizerId, Number(organizerId));
+  assert.equal(openedBody.workspace.eventId, null);
+  const openedSetCookie = opened.headers.get('set-cookie') || '';
+  assert.match(openedSetCookie, /sge_admin_editor=/);
+  assert.match(openedSetCookie, /Path=\/admin-editor/);
+  assert.match(openedSetCookie, /HttpOnly/i);
+  assert.match(openedSetCookie, /SameSite=Strict/i);
+  assert.doesNotMatch(openedSetCookie, /sge_session=/,
+    'opening an editor workspace never issues a customer session');
+  const editorCookie = responseCookie(opened, 'sge_admin_editor');
+  assert.ok(editorCookie);
+  const rawEditorToken = editorCookie.slice('sge_admin_editor='.length);
+  const stored = (await pool.query(
+    `SELECT token_hash,status,actor_admin_operator_id
+       FROM admin_event_editor_workspaces WHERE id=$1`,
+    [openedBody.workspace.id]
+  )).rows[0];
+  assert.notEqual(stored.token_hash, rawEditorToken);
+  assert.equal(stored.token_hash.length, 64);
+  assert.equal(stored.status, 'active');
+  assert.equal(Number(stored.actor_admin_operator_id), Number(operator.id));
+
+  const noAdminSession = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: editorCookie }, body: '{}'
+  });
+  assert.equal(noAdminSession.status, 401);
+  const wrongOperator = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(otherAdminSession, editorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(wrongOperator.status, 403);
+  assert.equal((await wrongOperator.json()).error, 'admin_editor_operator_mismatch');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [openedBody.workspace.id]
+  )).rows[0].status, 'active', 'a mismatched operator cannot revoke another operator’s grant');
+
+  const exited = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, editorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(exited.status, 200);
+  assert.deepEqual(await exited.json(), {
+    ok: true,
+    redirect: `/admin/done-for-you/${markerId}`
+  });
+  assert.match(exited.headers.get('set-cookie') || '', /sge_admin_editor=;/);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [openedBody.workspace.id]
+  )).rows[0].status, 'exited');
+  const audit = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1 AND target_user_id=$2
+        AND action_type LIKE 'done_for_you_event_workspace_%'
+      ORDER BY id`,
+    [operator.id, prepared.client.userId]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(audit, [
+    'done_for_you_event_workspace_opened',
+    'done_for_you_event_workspace_exited'
+  ]);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, editorCookie)
+    },
+    body: '{}'
+  })).status, 401, 'an exited grant cannot be replayed');
+
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'admin-editor-draft','Admin Editor Draft','2031-01-02','19:00',
+             'Scoped Hall','private','draft')
+     RETURNING id`,
+    [organizerId]
+  )).rows[0];
+  const bound = await start(adminSession, { eventId: draft.id });
+  assert.equal(bound.status, 201);
+  const boundBody = await bound.json();
+  assert.equal(boundBody.redirect, `/admin-editor/events/new?id=${draft.id}&advanced=1`);
+  assert.equal(boundBody.workspace.eventId, Number(draft.id));
+  assert.doesNotMatch(bound.headers.get('set-cookie') || '', /sge_session=/);
+  const replacedBound = await start(adminSession, { eventId: draft.id });
+  assert.equal(replacedBound.status, 201,
+    'the same operator can rotate its token when reopening the same draft');
+  const replacedBoundBody = await replacedBound.json();
+  const boundCookie = responseCookie(replacedBound, 'sge_admin_editor');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [boundBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='replacement'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, boundBody.workspace.id]
+  )).rows[0].count, 1, 'same-operator replacement is audited once');
+
+  const otherHost = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('different-editor-host@example.test','Other Host','Other Host','other-editor-host')
+     RETURNING id`
+  )).rows[0];
+  const otherDraft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'other-editor-draft','Other Draft','2031-02-03','20:00',
+             'Other Hall','private','draft')
+     RETURNING id`,
+    [otherHost.id]
+  )).rows[0];
+  const wrongDraft = await start(adminSession, { eventId: otherDraft.id });
+  assert.equal(wrongDraft.status, 409);
+  assert.equal((await wrongDraft.json()).error, 'admin_editor_draft_not_available');
+
+  await pool.query(
+    `UPDATE admin_event_editor_workspaces
+        SET created_at=NOW() - INTERVAL '3 hours',
+            expires_at=NOW() - INTERVAL '1 hour'
+      WHERE id=$1`,
+    [replacedBoundBody.workspace.id]
+  );
+  const expired = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, boundCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(expired.status, 401);
+  assert.equal((await expired.json()).error, 'admin_editor_workspace_expired');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [replacedBoundBody.workspace.id]
+  )).rows[0].status, 'expired');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_expired'
+        AND metadata->>'cause'='ttl'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, replacedBoundBody.workspace.id]
+  )).rows[0].count, 1, 'automatic expiration is audited once');
+  const expiredWorkspacePage = await fetch(`${baseUrl}/admin-editor/events/new`, {
+    redirect: 'manual',
+    headers: {
+      cookie: cookieHeader(adminSession, boundCookie),
+      accept: 'text/html'
+    }
+  });
+  assert.equal(expiredWorkspacePage.status, 302);
+  assert.equal(expiredWorkspacePage.headers.get('location'),
+    '/admin/done-for-you?editor=expired');
+
+  const targetState = await start(adminSession);
+  assert.equal(targetState.status, 201);
+  const targetStateBody = await targetState.json();
+  const targetStateCookie = responseCookie(targetState, 'sge_admin_editor');
+  await pool.query(
+    `UPDATE users
+        SET account_status='suspended',suspended_at=NOW(),
+            suspension_reason='Integration target-state check'
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const suspended = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, targetStateCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(suspended.status, 403);
+  assert.equal((await suspended.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [targetStateBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='scope_unavailable'
+        AND (after_state->>'workspaceId')::bigint=$2`,
+    [operator.id, targetStateBody.workspace.id]
+  )).rows[0].count, 1, 'target-state revocation is audited once');
+
+  await pool.query(
+    `UPDATE users
+        SET account_status='active',suspended_at=NULL,suspension_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+
+  const ownershipDrift = await start(adminSession);
+  assert.equal(ownershipDrift.status, 201);
+  const ownershipDriftBody = await ownershipDrift.json();
+  const ownershipDriftCookie = responseCookie(ownershipDrift, 'sge_admin_editor');
+  const driftUser = (await pool.query(
+    `INSERT INTO users (name) VALUES ('Drift Owner') RETURNING id`
+  )).rows[0];
+  const driftOwner = (await pool.query(
+    `INSERT INTO organizers (id,user_id,email,name,org_name,public_slug)
+     VALUES ($1,$1,'drift-owner@example.test','Drift Owner','Drift Owner','drift-owner')
+     RETURNING id,user_id`,
+    [driftUser.id]
+  )).rows[0];
+  await pool.query(
+    'UPDATE admin_done_for_you_clients SET target_user_id=$2 WHERE id=$1',
+    [markerId, driftOwner.user_id]
+  );
+  const drifted = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(adminSession, ownershipDriftCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(drifted.status, 403);
+  assert.equal((await drifted.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status,target_user_id,organizer_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [ownershipDriftBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  assert.equal(Number((await pool.query(
+    'SELECT target_user_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [ownershipDriftBody.workspace.id]
+  )).rows[0].target_user_id), Number(prepared.client.userId),
+  'the immutable workspace snapshot never follows marker ownership drift');
+  await pool.query(
+    'UPDATE admin_done_for_you_clients SET target_user_id=$2 WHERE id=$1',
+    [markerId, prepared.client.userId]
+  );
+
+  const forLogout = await start(adminSession);
+  assert.equal(forLogout.status, 201);
+  const forLogoutBody = await forLogout.json();
+  const forLogoutCookie = responseCookie(forLogout, 'sge_admin_editor');
+  const pendingLogin = await fetch(`${baseUrl}/api/admin/auth/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: operator.email })
+  });
+  assert.equal(pendingLogin.status, 200);
+  await adminAuthRoutes.settleBackgroundWork();
+  const pendingLoginChallengeId = (await pool.query(
+    `SELECT id FROM admin_auth_challenges
+      WHERE operator_id=$1 AND purpose='login' AND used_at IS NULL
+      ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].id;
+  const logoutProofCookie = await adminOperatorProof(
+    adminSession,
+    `operator:${otherOperator.id}`
+  );
+  const pendingActionProofId = (await pool.query(
+    `SELECT id FROM admin_action_proofs
+      WHERE operator_id=$1 AND consumed_at IS NULL
+      ORDER BY id DESC LIMIT 1`,
+    [operator.id]
+  )).rows[0].id;
+  const cutoffBeforeLogout = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1',
+    [operator.id]
+  )).rows[0].sessions_valid_after;
+  const logout = await fetch(`${baseUrl}/api/admin/auth/logout`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(logoutProofCookie, forLogoutCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(logout.status, 200);
+  const logoutCookies = logout.headers.get('set-cookie') || '';
+  assert.match(logoutCookies, /sge_admin_session=;/);
+  assert.match(logoutCookies, /sge_admin_editor=;/);
+  assert.match(logoutCookies, /Path=\/admin-editor/);
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [forLogoutBody.workspace.id]
+  )).rows[0].status, 'revoked', 'admin logout revokes its active DB workspace');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE actor_admin_operator_id=$1
+        AND action_type='done_for_you_event_workspace_revoked'
+        AND metadata->>'cause'='admin_logout'`,
+    [operator.id]
+  )).rows[0].count, 1);
+  const invalidatedOperator = (await pool.query(
+    'SELECT sessions_valid_after FROM admin_operators WHERE id=$1',
+    [operator.id]
+  )).rows[0];
+  assert.ok(invalidatedOperator.sessions_valid_after > cutoffBeforeLogout,
+    'normal logout advances the dedicated administrator credential epoch');
+  assert.ok((await pool.query(
+    'SELECT used_at FROM admin_auth_challenges WHERE id=$1',
+    [pendingLoginChallengeId]
+  )).rows[0].used_at, 'normal logout consumes pending administrator challenges');
+  assert.ok((await pool.query(
+    'SELECT consumed_at FROM admin_action_proofs WHERE id=$1',
+    [pendingActionProofId]
+  )).rows[0].consumed_at, 'normal logout consumes pending administrator action proofs');
+  assert.equal((await fetch(`${baseUrl}/api/admin/auth/me`, {
+    headers: { cookie: adminSession }
+  })).status, 401, 'a logged-out dedicated administrator session cannot be replayed');
+  await assert.rejects(
+    openAdminEditorWorkspace(pool, {
+      doneForYouClientId: markerId,
+      actorAdminOperatorId: operator.id,
+      sessionIssuedAt: parsedAdminSession.issuedAt
+    }),
+    error => error instanceof AdminEditorWorkspaceError &&
+      error.code === 'admin_editor_admin_session_revoked',
+    'a request authenticated before logout cannot generate a workspace after the credential epoch advances'
+  );
+
+  const freshAdminSession = await signInAdminOperator(operator.email);
+  const deletedTargetWorkspace = await start(freshAdminSession);
+  assert.equal(deletedTargetWorkspace.status, 201);
+  const deletedTargetBody = await deletedTargetWorkspace.json();
+  const deletedTargetCookie = responseCookie(deletedTargetWorkspace, 'sge_admin_editor');
+  await pool.query(
+    `UPDATE users
+        SET name=NULL,account_status='deleted',deleted_at=NOW(),
+            deletion_reason='Integration unavailable-target check',
+            suspended_at=NULL,suspended_by_user_id=NULL,
+            suspended_by_admin_operator_id=NULL,suspension_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const deletedTarget = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(freshAdminSession, deletedTargetCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(deletedTarget.status, 403);
+  assert.equal((await deletedTarget.json()).error, 'admin_editor_scope_unavailable');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [deletedTargetBody.workspace.id]
+  )).rows[0].status, 'revoked');
+  await pool.query(
+    `UPDATE users
+        SET name='Scoped Editor Client',account_status='active',deleted_at=NULL,
+            deleted_by_user_id=NULL,deleted_by_admin_operator_id=NULL,deletion_reason=NULL
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+
+  const deletable = await createDoneForYouClient(freshAdminSession, {
+    hostName: 'Disposable Workspace Host',
+    contactName: 'Disposable Workspace Client',
+    email: 'disposable-workspace@example.test'
+  });
+  const deletableOpened = await fetch(
+    `${baseUrl}/api/admin/done-for-you/${deletable.client.id}/editor-workspaces`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: freshAdminSession },
+      body: '{}'
+    }
+  );
+  assert.equal(deletableOpened.status, 201);
+  const deletableBody = await deletableOpened.json();
+  const deletableCookie = responseCookie(deletableOpened, 'sge_admin_editor');
+  await pool.query('DELETE FROM organizers WHERE id=$1', [deletable.client.organizerId]);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_event_editor_workspaces WHERE id=$1',
+    [deletableBody.workspace.id]
+  )).rows[0].count, 0, 'Host deletion cascades through the scoped workspace instead of being blocked');
+  const staleAfterHostDelete = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(freshAdminSession, deletableCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(staleAfterHostDelete.status, 401);
+  assert.equal((await staleAfterHostDelete.json()).error, 'admin_editor_workspace_required');
+
+  const disabledOperatorWorkspace = await start(otherAdminSession);
+  assert.equal(disabledOperatorWorkspace.status, 201);
+  const disabledOperatorBody = await disabledOperatorWorkspace.json();
+  const disabledOperatorCookie = responseCookie(disabledOperatorWorkspace, 'sge_admin_editor');
+  const disableProof = await adminOperatorProof(
+    freshAdminSession,
+    `operator:${otherOperator.id}`
+  );
+  const disableOperator = await fetch(`${baseUrl}/api/admin/operators/${otherOperator.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: disableProof },
+    body: JSON.stringify({
+      status: 'disabled',
+      reason: 'End the scoped editor access for lifecycle testing'
+    })
+  });
+  assert.equal(disableOperator.status, 200);
+  assert.equal((await disableOperator.json()).operator.status, 'disabled');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [disabledOperatorBody.workspace.id]
+  )).rows[0].status, 'revoked', 'disabling an operator closes the workspace atomically');
+  const disabledAudit = (await pool.query(
+    `SELECT actor_admin_operator_id,metadata
+       FROM admin_account_audit_log
+      WHERE action_type='done_for_you_event_workspace_revoked'
+        AND (after_state->>'workspaceId')::bigint=$1`,
+    [disabledOperatorBody.workspace.id]
+  )).rows[0];
+  assert.equal(Number(disabledAudit.actor_admin_operator_id), Number(operator.id),
+    'the Super Admin who disabled access is the lifecycle audit actor');
+  assert.equal(disabledAudit.metadata.cause, 'operator_disabled');
+  assert.equal(Number(disabledAudit.metadata.workspaceOperatorId), Number(otherOperator.id));
+  const disabledOperatorRequest = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(otherAdminSession, disabledOperatorCookie)
+    },
+    body: '{}'
+  });
+  assert.equal(disabledOperatorRequest.status, 401,
+    'a disabled operator cannot use an otherwise unexpired editor grant');
+  resetRateLimits();
+  const enableProof = await adminOperatorProof(
+    freshAdminSession,
+    `operator:${otherOperator.id}`
+  );
+  const enableOperator = await fetch(`${baseUrl}/api/admin/operators/${otherOperator.id}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: enableProof },
+    body: JSON.stringify({
+      status: 'active',
+      reason: 'Restore access after lifecycle testing'
+    })
+  });
+  assert.equal(enableOperator.status, 200);
+  const reenabledOtherSession = await signInAdminOperator(otherOperator.email);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(reenabledOtherSession, disabledOperatorCookie)
+    },
+    body: '{}'
+  })).status, 401, 're-enabling an operator never resurrects its revoked workspace cookie');
+  const directCutoffWorkspace = await start(reenabledOtherSession);
+  assert.equal(directCutoffWorkspace.status, 201);
+  const directCutoffBody = await directCutoffWorkspace.json();
+  await pool.query(
+    `UPDATE admin_operators
+        SET sessions_valid_after=clock_timestamp(),updated_at=clock_timestamp()
+      WHERE id=$1`,
+    [otherOperator.id]
+  );
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [directCutoffBody.workspace.id]
+  )).rows[0].status, 'revoked',
+  'direct credential revocation remains a fail-closed safety boundary for editor workspaces');
+
+  const lifecycleAudits = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE action_type LIKE 'done_for_you_event_workspace_%'`
+  )).rows;
+  for (const entry of lifecycleAudits) {
+    const serialized = JSON.stringify(entry);
+    assert.doesNotMatch(serialized, /@|email|phone/i,
+      'workspace lifecycle audit metadata contains identifiers, not contact PII');
+  }
+});
+
+test('Done For You admin editor creates one scoped draft, returns a safe DTO, and publishes atomically', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-editor-support@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Stage Two Host',
+    contactName: 'Stage Two Client',
+    email: 'stage-two-client@example.test'
+  });
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+
+  const context = await fetch(`${baseUrl}/admin-editor/api/workspace`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(context.status, 200);
+  const contextBody = await context.json();
+  assert.equal(contextBody.workspace.eventId, null);
+  assert.equal(contextBody.host.id, prepared.client.organizerId);
+  assert.equal(contextBody.host.name, 'Stage Two Host');
+  assert.doesNotMatch(JSON.stringify(contextBody), /stage-two-client@example\.test/i,
+    'the editor context does not expose account contact identities');
+
+  const customerCookie = `sge_session=${signSession(prepared.client.organizerId)}`;
+  const customerAttempt = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: cookieHeader(customerCookie, opened.editorCookie)
+    },
+    body: JSON.stringify({})
+  });
+  assert.equal(customerAttempt.status, 401,
+    'a customer session cannot substitute for the dedicated administrator session');
+
+  const presenterRejected = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Should not be created', event_date: '2033-04-12', start_time: '19:30',
+      venue_name: 'Stage Hall', presenter_name: 'Overwrite Host'
+    })
+  });
+  assert.equal(presenterRejected.status, 400);
+  assert.equal((await presenterRejected.json()).error, 'admin_editor_presenter_immutable');
+  assert.equal((await pool.query(
+    'SELECT org_name FROM organizers WHERE id=$1',
+    [prepared.client.organizerId]
+  )).rows[0].org_name, 'Stage Two Host');
+
+  const created = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Admin Prepared Night',
+      description: 'A client-ready event draft.',
+      event_date: '2033-04-12',
+      start_time: '19:30',
+      venue_name: 'Stage Hall',
+      venue_address: '12 Stage Way',
+      visibility: 'private',
+      admission_type: 'free_rsvp',
+      status: 'published'
+    })
+  });
+  assert.equal(created.status, 201);
+  assert.doesNotMatch(created.headers.get('set-cookie') || '', /sge_session=/,
+    'admin event creation never creates a customer session');
+  const createdBody = await created.json();
+  const eventId = Number(createdBody.event.id);
+  assert.equal(createdBody.event.status, 'draft', 'the admin quick-create always forces a draft');
+  assert.equal(Number(createdBody.event.organizer_id), prepared.client.organizerId);
+  const storedWorkspace = (await pool.query(
+    'SELECT event_id,status FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0];
+  assert.equal(Number(storedWorkspace.event_id), eventId);
+  assert.equal(storedWorkspace.status, 'active');
+
+  await pool.query(
+    `UPDATE events
+        SET photo_upload_token='admin-editor-secret-upload',
+            photo_short_token='admin-editor-secret-short'
+      WHERE id=$1`,
+    [eventId]
+  );
+  const read = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(read.status, 200);
+  const readBody = await read.json();
+  assert.equal(readBody.event.title, 'Admin Prepared Night');
+  assert.equal(Object.hasOwn(readBody.event, 'photo_upload_token'), false);
+  assert.equal(Object.hasOwn(readBody.event, 'photo_short_token'), false);
+  assert.equal(Object.hasOwn(readBody.event, 'email'), false);
+
+  const wrongEvent = await createEvent({
+    slug: 'admin-editor-out-of-scope',
+    title: 'Out Of Scope',
+    status: 'draft'
+  });
+  const wrongRead = await fetch(`${baseUrl}/admin-editor/api/events/${wrongEvent.id}`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(wrongRead.status, 404);
+
+  await createRsvp(eventId, { email: 'admin-editor-guest@example.test' });
+  const updated = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Admin Prepared Night Updated',
+      description: 'The private draft is ready.',
+      notify_attendees: true,
+      status: 'published',
+      presenter_name: 'Ignored Presenter'
+    })
+  });
+  assert.equal(updated.status, 200);
+  const updatedBody = await updated.json();
+  assert.equal(updatedBody.event.status, 'draft');
+  assert.equal(updatedBody.notification, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM event_notification_batches WHERE event_id=$1',
+    [eventId]
+  )).rows[0].count, 0, 'administrator edits never queue attendee notifications');
+  const updateAudit = (await pool.query(
+    `SELECT before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE action_type='done_for_you_event_draft_updated'
+        AND target_user_id=$1
+      ORDER BY id DESC LIMIT 1`,
+    [prepared.client.userId]
+  )).rows[0];
+  assert.deepEqual(updateAudit.metadata.changedFields, ['description', 'title']);
+  assert.doesNotMatch(JSON.stringify(updateAudit), /Admin Prepared|private draft/i,
+    'immutable audit records field names, not customer event content');
+
+  const published = await fetch(`${baseUrl}/admin-editor/api/events/${eventId}/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: '{}'
+  });
+  assert.equal(published.status, 200);
+  const publishedBody = await published.json();
+  assert.equal(publishedBody.event.status, 'published');
+  assert.equal(publishedBody.alreadyPublished, false);
+  assert.equal(publishedBody.redirect, `/admin/done-for-you/${prepared.client.id}`);
+  const publishCookies = published.headers.get('set-cookie') || '';
+  assert.match(publishCookies, /sge_admin_editor=;/);
+  assert.doesNotMatch(publishCookies, /sge_session=/);
+  const completed = (await pool.query(
+    'SELECT status,closed_at FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0];
+  assert.equal(completed.status, 'completed');
+  assert.ok(completed.closed_at);
+  const actions = (await pool.query(
+    `SELECT action_type FROM admin_account_audit_log
+      WHERE target_user_id=$1
+        AND action_type IN (
+          'done_for_you_event_draft_created',
+          'done_for_you_event_draft_updated',
+          'done_for_you_event_published',
+          'done_for_you_event_workspace_completed'
+        )
+      ORDER BY id`,
+    [prepared.client.userId]
+  )).rows.map(row => row.action_type);
+  assert.deepEqual(actions, [
+    'done_for_you_event_draft_created',
+    'done_for_you_event_draft_updated',
+    'done_for_you_event_published',
+    'done_for_you_event_workspace_completed'
+  ]);
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/events/${eventId}`, {
+    headers: { cookie: editorSession }
+  })).status, 401, 'the completed workspace cannot be replayed');
+});
+
+test('Done For You quick-create binds exactly one concurrent draft and event uploads stay scoped', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-concurrency@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Concurrent Editor Host',
+    contactName: 'Concurrent Editor Client',
+    email: 'concurrent-editor@example.test'
+  });
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+
+  const unboundUpload = new FormData();
+  unboundUpload.set('image', new Blob([Buffer.from('before-bind')], { type: 'image/png' }), 'cover.png');
+  assert.equal((await fetch(`${baseUrl}/admin-editor/api/uploads/cover`, {
+    method: 'POST', headers: { cookie: editorSession }, body: unboundUpload
+  })).status, 409);
+
+  const createBody = {
+    title: 'Exactly One Draft',
+    event_date: '2034-05-13',
+    start_time: '20:00',
+    venue_name: 'Concurrency Hall',
+    visibility: 'public',
+    admission_type: 'free_rsvp'
+  };
+  const makeRequest = () => fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify(createBody)
+  });
+  const concurrent = await Promise.all([makeRequest(), makeRequest()]);
+  assert.deepEqual(concurrent.map(response => response.status).sort(), [201, 409]);
+  const successful = concurrent.find(response => response.status === 201);
+  const eventId = Number((await successful.json()).event.id);
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM events
+      WHERE organizer_id=$1 AND title='Exactly One Draft'`,
+    [prepared.client.organizerId]
+  )).rows[0].count, 1);
+  assert.equal(Number((await pool.query(
+    'SELECT event_id FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0].event_id), eventId);
+
+  const coverUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/covers/admin-editor.png';
+  adminEditorRoutes.setEventUploadsForTests({
+    configured: true,
+    cover: async () => ({ secure_url: coverUrl, colors: [['#20c7c7', 1]] })
+  });
+  t.after(() => adminEditorRoutes.setEventUploadsForTests({ configured: false }));
+  const coverUpload = new FormData();
+  coverUpload.set('image', new Blob([Buffer.from('after-bind')], { type: 'image/png' }), 'cover.png');
+  const uploaded = await fetch(`${baseUrl}/admin-editor/api/uploads/cover`, {
+    method: 'POST', headers: { cookie: editorSession }, body: coverUpload
+  });
+  assert.equal(uploaded.status, 200);
+  assert.equal((await uploaded.json()).url, coverUrl);
+  assert.equal((await pool.query(
+    'SELECT cover_image_url FROM events WHERE id=$1',
+    [eventId]
+  )).rows[0].cover_image_url, null,
+  'uploading returns a managed candidate URL but cannot mutate another field or event');
+});
+
+test('Done For You publish validation rolls back the event, audit, workspace, and cookie together', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-rollback@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Rollback Editor Host',
+    contactName: 'Rollback Editor Client',
+    email: 'rollback-editor@example.test'
+  });
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'stage2-invalid-draft','','2035-06-14','18:00','Rollback Hall','private','draft')
+     RETURNING id`,
+    [prepared.client.organizerId]
+  )).rows[0];
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id, draft.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+  const failed = await fetch(`${baseUrl}/admin-editor/api/events/${draft.id}/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: '{}'
+  });
+  assert.equal(failed.status, 400);
+  assert.equal((await failed.json()).error, 'event_incomplete');
+  assert.doesNotMatch(failed.headers.get('set-cookie') || '', /sge_admin_editor=;/,
+    'a failed publish keeps the editor grant available for correction');
+  assert.equal((await pool.query(
+    'SELECT status FROM events WHERE id=$1', [draft.id]
+  )).rows[0].status, 'draft');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_event_editor_workspaces WHERE id=$1',
+    [opened.body.workspace.id]
+  )).rows[0].status, 'active');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE target_user_id=$1 AND action_type='done_for_you_event_published'`,
+    [prepared.client.userId]
+  )).rows[0].count, 0);
+
+  await pool.query(
+    `UPDATE users SET account_status='suspended',suspended_at=NOW(),
+                      suspension_reason='Stage 2 scope test'
+      WHERE id=$1`,
+    [prepared.client.userId]
+  );
+  const suspendedEdit = await fetch(`${baseUrl}/admin-editor/api/events/${draft.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({ title: 'Must not be written' })
+  });
+  assert.equal(suspendedEdit.status, 403);
+  assert.equal((await pool.query(
+    'SELECT title FROM events WHERE id=$1', [draft.id]
+  )).rows[0].title, '');
+});
+
+test('Done For You event mutation serializes behind permanent account deletion', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('stage2-delete-race@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const prepared = await createDoneForYouClient(adminSession, {
+    hostName: 'Delete Race Editor Host',
+    contactName: 'Delete Race Editor Client',
+    email: 'delete-race-editor@example.test'
+  });
+  const draft = (await pool.query(
+    `INSERT INTO events
+       (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'stage2-delete-race','Delete Race Draft','2036-07-15','19:00',
+             'Delete Race Hall','private','draft')
+     RETURNING id`,
+    [prepared.client.organizerId]
+  )).rows[0];
+  const opened = await openDoneForYouEditor(adminSession, prepared.client.id, draft.id);
+  const editorSession = cookieHeader(adminSession, opened.editorCookie);
+  const deletionCookie = await adminDeletionProof(adminSession, prepared.client.userId);
+
+  const blocker = await pool.connect();
+  await blocker.query('BEGIN');
+  await blocker.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [prepared.client.userId]);
+  try {
+    const deletion = fetch(`${baseUrl}/api/admin/accounts/${prepared.client.userId}/delete-account`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: deletionCookie },
+      body: JSON.stringify({
+        reason: 'Verify scoped editor deletion serialization',
+        confirmation: `DELETE USER ${prepared.client.userId}`
+      })
+    });
+    await waitUntilOutboundLockHeld(prepared.client.userId);
+    let updateSettled = false;
+    const update = fetch(`${baseUrl}/admin-editor/api/events/${draft.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: editorSession },
+      body: JSON.stringify({ title: 'Must Never Survive Deletion' })
+    }).then(response => {
+      updateSettled = true;
+      return response;
+    });
+    let exitSettled = false;
+    const exit = fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: editorSession },
+      body: '{}'
+    }).then(response => {
+      exitSettled = true;
+      return response;
+    });
+    let logoutSettled = false;
+    const logout = fetch(`${baseUrl}/api/admin/auth/logout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminSession },
+      body: '{}'
+    }).then(response => {
+      logoutSettled = true;
+      return response;
+    });
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.equal(updateSettled, false,
+      'the editor mutation waits behind the same outbound-account deletion boundary');
+    assert.equal(exitSettled, false,
+      'workspace exit does not hold the operator row while waiting behind account deletion');
+    assert.equal(logoutSettled, false,
+      'operator logout discovers workspace targets before taking its operator row');
+    await blocker.query('COMMIT');
+    const [deleted, attemptedUpdate, attemptedExit, attemptedLogout] = await Promise.all([
+      deletion, update, exit, logout
+    ]);
+    assert.equal(deleted.status, 200);
+    assert.ok([401, 403, 409].includes(attemptedUpdate.status),
+      `the editor mutation safely loses the delete/logout race without a server error (${attemptedUpdate.status})`);
+    assert.ok([401, 403, 409].includes(attemptedExit.status),
+      `workspace exit safely loses the delete race without a server error (${attemptedExit.status})`);
+    assert.equal(attemptedLogout.status, 200,
+      'operator logout safely completes after the target account deletion');
+    assert.equal((await pool.query(
+      'SELECT account_status FROM users WHERE id=$1', [prepared.client.userId]
+    )).rows[0].account_status, 'deleted');
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM events WHERE id=$1', [draft.id]
+    )).rows[0].count, 0);
+    assert.equal((await pool.query(
+      `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+        WHERE target_user_id=$1
+          AND action_type='done_for_you_event_draft_updated'
+          AND metadata->'changedFields' ? 'title'`,
+      [prepared.client.userId]
+    )).rows[0].count, 0,
+    'the losing editor request neither writes nor audits a post-delete change');
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    blocker.release();
+  }
 });

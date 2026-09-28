@@ -133,21 +133,23 @@ test('SMS lifecycle copy is untouched by the photo opportunity', () => {
 
 test('the host sees proof the guest list works: returning counts and per-face visits', () => {
   const routes = read('src/routes/events.js');
+  const editor = read('src/lib/event-editor.js');
   const manage = read('public/js/manage.js');
   const view = read('src/views/event-manage.html');
 
   // Returning = a confirmed RSVP to an earlier event owned by the same host.
-  assert.match(routes, /AS returning_count/);
-  assert.match(routes, /prior_event\.event_date < e\.event_date/);
-  assert.match(routes, /prior\.status='confirmed'/);
+  assert.match(editor, /AS returning_count/);
+  assert.match(editor, /prior_event\.event_date < e\.event_date/);
+  assert.match(editor, /prior\.status='confirmed'/);
   // From invites = they answered a Familiar Faces invitation for this event.
-  assert.match(routes, /AS invited_returning_count/);
-  assert.match(routes, /ml\.message_type='previous_guest_invite'/);
-  assert.match(routes, /ml\.created_at <= r\.created_at/);
+  assert.match(editor, /AS invited_returning_count/);
+  assert.match(editor, /invitation\.message_type='previous_guest_invite'/);
+  assert.match(editor, /invitation\.created_at <= current_rsvp\.created_at/);
   assert.match(routes, /visitLabel: visits > 1 \? `\$\{ordinal\(visits\)\} time` : 'First time'/);
 
   assert.match(manage, /returningLine\.textContent/);
   assert.match(manage, /came from your invites/);
+  assert.match(manage, /returning === 1 \? 'has been' : 'have been'/);
   assert.match(manage, /\$\('stat-returning'\)\.textContent = returningStat/);
   assert.match(view, /id="manage-mobile-returning"/);
   assert.match(view, /id="stat-returning"/);

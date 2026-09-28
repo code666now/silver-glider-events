@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Done For You — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-done-for-you.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="done-for-you">
+  <main class="sg-shell dfy-shell" data-admin-section="done-for-you">
+    <nav id="nav"></nav>
+
+    <header class="dfy-page-head">
+      <div>
+        <p class="dfy-eyebrow">Admin service</p>
+        <h1 class="sg-page-title">Done For You</h1>
+        <p class="sg-page-sub">Prepare a client’s account and Host Page without claiming their identity. The recipient verifies ownership when they are ready.</p>
+      </div>
+      <button class="sg-btn sg-btn-primary" id="open-client-dialog" type="button">Add a client</button>
+    </header>
+
+    <section class="dfy-trust-note" aria-labelledby="dfy-trust-title">
+      <span class="dfy-trust-icon" aria-hidden="true">✓</span>
+      <div>
+        <strong id="dfy-trust-title">Administrators prepare. Recipients verify.</strong>
+        <p>Email and mobile numbers stay unverified until the recipient proves ownership. Admin access never signs in as the client.</p>
+      </div>
+    </section>
+
+    <section class="dfy-list-section" aria-labelledby="dfy-clients-title">
+      <div class="dfy-section-head">
+        <div>
+          <h2 id="dfy-clients-title">Clients</h2>
+          <p>Accounts and Host Pages prepared by the admin team.</p>
+        </div>
+        <label class="dfy-search">
+          <span class="sr-only">Search Done For You clients</span>
+          <input class="sg-input" id="client-search" type="search" placeholder="Search client, host, email, or User ID" autocomplete="off" disabled>
+        </label>
+      </div>
+
+      <div class="dfy-list-head" aria-hidden="true">
+        <span>Host</span><span>Owner</span><span>Account</span><span>Events</span><span></span>
+      </div>
+      <div class="dfy-client-list admin-skeleton-stack" id="client-list" aria-live="polite" aria-busy="true">
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="admin-skeleton-copy"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-meta"></span></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      </div>
+      <div class="dfy-empty" id="client-empty" hidden>
+        <h3>No clients prepared yet</h3>
+        <p>Add a client to create or reuse their account and prepare the Host Page.</p>
+        <button class="sg-btn sg-btn-ghost" id="empty-add-client" type="button">Add the first client</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="dfy-dialog" id="client-dialog" aria-labelledby="client-dialog-title">
+    <article class="dfy-dialog-card">
+      <header class="dfy-dialog-head">
+        <div>
+          <p class="dfy-eyebrow">Done For You setup</p>
+          <h2 id="client-dialog-title">Add a client</h2>
+          <p>We check exact email and mobile matches before creating anything.</p>
+        </div>
+        <button class="dfy-dialog-close" id="close-client-dialog" type="button" aria-label="Close">×</button>
+      </header>
+
+      <form id="client-form">
+        <fieldset class="dfy-form-fields" id="client-fields">
+          <legend class="sr-only">Client and Host Page information</legend>
+          <div class="sg-field">
+            <label for="client-host-name">Host name</label>
+            <input class="sg-input" id="client-host-name" name="hostName" maxlength="100" autocomplete="organization" required>
+            <p class="dfy-field-help">The public name shown on the Host Page.</p>
+          </div>
+          <div class="sg-field">
+            <label for="client-contact-name">Contact name</label>
+            <input class="sg-input" id="client-contact-name" name="contactName" maxlength="160" autocomplete="name" required>
+          </div>
+          <div class="sg-field">
+            <label for="client-email">Email</label>
+            <input class="sg-input" id="client-email" name="email" type="email" maxlength="254" autocomplete="email" inputmode="email" required>
+            <p class="dfy-field-help">Required for account lookup and the recipient’s claim invitation.</p>
+          </div>
+          <div class="sg-field">
+            <label for="client-phone">Mobile number <span>Optional</span></label>
+            <input class="sg-input" id="client-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" inputmode="tel">
+          </div>
+        </fieldset>
+
+        <section class="dfy-preflight" id="client-preflight" aria-live="polite" hidden></section>
+        <p class="dfy-form-error" id="client-form-error" role="alert"></p>
+
+        <footer class="dfy-dialog-actions">
+          <button class="sg-btn sg-btn-ghost" id="cancel-client" type="button">Cancel</button>
+          <button class="sg-btn sg-btn-ghost" id="edit-client" type="button" hidden>Edit details</button>
+          <button class="sg-btn sg-btn-primary" id="lookup-client" type="submit">Check account</button>
+          <button class="sg-btn sg-btn-primary" id="create-client" type="button" hidden>Create Host Page</button>
+        </footer>
+      </form>
+    </article>
+  </dialog>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-done-for-you.js"></script>
+</body>
+</html>

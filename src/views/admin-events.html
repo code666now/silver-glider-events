@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Events — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-events.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="events">
+  <main class="sg-shell admin-events-shell" data-admin-section="events">
+    <nav id="nav"></nav>
+
+    <header class="admin-events-head">
+      <p class="admin-events-eyebrow">Admin workspace</p>
+      <h1 class="sg-page-title">Events</h1>
+      <p class="sg-page-sub">Find every event, check its status and RSVPs, then open the existing support flow.</p>
+    </header>
+
+    <form class="admin-events-filters" id="event-filters" role="search">
+      <label class="admin-events-search">
+        <span>Search</span>
+        <input class="sg-input" id="event-search" name="q" type="search" maxlength="120" autocomplete="off" placeholder="Event, venue, host, slug, or ID">
+      </label>
+      <label>
+        <span>Host</span>
+        <select class="sg-select" id="event-host" name="host" disabled>
+          <option value="">All hosts</option>
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select class="sg-select" id="event-status" name="status" disabled>
+          <option value="">All statuses</option>
+          <option value="published">Live</option>
+          <option value="draft">Draft</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </label>
+      <details class="admin-events-more" id="event-more-filters" open>
+        <summary>More filters <span id="event-more-count"></span></summary>
+        <div class="admin-events-more-grid">
+          <label>
+            <span>When</span>
+            <select class="sg-select" id="event-timing" name="timing" disabled>
+              <option value="">Any time</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="past">Past</option>
+            </select>
+          </label>
+          <label>
+            <span>Visibility</span>
+            <select class="sg-select" id="event-visibility" name="visibility" disabled>
+              <option value="">All visibility</option>
+              <option value="public">Public</option>
+              <option value="private">Private link</option>
+              <option value="secret">Secret show</option>
+            </select>
+          </label>
+          <label>
+            <span>Admission</span>
+            <select class="sg-select" id="event-admission" name="admission" disabled>
+              <option value="">All admission</option>
+              <option value="free_rsvp">Free RSVP</option>
+              <option value="external_tickets">External tickets</option>
+              <option value="silver_glider_tickets">Silver Glider tickets</option>
+            </select>
+          </label>
+          <label>
+            <span>Archive</span>
+            <select class="sg-select" id="event-archived" name="archived" disabled>
+              <option value="">Active and archived</option>
+              <option value="active">Active only</option>
+              <option value="archived">Archived only</option>
+            </select>
+          </label>
+        </div>
+      </details>
+      <button class="admin-events-clear" id="event-clear" type="button" hidden>Clear filters</button>
+    </form>
+
+    <section class="admin-events-results" aria-labelledby="event-results-summary">
+      <div class="admin-events-summary-row">
+        <p id="event-results-summary" aria-live="polite">Loading events…</p>
+      </div>
+
+      <div class="admin-events-loading" id="events-loading" aria-hidden="true">
+        <div class="admin-events-skeleton sg-skeleton"></div>
+        <div class="admin-events-skeleton sg-skeleton"></div>
+        <div class="admin-events-skeleton sg-skeleton"></div>
+        <div class="admin-events-skeleton sg-skeleton"></div>
+      </div>
+
+      <div class="admin-events-error admin-load-error" id="events-error" hidden>
+        <strong>We couldn’t load events.</strong>
+        <p id="events-error-message">Try again in a moment.</p>
+        <button class="sg-btn sg-btn-ghost" id="events-retry" type="button">Try again</button>
+      </div>
+
+      <div class="admin-events-empty" id="events-empty" hidden>
+        <strong>No events match these filters.</strong>
+        <p>Clear a filter or try a different search.</p>
+        <button class="sg-btn sg-btn-ghost" id="events-empty-clear" type="button">Clear filters</button>
+      </div>
+
+      <div class="admin-events-list" id="events-list" aria-busy="true" hidden>
+        <div class="admin-events-list-head" aria-hidden="true">
+          <span>Event</span><span>Host</span><span>Date</span><span>Status</span>
+          <span>Visibility</span><span>Admission</span><span>RSVPs</span><span></span>
+        </div>
+        <div id="events-rows"></div>
+      </div>
+
+      <nav class="admin-events-pagination" id="events-pagination" aria-label="Event pages" hidden>
+        <button class="sg-btn sg-btn-ghost" id="events-previous" type="button">Previous</button>
+        <span id="events-page-label"></span>
+        <button class="sg-btn sg-btn-ghost" id="events-next" type="button">Next</button>
+      </nav>
+    </section>
+  </main>
+
+  <dialog class="admin-event-dialog" id="event-detail" aria-labelledby="event-detail-title">
+    <article class="admin-event-detail-card">
+      <header class="admin-event-detail-head">
+        <div>
+          <p class="admin-event-detail-eyebrow" id="event-detail-eyebrow">Event details</p>
+          <h2 id="event-detail-title">Event</h2>
+          <p id="event-detail-host"></p>
+        </div>
+        <button class="admin-event-detail-close" id="event-detail-close" type="button" aria-label="Close event details">×</button>
+      </header>
+      <div class="admin-event-detail-body">
+        <div class="admin-event-detail-grid" id="event-detail-grid"></div>
+        <p class="admin-event-editor-note" id="event-editor-note" hidden></p>
+      </div>
+      <footer class="admin-event-detail-actions" id="event-detail-actions"></footer>
+    </article>
+  </dialog>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-events.js"></script>
+</body>
+</html>

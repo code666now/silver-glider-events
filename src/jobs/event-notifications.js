@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { buildIcs } = require('../lib/calendar');
 const { sendEventUpdate, sendEventCancellation } = require('../lib/mailer');
+const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
 const MAX_ATTEMPTS = 3;
 let running = false;
@@ -86,7 +87,7 @@ async function processEventNotificationBatch(batchId) {
     );
     if (!claimed.length) continue;
     try {
-      const result = await sender({
+      const deliveryResult = await withActiveHostAccount(pool, event.organizer_id, () => sender({
         recipient: delivery.recipient,
         event,
         rsvp: {
@@ -98,10 +99,17 @@ async function processEventNotificationBatch(batchId) {
         },
         changes: Array.isArray(event.changes) ? event.changes : [],
         icsContent
-      });
+      }));
+      if (!deliveryResult.allowed) {
+        await pool.query(
+          `UPDATE message_log SET status='failed', attempt_count=$2, error=$3 WHERE id=$1`,
+          [delivery.log_id, MAX_ATTEMPTS, HOST_ACCOUNT_INACTIVE]
+        );
+        continue;
+      }
       await pool.query(
         `UPDATE message_log SET status='sent', sent_at=NOW(), provider_id=$2, error=NULL WHERE id=$1`,
-        [delivery.log_id, result?.id || null]
+        [delivery.log_id, deliveryResult.result?.id || null]
       );
     } catch (error) {
       console.error(`[event-notifications] ${messageType} to ${delivery.recipient} failed:`, error.message);

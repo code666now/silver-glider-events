@@ -1,0 +1,154 @@
+.admin-shell-root {
+  width: 100%;
+  max-width: 1440px !important;
+}
+
+.admin-shell-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 34px;
+  align-items: start;
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 22px;
+  min-width: 0;
+  padding: 18px 12px 14px;
+  border: 1px solid var(--sg-border-soft);
+  border-radius: 18px;
+  background: rgba(17, 17, 18, .78);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, .14);
+}
+
+.admin-sidebar-label {
+  display: block;
+  padding: 0 11px 11px;
+  color: var(--sg-text-faint);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.admin-sidebar-links {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-sidebar-link {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--sg-text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.admin-sidebar-link::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, .24);
+  border-radius: 50%;
+  content: '';
+}
+
+.admin-sidebar-link[aria-current="page"] {
+  border-color: rgba(28, 197, 190, .28);
+  background: rgba(28, 197, 190, .08);
+  color: var(--sg-text);
+}
+
+.admin-sidebar-link[aria-current="page"]::before {
+  border-color: var(--sg-accent);
+  background: var(--sg-accent);
+  box-shadow: 0 0 0 4px rgba(28, 197, 190, .09);
+}
+
+@media (hover: hover) {
+  .admin-sidebar-link:hover {
+    border-color: rgba(255, 255, 255, .09);
+    background: rgba(255, 255, 255, .035);
+    color: var(--sg-text);
+  }
+}
+
+.admin-sidebar-link:focus-visible {
+  outline: 2px solid rgba(28, 197, 190, .45);
+  outline-offset: 2px;
+}
+
+.admin-sidebar-link[hidden] { display: none; }
+.admin-shell-main { min-width: 0; }
+
+/* Shared fresh-passcode dialog used by privileged admin actions. */
+.admin-step-up-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--sg-text);
+}
+
+.admin-step-up-dialog::backdrop {
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.admin-step-up-card {
+  padding: 26px;
+  border: 1px solid var(--sg-border);
+  border-radius: 22px;
+  background: #121214;
+  box-shadow: var(--sg-shadow);
+}
+
+.admin-step-up-eyebrow {
+  margin-bottom: 7px;
+  color: var(--sg-accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.admin-step-up-card h2 { margin-bottom: 8px; font-size: 25px; }
+.admin-step-up-copy { margin-bottom: 20px; color: var(--sg-text-dim); font-size: 12px; line-height: 1.6; }
+.admin-step-up-status { min-height: 18px; margin: -5px 0 15px; color: var(--sg-text-faint); font-size: 11px; }
+.admin-step-up-status.error { color: var(--sg-danger); }
+.admin-step-up-code { font-size: 20px; letter-spacing: .2em; text-align: center; }
+.admin-step-up-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+.admin-step-up-actions .sg-btn { min-height: 44px; padding: 10px 17px; font-size: 12px; }
+
+@media (max-width: 960px) {
+  .admin-shell-layout { grid-template-columns: 1fr; gap: 24px; }
+  .admin-sidebar { position: static; padding: 8px; overflow: hidden; }
+  .admin-sidebar-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .admin-sidebar-links { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+  .admin-sidebar-links::-webkit-scrollbar { display: none; }
+  .admin-sidebar-link { min-height: 42px; flex: 0 0 auto; padding: 9px 13px; white-space: nowrap; }
+  .admin-sidebar-link::before { display: none; }
+}
+
+@media (max-width: 560px) {
+  .admin-shell-layout { gap: 20px; }
+  .admin-sidebar { margin-inline: -4px; border-radius: 15px; }
+  .admin-sidebar-link { min-height: 44px; font-size: 13px; }
+  .admin-step-up-card { padding: 22px 19px; }
+  .admin-step-up-actions { flex-direction: column-reverse; }
+  .admin-step-up-actions .sg-btn { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-sidebar-link { transition: none; }
+}

@@ -29,7 +29,7 @@ let selectedCreditPack = null;
 let paymentBusy = false;
 let identityState = {
   identities: [],
-  capabilities: { canAddPhone: false, identityStepUpVerified: false, phoneLimit: 1 }
+  capabilities: { canAddPhone: true, identityStepUpVerified: false, phoneLimit: 1 }
 };
 let identityDialogReturnFocus = null;
 let identityDialogMode = '';
@@ -342,9 +342,8 @@ function renderAccountIdentities(state) {
 
   const hasPhone = state.identities?.some(identity => identity.type === 'phone');
   settingsElement('identity-actions').hidden = false;
-  settingsElement('identity-add-phone').hidden = !state.capabilities?.canAddPhone;
+  settingsElement('identity-add-phone').hidden = false;
   settingsElement('identity-add-phone').textContent = hasPhone ? 'Change mobile number' : 'Add mobile number';
-  settingsElement('identity-admin-note').hidden = Boolean(state.capabilities?.canAddPhone);
 }
 
 async function loadAccountIdentities({ announce = false } = {}) {
@@ -423,7 +422,9 @@ function configureIdentityDialog({ eyebrow = 'Account security', title, copy, en
   settingsElement('identity-entry-form').hidden = !entry;
   settingsElement('identity-code-form').hidden = Boolean(entry);
   setIdentityDialogStatus('');
-  settingsElement('identity-code').value = '';
+  const codeInput = settingsElement('identity-code');
+  codeInput.value = '';
+  codeInput.toggleAttribute('data-email-code', identityDialogMode !== 'add-phone');
 
   if (entry) {
     const input = settingsElement('identity-entry');
@@ -879,11 +880,6 @@ api('/api/auth/me').then(({ organizer }) => {
   showSettings();
   loadAccountIdentities();
   if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
-  if (organizer.is_admin) {
-    const nav = document.querySelector('.sg-nav-links');
-    const adminLinks = [['/admin/accounts', 'Accounts'], ['/admin/hosts', 'Hosts'], ['/admin/line', 'The Line'], ['/admin/ticketing', 'Ticketing'], ['/admin/feedback', 'Feedback'], ['/admin/invitations', 'Invitations']];
-    nav.insertAdjacentHTML('beforeend', adminLinks.map(([href, label]) => `<a href="${href}">${label}</a>`).join(''));
-  }
   loadSmsCredits().then(showCheckoutReturn);
 }).catch(showSettingsError);
 

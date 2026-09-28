@@ -13,6 +13,7 @@
   <script src="/js/legal-footer.js" defer></script>
   <style>
     .profile-shell { max-width: 640px; }
+    .profile-layout, .profile-aside { display: contents; }
     .profile-card { display: grid; justify-items: center; text-align: center; padding: 18px 0 8px; }
     .profile-photo { position: relative; width: 148px; height: 148px; margin-bottom: 22px; }
     .profile-avatar {
@@ -56,33 +57,47 @@
     .profile-host span[aria-hidden] { color: var(--sg-text-faint); font-size: 26px; }
     .profile-host:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
     .profile-skeleton .sg-skeleton { display: block; }
+    @media (min-width: 880px) {
+      .profile-shell { max-width: 1080px; padding-right: 32px; padding-left: 32px; }
+      .profile-layout {
+        display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr);
+        gap: clamp(28px, 4vw, 48px); align-items: start;
+      }
+      .profile-card { padding: 24px 0 18px; }
+      .profile-aside { display: block; padding-top: 24px; }
+      .profile-aside .profile-stats { margin-top: 0; }
+    }
   </style>
 </head>
 <body>
   <div class="sg-shell profile-shell">
     <nav id="nav"></nav>
-    <main class="profile-card" aria-busy="true" id="profile">
-      <div class="profile-photo">
-        <span class="profile-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials></span><img alt="" hidden></span>
-        <button class="profile-photo-button" id="profile-photo-button" type="button" aria-label="Change your photo" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-        </button>
-        <input id="profile-photo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+    <div class="profile-layout">
+      <main class="profile-card" aria-busy="true" id="profile">
+        <div class="profile-photo">
+          <span class="profile-avatar" data-sg-avatar aria-hidden="true"><span data-sg-initials></span><img alt="" hidden></span>
+          <button class="profile-photo-button" id="profile-photo-button" type="button" aria-label="Change your photo" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </button>
+          <input id="profile-photo-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        </div>
+        <h1 class="profile-name" data-sg-name>&nbsp;</h1>
+        <p class="profile-joined" id="profile-joined">&nbsp;</p>
+        <p class="profile-status" id="profile-status" role="status" aria-live="polite"></p>
+        <a class="sg-btn sg-btn-ghost profile-edit" href="/settings/account">Edit profile</a>
+      </main>
+      <div class="profile-aside">
+        <section class="profile-stats" aria-label="Your events">
+          <div class="profile-stat"><strong id="stat-attended">–</strong><span>Attended</span></div>
+          <div class="profile-stat"><strong id="stat-hosted">–</strong><span>Hosted</span></div>
+        </section>
+        <p class="profile-stats-status" id="profile-stats-status" role="status" aria-live="polite"></p>
+        <a class="profile-host" id="profile-host" href="/settings/host-page" hidden>
+          <span><strong id="profile-host-title">Your host page</strong><small id="profile-host-copy">See what guests see.</small></span>
+          <span aria-hidden="true">›</span>
+        </a>
       </div>
-      <h1 class="profile-name" data-sg-name>&nbsp;</h1>
-      <p class="profile-joined" id="profile-joined">&nbsp;</p>
-      <p class="profile-status" id="profile-status" role="status" aria-live="polite"></p>
-      <a class="sg-btn sg-btn-ghost profile-edit" href="/settings/account">Edit profile</a>
-    </main>
-    <section class="profile-stats" aria-label="Your events">
-      <div class="profile-stat"><strong id="stat-attended">–</strong><span>Attended</span></div>
-      <div class="profile-stat"><strong id="stat-hosted">–</strong><span>Hosted</span></div>
-    </section>
-    <p class="profile-stats-status" id="profile-stats-status" role="status" aria-live="polite"></p>
-    <a class="profile-host" id="profile-host" href="/settings/host-page" hidden>
-      <span><strong id="profile-host-title">Your host page</strong><small id="profile-host-copy">See what guests see.</small></span>
-      <span aria-hidden="true">›</span>
-    </a>
+    </div>
   </div>
   <script src="/js/api.js"></script>
   <script src="/js/image-optimizer.js"></script>
