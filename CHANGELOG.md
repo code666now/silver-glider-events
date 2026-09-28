@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.140
+
+Released September 28, 2026. Built and deployed by Codex.
+
+### Returning guest insights
+
+* Event management now shows how many confirmed guests have attended an earlier event from the same host and how many of those returning guests came through a Familiar Faces invitation.
+* Overview includes a Returning guests stat, while each confirmed Familiar Face is labeled First time, 2nd time, 3rd time, and so on.
+* Visit history is chronological, so RSVPs to future events cannot inflate the current event's returning-guest count. The existing event editor, guest data, and database schema remain unchanged.
+
+### Verification
+
+* Static checks and all 475 automated tests pass, including database-backed coverage for first-time guests, returning guests, invitation attribution, cancelled RSVPs, and future-event isolation.
+
 ## 1.0.136
 
 Released September 24, 2026. Built and deployed by Codex.
