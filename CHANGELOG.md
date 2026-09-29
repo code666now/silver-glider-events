@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.143
+
+Released September 28, 2026. Built and deployed by Codex.
+
+### Unified event backgrounds
+
+* Flyer and Standard pages now share one background catalog across the dashboard editor and the live event editor on desktop and mobile.
+* Flyer pages can use Match Flyer, Midnight, Aurora, Sunset, Ocean, Plaster, or any existing animated effect. Match Flyer now derives its colors from the uploaded flyer instead of silently showing plaster.
+* Plaster is a named option rather than a mislabeled Match Photo shortcut. Existing Flyer events using the old implicit plaster presentation are migrated to Plaster so their published appearance stays the same.
+* Switching a new event between Standard and Flyer chooses the appropriate Midnight or Plaster default until the host deliberately selects a background.
+
+### Verification
+
+* Static validation and all 479 automated tests pass, including database-backed persistence and rendering coverage.
+* Desktop and mobile browser checks passed in both editors for Flyer gradients, Match Flyer, Plaster, option labels, selected state, and responsive width.
+
 ## 1.0.142
 
 Released September 28, 2026. Built and deployed by Codex.
