@@ -7,15 +7,17 @@ function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('seasonal effects lead, new static effects stay together, and Match Photo comes last', () => {
+test('all editors use one ordered background catalog with contextual artwork matching', () => {
   const form = source('public/js/event-form.js');
   const ownerRenderer = source('src/lib/event-owner-editor.js');
-  const expectedOrder = /'halloween'[\s\S]*'last-guest'[\s\S]*'static'[\s\S]*'liquid-stardust'[\s\S]*'color-static'[\s\S]*'saloon'[\s\S]*'adaptive'/;
-  assert.match(form, /const EFFECTS = \['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'adaptive'\]/);
-  assert.match(ownerRenderer, expectedOrder);
-  assert.match(form, /adaptive: 'Match Photo'/);
-  assert.match(form, /halloween: 'Halloween', 'liquid-stardust': 'Liquid Stardust', 'color-static': 'Color Static'/);
-  assert.match(form, /saloon: 'After Hours Saloon'/);
+  const catalog = require('../public/js/event-backgrounds');
+  assert.deepEqual(catalog.backgroundKeys, ['adaptive', 'midnight', 'aurora', 'sunset', 'ocean', 'plaster']);
+  assert.deepEqual(catalog.effectKeys, ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon']);
+  assert.equal(catalog.label('adaptive', 'standard'), 'Match Photo');
+  assert.equal(catalog.label('adaptive', 'flyer'), 'Match Flyer');
+  assert.match(form, /const EventBackgrounds = window\.SGEventBackgrounds/);
+  assert.match(ownerRenderer, /EventBackgrounds\.options\.filter/);
+  assert.match(ownerRenderer, /data-standard-label="\$\{label\}" data-flyer-label="\$\{flyerLabel \|\| label\}"/);
 });
 
 test('Match Photo reuses the artwork palette as an explicit adaptive background', () => {
@@ -29,19 +31,22 @@ test('Match Photo reuses the artwork palette as an explicit adaptive background'
 
   assert.match(form, /function updateAdaptiveThemeSwatch\(colors\)/);
   assert.match(form, /updateAdaptiveThemeSwatch\(ArtworkColor\.paletteForBackground\(candidates\)\)/);
-  assert.match(ownerRenderer, /\['adaptive', 'Match Photo', 'effect'\]/);
+  assert.match(ownerRenderer, /EventBackgrounds\.options\.filter/);
   assert.match(ownerClient, /if \(pageBackground && draft\.backgroundTheme === 'adaptive'\)/);
   assert.match(ownerClient, /background\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
   assert.match(publicClient, /background\.classList\.add\('image-palette'\)/);
   assert.match(publicRoute, /adaptiveBackground: theme === 'adaptive'/);
-  assert.match(eventEditor, /'midnight', 'aurora', 'sunset', 'ocean', 'adaptive'/);
-  assert.match(brand, /\.sg-swatch\.fx-adaptive/);
+  assert.match(eventEditor, /const THEMES = EventBackgrounds\.keys/);
+  assert.match(brand, /\.sg-swatch\.bg-adaptive/);
   assert.match(brand, /\.bg-adaptive/);
+  const paletteSource = publicClient.slice(publicClient.indexOf('async function applyCoverPalette'), publicClient.indexOf('function applyStandardMobileCoverFit'));
+  assert.doesNotMatch(paletteSource, /flyer-public-page'\)\) return/);
 });
 
 test('seasonal video effects are accepted and render from dedicated assets', () => {
-  assert.match(source('src/lib/event-editor.js'), /'halloween', 'liquid-stardust', 'color-static', 'last-guest'/);
+  const catalog = require('../public/js/event-backgrounds');
+  for (const effect of ['halloween', 'liquid-stardust', 'color-static', 'last-guest']) assert.ok(catalog.effectKeys.includes(effect));
   const publicRoute = source('src/routes/public.js');
   assert.match(publicRoute, /halloween: 'sg-events\/effects\/halloween'/);
   assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
@@ -92,8 +97,10 @@ test('new video backgrounds crossfade their end-to-start seam in both live views
 });
 
 test('After Hours Saloon remains accepted and renders from its dedicated asset', () => {
-  assert.match(source('src/lib/event-editor.js'), /'fog', 'saloon'/);
-  assert.match(source('src/routes/public.js'), /'fog', 'saloon'/);
+  const catalog = require('../public/js/event-backgrounds');
+  assert.ok(catalog.effectKeys.includes('saloon'));
+  assert.match(source('src/lib/event-editor.js'), /const THEMES = EventBackgrounds\.keys/);
+  assert.match(source('src/routes/public.js'), /const EFFECTS = EventBackgrounds\.effectKeys/);
   const standardView = source('src/views/event-public.html');
   assert.match(standardView, /sg-events\/backgrounds\/after-hours-saloon\.png/);
   assert.match(standardView, /\.event-bg\.fx-saloon/);

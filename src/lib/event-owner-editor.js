@@ -1,28 +1,12 @@
 const { esc } = require('./public-html');
 const { ADMISSION_TYPES, normalizeAdmissionType } = require('./admission');
+const EventBackgrounds = require('../../public/js/event-backgrounds');
 
-const THEMES = [
-  ['midnight', 'Midnight', 'gradient'],
-  ['aurora', 'Aurora', 'gradient'],
-  ['sunset', 'Sunset', 'gradient'],
-  ['ocean', 'Ocean', 'gradient'],
-  ['halloween', 'Halloween', 'effect'],
-  ['last-guest', 'The Last Guest', 'effect'],
-  ['disco', 'Disco', 'effect'],
-  ['fog', 'Fog', 'effect'],
-  ['paper', 'Kraft paper', 'effect'],
-  ['static', 'TV static', 'effect'],
-  ['liquid-stardust', 'Liquid Stardust', 'effect'],
-  ['color-static', 'Color Static', 'effect'],
-  ['saloon', 'After Hours Saloon', 'effect'],
-  ['adaptive', 'Match Photo', 'effect']
-];
-
-function themeButtons(kind) {
-  return THEMES.filter(([, , group]) => group === kind).map(([key, label]) => (
+function themeButtons(group) {
+  return EventBackgrounds.options.filter(option => option.group === group).map(({ key, label, flyerLabel }) => (
     `<button class="owner-theme" type="button" data-owner-theme="${key}" aria-pressed="false">
       <span class="owner-theme-preview owner-theme-${key}" aria-hidden="true"></span>
-      <span>${label}</span>
+      <span data-owner-theme-label data-standard-label="${label}" data-flyer-label="${flyerLabel || label}">${label}</span>
     </button>`
   )).join('');
 }
@@ -192,7 +176,7 @@ function renderOwnerEditor(event) {
                 <span><strong>Designer credit</strong><small id="owner-mobile-summary-designer">Add an optional flyer credit</small></span><i aria-hidden="true">›</i>
               </button>
               <button class="owner-mobile-task-row" type="button" data-owner-mobile-view="effects">
-                <span><strong>Effects</strong><small id="owner-mobile-summary-effects">Choose the page atmosphere</small></span><i aria-hidden="true">›</i>
+                <span><strong>Page background</strong><small id="owner-mobile-summary-effects">Choose the page atmosphere</small></span><i aria-hidden="true">›</i>
               </button>
             </div>
 
@@ -232,18 +216,12 @@ function renderOwnerEditor(event) {
 
             <div class="owner-theme-picker" id="owner-theme-picker" data-owner-mobile-appearance-section="effects">
               <div class="owner-theme-group owner-gradient-group">
-                <h4>Gradients</h4>
-                <div class="owner-theme-grid">${themeButtons('gradient')}</div>
+                <h4>Backgrounds</h4>
+                <div class="owner-theme-grid">${themeButtons('background')}</div>
               </div>
               <div class="owner-theme-group">
                 <h4>Effects</h4>
-                <div class="owner-theme-grid">
-                  <button class="owner-theme owner-flyer-default" type="button" data-owner-theme="midnight" aria-pressed="false" hidden>
-                    <span class="owner-theme-preview owner-theme-plaster" aria-hidden="true"></span>
-                    <span>Match Photo</span>
-                  </button>
-                  ${themeButtons('effect')}
-                </div>
+                <div class="owner-theme-grid">${themeButtons('effect')}</div>
               </div>
             </div>
           </section>

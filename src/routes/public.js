@@ -23,6 +23,7 @@ const { clearPhotoAccessCookie } = require('../lib/photo-access');
 const { createSignInChallenge, maskEmail } = require('../lib/sign-in-challenges');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
+const EventBackgrounds = require('../../public/js/event-backgrounds');
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
@@ -799,8 +800,8 @@ router.get('/e/:slug', async (req, res, next) => {
 
     // Violet and ember are legacy-only: hidden from the MVP picker, but still
     // rendered for already-published events that selected them.
-    const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'violet', 'ember'];
-    const EFFECTS = ['static', 'paper', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'saloon'];
+    const THEMES = [...EventBackgrounds.backgroundKeys, 'violet', 'ember'];
+    const EFFECTS = EventBackgrounds.effectKeys;
     const VIDEO_EFFECTS = {
       halloween: 'sg-events/effects/halloween',
       'liquid-stardust': 'sg-events/effects/liquid-stardust',

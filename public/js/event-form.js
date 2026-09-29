@@ -13,9 +13,11 @@ let coverFitMode = 'auto';
 let hasSavedSecretCode = false;
 let savedEventDetails = null;
 let savedRsvpCount = 0;
+let backgroundThemeTouched = false;
 
 const $ = id => document.getElementById(id);
 const ArtworkColor = window.SGArtworkColor;
+const EventBackgrounds = window.SGEventBackgrounds;
 const LocationUtils = window.SGLocation;
 const artworkAccents = new Map();
 let artworkAccentPromise = Promise.resolve(null);
@@ -23,7 +25,7 @@ const mobileFlowMedia = window.matchMedia('(max-width: 879px)');
 const mobileFlowTitles = {
   design: 'Appearance',
   designer: 'Designer credit',
-  effects: 'Effects',
+  effects: 'Page background',
   basics: 'Event details',
   description: 'Description',
   vibe: 'Event vibe',
@@ -36,7 +38,7 @@ const mobileFlowTitles = {
 const mobileFlowSubtitles = {
   design: 'Customize how your event looks to guests.',
   designer: 'Give the person who made your flyer a visible credit.',
-  effects: 'Choose the atmosphere behind your event page.',
+  effects: 'Choose the color, texture, or atmosphere behind your event page.',
   basics: 'Start with the basics. You can always edit these later.',
   description: 'Tell guests what makes this event worth showing up for.',
   vibe: 'Add up to three artists, photos, and music links.',
@@ -159,7 +161,7 @@ function normalizeFlyerDesignerHandle({ focus = false } = {}) {
 }
 
 function updateAdaptiveThemeSwatch(colors) {
-  const swatch = document.querySelector('.sg-swatch.fx-adaptive');
+  const swatch = document.querySelector('.sg-swatch.bg-adaptive');
   if (!swatch) return;
   if (!colors?.length) {
     ['--adaptive-a', '--adaptive-b', '--adaptive-c'].forEach(property => swatch.style.removeProperty(property));
@@ -390,7 +392,12 @@ function refreshActiveArtworkAccent(options = {}) {
 }
 
 function setPresentationMode(mode) {
+  const previousMode = presentationMode;
   presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
+  if (!editId && previousMode !== presentationMode && !backgroundThemeTouched) {
+    if (presentationMode === 'flyer' && $('background_theme').value === 'midnight') setTheme('plaster');
+    if (presentationMode === 'standard' && $('background_theme').value === 'plaster') setTheme('midnight');
+  }
   const standard = presentationMode === 'standard';
   $('presentation-standard').checked = standard;
   $('presentation-flyer').checked = !standard;
@@ -400,6 +407,7 @@ function setPresentationMode(mode) {
   $('standard-media').hidden = !standard;
   $('flyer-media').hidden = standard;
   $('event-mobile-designer-row').hidden = standard || !$('flyer_image_url').value;
+  refreshThemeLabels();
   refreshActiveArtworkAccent();
   refreshMobileFlowHub();
 }
@@ -597,40 +605,46 @@ $('admission-commerce').addEventListener('click', () => setAdmission('silver_gli
 $('admission-paid').addEventListener('click', () => setAdmission('external_tickets'));
 
 // Background picker — gradients + generative/photo/video effects
-const GRADIENTS = ['midnight', 'aurora', 'sunset', 'ocean'];
-const EFFECTS = ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'adaptive'];
-const THEMES = [...GRADIENTS, ...EFFECTS];
-const THEME_LABELS = {
-  midnight: 'Midnight', aurora: 'Aurora', sunset: 'Sunset', ocean: 'Ocean',
-  adaptive: 'Match Photo',
-  halloween: 'Halloween', 'liquid-stardust': 'Liquid Stardust', 'color-static': 'Color Static',
-  'last-guest': 'The Last Guest',
-  static: 'TV static', paper: 'Kraft paper', disco: 'Disco', fog: 'Fog',
-  saloon: 'After Hours Saloon'
-};
-function setTheme(key) {
+const THEMES = EventBackgrounds.keys;
+const EFFECTS = EventBackgrounds.effectKeys;
+function themeLabel(key) {
+  return EventBackgrounds.label(key, presentationMode);
+}
+function refreshThemeLabels() {
+  document.querySelectorAll('#theme-picker .sg-swatch').forEach(swatch => {
+    const label = themeLabel(swatch.dataset.theme);
+    swatch.title = label;
+    swatch.setAttribute('aria-label', `Use ${label} background`);
+    const name = swatch.querySelector('.sg-swatch-name');
+    if (name) name.textContent = label;
+  });
+  const selected = $('background_theme').value;
+  $('theme-selected-name').textContent = `Selected: ${themeLabel(selected)}`;
+}
+function setTheme(key, { touched = false } = {}) {
+  if (touched) backgroundThemeTouched = true;
   $('background_theme').value = key;
   document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => {
     const selected = s.dataset.theme === key;
     s.classList.toggle('on', selected);
     s.setAttribute('aria-pressed', String(selected));
   });
-  $('theme-selected-name').textContent = `Selected: ${THEME_LABELS[key] || key}`;
+  $('theme-selected-name').textContent = `Selected: ${themeLabel(key)}`;
   refreshMobileFlowHub();
 }
-THEMES.forEach(key => {
+EventBackgrounds.options.forEach(({ key, group }) => {
   const sw = document.createElement('button');
   sw.type = 'button';
-  sw.className = 'sg-swatch ' + (EFFECTS.includes(key) ? 'fx-' : 'bg-') + key;
+  sw.className = `sg-swatch ${group === 'effect' ? 'fx-' : 'bg-'}${key}`;
   sw.dataset.theme = key;
-  sw.title = THEME_LABELS[key];
-  sw.setAttribute('aria-label', `Use ${THEME_LABELS[key]} background`);
+  sw.title = themeLabel(key);
+  sw.setAttribute('aria-label', `Use ${themeLabel(key)} background`);
   const name = document.createElement('span');
   name.className = 'sg-swatch-name';
-  name.textContent = THEME_LABELS[key];
+  name.textContent = themeLabel(key);
   sw.appendChild(name);
-  sw.addEventListener('click', () => setTheme(key));
-  $(EFFECTS.includes(key) ? 'effect-picker' : 'gradient-picker').appendChild(sw);
+  sw.addEventListener('click', () => setTheme(key, { touched: true }));
+  $(group === 'effect' ? 'effect-picker' : 'gradient-picker').appendChild(sw);
 });
 setTheme('midnight');
 
@@ -1270,7 +1284,7 @@ function refreshMobileFlowHub() {
   const designImage = presentationMode === 'flyer' ? $('flyer_image_url').value : $('cover_image_url').value;
   $('event-mobile-summary-design').textContent = `${presentationMode === 'flyer' ? 'Flyer' : 'Standard'} · ${designImage ? 'Image added' : 'No image'}`;
   $('event-mobile-summary-designer').textContent = $('flyer-designer-name').value.trim() || $('flyer-designer-instagram').value.trim() || 'Add who designed this flyer';
-  $('event-mobile-summary-effects').textContent = THEME_LABELS[$('background_theme').value] || 'Midnight';
+  $('event-mobile-summary-effects').textContent = themeLabel($('background_theme').value) || 'Midnight';
 
   const basics = [formatMobileFlowDate($('event_date').value), formatMobileFlowTime($('start_time').value)].filter(Boolean);
   const locationName = $('venue_name').value || $('location_search').value.trim();

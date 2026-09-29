@@ -62,7 +62,6 @@ document.addEventListener('click', event => {
 });
 
 async function applyCoverPalette() {
-  if (document.body.classList.contains('flyer-public-page')) return;
   if (!EVENT.coverImageUrl) return;
   try {
     const candidates = await ArtworkColor.extractPalette(EVENT.coverImageUrl);

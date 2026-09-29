@@ -21,6 +21,64 @@
   transform: none;
 }
 
+.event-bg.bg-theme {
+  inset: 0;
+  background-color: var(--sg-bg);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto;
+  filter: none;
+}
+.event-bg.bg-midnight {
+  background-image:
+    radial-gradient(60% 45% at 20% 2%, #26262f, transparent 62%),
+    radial-gradient(60% 50% at 85% 98%, #202028, transparent 62%);
+}
+.event-bg.bg-aurora {
+  background-image:
+    radial-gradient(58% 45% at 10% 4%, rgba(28,197,190,.55), transparent 60%),
+    radial-gradient(58% 45% at 92% 12%, rgba(255,138,42,.5), transparent 60%),
+    radial-gradient(65% 52% at 86% 96%, rgba(28,197,190,.4), transparent 62%),
+    radial-gradient(58% 48% at 12% 90%, rgba(255,138,42,.35), transparent 62%);
+}
+.event-bg.bg-sunset {
+  background-image:
+    radial-gradient(60% 46% at 45% 2%, rgba(255,92,58,.6), transparent 62%),
+    radial-gradient(55% 42% at 88% 14%, rgba(255,193,92,.45), transparent 60%),
+    radial-gradient(68% 54% at 18% 98%, rgba(255,92,58,.42), transparent 62%),
+    radial-gradient(55% 46% at 90% 88%, rgba(255,150,90,.35), transparent 62%);
+}
+.event-bg.bg-ocean {
+  background-image:
+    radial-gradient(58% 45% at 24% 3%, rgba(0,140,255,.5), transparent 62%),
+    radial-gradient(58% 44% at 90% 12%, rgba(28,197,190,.5), transparent 60%),
+    radial-gradient(68% 54% at 80% 97%, rgba(0,140,255,.4), transparent 62%),
+    radial-gradient(55% 46% at 12% 90%, rgba(28,197,190,.35), transparent 62%);
+}
+.event-bg.bg-adaptive {
+  background-image:
+    radial-gradient(60% 45% at 20% 2%, #26262f, transparent 62%),
+    radial-gradient(60% 50% at 85% 98%, #202028, transparent 62%);
+}
+.event-bg.bg-adaptive.image-palette {
+  background-image:
+    radial-gradient(62% 56% at 5% 4%, var(--event-bg-a), transparent 62%),
+    radial-gradient(70% 62% at 108% 18%, var(--event-bg-b), transparent 60%),
+    radial-gradient(78% 66% at 82% 116%, var(--event-bg-c), transparent 64%),
+    linear-gradient(115deg, transparent 0 22%, var(--event-bg-b) 38%, transparent 56% 100%),
+    linear-gradient(25deg, transparent 0 35%, var(--event-bg-a) 48%, transparent 66% 100%);
+  filter: saturate(1.08) brightness(.88);
+}
+.event-bg.bg-plaster {
+  background-color: #171717;
+  background-image:
+    linear-gradient(rgba(10,10,10,.76), rgba(10,10,10,.76)),
+    url('/images/flyer-plaster-wall.jpg');
+  background-position: center;
+  background-size: cover;
+  filter: grayscale(1) contrast(1.08);
+}
+
 .event-bg.fx-static,
 .event-bg.fx-paper,
 .event-bg.fx-halloween,

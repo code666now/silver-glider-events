@@ -1260,11 +1260,10 @@
       #event-form[data-mobile-view="design"] #flyer-credit-fields { display: none !important; }
       #event-form[data-mobile-view="design"] .event-mobile-appearance-links { display: grid; gap: 14px; margin-top: 22px; }
       #event-form[data-mobile-view="designer"] .event-editor-design > *:not(#flyer-media),
-      #event-form[data-mobile-view="effects"] .event-editor-design > *:not(#standard-media) { display: none !important; }
-      #event-form[data-mobile-view="designer"] #flyer-media,
-      #event-form[data-mobile-view="effects"] #standard-media { display: block !important; }
+      #event-form[data-mobile-view="effects"] .event-editor-design > *:not(#background-field) { display: none !important; }
+      #event-form[data-mobile-view="designer"] #flyer-media { display: block !important; }
       #event-form[data-mobile-view="designer"] #flyer-media > *:not(#flyer-credit-fields):not(#flyer_image_url),
-      #event-form[data-mobile-view="effects"] #standard-media > *:not(#background-field):not(#cover_image_url):not(#cover_credit_name):not(#cover_credit_link) { display: none !important; }
+      #event-form[data-mobile-view="effects"] #background-field { display: block !important; }
       #event-form[data-mobile-view="designer"] #flyer-credit-fields,
       #event-form[data-mobile-view="effects"] #background-field { display: block !important; }
       .event-mobile-designer-row[hidden] { display: none !important; }
@@ -1695,17 +1694,6 @@
         <p class="cover-fit-help">Portrait artwork starts with the full flyer visible. This only changes Standard pages on phones.</p>
       </fieldset>
 
-      <div class="sg-field" id="background-field" data-mobile-flow-panel="effects">
-        <label>Background <span style="opacity:.5;text-transform:none;letter-spacing:0">— color or moving effect behind your page</span></label>
-        <div id="theme-picker">
-          <p class="theme-group-name">Gradients</p>
-          <div class="theme-swatch-grid" id="gradient-picker"></div>
-          <p class="theme-group-name">Effects</p>
-          <div class="theme-swatch-grid" id="effect-picker"></div>
-        </div>
-        <p class="theme-selected-name" id="theme-selected-name" aria-live="polite">Selected: Midnight</p>
-        <input type="hidden" id="background_theme" value="midnight">
-      </div>
       </section>
 
       <section class="media-panel" id="flyer-media" aria-label="Flyer artwork" hidden>
@@ -1741,6 +1729,18 @@
         <input type="hidden" id="flyer_image_url">
       </section>
 
+      <div class="sg-field" id="background-field" data-mobile-flow-panel="effects">
+        <label>Page background <span style="opacity:.5;text-transform:none;letter-spacing:0">— color, texture, or moving effect behind your page</span></label>
+        <div id="theme-picker">
+          <p class="theme-group-name">Backgrounds</p>
+          <div class="theme-swatch-grid" id="gradient-picker"></div>
+          <p class="theme-group-name">Effects</p>
+          <div class="theme-swatch-grid" id="effect-picker"></div>
+        </div>
+        <p class="theme-selected-name" id="theme-selected-name" aria-live="polite">Selected: Midnight</p>
+        <input type="hidden" id="background_theme" value="midnight">
+      </div>
+
       <div class="event-mobile-appearance-links" id="event-mobile-appearance-links">
         <button class="event-mobile-flow-row event-mobile-designer-row" id="event-mobile-designer-row" type="button" data-mobile-flow-open="designer" hidden>
           <span class="event-mobile-flow-row-icon" aria-hidden="true">◎</span>
@@ -1749,7 +1749,7 @@
         </button>
         <button class="event-mobile-flow-row" type="button" data-mobile-flow-open="effects">
           <span class="event-mobile-flow-row-icon" aria-hidden="true">✦</span>
-          <span class="event-mobile-flow-row-copy"><strong>Effects</strong><small id="event-mobile-summary-effects">Midnight</small></span>
+          <span class="event-mobile-flow-row-copy"><strong>Page background</strong><small id="event-mobile-summary-effects">Midnight</small></span>
           <span class="event-mobile-flow-row-arrow" aria-hidden="true">›</span>
         </button>
       </div>
@@ -2057,6 +2057,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/artwork-color.js"></script>
+  <script src="/js/event-backgrounds.js"></script>
   <script src="/js/location-utils.js"></script>
   <script src="/js/event-change-dialog.js"></script>
   <script src="/js/event-form.js"></script>

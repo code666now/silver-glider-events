@@ -7,9 +7,10 @@ const { ADMISSION_TYPES, normalizeAdmissionType } = require('./admission');
 const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { SMS_CONSENT_VERSION } = require('./sms-consent');
+const EventBackgrounds = require('../../public/js/event-backgrounds');
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
-const THEMES = ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'static', 'paper', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'saloon'];
+const THEMES = EventBackgrounds.keys;
 const PRESENTATION_MODES = ['standard', 'flyer'];
 const COVER_FIT_MODES = ['auto', 'contain', 'cover'];
 

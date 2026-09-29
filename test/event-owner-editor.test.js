@@ -37,7 +37,9 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /id="owner-commerce-interest-copy" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"/);
   assert.doesNotMatch(renderer, /id="owner-commerce-interest-(?:email|name)"/i);
   assert.match(renderer, /id="owner-ticket-price"/);
-  assert.match(renderer, /owner-flyer-default[\s\S]*Match Photo/);
+  assert.match(renderer, /<h4>Backgrounds<\/h4>/);
+  assert.match(renderer, /data-owner-theme-label data-standard-label/);
+  assert.doesNotMatch(renderer, /owner-flyer-default/);
   assert.doesNotMatch(renderer, /id="owner-end-time"/);
 
   assert.match(client, /request\(`\/api\/events\/\$\{EVENT\.id\}`/);
@@ -314,7 +316,8 @@ test('appearance gradients match the dashboard and visibly replace the artwork p
 
   assert.match(ownerClient, /background\.classList\.remove\('image-palette'/);
   assert.match(ownerClient, /const themeClass = effectKeys\.includes\(draft\.backgroundTheme\)/);
-  assert.match(ownerClient, /if \(draft\.backgroundTheme === 'adaptive'\) applyArtworkPalette/);
+  assert.match(ownerClient, /draft\.presentationMode === 'flyer' \? draft\.flyerImageUrl : draft\.coverImageUrl/);
+  assert.doesNotMatch(ownerClient, /document\.querySelector\('\.owner-gradient-group'\)\.hidden = flyer/);
   assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
 });
 

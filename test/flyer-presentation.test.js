@@ -52,6 +52,16 @@ test('migration safely defaults and constrains flyer presentation on the existin
   assert.match(designerCreditMigration, /flyer_designer_instagram_handle IS NULL/);
 });
 
+test('Plaster becomes a real theme without changing existing Flyer page appearance', () => {
+  const migration = read('src/db/migrations/057_flyer_plaster_background.sql');
+  const backgrounds = require('../public/js/event-backgrounds');
+  assert.ok(backgrounds.backgroundKeys.includes('plaster'));
+  assert.match(migration, /UPDATE events/);
+  assert.match(migration, /SET background_theme = 'plaster'/);
+  assert.match(migration, /presentation_mode = 'flyer'/);
+  assert.match(migration, /background_theme = 'midnight'/);
+});
+
 test('flyer uploads and event writes reuse authenticated, size-limited infrastructure', () => {
   const uploads = read('src/routes/uploads.js');
   const cloudinary = read('src/lib/cloudinary.js');
@@ -85,11 +95,17 @@ test('create and edit form default to Standard and require an uploaded flyer in 
   assert.match(js, /presentation_mode: presentationMode/);
   assert.match(js, /cover_fit_mode: coverFitMode/);
   assert.match(js, /artwork_accent_color: artworkAccents\.get\(activeArtworkUrl\(\)\) \|\| null/);
-  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/location-utils\.js"><\/script>\s*<script src="\/js\/event-change-dialog\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
+  assert.match(html, /<script src="\/js\/artwork-color\.js"><\/script>\s*<script src="\/js\/event-backgrounds\.js"><\/script>\s*<script src="\/js\/location-utils\.js"><\/script>\s*<script src="\/js\/event-change-dialog\.js"><\/script>\s*<script src="\/js\/event-form\.js"><\/script>/);
   assert.match(js, /img\.naturalHeight > img\.naturalWidth \? 'contain' : 'cover'/);
   assert.match(js, /flyer_image_url: \$\('flyer_image_url'\)\.value \|\| null/);
   assert.match(js, /setPresentationMode\(event\.presentation_mode === 'flyer'/);
   assert.match(js, /Upload a flyer before publishing this event/);
+  const standardStart = html.indexOf('id="standard-media"');
+  const flyerStart = html.indexOf('id="flyer-media"');
+  const backgroundStart = html.indexOf('id="background-field"');
+  assert.ok(standardStart < flyerStart && flyerStart < backgroundStart, 'the shared background picker should follow both artwork panels');
+  assert.match(html, /data-mobile-view="effects"\] \.event-editor-design > \*:not\(#background-field\)/);
+  assert.doesNotMatch(html, /data-mobile-view="effects"\] \.event-editor-design > \*:not\(#standard-media\)/);
 });
 
 test('Flyer designer credit is progressively disclosed, validated inline, and saved with the event', () => {
@@ -395,7 +411,7 @@ test('published-event owner editor previews Flyer designer credit and restores i
   assert.match(ownerStyles, /\.owner-flyer-credit-fields\[hidden\] \{ display: none; \}/);
 });
 
-test('Flyer pages use a fixed plaster background while Standard pages keep artwork-aware heroes', () => {
+test('Flyer pages keep Plaster while also supporting gradients and artwork matching', () => {
   const standardTemplate = read('src/views/event-public.html');
   const flyerTemplate = read('src/views/event-public-flyer.html');
   const flyerStyles = read('public/css/event-public-flyer.css');
@@ -405,9 +421,14 @@ test('Flyer pages use a fixed plaster background while Standard pages keep artwo
   assert.doesNotMatch(flyerTemplate, /flyer-print-texture|has-adaptive-print/);
   assert.match(flyerStyles, /url\('\/images\/flyer-plaster-wall\.jpg'\)/);
   assert.match(flyerStyles, /linear-gradient\(rgba\(10,10,10,\.76\), rgba\(10,10,10,\.76\)\)/);
-  assert.doesNotMatch(flyerStyles, /image-palette|flyer-bg-drift|has-adaptive-print/);
+  for (const theme of ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'plaster']) {
+    assert.match(flyerStyles, new RegExp(`\\.event-bg\\.bg-${theme}`));
+  }
+  assert.match(flyerStyles, /\.event-bg\.bg-adaptive\.image-palette/);
+  assert.doesNotMatch(flyerStyles, /flyer-bg-drift|has-adaptive-print/);
   assert.match(standardTemplate, /\.event-bg\.image-palette/);
-  assert.match(publicClient, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
+  const paletteSource = publicClient.slice(publicClient.indexOf('async function applyCoverPalette'), publicClient.indexOf('function applyStandardMobileCoverFit'));
+  assert.doesNotMatch(paletteSource, /if \(document\.body\.classList\.contains\('flyer-public-page'\)\) return/);
   assert.match(publicClient, /hero\.classList\.add\('image-palette'\)/);
   assert.match(publicClient, /if \(EVENT\.adaptiveBackground\)/);
   assert.match(publicClient, /ArtworkColor\.extractPalette/);

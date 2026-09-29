@@ -1298,6 +1298,17 @@ test('live event editing is visible only to the owner and saves through the prot
   assert.match(refreshedHtml, /class="event-bg bg-theme bg-aurora"/);
   assert.match(refreshedHtml, /class="public-guest-list"/);
 
+  const plasterUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ background_theme: 'plaster' })
+  });
+  assert.equal(plasterUpdate.status, 200);
+  assert.equal((await plasterUpdate.json()).event.background_theme, 'plaster');
+
+  const plasterPage = await fetch(`${baseUrl}/e/${event.slug}`, { headers: { cookie: sessionCookie } });
+  assert.match(await plasterPage.text(), /class="event-bg bg-theme bg-plaster"/);
+
   const adaptiveUpdate = await fetch(`${baseUrl}/api/events/${event.id}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', cookie: sessionCookie },

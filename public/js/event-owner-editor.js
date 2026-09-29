@@ -12,12 +12,13 @@
   const saveStatus = $('owner-save-status');
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
+  const EventBackgrounds = window.SGEventBackgrounds;
   const mobileEditorMedia = window.matchMedia('(max-width: 879px)');
   const OWNER_HISTORY_KEY = 'sgeOwnerEditor';
   const mobileViews = {
     appearance: { title: 'Appearance', helper: 'Choose a page style and artwork that feels like your event.', panel: 'appearance' },
     designer: { title: 'Designer credit', helper: 'Give the artist behind your flyer an optional shoutout.', panel: 'appearance', appearanceSection: 'designer', parent: 'appearance' },
-    effects: { title: 'Effects', helper: 'Choose the atmosphere guests see around your event.', panel: 'appearance', appearanceSection: 'effects', parent: 'appearance' },
+    effects: { title: 'Page background', helper: 'Choose the color, texture, or atmosphere guests see around your event.', panel: 'appearance', appearanceSection: 'effects', parent: 'appearance' },
     details: { title: 'Event details', helper: 'Keep the essentials clear so guests know where and when to arrive.', panel: 'details' },
     admission: { title: 'Admission', helper: 'Choose how guests reserve a spot or get tickets.', panel: 'settings', section: 'admission' },
     visibility: { title: 'Visibility', helper: 'Decide who can discover and open this event.', panel: 'settings', section: 'visibility' },
@@ -25,8 +26,8 @@
     guests: { title: 'Guest experience', helper: 'Choose how guests can participate after they RSVP.', panel: 'settings', section: 'guests', optional: true },
     more: { title: 'Links & advanced', helper: 'Open guest management, music, and the full event editor.', panel: 'settings', section: 'more' }
   };
-  const themeKeys = ['midnight', 'aurora', 'sunset', 'ocean', 'halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon', 'adaptive'];
-  const effectKeys = ['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'paper', 'static', 'saloon'];
+  const themeKeys = EventBackgrounds.keys;
+  const effectKeys = EventBackgrounds.effectKeys;
   const videoEffects = {
     halloween: 'sg-events/effects/halloween',
     'liquid-stardust': 'sg-events/effects/liquid-stardust',
@@ -118,6 +119,7 @@
   });
   let saved = normalized(EVENT);
   let draft = clone(saved);
+  let backgroundThemeTouched = false;
   let activeTab = 'appearance';
   let activeMobileView = 'hub';
   let mobileReturnFocus = null;
@@ -640,9 +642,9 @@
       ? 'Add your flyer'
       : 'Add event image';
     $('owner-fit-field').hidden = flyer || !draft.coverImageUrl;
-    document.querySelector('.owner-gradient-group').hidden = flyer;
-    document.querySelector('.owner-flyer-default').hidden = !flyer;
-    document.querySelector('[data-owner-theme="adaptive"]').hidden = flyer;
+    document.querySelectorAll('[data-owner-theme-label]').forEach(label => {
+      label.textContent = flyer ? label.dataset.flyerLabel : label.dataset.standardLabel;
+    });
     $('owner-mobile-designer-row').hidden = !(flyer && draft.flyerImageUrl);
   }
 
@@ -661,7 +663,12 @@
   }
 
   function setPresentationMode(mode) {
+    const previousMode = draft.presentationMode;
     draft.presentationMode = mode === 'flyer' ? 'flyer' : 'standard';
+    if (previousMode !== draft.presentationMode && !backgroundThemeTouched) {
+      if (draft.presentationMode === 'flyer' && draft.backgroundTheme === 'midnight') draft.backgroundTheme = 'plaster';
+      if (draft.presentationMode === 'standard' && draft.backgroundTheme === 'plaster') draft.backgroundTheme = 'midnight';
+    }
     if (draft.presentationMode === 'flyer' && !draft.flyerImageUrl) {
       $('owner-upload-status').textContent = 'Upload your flyer to use the Flyer layout.';
     } else {
@@ -802,7 +809,7 @@
   }
 
   async function applyArtworkPalette(url, { pageBackground = draft.backgroundTheme === 'adaptive' } = {}) {
-    if (!url || draft.presentationMode === 'flyer' || effectKeys.includes(draft.backgroundTheme) || !window.SGArtworkColor) return;
+    if (!url || effectKeys.includes(draft.backgroundTheme) || !window.SGArtworkColor) return;
     try {
       const colors = window.SGArtworkColor.paletteForBackground(await window.SGArtworkColor.extractPalette(url));
       const activeUrl = draft.presentationMode === 'flyer' ? draft.flyerImageUrl : draft.coverImageUrl;
@@ -1004,7 +1011,10 @@
     document.querySelectorAll('[data-owner-theme]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.ownerTheme === draft.backgroundTheme));
     });
-    if (draft.backgroundTheme === 'adaptive') applyArtworkPalette(draft.coverImageUrl, { pageBackground: true });
+    if (draft.backgroundTheme === 'adaptive') {
+      const artworkUrl = draft.presentationMode === 'flyer' ? draft.flyerImageUrl : draft.coverImageUrl;
+      applyArtworkPalette(artworkUrl, { pageBackground: true });
+    }
   }
 
   function populate() {
@@ -1179,6 +1189,7 @@
 
   function restoreSavedPreview() {
     draft = clone(saved);
+    backgroundThemeTouched = false;
     populate();
     closePhotoBrowser();
   }
@@ -1577,6 +1588,7 @@
     }
   });
   document.querySelectorAll('[data-owner-theme]').forEach(button => button.addEventListener('click', () => {
+    backgroundThemeTouched = true;
     previewTheme(button.dataset.ownerTheme);
     syncDirtyState();
   }));
