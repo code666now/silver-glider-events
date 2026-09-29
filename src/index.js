@@ -67,6 +67,7 @@ app.use(require('./routes/commerce'));
 app.use(require('./routes/sms-credits'));
 app.use(require('./routes/sms-notifications'));
 app.use(require('./routes/email-icons'));
+app.use(require('./routes/email-preferences'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));

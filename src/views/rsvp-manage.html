@@ -20,6 +20,13 @@
     .rsvp-manage-details { color:var(--sg-text-dim);font-size:14px;line-height:1.9; }
     .rsvp-manage-actions { display:flex;gap:10px;margin-bottom:28px; }
     .rsvp-manage-actions .sg-btn { flex:1; }
+    .rsvp-email-settings { margin:0 0 24px;padding:20px; }
+    .rsvp-email-setting-row { display:flex;align-items:flex-start;gap:14px;cursor:pointer; }
+    .rsvp-email-setting-row input { width:21px;height:21px;margin:2px 0 0;accent-color:var(--sg-accent);flex:0 0 auto; }
+    .rsvp-email-setting-row strong { display:block;margin-bottom:4px;font-size:15px; }
+    .rsvp-email-setting-row small { display:block;color:var(--sg-text-dim);font-size:13px;line-height:1.5; }
+    .rsvp-email-setting-status { min-height:19px;margin:12px 0 0;color:var(--sg-text-dim);font-size:13px;text-align:center; }
+    .rsvp-email-setting-status.is-error { color:var(--sg-danger); }
     .rsvp-cancel-status { min-height:20px;margin:12px 0 0;color:var(--sg-text-dim);font-size:13px;line-height:1.5;text-align:center; }
     .rsvp-cancel-status.is-error { color:var(--sg-danger); }
     .rsvp-cancelled { display:none;padding-top:8vh;text-align:center; }
@@ -40,6 +47,7 @@
       .rsvp-manage-details { font-size:16px;line-height:1.9; }
       .rsvp-manage-actions { display:grid;gap:12px;margin-bottom:30px; }
       .rsvp-manage-actions .sg-btn,#cancel-btn,.rsvp-cancelled .sg-btn { width:100%;min-height:60px;border-radius:19px;font-size:16px; }
+      .rsvp-email-settings { padding:22px;border-radius:22px; }
       #cancel-btn { min-height:52px; }
       .rsvp-cancel-status { margin-top:14px;font-size:14px; }
       .rsvp-cancelled { padding-top:clamp(46px,10vh,90px); }
@@ -72,6 +80,14 @@
         <a class="sg-btn sg-btn-ghost" href="{{ICS_URL}}">Add to calendar</a>
       </div>
 
+      <section class="sg-card rsvp-email-settings" id="email-settings">
+        <label class="rsvp-email-setting-row" for="email-reminders">
+          <input id="email-reminders" type="checkbox" {{REMINDERS_CHECKED}}>
+          <span><strong>Event reminders and optional follow-ups</strong><small>Critical event updates and cancellations still arrive even when this is off.</small></span>
+        </label>
+        <p class="rsvp-email-setting-status" id="email-reminders-status" role="status" aria-live="polite"></p>
+      </section>
+
       <button class="sg-btn sg-btn-danger sg-btn-block" id="cancel-btn" type="button">Can't make it? Cancel RSVP</button>
       <p class="rsvp-cancel-status" id="cancel-status" role="status" aria-live="polite"></p>
     </div>
@@ -90,6 +106,8 @@
     const cancelledState = document.getElementById('cancelled');
     const cancelButton = document.getElementById('cancel-btn');
     const cancelStatus = document.getElementById('cancel-status');
+    const emailReminders = document.getElementById('email-reminders');
+    const emailRemindersStatus = document.getElementById('email-reminders-status');
 
     function showCancelled({ focus = false } = {}) {
       activeState.hidden = true;
@@ -98,6 +116,29 @@
     }
 
     if (rsvpStatus === 'cancelled') showCancelled();
+
+    emailReminders?.addEventListener('change', async () => {
+      const enabled = emailReminders.checked;
+      emailReminders.disabled = true;
+      emailRemindersStatus.classList.remove('is-error');
+      emailRemindersStatus.textContent = 'Saving…';
+      try {
+        const response = await fetch('/api/public/rsvps/{{TOKEN}}/reminders', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Your email setting could not be saved.');
+        emailRemindersStatus.textContent = enabled ? 'Optional event emails turned on.' : 'Optional event emails turned off.';
+      } catch (error) {
+        emailReminders.checked = !enabled;
+        emailRemindersStatus.classList.add('is-error');
+        emailRemindersStatus.textContent = error.message || 'Your email setting could not be saved.';
+      } finally {
+        emailReminders.disabled = false;
+      }
+    });
 
     cancelButton?.addEventListener('click', async () => {
       if (!confirm('Cancel your RSVP?')) return;

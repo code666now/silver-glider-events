@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendHostRecap } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { emailOptedOut, emailPreferenceUrls } = require('../lib/email-preferences');
 
 let _running = false;
 
@@ -120,21 +121,26 @@ async function verifiedHostEmail(organizerId) {
 }
 
 async function sendRecapFor(event) {
+  const hostEmail = await verifiedHostEmail(event.organizer_id);
+  if (!hostEmail) {
+    console.log(`[host-recap] skipped event ${event.id}: no verified host email`);
+    return false;
+  }
+  if (await emailOptedOut(pool, hostEmail, 'host_recaps')) {
+    console.log(`[host-recap] skipped event ${event.id}: host recaps disabled`);
+    return false;
+  }
   if (!await claimRecap(event.id)) return false;
   try {
-    let missingVerifiedEmail = false;
     const delivery = await withActiveHostAccount(
       pool,
       event.organizer_id,
       async () => {
-        const hostEmail = await verifiedHostEmail(event.organizer_id);
-        if (!hostEmail) {
-          missingVerifiedEmail = true;
-          return null;
-        }
+        const preferences = emailPreferenceUrls(hostEmail, 'host_recaps');
         return sendHostRecap({
           to: hostEmail,
           event,
+          ...preferences,
           stats: {
             totalAttendance: event.total_attendance,
             returning: event.returning_count,
@@ -147,10 +153,6 @@ async function sendRecapFor(event) {
     // not counted as a sent recap in the pass result.
     if (!delivery.allowed) {
       console.log(`[host-recap] skipped event ${event.id}: ${HOST_ACCOUNT_INACTIVE}`);
-      return false;
-    }
-    if (missingVerifiedEmail) {
-      console.log(`[host-recap] skipped event ${event.id}: no verified host email`);
       return false;
     }
     return true;

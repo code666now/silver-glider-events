@@ -123,7 +123,9 @@ test('reusable guest invitation keeps artwork and uses one RSVP call to action',
   assert.doesNotMatch(html, />View event<\/a>/);
   assert.match(html, /art\.jpg/);
   assert.match(html, /RSVP’d to Summer Party, hosted by Heatwave Booking/);
-  assert.match(html, /Unsubscribe from invitations from this host/);
+  assert.match(html, /Unsubscribe from Heatwave Booking/);
+  assert.match(html, /Manage email settings/);
+  assert.match(html, /490 Post Street, Suite 500/);
 });
 
 test('SMS lifecycle copy is untouched by the photo opportunity', () => {

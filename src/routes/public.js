@@ -1654,7 +1654,7 @@ router.get('/t/:token', async (req, res, next) => {
 router.get('/r/:token', async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT r.id AS rsvp_id, r.first_name, r.status AS rsvp_status,
+      `SELECT r.id AS rsvp_id, r.first_name, r.status AS rsvp_status, r.wants_reminders,
               e.id AS event_id, e.*
          FROM rsvps r JOIN events e ON e.id = r.event_id
         WHERE r.manage_token=$1`,
@@ -1675,17 +1675,21 @@ router.get('/r/:token', async (req, res, next) => {
       .replace(/{{ICS_URL}}/g, esc(`/e/${row.slug}/calendar.ics`))
       .replace(/{{TOKEN}}/g, esc(req.params.token))
       .replace(/{{RSVP_STATUS}}/g, esc(row.rsvp_status))
+      .replace(/{{REMINDERS_CHECKED}}/g, row.wants_reminders ? 'checked' : '')
       .replace(/{{EVENT_STATUS}}/g, esc(row.status));
     res.send(html);
   } catch (err) { next(err); }
 });
 
-// GET /unsubscribe?token= — remove an email from an organizer's follower list
-router.get('/unsubscribe', async (req, res, next) => {
+// GET is the visible email link; POST supports RFC 8058 inbox-level one-click
+// unsubscribe. Both are idempotent and affect only this host's optional mail.
+async function unsubscribeFromHost(req, res, next) {
   try {
     const data = verifyOptout(req.query.token);
     if (!data) {
-      return res.status(400).send(unsubscribePage('That unsubscribe link is invalid or expired.', false));
+      return req.method === 'POST'
+        ? res.status(400).end()
+        : res.status(400).send(unsubscribePage('That unsubscribe link is invalid or expired.', false));
     }
     await pool.query(
       `INSERT INTO follower_optouts (organizer_id, email)
@@ -1693,9 +1697,13 @@ router.get('/unsubscribe', async (req, res, next) => {
        WHERE NOT EXISTS (SELECT 1 FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=LOWER($2))`,
       [data.organizerId, data.email]
     );
+    if (req.method === 'POST') return res.status(204).end();
     res.send(unsubscribePage("You're unsubscribed. You won't get future-event emails from this host.", true));
   } catch (err) { next(err); }
-});
+}
+
+router.get('/unsubscribe', unsubscribeFromHost);
+router.post('/unsubscribe', unsubscribeFromHost);
 
 function unsubscribePage(message, ok) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1706,6 +1714,28 @@ function unsubscribePage(message, ok) {
 <p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7">${message}</p>
 </main></body></html>`;
 }
+
+// RSVP email controls are deliberately scoped to one event. Turning reminders
+// off does not block confirmations, cancellations, or important event changes.
+router.post('/api/public/rsvps/:token/reminders', async (req, res, next) => {
+  try {
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'Choose an email setting' });
+    const { rows } = await pool.query(
+      'UPDATE rsvps SET wants_reminders=$2 WHERE manage_token=$1 RETURNING wants_reminders',
+      [req.params.token, req.body.enabled]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'RSVP not found' });
+    res.json({ ok: true, enabled: rows[0].wants_reminders });
+  } catch (err) { next(err); }
+});
+
+// RFC 8058 one-click endpoint used only by optional RSVP reminder mail.
+router.post('/api/email/unsubscribe/rsvp/:token', async (req, res, next) => {
+  try {
+    await pool.query('UPDATE rsvps SET wants_reminders=FALSE WHERE manage_token=$1', [req.params.token]);
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
 
 // POST /api/public/rsvps/:token/cancel
 router.post('/api/public/rsvps/:token/cancel', async (req, res, next) => {

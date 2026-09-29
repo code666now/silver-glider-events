@@ -5,6 +5,7 @@ const requireAdmin = require('../middleware/requireAdmin');
 const { requireSuperAdmin } = require('../middleware/requireAdmin');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { sendCommerceLaunch } = require('../lib/mailer');
+const { emailPreferenceUrls } = require('../lib/email-preferences');
 
 const router = express.Router();
 const FEATURE_KEY = 'commerce_ticketing';
@@ -116,12 +117,19 @@ router.post('/api/admin/commerce-interest/send', requireAdmin, requireSuperAdmin
 
     const { rows: recipients } = await pool.query(
       `WITH claimed AS (
-         UPDATE commerce_feature_interests
+         UPDATE commerce_feature_interests AS interest
             SET launch_claimed_at=NOW(), launch_error=NULL
           WHERE feature_key=$1
             AND removed_at IS NULL
             AND launch_sent_at IS NULL
             AND (launch_claimed_at IS NULL OR launch_claimed_at < NOW() - INTERVAL '15 minutes')
+            AND NOT EXISTS (
+              SELECT 1 FROM organizers recipient
+              JOIN email_optouts optout
+                ON optout.email=LOWER(TRIM(recipient.email))
+               AND optout.scope='product_updates'
+             WHERE recipient.id=interest.organizer_id
+            )
          RETURNING id, organizer_id
        )
        SELECT claimed.id, o.email
@@ -135,7 +143,8 @@ router.post('/api/admin/commerce-interest/send', requireAdmin, requireSuperAdmin
     let failed = 0;
     for (const recipient of recipients) {
       try {
-        const result = await sendCommerceLaunch({ to: recipient.email });
+        const preferences = emailPreferenceUrls(recipient.email, 'product_updates');
+        const result = await sendCommerceLaunch({ to: recipient.email, ...preferences });
         await pool.query(
           `UPDATE commerce_feature_interests
               SET launch_sent_at=NOW(), launch_provider_id=$2,

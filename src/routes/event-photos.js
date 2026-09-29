@@ -252,7 +252,7 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
 
     const event = claimed[0];
     const { rows: recipients } = await pool.query(
-      `SELECT id, user_id, email, first_name FROM rsvps
+      `SELECT id, user_id, email, first_name, manage_token FROM rsvps
         WHERE event_id=$1 AND status='confirmed' AND wants_reminders=TRUE
         ORDER BY id`,
       [event.id]
@@ -280,7 +280,8 @@ router.post('/api/events/:id/photo-request', requireOrganizer, async (req, res, 
             event,
             organizerLabel,
             uploadUrl,
-            replyTo: req.organizer.email
+            replyTo: req.organizer.email,
+            manageToken: recipient.manage_token
           })
         ));
         if (!delivery.allowed) throw new Error(HOST_ACCOUNT_INACTIVE);

@@ -467,7 +467,8 @@ test('flyer RSVP confirmation is selected without changing Standard confirmation
   assert.match(flyerHtml, /✓ You’re going/);
   assert.match(flyerHtml, /View or change RSVP/);
   assert.match(flyerHtml, /\/r\/attendee-secret-token\/event/);
-  assert.doesNotMatch(flyerHtml, /Add to Calendar|Open in Maps|Manage RSVP|class="sg-email-actions"/);
+  assert.doesNotMatch(flyerHtml, /Add to Calendar|Open in Maps|>Manage RSVP<|class="sg-email-actions"/);
+  assert.match(flyerHtml, /Manage RSVP &amp; email settings/);
   assert.match(flyerHtml, /Heat Wave Booking/);
   assert.match(flyerHtml, /Silver Glider Events/);
   assert.ok(flyerHtml.indexOf('logo.png') > flyerHtml.indexOf('View or change RSVP'));

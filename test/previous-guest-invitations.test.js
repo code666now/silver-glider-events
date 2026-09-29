@@ -73,7 +73,9 @@ test('invitation email is artwork-led, escaped, unsubscribable, and one-way', ()
   assert.match(html, /next-night\.jpg/);
   assert.match(html, />RSVP<\/a>/);
   assert.match(html, /RSVP’d to First &lt;Night&gt;, hosted by Host &amp; Friends/);
-  assert.match(html, /Unsubscribe from invitations from this host/);
+  assert.match(html, /Unsubscribe from Host &amp; Friends/);
+  assert.match(html, /Manage email settings/);
+  assert.match(html, /490 Post Street, Suite 500/);
   assert.match(html, /token=safe&amp;host=1/);
   assert.doesNotMatch(html, /<Night>/);
   const theme = createEmailTheme('#D96524');

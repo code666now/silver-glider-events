@@ -35,6 +35,8 @@ const {
 const { signIdentityStepUp } = require('../../src/lib/identity-step-up');
 const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
+const { signOptout } = require('../../src/lib/followers');
+const { signEmailPreference } = require('../../src/lib/email-preferences');
 const sms = require('../../src/lib/sms');
 const phoneVerification = require('../../src/lib/phone-verification');
 const paypal = require('../../src/lib/paypal');
@@ -450,6 +452,89 @@ test('background confirmation work is tracked so tests can settle it before rese
     `SELECT status FROM message_log WHERE recipient='settle@example.test' AND message_type='rsvp_confirmation'`
   );
   assert.equal(rows[0]?.status, 'sent', 'settling waits for the confirmation to finish');
+});
+
+test('email settings save, resubscribe, and support one-click opt-out without affecting essential mail', async () => {
+  const event = await createEvent({ slug: 'email-settings-event' });
+  const rsvp = await createRsvp(event.id, {
+    email: 'preferences@example.test',
+    manage_token: 'email-settings-manage-token',
+    wants_reminders: true
+  });
+
+  const manageRsvp = await fetch(`${baseUrl}/r/${rsvp.manage_token}`);
+  assert.equal(manageRsvp.status, 200);
+  assert.match(await manageRsvp.text(), /id="email-reminders"[^>]*checked/);
+
+  const reminderOff = await fetch(`${baseUrl}/api/public/rsvps/${rsvp.manage_token}/reminders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(reminderOff.status, 200);
+  assert.equal((await pool.query('SELECT wants_reminders FROM rsvps WHERE id=$1', [rsvp.id])).rows[0].wants_reminders, false);
+
+  await pool.query('UPDATE rsvps SET wants_reminders=TRUE WHERE id=$1', [rsvp.id]);
+  const oneClickReminderOff = await fetch(`${baseUrl}/api/email/unsubscribe/rsvp/${rsvp.manage_token}`, {
+    method: 'POST'
+  });
+  assert.equal(oneClickReminderOff.status, 204);
+  assert.equal((await pool.query('SELECT wants_reminders FROM rsvps WHERE id=$1', [rsvp.id])).rows[0].wants_reminders, false);
+
+  const hostToken = signOptout(organizerId, rsvp.email);
+  const hostUnsubscribeUrl = `${baseUrl}/unsubscribe?token=${encodeURIComponent(hostToken)}`;
+  await mailer.sendEventAnnouncement({
+    to: 'compliance-announcement@example.test',
+    event: { ...event, org_name: 'Test Host' },
+    organizerLabel: 'Test Host',
+    replyTo: 'host@example.test',
+    unsubscribeUrl: hostUnsubscribeUrl
+  });
+  const announcementEmail = lastDevEmail('compliance-announcement@example.test');
+  assert.match(announcementEmail.from, /^"Test Host via Silver Glider" </);
+  assert.equal(announcementEmail.subject, 'Test Host just announced: Standard Night');
+  assert.equal(announcementEmail.headers['List-Unsubscribe'], `<${hostUnsubscribeUrl}>`);
+  assert.equal(announcementEmail.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+  assert.match(announcementEmail.html, /490 Post Street, Suite 500/);
+  assert.match(announcementEmail.html, /Manage email settings/);
+
+  const hostSettings = await fetch(`${baseUrl}/email-settings/host?token=${encodeURIComponent(hostToken)}`);
+  assert.equal(hostSettings.status, 200);
+  assert.match(await hostSettings.text(), /Invitations and announcements from Test Host/);
+  const hostOff = await fetch(`${baseUrl}/api/email-settings/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: hostToken, enabled: false })
+  });
+  assert.equal(hostOff.status, 200);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1', [organizerId])).rows[0].count, 1);
+  const hostOn = await fetch(`${baseUrl}/api/email-settings/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: hostToken, enabled: true })
+  });
+  assert.equal(hostOn.status, 200);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1', [organizerId])).rows[0].count, 0);
+
+  const recapToken = signEmailPreference('HOST@EXAMPLE.TEST', 'host_recaps');
+  const recapSettings = await fetch(`${baseUrl}/email-settings?token=${encodeURIComponent(recapToken)}`);
+  assert.equal(recapSettings.status, 200);
+  assert.match(await recapSettings.text(), /Morning-after host recaps/);
+  const recapOff = await fetch(`${baseUrl}/unsubscribe-email?token=${encodeURIComponent(recapToken)}`, {
+    method: 'POST'
+  });
+  assert.equal(recapOff.status, 204);
+  assert.deepEqual(
+    (await pool.query('SELECT email,scope FROM email_optouts')).rows,
+    [{ email: 'host@example.test', scope: 'host_recaps' }]
+  );
+  const recapOn = await fetch(`${baseUrl}/api/email-settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token: recapToken, enabled: true })
+  });
+  assert.equal(recapOn.status, 200);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM email_optouts')).rows[0].count, 0);
 });
 
 test('serves each protected settings destination from the responsive settings shell', async () => {

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Email settings — Silver Glider Events</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/css/brand.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .email-settings-shell { width:min(100% - 40px,520px);margin:0 auto;padding:14vh 0 80px; }
+    .email-settings-shell .sg-label { margin-bottom:28px; }
+    .email-settings-shell h1 { margin:0 0 12px;font-size:38px; }
+    .email-settings-intro { margin:0 0 30px;color:var(--sg-text-dim);font-size:16px;line-height:1.6; }
+    .email-settings-card { padding:24px; }
+    .email-settings-row { display:flex;align-items:flex-start;gap:16px;cursor:pointer; }
+    .email-settings-row input { width:22px;height:22px;margin:2px 0 0;accent-color:var(--sg-accent);flex:0 0 auto; }
+    .email-settings-row strong { display:block;margin-bottom:5px;font-size:17px; }
+    .email-settings-row small { display:block;color:var(--sg-text-dim);font-size:14px;line-height:1.55; }
+    .email-settings-status { min-height:22px;margin:18px 0 0;color:var(--sg-text-dim);font-size:14px;text-align:center; }
+    .email-settings-status.is-error { color:var(--sg-danger); }
+    @media(max-width:879px) {
+      .email-settings-shell { width:100%;min-height:100vh;min-height:100dvh;padding:calc(54px + env(safe-area-inset-top)) 22px calc(48px + env(safe-area-inset-bottom)); }
+      .email-settings-shell h1 { font-size:var(--sg-mobile-page-title-size); }
+      .email-settings-card { padding:22px;border-radius:22px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="email-settings-shell">
+    <p class="sg-label">Silver Glider Events</p>
+    <h1>Email settings</h1>
+    <p class="email-settings-intro">Choose whether you want to receive this optional email category. Essential security and event notices are not affected.</p>
+    <section class="sg-card email-settings-card">
+      <label class="email-settings-row" for="email-setting-enabled">
+        <input id="email-setting-enabled" type="checkbox" {{CHECKED}}>
+        <span><strong>{{SETTING_LABEL}}</strong><small>{{SETTING_DESCRIPTION}}</small></span>
+      </label>
+      <p class="email-settings-status" id="email-settings-status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <script>
+    const input = document.getElementById('email-setting-enabled');
+    const status = document.getElementById('email-settings-status');
+    input.addEventListener('change', async () => {
+      const enabled = input.checked;
+      input.disabled = true;
+      status.classList.remove('is-error');
+      status.textContent = 'Saving…';
+      try {
+        const response = await fetch('{{SAVE_URL}}', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: '{{TOKEN}}', enabled })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Your setting could not be saved.');
+        status.textContent = enabled ? 'Emails turned on.' : 'Emails turned off.';
+      } catch (error) {
+        input.checked = !enabled;
+        status.classList.add('is-error');
+        status.textContent = error.message || 'Your setting could not be saved.';
+      } finally {
+        input.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.146
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Host-led email and recipient controls
+
+* Host-related RSVP confirmations, reminders, event changes, announcements, Familiar Faces invitations, lineup claims, and photo requests now lead with the host identity in the inbox while continuing to use Silver Glider's verified delivery address.
+* Optional email categories now have durable, signed preference links. Recipients can turn host invitations and announcements, RSVP reminders and follow-ups, morning-after host recaps, and product announcements off and back on without affecting security mail or critical event notices.
+* Optional mail supports standards-based one-click unsubscribe headers. RSVP confirmations and critical changes link to the event-specific settings rather than presenting a misleading global unsubscribe.
+* Commercial and optional campaign footers identify Silver Glider Entertainment Inc. and use the company's 490 Post Street, Suite 500, San Francisco address. Host and venue addresses are never substituted into the legal footer.
+* Gmail-style unsubscribe requests, visible unsubscribe pages, settings pages, host-scoped preferences, and RSVP-scoped preferences all reuse the existing identity and consent records instead of creating a parallel audience system.
+
+### Verification
+
+* Static validation and all 490 automated tests pass, including database-backed opt-out, resubscribe, one-click unsubscribe, host-branded sender, subject, legal-address, and preference-isolation coverage.
+
 ## 1.0.145
 
 Released September 29, 2026. Built and deployed by Codex.

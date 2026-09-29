@@ -61,10 +61,11 @@ test('RSVP confirmation follows the premium Silver Glider hierarchy', () => {
   assert.doesNotMatch(html, /var\(--|gradient\(/);
   assert.equal((html.match(/Midnight Listening Party<\/h1>/g) || []).length, 1);
   assert.doesNotMatch(html, /You(?:'|’)re on the list/);
-  assert.equal(rsvpConfirmationSubject(event), 'RSVP confirmed for Midnight Listening Party');
+  assert.equal(rsvpConfirmationSubject(event), 'RSVP confirmed: Midnight Listening Party — The Night Archive');
   assert.match(html, new RegExp(`/images/email/music/${theme.secondaryAccentColor.slice(1)}\\.png`));
   assert.match(html, /Check out the music vibe for this event\./);
-  assert.doesNotMatch(html, /class="sg-email-actions"|class="sg-detail-label"|Add to Calendar|Open in Maps|Manage RSVP/);
+  assert.doesNotMatch(html, /class="sg-email-actions"|class="sg-detail-label"|Add to Calendar|Open in Maps|>Manage RSVP</);
+  assert.match(html, /Manage RSVP &amp; email settings/);
 });
 
 test('RSVP email sends guests back to the reusable confirmation and keeps calendar messaging', () => {
@@ -74,7 +75,8 @@ test('RSVP email sends guests back to the reusable confirmation and keeps calend
   assert.match(html, /View or change RSVP/);
   assert.match(html, /Open your RSVP any time to view it or change your answer\./);
   assert.match(html, /We’ll send one reminder the day before\./);
-  assert.doesNotMatch(html, /Saturday, August 22, 2026|8:30 PM|The Silver Room|Open in Maps|Add to Calendar|Manage RSVP/);
+  assert.doesNotMatch(html, /Saturday, August 22, 2026|8:30 PM|The Silver Room|Open in Maps|Add to Calendar|>Manage RSVP</);
+  assert.match(html, /Manage RSVP &amp; email settings/);
 
   const fallbackHtml = renderRsvpConfirmationEmail({
     event: {
@@ -98,7 +100,8 @@ test('RSVP email sends guests back to the reusable confirmation and keeps calend
   assert.match(fallbackHtml, /height="52" bgcolor="#1CC5BE"/);
   assert.ok((fallbackHtml.match(/color:#1CC5BE/g) || []).length >= 1);
   assert.match(fallbackHtml, /View or change RSVP/);
-  assert.doesNotMatch(fallbackHtml, /\/images\/email\/(?:calendar|manage)\.png|Add to Calendar|Manage RSVP/);
+  assert.doesNotMatch(fallbackHtml, /\/images\/email\/(?:calendar|manage)\.png|Add to Calendar|>Manage RSVP</);
+  assert.match(fallbackHtml, /Manage RSVP &amp; email settings/);
 
   const halloweenTheme = createEmailTheme('#D96524');
   const themedFallbackHtml = renderRsvpConfirmationEmail({
