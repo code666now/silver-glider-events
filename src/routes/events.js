@@ -5,7 +5,7 @@ const requireOrganizer = require('../middleware/requireOrganizer');
 const { makeEventSlug } = require('../lib/slug');
 const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
 const { rsvpsToCsv } = require('../lib/csv');
-const { sendEventAnnouncement } = require('../lib/mailer');
+const { sendEventAnnouncement, sendLineupClaimOutcome } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { attendeeAvatar, canAppearInPublicListings, safeAvatarUrl } = require('../lib/private-events');
 const {
@@ -16,6 +16,7 @@ const {
   updateEventInTransaction,
   validateCreateEventInput
 } = require('../lib/event-editor');
+const { syncLineupClaims, deliverLineupClaimInvites } = require('../lib/lineup-claims');
 const { queueEventNotificationBatch } = require('../jobs/event-notifications');
 const { queuePreviousGuestInvitationBatch } = require('../jobs/previous-guest-invitations');
 const { SmsCreditError } = require('../lib/sms-credit-ledger');
@@ -30,6 +31,7 @@ const router = express.Router();
 // so a bare router.use() would gate the public event pages too.
 router.use('/api/events', requireOrganizer);
 router.use('/api/settings', requireOrganizer);
+router.use('/api/lineup', requireOrganizer);
 router.use('/api/places', requireOrganizer);
 
 function isTrue(value) {
@@ -173,7 +175,9 @@ router.post('/api/events', async (req, res, next) => {
           organizerId: req.organizer.id,
           body: req.body
         });
+        const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
         await client.query('COMMIT');
+        await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
         return res.status(201).json(result);
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -186,6 +190,133 @@ router.post('/api/events', async (req, res, next) => {
   } catch (err) { handleEventEditorError(err, res, next); }
 });
 
+// ---- Lineup claims --------------------------------------------------------
+// An artist credited on an event opens this after the emailed link signs them
+// in. The signed-in account must own the address the host typed. Claiming adds
+// the night to their account; "Not me" takes their name off the public page.
+// Neither gives any access to the host's guests.
+async function loadClaimForViewer(db, { claimId, organizer }) {
+  const viewerId = Number(organizer?.id) || 0;
+  const { rows } = await db.query(
+    `SELECT c.id, c.slot, c.artist_name, c.email, c.status, c.organizer_id,
+            e.id AS event_id, e.title, e.slug, e.event_date, e.start_time, e.venue_name,
+            e.cover_image_url, e.presentation_mode, e.flyer_image_url, e.visibility,
+            COALESCE(o.org_name, o.name, 'A host') AS host_label,
+            EXISTS (
+              SELECT 1
+                FROM user_identities identity
+               WHERE identity.user_id=$2
+                 AND identity.identity_type='email'
+                 AND identity.normalized_value=LOWER(BTRIM(c.email))
+                 AND identity.verification_scope='account'
+                 AND identity.verified_at IS NOT NULL
+                 AND identity.revoked_at IS NULL
+            ) AS viewer_owns_email
+       FROM event_artist_claims c
+       JOIN events e ON e.id=c.event_id
+       JOIN organizers o ON o.id=e.organizer_id
+      WHERE c.id=$1`,
+    [claimId, viewerId]
+  );
+  const claim = rows[0];
+  if (!claim) return { claim: null, mine: false };
+  return { claim, mine: Boolean(claim.viewer_owns_email) };
+}
+
+router.get('/api/lineup/:claimId', async (req, res, next) => {
+  try {
+    const { claim, mine } = await loadClaimForViewer(pool, {
+      claimId: Number.parseInt(req.params.claimId, 10) || 0,
+      organizer: req.organizer
+    });
+    if (!claim) return res.status(404).json({ error: 'That lineup invitation no longer exists' });
+    if (!mine) {
+      return res.status(403).json({
+        error: 'This invitation was sent to a different email address',
+        maskedEmail: maskClaimEmail(claim.email)
+      });
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      claim: {
+        id: claim.id,
+        status: claim.status,
+        artistName: claim.artist_name,
+        hostLabel: claim.host_label,
+        event: {
+          id: claim.event_id,
+          title: claim.title,
+          slug: claim.slug,
+          eventDate: claim.event_date,
+          startTime: claim.start_time,
+          venueName: claim.venue_name,
+          url: `/e/${claim.slug}`,
+          artworkUrl: safeAvatarUrl(claim.presentation_mode === 'flyer' ? claim.flyer_image_url : claim.cover_image_url)
+        }
+      }
+    });
+  } catch (err) { next(err); }
+});
+
+function maskClaimEmail(value) {
+  const [name = '', domain = ''] = String(value || '').split('@');
+  const head = name.slice(0, 1);
+  return domain ? `${head}${'•'.repeat(Math.max(name.length - 1, 1))}@${domain}` : '';
+}
+
+for (const [action, status] of [['claim', 'claimed'], ['decline', 'declined']]) {
+  router.post(`/api/lineup/:claimId/${action}`, async (req, res, next) => {
+    try {
+      const { claim, mine } = await loadClaimForViewer(pool, {
+        claimId: Number.parseInt(req.params.claimId, 10) || 0,
+        organizer: req.organizer
+      });
+      if (!claim) return res.status(404).json({ error: 'That lineup invitation no longer exists' });
+      if (!mine) return res.status(403).json({ error: 'This invitation was sent to a different email address' });
+
+      const { rows } = await pool.query(
+        `UPDATE event_artist_claims
+            SET status=$2,
+                organizer_id=$3,
+                claimed_at=CASE WHEN $2='claimed' THEN NOW() ELSE NULL END,
+                declined_at=CASE WHEN $2='declined' THEN NOW() ELSE NULL END,
+                updated_at=NOW()
+          WHERE id=$1 AND status <> $2 RETURNING status`,
+        [claim.id, status, status === 'claimed' ? req.organizer.id : null]
+      );
+      if (rows[0]) {
+        notifyHostOfClaim(claim, rows[0].status).catch(error => {
+          console.error('[lineup] host notification failed', { claimId: claim.id, error: error.message });
+        });
+      }
+      res.json({ status, eventUrl: `/e/${claim.slug}` });
+    } catch (err) { next(err); }
+  });
+}
+
+// The host hears what happened with their invitation, either way.
+async function notifyHostOfClaim(claim, status) {
+  const { rows } = await pool.query(
+    `SELECT o.email, e.title, e.slug, e.event_date, e.start_time, e.venue_name, e.cover_image_url,
+            e.presentation_mode, e.flyer_image_url, e.background_theme
+       FROM events e JOIN organizers o ON o.id=e.organizer_id
+      WHERE e.id=$1`,
+    [claim.event_id]
+  );
+  const host = rows[0];
+  if (!host?.email) return;
+  await sendLineupClaimOutcome({
+    to: host.email,
+    event: host,
+    artistName: claim.artist_name,
+    status
+  });
+}
+
+function hostLabelFor(organizer) {
+  return organizer?.org_name || organizer?.name || 'A host';
+}
+
 // GET /api/events/:id
 router.get('/api/events/:id', async (req, res, next) => {
   const client = await pool.connect();
@@ -194,7 +325,17 @@ router.get('/api/events/:id', async (req, res, next) => {
       organizerId: req.organizer.id,
       eventId: req.params.id
     });
-    res.json(result);
+    // The artist emails live in event_artist_claims, so the editor can show
+    // what was saved (and their claim state) without storing it on the event.
+    const { rows: claims } = await client.query(
+      'SELECT slot, email, status, artist_name FROM event_artist_claims WHERE event_id=$1',
+      [result.event?.id || req.params.id]
+    );
+    const lineup = {};
+    for (const claim of claims) {
+      lineup[claim.slot] = { email: claim.email, status: claim.status, artistName: claim.artist_name };
+    }
+    res.json({ ...result, event: { ...result.event, lineup } });
   } catch (err) {
     handleEventEditorError(err, res, next);
   } finally {
@@ -212,7 +353,9 @@ router.put('/api/events/:id', async (req, res, next) => {
       eventId: req.params.id,
       body: req.body
     });
+    const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
     await client.query('COMMIT');
+    await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
     if (result.notification) queueEventNotificationBatch(result.notification.batchId);
     res.json({
       event: result.event,

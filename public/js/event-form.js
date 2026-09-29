@@ -1593,12 +1593,15 @@ function collect() {
     event_vibe_url: $('event_vibe_url').value.trim() || null,
     event_vibe_label: $('event_vibe_label').value.trim() || null,
     event_vibe_image_url: $('event_vibe_image_url').value || null,
+    event_vibe_email: $('event_vibe_email').value.trim() || null,
     event_vibe_url_2: hasSecondVibe ? ($('event_vibe_url_2').value.trim() || null) : null,
     event_vibe_label_2: hasSecondVibe ? ($('event_vibe_label_2').value.trim() || null) : null,
     event_vibe_image_url_2: hasSecondVibe ? ($('event_vibe_image_url_2').value || null) : null,
+    event_vibe_email_2: hasSecondVibe ? ($('event_vibe_email_2').value.trim() || null) : null,
     event_vibe_url_3: hasThirdVibe ? ($('event_vibe_url_3').value.trim() || null) : null,
     event_vibe_label_3: hasThirdVibe ? ($('event_vibe_label_3').value.trim() || null) : null,
     event_vibe_image_url_3: hasThirdVibe ? ($('event_vibe_image_url_3').value || null) : null,
+    event_vibe_email_3: hasThirdVibe ? ($('event_vibe_email_3').value.trim() || null) : null,
     cover_image_url: $('cover_image_url').value || null,
     cover_fit_mode: coverFitMode,
     presentation_mode: presentationMode,
@@ -1654,17 +1657,20 @@ if (editId) {
     $('event_vibe_url').value = event.event_vibe_url || '';
     $('event_vibe_label').value = event.event_vibe_label || '';
     setVibePhoto(1, event.event_vibe_image_url || '');
+    $('event_vibe_email').value = event.lineup?.[1]?.email || '';
     if (event.event_vibe_url_2 || event.event_vibe_label_2 || event.event_vibe_image_url_2) {
       setSecondVibeVisible(true);
       $('event_vibe_label_2').value = event.event_vibe_label_2 || '';
       $('event_vibe_url_2').value = event.event_vibe_url_2 || '';
       setVibePhoto(2, event.event_vibe_image_url_2 || '');
+      $('event_vibe_email_2').value = event.lineup?.[2]?.email || '';
     }
     if (event.event_vibe_url_3 || event.event_vibe_label_3 || event.event_vibe_image_url_3) {
       setThirdVibeVisible(true);
       $('event_vibe_label_3').value = event.event_vibe_label_3 || '';
       $('event_vibe_url_3').value = event.event_vibe_url_3 || '';
       setVibePhoto(3, event.event_vibe_image_url_3 || '');
+      $('event_vibe_email_3').value = event.lineup?.[3]?.email || '';
     }
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
