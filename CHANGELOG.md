@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.144
+
+Released September 28, 2026. Built and deployed by Codex.
+
+### Artist lineup claims
+
+* Hosts can add an optional email to an artist lineup entry. Silver Glider sends that artist one ordinary sign-in link that returns to a focused claim screen without exposing the event guest list.
+* The artist can confirm **That's me** or choose **Not me**. Confirmed entries are linked to the artist's canonical Silver Glider account, declined entries disappear from the public event page, and the host receives the outcome.
+* Claim ownership requires an active, account-verified email identity. A matching unverified contact email is never enough, and normal customer authentication remains separate from authorization.
+* Repeated claim actions are idempotent, invitation delivery finishes deterministically after an event save, and the new schema uses migration 058 without colliding with the existing Flyer migration.
+
+### Verification
+
+* Static validation and all 483 automated tests pass on the exact merged result, including database-backed email delivery, verified-identity ownership, claim, decline, repeat-action, public-visibility, and host-notification coverage.
+
 ## 1.0.143
 
 Released September 28, 2026. Built and deployed by Codex.
