@@ -807,6 +807,43 @@ async function sendLineupClaim({ to, event, artistName, hostLabel, link }) {
   });
 }
 
+// The morning after: how the night went, and one way into the next one.
+async function sendHostRecap({ to, event, stats }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const going = Number(stats?.totalAttendance) || 0;
+  const returning = Number(stats?.returning) || 0;
+  const fromInvites = Number(stats?.fromInvites) || 0;
+  const people = `${going} ${going === 1 ? 'person' : 'people'}`;
+  const returningLine = returning
+    ? `${returning} of them had been to one of your events before${fromInvites ? `, and ${fromInvites} came from your invites` : ''}.`
+    : 'Everyone there was new to your events.';
+  const statsHtml = `
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 14px">
+        <tr><td style="padding:0 0 10px">
+          <p style="color:#f0f0f0;font-size:18px;font-weight:800;line-height:1.3;margin:0">${esc(people)} came through your list.</p>
+          <p style="color:#9a9a9a;font-size:15px;line-height:1.6;margin:8px 0 0">${esc(returningLine)}</p>
+        </td></tr>
+        <tr><td style="padding:14px 0 0;border-top:1px solid #1a1a1a">
+          <p style="color:#9a9a9a;font-size:14px;line-height:1.6;margin:0">They're saved in your guest list. You can invite them again from Familiar Faces when you create your next event.</p>
+        </td></tr>
+      </table>`;
+  return send({
+    to,
+    subject: returning
+      ? `${event.title}: ${people}, ${returning} returning`
+      : `${event.title}: ${people} came`,
+    html: layout({
+      kicker: 'Last night',
+      headline: event.title,
+      sub: 'Here’s how it went.',
+      bodyHtml: statsHtml,
+      cta: 'Create your next event',
+      ctaUrl: `${baseUrl}/events/new`,
+      footerHtml: '<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re getting this because you hosted this event.</p>'
+    })
+  });
+}
+
 // Tells the host what the artist did with their lineup invitation.
 async function sendLineupClaimOutcome({ to, event, artistName, status }) {
   const claimed = status === 'claimed';
@@ -908,7 +945,7 @@ module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendAdminIdentityChangeVerification,
   sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
+  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome, sendHostRecap,
   sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
