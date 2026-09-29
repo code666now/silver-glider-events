@@ -774,10 +774,13 @@ if (EVENT.rsvpEnabled !== false) $('rsvp-form')?.addEventListener('submit', e =>
 
 const shareBtn = $('share-btn');
 const calendarBtn = $('cal-btn');
+const eventShareDialog = $('event-share-dialog');
+const eventShareDialogClose = $('event-share-dialog-close');
 const nativeShareMedia = window.matchMedia('(pointer: coarse)');
 const shareDefaultLabel = shareBtn.textContent;
 let shareInFlight = false;
 let shareFeedbackTimer = null;
+let eventShareReturnFocus = null;
 
 function setShareBusy(busy) {
   shareInFlight = busy;
@@ -821,10 +824,47 @@ async function copyEventLink(url) {
   }
 }
 
+function eventShareDetails() {
+  const url = location.origin + `/e/${EVENT.slug}`;
+  const title = EVENT.title;
+  const message = `You're invited to ${EVENT.title}.`;
+  return { url, title, message };
+}
+
+function prepareEventShareDialog() {
+  const { url, title, message } = eventShareDetails();
+  const encodedUrl = encodeURIComponent(url);
+  const encodedMessage = encodeURIComponent(message);
+  const mediaUrl = EVENT.coverImageUrl || '';
+  $('event-share-email').href = `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`${message}\n\n${url}`)}`;
+  $('event-share-pinterest').href = `https://www.pinterest.com/pin/create/button/?url=${encodedUrl}&description=${encodedMessage}${mediaUrl ? `&media=${encodeURIComponent(mediaUrl)}` : ''}`;
+  $('event-share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
+  $('event-share-x').href = `https://twitter.com/intent/tweet?text=${encodedMessage}&url=${encodedUrl}`;
+}
+
+function openEventShareDialog() {
+  if (!eventShareDialog || typeof eventShareDialog.showModal !== 'function') return false;
+  prepareEventShareDialog();
+  eventShareReturnFocus = document.activeElement;
+  try {
+    eventShareDialog.showModal();
+  } catch (_) {
+    eventShareReturnFocus = null;
+    return false;
+  }
+  document.body.classList.add('event-share-dialog-open');
+  eventShareDialogClose.focus();
+  return true;
+}
+
+function closeEventShareDialog() {
+  if (eventShareDialog?.open) eventShareDialog.close();
+}
+
 async function share() {
   if (shareInFlight) return;
-  const url = location.origin + `/e/${EVENT.slug}`;
-  const shareData = { title: EVENT.title, url };
+  const { url, title } = eventShareDetails();
+  const shareData = { title, url };
   const canUseNativeShare = nativeShareMedia.matches
     && typeof navigator.share === 'function'
     && (typeof navigator.canShare !== 'function' || navigator.canShare(shareData));
@@ -836,17 +876,39 @@ async function share() {
       return;
     } catch (error) {
       if (error?.name === 'AbortError') return;
-      // If native sharing fails for another reason, copy the link instead.
+      // If native sharing fails for another reason, show the explicit choices.
     } finally {
       setShareBusy(false);
     }
   }
 
+  if (openEventShareDialog()) return;
   const copied = await copyEventLink(url);
   showShareFeedback(copied ? 'Link copied' : 'Couldn\'t copy');
 }
 
 shareBtn.addEventListener('click', share);
+$('event-share-copy')?.addEventListener('click', async () => {
+  const copied = await copyEventLink(eventShareDetails().url);
+  closeEventShareDialog();
+  showShareFeedback(copied ? 'Link copied' : 'Couldn\'t copy');
+});
+eventShareDialogClose?.addEventListener('click', closeEventShareDialog);
+eventShareDialog?.addEventListener('close', () => {
+  document.body.classList.remove('event-share-dialog-open');
+  eventShareReturnFocus?.focus();
+  eventShareReturnFocus = null;
+});
+eventShareDialog?.addEventListener('click', event => {
+  if (event.target !== eventShareDialog) return;
+  const bounds = eventShareDialog.getBoundingClientRect();
+  const outside = event.clientX < bounds.left || event.clientX > bounds.right
+    || event.clientY < bounds.top || event.clientY > bounds.bottom;
+  if (outside) closeEventShareDialog();
+});
+eventShareDialog?.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', closeEventShareDialog);
+});
 calendarBtn.addEventListener('click', event => {
   if (shareInFlight) event.preventDefault();
 });

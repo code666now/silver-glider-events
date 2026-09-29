@@ -105,11 +105,19 @@ test('share and calendar remain available after RSVP confirmation', () => {
   assert.match(client, /shareBtn\.addEventListener\('click', share\)/);
 });
 
-test('desktop sharing copies the link and native mobile sharing cannot overlap calendar navigation', () => {
+test('desktop sharing opens explicit choices while native mobile sharing cannot overlap calendar navigation', () => {
+  const view = source('src/views/event-public.html');
+  const flyerView = source('src/views/event-public-flyer.html');
   const client = source('public/js/public-event.js');
+  const styles = source('public/css/event-share.css');
 
   assert.match(client, /matchMedia\('\(pointer: coarse\)'\)/);
   assert.match(client, /nativeShareMedia\.matches[\s\S]*typeof navigator\.share === 'function'/);
+  assert.match(client, /if \(openEventShareDialog\(\)\) return/);
+  assert.match(client, /eventShareDialog\.showModal\(\)/);
+  assert.match(client, /https:\/\/www\.pinterest\.com\/pin\/create\/button/);
+  assert.match(client, /https:\/\/www\.facebook\.com\/sharer\/sharer\.php/);
+  assert.match(client, /https:\/\/twitter\.com\/intent\/tweet/);
   assert.match(client, /async function copyEventLink\(url\)/);
   assert.match(client, /navigator\.clipboard\?\.writeText/);
   assert.match(client, /document\.execCommand\('copy'\)/);
@@ -118,6 +126,18 @@ test('desktop sharing copies the link and native mobile sharing cannot overlap c
   assert.match(client, /if \(error\?\.name === 'AbortError'\) return/);
   assert.match(client, /calendarBtn\.addEventListener\('click', event => \{[\s\S]*if \(shareInFlight\) event\.preventDefault\(\)/);
   assert.doesNotMatch(client, /if \(navigator\.share\) \{/);
+
+  for (const template of [view, flyerView]) {
+    assert.match(template, /<dialog class="event-share-dialog" id="event-share-dialog" aria-modal="true" aria-labelledby="event-share-dialog-title">/);
+    assert.match(template, /class="event-share-options" role="group" aria-label="Share event"/);
+    for (const option of ['Email', 'Pinterest', 'Facebook', 'X', 'Copy link']) {
+      assert.match(template, new RegExp(`<span>${option.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+    }
+    assert.equal((template.match(/id="event-share-dialog"/g) || []).length, 1);
+  }
+  assert.match(styles, /\.event-share-dialog::backdrop/);
+  assert.match(styles, /\.event-share-option \{[\s\S]*min-height:72px/);
+  assert.match(styles, /@media \(hover:hover\)/);
 });
 
 test('host and Silver Glider attribution center only on mobile', () => {

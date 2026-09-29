@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.147
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Desktop event sharing
+
+* The public event **Share** button now opens a Silver Glider menu on desktop with Email, Pinterest, Facebook, X, and Copy link instead of copying without presenting choices.
+* Phones retain the existing native share sheet. If native sharing is unavailable or fails, the same responsive menu provides a dependable fallback.
+* Standard and Flyer pages share the same accessible modal behavior, including keyboard focus, Escape and close controls, backdrop dismissal, and immediate Copy link feedback.
+
+### Verification
+
+* Static validation and all 490 automated tests pass. Desktop and narrow-width browser checks confirm the share choices, responsive layout, destination URLs, copy feedback, and modal close behavior.
+
 ## 1.0.146
 
 Released September 29, 2026. Built and deployed by Codex.
