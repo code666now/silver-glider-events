@@ -25,6 +25,7 @@
     .claim-note { margin: 0; color: var(--sg-text-faint); font-size: 13px; line-height: 1.6; }
     .claim-status { min-height: 20px; margin: 0; color: var(--sg-text-dim); font-size: 14px; }
     .claim-done { display: grid; gap: 14px; }
+    .claim-secondary { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--sg-text-dim); font-size: 15px; font-weight: 700; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -47,7 +48,8 @@
         </div>
         <div class="claim-done" id="claim-done" hidden>
           <p class="claim-meta" id="claim-done-copy"></p>
-          <a class="sg-btn sg-btn-ghost" id="claim-view" href="/events">View the event</a>
+          <a class="sg-btn sg-btn-primary" id="claim-view" href="/events">View the event</a>
+          <a class="claim-secondary" id="claim-mine" href="/events">See it in my events</a>
         </div>
         <p class="claim-note" id="claim-note">Claiming links this lineup credit to your account. It never shares the host's guest list.</p>
       </section>
@@ -79,8 +81,10 @@
       $('claim-view').href = eventUrl || '/events';
       if (status === 'claimed') {
         $('claim-kicker').textContent = 'You’re on this lineup';
-        $('claim-done-copy').textContent = 'This lineup credit is linked to your account now.';
+        $('claim-done-copy').textContent = 'This night is on your account now, under Playing.';
+        $('claim-mine').hidden = false;
       } else {
+        $('claim-mine').hidden = true;
         $('claim-kicker').textContent = 'Name removed';
         $('claim-done-copy').textContent = 'Your name has been taken off this event, and the host has been told.';
         $('claim-view').textContent = 'Go to my events';

@@ -82,6 +82,8 @@
     .events-tab:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
     #empty-action[hidden] { display:none !important; }
     .going-card .sg-event-count strong { color:var(--sg-accent);font-size:15px; }
+    /* A night you're on the lineup for, not just attending. */
+    .going-card .sg-event-count .playing-label { color:var(--sg-text);font-size:15px; }
     .going-card .sg-event-count span { font-size:11px; }
 
     /* Toast with an action button */
@@ -484,7 +486,11 @@
             ${badges ? `<p style="margin-top:6px">${badges}</p>` : ''}
           </div>
           <div class="sg-event-count">
-            ${going ? '<strong>Going</strong><span>View event</span>' : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
+            ${going
+              ? (ev.playing
+                ? '<strong class="playing-label">Playing</strong><span>View event</span>'
+                : '<strong>Going</strong><span>View event</span>')
+              : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
           </div>
         </a>`;
     }

@@ -54,3 +54,22 @@ test('the claim screen offers both answers and never assumes yes', () => {
   assert.match(view, /api\(`\/api\/lineup\/\$\{encodeURIComponent\(claimId\)\}\/\$\{action\}`, \{ method: 'POST' \}\)/);
   assert.match(view, /never shares the host's guest list/);
 });
+
+test('a claimed night shows up as Playing, on Home and in My Events', () => {
+  const routes = read('src/routes/events.js');
+  const events = read('src/views/events.html');
+  const dashboard = read('src/views/dashboard.html');
+  const claim = read('src/views/lineup-claim.html');
+
+  // Going covers both what you RSVP'd to and what you claimed; playing wins.
+  assert.match(routes, /SELECT c\.event_id, TRUE AS playing, c\.claimed_at AS joined_at/);
+  assert.match(routes, /WHERE c\.organizer_id=\$1 AND c\.status='claimed'/);
+  assert.match(routes, /ORDER BY e\.id, mine\.playing DESC, mine\.joined_at DESC/);
+
+  assert.match(events, /ev\.playing[\s\S]*playing-label">Playing/);
+  // Home counts a night you're playing, but its stats stay about events you host.
+  assert.match(dashboard, /item\.playing && item\.status === 'published'/);
+  assert.match(dashboard, /ev\.isPlaying \? 'Your next night\.' : 'Your next event\.'/);
+  assert.match(dashboard, /getElementById\('upcoming-count'\)\.textContent = String\(hostedUpcoming\.length\)/);
+  assert.match(claim, /See it in my events/);
+});

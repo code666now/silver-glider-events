@@ -10435,3 +10435,42 @@ test('the morning after, the host gets one recap with the returning number', asy
   assert.ok(claims.find(row => row.id === last.id).host_recap_sent_at);
   assert.equal(claims.find(row => row.id === quiet.id).host_recap_sent_at, null);
 });
+
+test('a claimed lineup night appears in the artist’s own list, tagged playing', async () => {
+  const hostCookie = `sge_session=${signSession(organizerId)}`;
+  const event = await createEvent({
+    slug: 'playing-night', title: 'Playing Night', event_date: '2031-04-04',
+    event_vibe_label: 'DJ Playing', event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678'
+  });
+  const other = await createEvent({ slug: 'playing-rsvp-night', title: 'Playing RSVP Night', event_date: '2031-05-05' });
+
+  await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json', cookie: hostCookie },
+    body: JSON.stringify({
+      event_vibe_label: 'DJ Playing',
+      event_vibe_url: 'https://www.youtube.com/watch?v=abc12345678',
+      event_vibe_email: 'dj-playing@example.test'
+    })
+  });
+  const claimId = (await pool.query('SELECT id FROM event_artist_claims WHERE event_id=$1', [event.id])).rows[0].id;
+  const invite = lastDevEmail('dj-playing@example.test', 'lineup_claim');
+  const signIn = await followSignInLink(invite.link);
+  const artistCookie = signIn.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+  assert.equal((await fetch(`${baseUrl}/api/lineup/${claimId}/claim`, { method: 'POST', headers: { cookie: artistCookie } })).status, 200);
+
+  // The same person also RSVPs to a different night.
+  const artistId = (await pool.query('SELECT organizer_id FROM event_artist_claims WHERE id=$1', [claimId])).rows[0].organizer_id;
+  await createRsvp(other.id, { first_name: 'DJ', email: 'dj-playing@example.test', account_id: artistId });
+
+  const { events: going } = await (await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: artistCookie } })).json();
+  const byTitle = Object.fromEntries(going.map(row => [row.title, row.playing]));
+  assert.equal(byTitle['Playing Night'], true, 'the claimed night is tagged playing');
+  assert.equal(byTitle['Playing RSVP Night'], false, 'a plain RSVP is not');
+  assert.equal(going.filter(row => row.title === 'Playing Night').length, 1, 'one card per event');
+
+  // The host's own lists are untouched by someone else's claim.
+  const { events: hosted } = await (await fetch(`${baseUrl}/api/events`, { headers: { cookie: hostCookie } })).json();
+  assert.ok(hosted.some(row => row.id === event.id));
+  const { events: hostGoing } = await (await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: hostCookie } })).json();
+  assert.equal(hostGoing.filter(row => row.playing).length, 0);
+});
