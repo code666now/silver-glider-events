@@ -1106,6 +1106,7 @@ $('invite-previous-guests').addEventListener('click', () => {
 function renderSmsAction(preview) {
   const button = $('sms-audience');
   const count = Number(preview.recipientCount) || 0;
+  button.classList.remove('promotion-action-ready');
   $('sms-audience-count').textContent = count.toLocaleString('en-US');
   button.hidden = !preview.reminderEnabled && !preview.batch;
   if (button.hidden) {
@@ -1143,7 +1144,9 @@ function renderSmsAction(preview) {
     $('sms-audience-copy').textContent = 'Text reminders are not available for Secret Shows yet.';
   } else if (!count) {
     button.disabled = true;
-    $('sms-audience-copy').textContent = 'On · No guests have opted in to text reminders yet.';
+    button.classList.add('promotion-action-ready');
+    $('sms-audience-count').textContent = 'ON';
+    $('sms-audience-copy').textContent = 'Ready · Guests can opt in when they RSVP.';
   } else if (preview.needsFunds) {
     button.disabled = false;
     button.dataset.needsFunds = 'true';

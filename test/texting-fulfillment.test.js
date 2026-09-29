@@ -58,7 +58,9 @@ test('automatic fulfillment is all-or-nothing, retry-safe, and gives each guest 
   assert.match(publicRoute, /router\.get\('\/t\/:token'/);
   assert.match(publicRoute, /sms_phone_verified_at=COALESCE\(sms_phone_verified_at,NOW\(\)\)/);
   assert.match(publicRoute, /setAttendeeCookie\(res, row\.event_id, row\.manage_token\)/);
-  assert.match(manage, /No guests have opted in to text reminders yet/);
+  assert.match(manage, /Ready · Guests can opt in when they RSVP\./);
+  assert.match(manage, /textContent = 'ON'/);
+  assert.match(manage, /promotion-action-ready/);
   assert.match(manage, /textContent = 'Add funds'/);
   assert.match(manage, /smsPreviewState\?\.needsFunds/);
   assert.doesNotMatch(manage, /SEND_TOMORROW_SMS/);

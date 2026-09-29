@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.148
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Playing nights and clearer text-reminder status
+
+* Claimed lineup nights now appear once in **My Events** with a **Playing** label, and Home can present the nearest claimed night without exposing the host's RSVP counts or management controls.
+* The lineup claim confirmation now links artists directly to their own event list.
+* An enabled day-before text reminder with no opted-in guests now reads **Ready · Guests can opt in when they RSVP.** and shows **ON** instead of an ambiguous zero.
+
+### Verification
+
+* Static validation and all 492 automated tests pass, including the claimed-lineup integration flow and unchanged host ownership boundaries.
+
 ## 1.0.147
 
 Released September 29, 2026. Built and deployed by Codex.
