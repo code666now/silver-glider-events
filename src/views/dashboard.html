@@ -526,15 +526,24 @@
       };
 
       try {
-        const [{ organizer }, { events }] = await Promise.all([
+        // Nights you're playing count as your next event too, so an artist who
+        // has only claimed a lineup slot doesn't land on an empty Home.
+        const [{ organizer }, { events }, going] = await Promise.all([
           api('/api/auth/me'),
-          api('/api/events')
+          api('/api/events'),
+          api('/api/events/going').catch(() => ({ events: [] }))
         ]);
+        const today = new Date(new Date().toDateString());
+        const playing = (going.events || [])
+          .filter(item => item.playing && item.status === 'published' && new Date(item.event_date) >= today)
+          .map(item => ({ ...item, isPlaying: true }));
         document.getElementById('greeting').textContent =
           organizer.name ? `Welcome back, ${organizer.name.split(' ')[0]}` : 'Welcome';
-        const upcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= new Date(new Date().toDateString()));
+        const hostedUpcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= today);
+        // The stats below stay about events you host; only the card can be a playing night.
+        const upcoming = [...hostedUpcoming, ...playing];
         const totalRsvps = events.reduce((sum, item) => sum + Number(item.rsvp_count || 0), 0);
-        document.getElementById('upcoming-count').textContent = String(upcoming.length);
+        document.getElementById('upcoming-count').textContent = String(hostedUpcoming.length);
         document.getElementById('rsvp-count').textContent = String(totalRsvps);
         document.getElementById('event-count').textContent = String(events.length);
         if (!upcoming.length) {
@@ -555,11 +564,14 @@
           : sgSafeHttpUrl(ev.cover_image_url);
         const rsvpCount = Number(ev.rsvp_count) || 0;
         const capacity = Number(ev.capacity) || 0;
-        document.getElementById('sub').textContent = 'Your next event.';
-        document.getElementById('dashboard-stats').textContent =
-          `${upcoming.length} upcoming event${upcoming.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
+        document.getElementById('sub').textContent = ev.isPlaying ? 'Your next night.' : 'Your next event.';
+        // The summary is about events you host. An artist with only lineup
+        // nights hears about those instead of a row of zeros.
+        document.getElementById('dashboard-stats').textContent = hostedUpcoming.length
+          ? `${hostedUpcoming.length} upcoming event${hostedUpcoming.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`
+          : `${playing.length} night${playing.length === 1 ? '' : 's'} you’re playing`;
         container.innerHTML = `
-          <a class="next-card" href="/events/${encodeURIComponent(String(ev.id))}/manage">
+          <a class="next-card" href="${ev.isPlaying ? `/e/${encodeURIComponent(String(ev.slug))}` : `/events/${encodeURIComponent(String(ev.id))}/manage`}">
             ${coverUrl
               ? `<div class="next-visual"><img class="${flyerMode ? 'flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt=""></div>`
               : `<div class="next-visual placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
@@ -569,8 +581,9 @@
                 <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name)}</p>
               </div>
               <div class="next-count">
-                <strong>${rsvpCount}</strong>
-                <span>going${capacity ? ` / ${capacity}` : ''}</span>
+                ${ev.isPlaying
+                  ? '<strong>Playing</strong><span>View event</span>'
+                  : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
               </div>
             </div>
           </a>`;

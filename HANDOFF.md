@@ -197,6 +197,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - Tests: `test/host-recap.test.js` (contract) and an integration test that runs `runHostRecapPass({ hours })` directly. Note `mailer.devOutbox` keeps only the last 100 messages, so assert by subject, not by index.
 
 ### Lineup claims — rules to keep (Claude)
+- **A claimed night is visible to the artist.** `GET /api/events/going` returns events the person RSVP'd to *and* lineup slots they claimed, one row per event, with `playing: true` winning over a plain RSVP. My Events tags those cards **Playing**, and Home treats a playing night as "your next night" while its counts stay about events you host.
 
 - **The host owns the guest list, always.** A lineup claim gives an artist credit, their own copy of the night, and (later) followers. It never grants any access to the host's RSVPs. `src/lib/lineup-claims.js` deliberately touches no RSVP data.
 - **Artist emails are not event columns.** They live in `event_artist_claims` (migration `058`), one row per `(event_id, slot)`, so the Event Vibe columns stay as they are. The editor reads them back through `event.lineup` on `GET /api/events/:id`.

@@ -86,20 +86,34 @@ router.get('/api/places/config', (req, res) => {
 // Excludes archived by default; ?archived=1 returns only archived.
 router.get('/api/events/going', async (req, res, next) => {
   try {
+    // Nights you're going to: events you RSVP'd to, plus any lineup slot you
+    // claimed. A night you're playing wins over a plain RSVP, so a person who
+    // did both sees one card, tagged Playing.
     const { rows } = await pool.query(
-      `SELECT DISTINCT ON (e.id)
+      `WITH mine AS (
+         SELECT e.id AS event_id, FALSE AS playing, r.created_at AS joined_at
+           FROM rsvps r
+           JOIN events e ON e.id=r.event_id
+          WHERE (r.user_id=$2 OR (r.user_id IS NULL AND r.account_id=$1))
+            AND r.status='confirmed'
+            AND e.status IN ('published','cancelled')
+         UNION ALL
+         SELECT c.event_id, TRUE AS playing, c.claimed_at AS joined_at
+           FROM event_artist_claims c
+           JOIN events e ON e.id=c.event_id
+          WHERE c.organizer_id=$1 AND c.status='claimed'
+            AND e.status IN ('published','cancelled')
+       )
+       SELECT DISTINCT ON (e.id)
               e.id, e.slug, e.title, e.event_date, e.start_time, e.end_time,
               e.venue_name, e.venue_city, e.venue_state, e.status, e.visibility,
               e.presentation_mode, e.flyer_image_url, e.cover_image_url,
               o.org_name AS host_name, o.name AS host_person_name,
-              r.created_at AS rsvp_created_at
-         FROM rsvps r
-         JOIN events e ON e.id=r.event_id
+              mine.joined_at AS rsvp_created_at, mine.playing
+         FROM mine
+         JOIN events e ON e.id=mine.event_id
          JOIN organizers o ON o.id=e.organizer_id
-        WHERE (r.user_id=$2 OR (r.user_id IS NULL AND r.account_id=$1))
-          AND r.status='confirmed'
-          AND e.status IN ('published','cancelled')
-        ORDER BY e.id, r.created_at DESC`,
+        ORDER BY e.id, mine.playing DESC, mine.joined_at DESC`,
       [req.organizer.id, req.organizer.user_id]
     );
     rows.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)) || Number(b.id) - Number(a.id));
