@@ -229,6 +229,7 @@ async function start() {
   await migrate();
   const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
   require('./jobs/reminders').startReminderCron();
+  require('./jobs/host-recap').startHostRecapCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();

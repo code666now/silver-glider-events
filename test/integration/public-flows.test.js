@@ -10281,3 +10281,43 @@ test('an artist can claim a lineup spot, or take their name off the event', asyn
   const page = await (await fetch(`${baseUrl}/e/lineup-night`)).text();
   assert.doesNotMatch(page, /DJ Claimer/, 'a declined artist is not shown publicly');
 });
+
+test('the morning after, the host gets one recap with the returning number', async () => {
+  const { runHostRecapPass } = require('../../src/jobs/host-recap');
+  const hostEmail = (await pool.query('SELECT email FROM organizers WHERE id=$1', [organizerId])).rows[0].email;
+  // Outbound email is only allowed for an active canonical account, which the
+  // bare test organizer doesn't have until it signs in. Legacy rows share the id.
+  await pool.query(`INSERT INTO users (id, name) VALUES ($1, 'Test Host') ON CONFLICT (id) DO NOTHING`, [organizerId]);
+  await pool.query('UPDATE organizers SET user_id=$1 WHERE id=$1', [organizerId]);
+
+  // Yesterday's event, in this machine's timezone so the job's hour window matches.
+  const timezone = (await pool.query('SELECT current_setting(\'TIMEZONE\') AS tz')).rows[0].tz;
+  const yesterday = (await pool.query(
+    `SELECT ((NOW() AT TIME ZONE $1)::date - 1)::text AS day,
+            EXTRACT(HOUR FROM (NOW() AT TIME ZONE $1))::int AS hour`, [timezone]
+  )).rows[0];
+  const older = await createEvent({ slug: 'recap-older', title: 'Recap Older', event_date: '2020-01-01', timezone });
+  const last = await createEvent({ slug: 'recap-last', title: 'Recap Last Night', event_date: yesterday.day, timezone });
+  const quiet = await createEvent({ slug: 'recap-quiet', title: 'Recap Quiet', event_date: yesterday.day, timezone });
+
+  await createRsvp(older.id, { first_name: 'Rae', email: 'rae-recap@example.test' });
+  await createRsvp(last.id, { first_name: 'Rae', email: 'rae-recap@example.test' });
+  await createRsvp(last.id, { first_name: 'New', email: 'new-recap@example.test' });
+
+  // devOutbox keeps only the most recent messages, so match on the message itself.
+  const recapCount = () => mailer.devOutbox.filter(message => /^Recap Last Night:/.test(message.subject || '')).length;
+  assert.equal(recapCount(), 0);
+  assert.equal(await runHostRecapPass({ hours: [yesterday.hour] }), 1, 'only the event with guests is recapped');
+  assert.equal(recapCount(), 1);
+  const recap = lastDevEmail(hostEmail);
+  assert.match(recap.subject, /Recap Last Night: 2 people, 1 returning/);
+
+  // Running again sends nothing, and the quiet event is never recapped.
+  assert.equal(await runHostRecapPass({ hours: [yesterday.hour] }), 0);
+  assert.equal(recapCount(), 1);
+  const claims = (await pool.query(
+    'SELECT id, host_recap_sent_at FROM events WHERE id = ANY($1::int[]) ORDER BY id', [[last.id, quiet.id]]
+  )).rows;
+  assert.ok(claims.find(row => row.id === last.id).host_recap_sent_at);
+  assert.equal(claims.find(row => row.id === quiet.id).host_recap_sent_at, null);
+});
