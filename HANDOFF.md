@@ -189,10 +189,10 @@ This repository is a continuation of the same Silver Glider Events project, not 
 
 ### Host recap — rules to keep (Claude)
 
-- **One recap per event, ever.** `events.host_recap_sent_at` (migration `058`) is claimed with a conditional UPDATE *before* the email is sent, so concurrent passes can never both send. A failed send releases the claim, and the 10am–1pm event-local window lets it retry the same morning.
+- **One recap per event, ever.** `events.host_recap_sent_at` (migration `059`) is claimed with a conditional UPDATE *before* the email is sent, so concurrent passes can never both send. A failed send releases the claim, and the 10am–1pm event-local window lets it retry the same morning.
 - **Only events with confirmed RSVPs** get one; nobody receives "nobody came".
 - It reuses `withActiveHostAccount`, so a suspended host is never emailed, and it honours `REMINDERS_ENABLED=false` like the other jobs.
-- The numbers match the manage screen exactly (`returning_count` / `invited_returning_count` in `src/routes/events.js`); if one changes, change both.
+- The numbers match the manage screen exactly (`returning_count` / `invited_returning_count` in `src/lib/event-editor.js`); if one changes, change both.
 - The email has a single action: **Create your next event**. Keep it to one, and keep the recap to one email — this is the only unsolicited mail a host gets.
 - Tests: `test/host-recap.test.js` (contract) and an integration test that runs `runHostRecapPass({ hours })` directly. Note `mailer.devOutbox` keeps only the last 100 messages, so assert by subject, not by index.
 

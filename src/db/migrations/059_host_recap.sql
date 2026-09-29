@@ -9,4 +9,4 @@ CREATE INDEX IF NOT EXISTS events_host_recap_pending_idx
   WHERE host_recap_sent_at IS NULL AND status = 'published';
 
 COMMENT ON COLUMN events.host_recap_sent_at IS
-  'When the post-event recap was sent to the host. NULL means it is still owed.';
+  'When the post-event recap was claimed for delivery. NULL means it is still owed.';

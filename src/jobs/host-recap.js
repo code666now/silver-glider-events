@@ -15,7 +15,7 @@ const RECAP_HOURS = [10, 11, 12, 13];
 async function pendingRecapEvents(hour) {
   const { rows } = await pool.query(
     `SELECT e.id, e.title, e.slug, e.event_date, e.start_time, e.venue_name, e.venue_address,
-            e.organizer_id, o.email AS host_email,
+            e.organizer_id,
             COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps
                        WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
             COALESCE((SELECT COUNT(*) FROM rsvps r
@@ -25,7 +25,14 @@ async function pendingRecapEvents(hour) {
                             JOIN events prior_event ON prior_event.id=prior.event_id
                             WHERE prior_event.organizer_id=e.organizer_id
                               AND prior_event.id<>e.id
-                              AND prior_event.event_date < e.event_date
+                              AND (
+                                prior_event.event_date < e.event_date
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time < e.start_time)
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time=e.start_time
+                                    AND prior_event.id < e.id)
+                              )
                               AND prior.status='confirmed'
                               AND ((r.user_id IS NOT NULL AND prior.user_id=r.user_id)
                                    OR ((r.user_id IS NULL OR prior.user_id IS NULL)
@@ -33,6 +40,24 @@ async function pendingRecapEvents(hour) {
                          )), 0)::int AS returning_count,
             COALESCE((SELECT COUNT(*) FROM rsvps r
                        WHERE r.event_id=e.id AND r.status='confirmed'
+                         AND EXISTS (
+                           SELECT 1 FROM rsvps prior
+                            JOIN events prior_event ON prior_event.id=prior.event_id
+                            WHERE prior_event.organizer_id=e.organizer_id
+                              AND prior_event.id<>e.id
+                              AND (
+                                prior_event.event_date < e.event_date
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time < e.start_time)
+                                OR (prior_event.event_date=e.event_date
+                                    AND prior_event.start_time=e.start_time
+                                    AND prior_event.id < e.id)
+                              )
+                              AND prior.status='confirmed'
+                              AND ((r.user_id IS NOT NULL AND prior.user_id=r.user_id)
+                                   OR ((r.user_id IS NULL OR prior.user_id IS NULL)
+                                       AND LOWER(TRIM(prior.email))=LOWER(TRIM(r.email))))
+                         )
                          AND EXISTS (
                            SELECT 1 FROM message_log ml
                             WHERE ml.event_id=e.id
@@ -49,7 +74,14 @@ async function pendingRecapEvents(hour) {
         AND e.host_recap_sent_at IS NULL
         AND e.event_date = ((NOW() AT TIME ZONE e.timezone)::date - 1)
         AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE e.timezone)) = $1
-        AND NULLIF(TRIM(o.email), '') IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM user_identities identity
+           WHERE identity.user_id=o.user_id
+             AND identity.identity_type='email'
+             AND identity.verification_scope='account'
+             AND identity.verified_at IS NOT NULL
+             AND identity.revoked_at IS NULL
+        )
         AND EXISTS (SELECT 1 FROM rsvps WHERE event_id=e.id AND status='confirmed')`,
     [hour]
   );
@@ -70,24 +102,57 @@ async function releaseRecap(eventId) {
   await pool.query('UPDATE events SET host_recap_sent_at=NULL WHERE id=$1', [eventId]);
 }
 
+async function verifiedHostEmail(organizerId) {
+  const { rows } = await pool.query(
+    `SELECT identity.value AS email
+       FROM organizers host
+       JOIN user_identities identity ON identity.user_id=host.user_id
+      WHERE host.id=$1
+        AND identity.identity_type='email'
+        AND identity.verification_scope='account'
+        AND identity.verified_at IS NOT NULL
+        AND identity.revoked_at IS NULL
+      ORDER BY identity.is_primary DESC, identity.id ASC
+      LIMIT 1`,
+    [organizerId]
+  );
+  return String(rows[0]?.email || '').trim() || null;
+}
+
 async function sendRecapFor(event) {
   if (!await claimRecap(event.id)) return false;
   try {
+    let missingVerifiedEmail = false;
     const delivery = await withActiveHostAccount(
       pool,
       event.organizer_id,
-      () => sendHostRecap({
-        to: event.host_email,
-        event,
-        stats: {
-          totalAttendance: event.total_attendance,
-          returning: event.returning_count,
-          fromInvites: event.invited_returning_count
+      async () => {
+        const hostEmail = await verifiedHostEmail(event.organizer_id);
+        if (!hostEmail) {
+          missingVerifiedEmail = true;
+          return null;
         }
-      })
+        return sendHostRecap({
+          to: hostEmail,
+          event,
+          stats: {
+            totalAttendance: event.total_attendance,
+            returning: event.returning_count,
+            fromInvites: event.invited_returning_count
+          }
+        });
+      }
     );
-    // A suspended host keeps the claim: nothing is owed to them.
-    if (!delivery.allowed) console.log(`[host-recap] skipped event ${event.id}: ${HOST_ACCOUNT_INACTIVE}`);
+    // A suspended host keeps the claim: nothing is owed to them, but a skip is
+    // not counted as a sent recap in the pass result.
+    if (!delivery.allowed) {
+      console.log(`[host-recap] skipped event ${event.id}: ${HOST_ACCOUNT_INACTIVE}`);
+      return false;
+    }
+    if (missingVerifiedEmail) {
+      console.log(`[host-recap] skipped event ${event.id}: no verified host email`);
+      return false;
+    }
     return true;
   } catch (error) {
     console.error('[host-recap] send failed', { eventId: event.id, error: error.message });

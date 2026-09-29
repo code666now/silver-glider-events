@@ -10283,12 +10283,19 @@ test('an artist can claim a lineup spot, or take their name off the event', asyn
 });
 
 test('the morning after, the host gets one recap with the returning number', async () => {
-  const { runHostRecapPass } = require('../../src/jobs/host-recap');
-  const hostEmail = (await pool.query('SELECT email FROM organizers WHERE id=$1', [organizerId])).rows[0].email;
+  const { getEventForEditor } = require('../../src/lib/event-editor');
+  const recapJobPath = require.resolve('../../src/jobs/host-recap');
+  const freshRecapPass = () => {
+    delete require.cache[recapJobPath];
+    return require(recapJobPath).runHostRecapPass;
+  };
+  const hostEmail = 'verified-recap-host@example.test';
+  const legacyEmail = 'legacy-unverified-recap@example.test';
   // Outbound email is only allowed for an active canonical account, which the
   // bare test organizer doesn't have until it signs in. Legacy rows share the id.
   await pool.query(`INSERT INTO users (id, name) VALUES ($1, 'Test Host') ON CONFLICT (id) DO NOTHING`, [organizerId]);
-  await pool.query('UPDATE organizers SET user_id=$1 WHERE id=$1', [organizerId]);
+  await pool.query('UPDATE organizers SET user_id=$1, email=$2 WHERE id=$1', [organizerId, legacyEmail]);
+  await addVerifiedEmailIdentity(organizerId, hostEmail, { primary: true, source: 'host_recap_test' });
 
   // Yesterday's event, in this machine's timezone so the job's hour window matches.
   const timezone = (await pool.query('SELECT current_setting(\'TIMEZONE\') AS tz')).rows[0].tz;
@@ -10296,24 +10303,46 @@ test('the morning after, the host gets one recap with the returning number', asy
     `SELECT ((NOW() AT TIME ZONE $1)::date - 1)::text AS day,
             EXTRACT(HOUR FROM (NOW() AT TIME ZONE $1))::int AS hour`, [timezone]
   )).rows[0];
-  const older = await createEvent({ slug: 'recap-older', title: 'Recap Older', event_date: '2020-01-01', timezone });
-  const last = await createEvent({ slug: 'recap-last', title: 'Recap Last Night', event_date: yesterday.day, timezone });
+  const older = await createEvent({
+    slug: 'recap-older', title: 'Recap Older', event_date: yesterday.day,
+    start_time: '08:00', timezone, host_recap_sent_at: new Date()
+  });
+  const last = await createEvent({
+    slug: 'recap-last', title: 'Recap Last Night', event_date: yesterday.day,
+    start_time: '20:00', timezone
+  });
   const quiet = await createEvent({ slug: 'recap-quiet', title: 'Recap Quiet', event_date: yesterday.day, timezone });
 
   await createRsvp(older.id, { first_name: 'Rae', email: 'rae-recap@example.test' });
+  await pool.query(
+    `INSERT INTO message_log (event_id, recipient, recipient_name, message_type, channel, status, created_at)
+     VALUES ($1,'rae-recap@example.test','Rae','previous_guest_invite','email','sent', NOW() - INTERVAL '1 hour')`,
+    [last.id]
+  );
   await createRsvp(last.id, { first_name: 'Rae', email: 'rae-recap@example.test' });
   await createRsvp(last.id, { first_name: 'New', email: 'new-recap@example.test' });
+
+  const managed = (await getEventForEditor(pool, { organizerId, eventId: last.id })).event;
+  assert.equal(managed.returning_count, 1, 'the dashboard counts the earlier same-day appearance');
+  assert.equal(managed.invited_returning_count, 1);
 
   // devOutbox keeps only the most recent messages, so match on the message itself.
   const recapCount = () => mailer.devOutbox.filter(message => /^Recap Last Night:/.test(message.subject || '')).length;
   assert.equal(recapCount(), 0);
-  assert.equal(await runHostRecapPass({ hours: [yesterday.hour] }), 1, 'only the event with guests is recapped');
+  const [firstPass, concurrentPass] = await Promise.all([
+    freshRecapPass()({ hours: [yesterday.hour] }),
+    freshRecapPass()({ hours: [yesterday.hour] })
+  ]);
+  assert.equal(firstPass + concurrentPass, 1, 'concurrent workers claim one recap exactly once');
   assert.equal(recapCount(), 1);
   const recap = lastDevEmail(hostEmail);
   assert.match(recap.subject, /Recap Last Night: 2 people, 1 returning/);
+  assert.match(recap.html, /1 came from your invites/);
+  assert.equal(mailer.devOutbox.some(message => message.to === legacyEmail), false,
+    'the unverified compatibility email never receives the recap');
 
   // Running again sends nothing, and the quiet event is never recapped.
-  assert.equal(await runHostRecapPass({ hours: [yesterday.hour] }), 0);
+  assert.equal(await freshRecapPass()({ hours: [yesterday.hour] }), 0);
   assert.equal(recapCount(), 1);
   const claims = (await pool.query(
     'SELECT id, host_recap_sent_at FROM events WHERE id = ANY($1::int[]) ORDER BY id', [[last.id, quiet.id]]

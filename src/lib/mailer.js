@@ -824,7 +824,7 @@ async function sendHostRecap({ to, event, stats }) {
           <p style="color:#9a9a9a;font-size:15px;line-height:1.6;margin:8px 0 0">${esc(returningLine)}</p>
         </td></tr>
         <tr><td style="padding:14px 0 0;border-top:1px solid #1a1a1a">
-          <p style="color:#9a9a9a;font-size:14px;line-height:1.6;margin:0">They're saved in your guest list. On your next event you can invite them all in one tap.</p>
+          <p style="color:#9a9a9a;font-size:14px;line-height:1.6;margin:0">They're saved in your guest list. You can invite them again from Familiar Faces when you create your next event.</p>
         </td></tr>
       </table>`;
   return send({
@@ -839,7 +839,7 @@ async function sendHostRecap({ to, event, stats }) {
       bodyHtml: statsHtml,
       cta: 'Create your next event',
       ctaUrl: `${baseUrl}/events/new`,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re getting this because you hosted this event.<br><a href="${esc(baseUrl)}/events/${esc(String(event.id))}/manage" style="color:#777;text-decoration:underline">See your guest list</a></p>`
+      footerHtml: '<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">You’re getting this because you hosted this event.</p>'
     })
   });
 }
