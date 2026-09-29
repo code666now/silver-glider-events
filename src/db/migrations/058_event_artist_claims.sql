@@ -23,4 +23,4 @@ CREATE INDEX IF NOT EXISTS event_artist_claims_email_idx ON event_artist_claims 
 CREATE INDEX IF NOT EXISTS event_artist_claims_organizer_idx ON event_artist_claims (organizer_id) WHERE status = 'claimed';
 
 COMMENT ON TABLE event_artist_claims IS
-  'Links an Event Vibe artist slot to the artist''s own account once they claim it. Credit and followers only: never access to the host''s guests.';
+  'Links an Event Vibe artist slot to the artist''s own account once they claim it. Credit only: never access to the host''s guests.';

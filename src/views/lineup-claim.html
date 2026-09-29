@@ -49,7 +49,7 @@
           <p class="claim-meta" id="claim-done-copy"></p>
           <a class="sg-btn sg-btn-ghost" id="claim-view" href="/events">View the event</a>
         </div>
-        <p class="claim-note" id="claim-note">Claiming adds this night to your account and lets guests follow you. It never shares the host's guest list.</p>
+        <p class="claim-note" id="claim-note">Claiming links this lineup credit to your account. It never shares the host's guest list.</p>
       </section>
     </main>
   </div>
@@ -79,7 +79,7 @@
       $('claim-view').href = eventUrl || '/events';
       if (status === 'claimed') {
         $('claim-kicker').textContent = 'You’re on this lineup';
-        $('claim-done-copy').textContent = 'This night is on your account now. Add your photo and link on the event page, and guests can follow you from there.';
+        $('claim-done-copy').textContent = 'This lineup credit is linked to your account now.';
       } else {
         $('claim-kicker').textContent = 'Name removed';
         $('claim-done-copy').textContent = 'Your name has been taken off this event, and the host has been told.';

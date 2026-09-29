@@ -802,7 +802,7 @@ async function sendLineupClaim({ to, event, artistName, hostLabel, link }) {
       bodyHtml: eventCard(event),
       cta: 'That’s me',
       ctaUrl: link,
-      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">Claiming adds this night to your own Silver Glider account and lets guests follow you. It never shares the host’s guest list.<br>Not you? <a href="${esc(link)}" style="color:#777;text-decoration:underline">Take your name off this event</a>.<br><a href="${esc(baseUrl)}" style="color:#777;text-decoration:underline">Silver Glider Events</a></p>`
+      footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">Claiming links this lineup credit to your Silver Glider account. It never shares the host’s guest list.<br>Not you? <a href="${esc(link)}" style="color:#777;text-decoration:underline">Take your name off this event</a>.<br><a href="${esc(baseUrl)}" style="color:#777;text-decoration:underline">Silver Glider Events</a></p>`
     })
   });
 }
@@ -819,7 +819,7 @@ async function sendLineupClaimOutcome({ to, event, artistName, status }) {
       kicker: 'Lineup',
       headline: event.title,
       sub: claimed
-        ? `${esc(artistName)} confirmed they're on your lineup. Guests can follow them from your event page.`
+        ? `${esc(artistName)} confirmed they're on your lineup. Their credit is linked to their Silver Glider account.`
         : `${esc(artistName)} said this isn't them, so their name no longer appears on your event page.`,
       bodyHtml: eventCard(event),
       cta: claimed ? 'View your event' : 'Edit your lineup',

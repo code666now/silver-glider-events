@@ -16,14 +16,20 @@ test('a lineup invitation is one email to an address the host typed, and never s
   assert.match(lib, /current\?\.status === 'claimed'/, 'a claimed slot is never re-invited');
   assert.match(lib, /returnPath: `\/lineup\/\$\{invite\.claimId\}`/);
   assert.match(lib, /withCode: false/);
+  assert.match(routes, /await deliverLineupClaimInvites\(/,
+    'the save response waits for the one invitation attempt to finish');
   assert.match(mailer, /async function sendLineupClaim\(/);
   assert.doesNotMatch(lib, /rsvps|guest/i, 'claims never touch the guest list');
 
   // The claim endpoints are authenticated and check the email owner.
   assert.match(routes, /router\.use\('\/api\/lineup', requireOrganizer\)/);
-  assert.match(routes, /const mine = Boolean\(email\) && email === String\(claim\.email \|\| ''\)/);
+  assert.match(routes, /identity\.verification_scope='account'/);
+  assert.match(routes, /identity\.verified_at IS NOT NULL/);
+  assert.match(routes, /identity\.revoked_at IS NULL/);
   assert.match(routes, /This invitation was sent to a different email address/);
   assert.match(routes, /notifyHostOfClaim\(claim, rows\[0\]\.status\)/);
+  assert.match(routes, /WHERE id=\$1 AND status <> \$2 RETURNING status/,
+    'repeating the same answer is idempotent and does not notify the host again');
 });
 
 test('a declined artist disappears from the public page, and the editor keeps the saved email', () => {

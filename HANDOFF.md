@@ -190,7 +190,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 ### Lineup claims — rules to keep (Claude)
 
 - **The host owns the guest list, always.** A lineup claim gives an artist credit, their own copy of the night, and (later) followers. It never grants any access to the host's RSVPs. `src/lib/lineup-claims.js` deliberately touches no RSVP data.
-- **Artist emails are not event columns.** They live in `event_artist_claims` (migration `057`), one row per `(event_id, slot)`, so the Event Vibe columns stay as they are. The editor reads them back through `event.lineup` on `GET /api/events/:id`.
+- **Artist emails are not event columns.** They live in `event_artist_claims` (migration `058`), one row per `(event_id, slot)`, so the Event Vibe columns stay as they are. The editor reads them back through `event.lineup` on `GET /api/events/:id`.
 - **One invitation per artist per slot**, sent only to an address the host typed. A save that repeats the same address sends nothing; a **claimed** slot is never re-invited or re-pointed, even if the host edits the email; removing the artist's name deletes the row.
 - **No new token plumbing.** The invitation is an ordinary sign-in magic link (`intent: 'sign_in'`, `withCode: false`, 14-day TTL) whose `returnPath` is `/lineup/<claimId>`, so `GET /auth/verify` stays read-only and the POST still does the signing in.
 - **The claim screen checks the email owner**, not just the session: the signed-in account's email must equal the claim's email, otherwise 403. `/api/lineup` is behind `requireOrganizer`.

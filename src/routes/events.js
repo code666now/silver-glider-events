@@ -177,7 +177,7 @@ router.post('/api/events', async (req, res, next) => {
         });
         const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
         await client.query('COMMIT');
-        deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
+        await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
         return res.status(201).json(result);
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -196,22 +196,31 @@ router.post('/api/events', async (req, res, next) => {
 // the night to their account; "Not me" takes their name off the public page.
 // Neither gives any access to the host's guests.
 async function loadClaimForViewer(db, { claimId, organizer }) {
+  const viewerId = Number(organizer?.id) || 0;
   const { rows } = await db.query(
     `SELECT c.id, c.slot, c.artist_name, c.email, c.status, c.organizer_id,
             e.id AS event_id, e.title, e.slug, e.event_date, e.start_time, e.venue_name,
             e.cover_image_url, e.presentation_mode, e.flyer_image_url, e.visibility,
-            COALESCE(o.org_name, o.name, 'A host') AS host_label
+            COALESCE(o.org_name, o.name, 'A host') AS host_label,
+            EXISTS (
+              SELECT 1
+                FROM user_identities identity
+               WHERE identity.user_id=$2
+                 AND identity.identity_type='email'
+                 AND identity.normalized_value=LOWER(BTRIM(c.email))
+                 AND identity.verification_scope='account'
+                 AND identity.verified_at IS NOT NULL
+                 AND identity.revoked_at IS NULL
+            ) AS viewer_owns_email
        FROM event_artist_claims c
        JOIN events e ON e.id=c.event_id
        JOIN organizers o ON o.id=e.organizer_id
       WHERE c.id=$1`,
-    [claimId]
+    [claimId, viewerId]
   );
   const claim = rows[0];
   if (!claim) return { claim: null, mine: false };
-  const email = String(organizer?.email || '').trim().toLowerCase();
-  const mine = Boolean(email) && email === String(claim.email || '').trim().toLowerCase();
-  return { claim, mine };
+  return { claim, mine: Boolean(claim.viewer_owns_email) };
 }
 
 router.get('/api/lineup/:claimId', async (req, res, next) => {
@@ -272,13 +281,15 @@ for (const [action, status] of [['claim', 'claimed'], ['decline', 'declined']]) 
                 claimed_at=CASE WHEN $2='claimed' THEN NOW() ELSE NULL END,
                 declined_at=CASE WHEN $2='declined' THEN NOW() ELSE NULL END,
                 updated_at=NOW()
-          WHERE id=$1 RETURNING status`,
+          WHERE id=$1 AND status <> $2 RETURNING status`,
         [claim.id, status, status === 'claimed' ? req.organizer.id : null]
       );
-      notifyHostOfClaim(claim, rows[0].status).catch(error => {
-        console.error('[lineup] host notification failed', { claimId: claim.id, error: error.message });
-      });
-      res.json({ status: rows[0].status, eventUrl: `/e/${claim.slug}` });
+      if (rows[0]) {
+        notifyHostOfClaim(claim, rows[0].status).catch(error => {
+          console.error('[lineup] host notification failed', { claimId: claim.id, error: error.message });
+        });
+      }
+      res.json({ status, eventUrl: `/e/${claim.slug}` });
     } catch (err) { next(err); }
   });
 }
@@ -344,7 +355,7 @@ router.put('/api/events/:id', async (req, res, next) => {
     });
     const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
     await client.query('COMMIT');
-    deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
+    await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
     if (result.notification) queueEventNotificationBatch(result.notification.batchId);
     res.json({
       event: result.event,

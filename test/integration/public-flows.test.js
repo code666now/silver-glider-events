@@ -10204,10 +10204,31 @@ test('an artist can claim a lineup spot, or take their name off the event', asyn
   });
   assert.equal(mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length, before);
 
-  // Somebody else signed in cannot read or act on the invitation.
-  const strangerCookie = `sge_session=${signSession(organizerId)}`;
-  const stranger = await fetch(`${baseUrl}/api/lineup/${claims[0].id}`, { headers: { cookie: strangerCookie } });
-  assert.equal(stranger.status, 403);
+  // A matching legacy contact email is not proof of ownership. The claim stays
+  // locked until that exact email becomes a verified account identity.
+  const unverifiedArtistRow = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('dj-claimer@example.test','DJ Claimer') RETURNING id`
+  )).rows[0];
+  const unverifiedArtist = (await pool.query(
+    'SELECT id,user_id FROM organizers WHERE id=$1', [unverifiedArtistRow.id]
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO user_identities
+       (user_id,identity_type,value,normalized_value,verification_scope,verification_source,is_primary)
+     VALUES ($1,'email',$2,$2,'unverified','integration_test',FALSE)`,
+    [unverifiedArtist.user_id, 'dj-claimer@example.test']
+  );
+  assert.equal((await pool.query(
+    `SELECT verified_at FROM user_identities
+      WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2`,
+    [unverifiedArtist.user_id, 'dj-claimer@example.test']
+  )).rows[0].verified_at, null);
+  const unverifiedCookie = `sge_session=${signSession(unverifiedArtist.user_id)}`;
+  const unverifiedView = await fetch(`${baseUrl}/api/lineup/${claims[0].id}`, {
+    headers: { cookie: unverifiedCookie }
+  });
+  assert.equal(unverifiedView.status, 403);
 
   // The artist follows the emailed link, which signs them in on the claim screen.
   const invite = lastDevEmail('dj-claimer@example.test', 'lineup_claim');
@@ -10223,9 +10244,17 @@ test('an artist can claim a lineup spot, or take their name off the event', asyn
 
   const claimed = await fetch(`${baseUrl}/api/lineup/${claims[0].id}/claim`, { method: 'POST', headers: { cookie: artistCookie } });
   assert.equal(claimed.status, 200);
-  const afterClaim = (await pool.query('SELECT status, organizer_id FROM event_artist_claims WHERE id=$1', [claims[0].id])).rows[0];
+  const afterClaim = (await pool.query('SELECT status, organizer_id, updated_at FROM event_artist_claims WHERE id=$1', [claims[0].id])).rows[0];
   assert.equal(afterClaim.status, 'claimed');
   assert.ok(afterClaim.organizer_id, 'the slot is linked to the artist account');
+
+  // Retrying the same answer is safe and does not mutate the claim again.
+  const claimedAgain = await fetch(`${baseUrl}/api/lineup/${claims[0].id}/claim`, { method: 'POST', headers: { cookie: artistCookie } });
+  assert.equal(claimedAgain.status, 200);
+  const afterClaimAgain = (await pool.query('SELECT status, organizer_id, updated_at FROM event_artist_claims WHERE id=$1', [claims[0].id])).rows[0];
+  assert.equal(afterClaimAgain.status, 'claimed');
+  assert.equal(Number(afterClaimAgain.organizer_id), Number(afterClaim.organizer_id));
+  assert.equal(afterClaimAgain.updated_at.getTime(), afterClaim.updated_at.getTime());
 
   // A claimed slot is never re-invited, even if the host edits the email.
   const beforeEdit = mailer.devOutbox.filter(message => message.kind === 'lineup_claim').length;
