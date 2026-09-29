@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.145
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Morning-after host recap
+
+* Hosts with confirmed attendance receive one concise recap during the 10 AM–1 PM window on the morning after their event, in the event's local timezone.
+* The email shows total attendance, returning guests, and how many returning guests came from Familiar Faces invitations, followed by one action to create the next event.
+* Delivery is claimed atomically so concurrent workers cannot send duplicate recaps. Failed provider attempts release the claim for another try during the same window.
+* Recaps require an active host account and a current account-verified email. Legacy or unverified contact addresses are never used for delivery, suspended accounts are skipped, and events without confirmed RSVPs receive nothing.
+* Dashboard and recap metrics now share the same chronological rules, including two events hosted on the same day. The additive schema change is migration 059.
+
+### Verification
+
+* Static validation and all 485 automated tests pass, including database-backed verified-recipient delivery, same-day returning guests, invitation attribution, concurrent-worker deduplication, empty-event exclusion, and one-send behavior.
+
 ## 1.0.144
 
 Released September 28, 2026. Built and deployed by Codex.
