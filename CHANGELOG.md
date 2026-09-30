@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.149
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Transparent browser-tab icon
+
+* The browser favicon now uses the existing Silver Glider mark on a transparent background instead of a dark square.
+* Apple touch and installable app icons retain their platform-safe backgrounds.
+
+### Verification
+
+* Static asset validation, transparency regression coverage, and all 492 automated tests pass.
+
 ## 1.0.148
 
 Released September 29, 2026. Built and deployed by Codex.
