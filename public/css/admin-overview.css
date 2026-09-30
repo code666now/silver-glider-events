@@ -47,3 +47,11 @@
   .admin-overview-panel-head { display: block; }
   .admin-overview-panel-head > a { display: inline-block; margin-top: 10px; }
 }
+
+.admin-traction-list { display: grid; gap: 2px; }
+.admin-traction-list > div { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; min-height: 61px; padding: 11px 3px; border-top: 1px solid var(--sg-border-soft); }
+.admin-traction-list > div:first-child { border-top: 0; }
+.admin-traction-list dt { color: var(--sg-text); font-size: 13px; font-weight: 700; }
+.admin-traction-list dd { margin: 0; text-align: right; }
+.admin-traction-list strong { display: block; font-family: var(--sg-font-display); font-size: 23px; line-height: 1.1; }
+.admin-traction-list small { display: block; margin-top: 4px; color: var(--sg-text-faint); font-size: 10px; }

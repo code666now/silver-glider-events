@@ -73,3 +73,23 @@ test('a claimed night shows up as Playing, on Home and in My Events', () => {
   assert.match(dashboard, /getElementById\('upcoming-count'\)\.textContent = String\(hostedUpcoming\.length\)/);
   assert.match(claim, /See it in my events/);
 });
+
+test('admin traction measures the loops read-only and tolerates the legacy test flag', () => {
+  const routes = read('src/routes/admin.js');
+  const view = read('src/views/admin-overview.html');
+  const script = read('public/js/admin-overview.js');
+
+  assert.match(routes, /router\.get\('\/api\/admin\/traction'/);
+  // A missing legacy column must read as "not a test account", never fail.
+  assert.match(routes, /to_jsonb\(u\) ->> 'is_test_account'/);
+  assert.match(routes, /AS hosts_with_second_event/);
+  assert.match(routes, /AS invites_answered/);
+  assert.match(routes, /AS rsvps_returning/);
+  assert.match(routes, /AS artists_claimed/);
+  assert.doesNotMatch(routes.slice(routes.indexOf("router.get('/api/admin/traction'"), routes.indexOf("// GET /api/admin/hosts")),
+    /INSERT|UPDATE|DELETE/, 'the traction endpoint only reads');
+
+  assert.match(view, /id="traction-second"/);
+  assert.match(view, /id="traction-claims"/);
+  assert.match(script, /api\('\/api\/admin\/traction'\)/);
+});

@@ -98,6 +98,92 @@ const HOST_ACCOUNT_FILTER = `
   WHERE o.last_login_at IS NOT NULL OR o.org_name IS NOT NULL OR o.is_admin
      OR COALESCE(s.event_count,0) > 0 OR i.invitation_id IS NOT NULL`;
 
+// GET /api/admin/traction — read-only loop metrics for the early MVP. These
+// answer whether the product's loops work at all: do hosts come back, do
+// invitations fill rooms, do guests return, do credited artists claim.
+// Accounts flagged as test data are excluded so trial runs don't flatter the
+// numbers.
+// The test-account flag is a legacy column kept for rolling deploys, so it may
+// be absent in some databases. Reading it through the row's JSON means a
+// missing column reads as "not a test account" instead of failing the query.
+const REAL_HOSTS = `
+  SELECT o.id
+    FROM organizers o
+    LEFT JOIN users u ON u.id=o.user_id
+   WHERE COALESCE((to_jsonb(u) ->> 'is_test_account')::boolean, FALSE) = FALSE`;
+
+router.get('/api/admin/traction', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `WITH real_hosts AS (${REAL_HOSTS}),
+       published AS (
+         SELECT e.id, e.organizer_id, e.event_date, e.created_at
+           FROM events e JOIN real_hosts h ON h.id=e.organizer_id
+          WHERE e.status='published'
+       ),
+       host_events AS (
+         SELECT organizer_id,
+                COUNT(*)::int AS event_count,
+                MIN(created_at) AS first_created_at,
+                (ARRAY_AGG(created_at ORDER BY created_at))[2] AS second_created_at
+           FROM published GROUP BY organizer_id
+       ),
+       confirmed AS (
+         SELECT r.id, r.event_id, r.user_id, r.email, r.created_at, p.organizer_id, p.event_date
+           FROM rsvps r JOIN published p ON p.id=r.event_id
+          WHERE r.status='confirmed'
+       ),
+       returning_rsvps AS (
+         SELECT c.id,
+                EXISTS (
+                  SELECT 1 FROM confirmed prior
+                   WHERE prior.organizer_id=c.organizer_id
+                     AND prior.event_id<>c.event_id
+                     AND prior.event_date < c.event_date
+                     AND ((c.user_id IS NOT NULL AND prior.user_id=c.user_id)
+                          OR ((c.user_id IS NULL OR prior.user_id IS NULL)
+                              AND LOWER(TRIM(prior.email))=LOWER(TRIM(c.email))))
+                ) AS came_before
+           FROM confirmed c
+       ),
+       invites AS (
+         SELECT ml.id, ml.event_id, ml.recipient, ml.recipient_user_id, ml.created_at
+           FROM message_log ml JOIN published p ON p.id=ml.event_id
+          WHERE ml.message_type='previous_guest_invite' AND ml.status IN ('pending','sent')
+       ),
+       answered AS (
+         SELECT i.id,
+                EXISTS (
+                  SELECT 1 FROM confirmed c
+                   WHERE c.event_id=i.event_id AND c.created_at >= i.created_at
+                     AND ((i.recipient_user_id IS NOT NULL AND c.user_id=i.recipient_user_id)
+                          OR ((i.recipient_user_id IS NULL OR c.user_id IS NULL)
+                              AND LOWER(TRIM(c.email))=LOWER(TRIM(i.recipient))))
+                ) AS rsvped
+           FROM invites i
+       ),
+       claims AS (
+         SELECT c.status
+           FROM event_artist_claims c JOIN published p ON p.id=c.event_id
+       )
+       SELECT
+         (SELECT COUNT(*)::int FROM host_events) AS hosts_with_event,
+         (SELECT COUNT(*)::int FROM host_events WHERE event_count >= 2) AS hosts_with_second_event,
+         (SELECT ROUND(EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (
+                   ORDER BY second_created_at - first_created_at)) / 86400)::int
+            FROM host_events WHERE second_created_at IS NOT NULL) AS median_days_to_second_event,
+         (SELECT COUNT(*)::int FROM invites) AS invites_sent,
+         (SELECT COUNT(*)::int FROM answered WHERE rsvped) AS invites_answered,
+         (SELECT COUNT(*)::int FROM confirmed) AS rsvps_total,
+         (SELECT COUNT(*)::int FROM returning_rsvps WHERE came_before) AS rsvps_returning,
+         (SELECT COUNT(*)::int FROM claims) AS artists_invited,
+         (SELECT COUNT(*)::int FROM claims WHERE status='claimed') AS artists_claimed,
+         (SELECT COUNT(*)::int FROM claims WHERE status='declined') AS artists_declined`
+    );
+    res.json({ traction: rows[0] });
+  } catch (err) { next(err); }
+});
+
 // GET /api/admin/hosts — read-only account overview for early MVP tracking
 router.get('/api/admin/hosts', async (req, res, next) => {
   try {
