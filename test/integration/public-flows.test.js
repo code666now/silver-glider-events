@@ -10474,3 +10474,68 @@ test('a claimed lineup night appears in the artist’s own list, tagged playing'
   const { events: hostGoing } = await (await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: hostCookie } })).json();
   assert.equal(hostGoing.filter(row => row.playing).length, 0);
 });
+
+test('admin traction reports the loop numbers and ignores test accounts', async () => {
+  const hostCookie = `sge_session=${signSession(organizerId)}`;
+  const operator = await createAdminOperator('traction-admin@example.test');
+  const adminCookie = await signInAdminOperator(operator.email);
+
+  // One host with two events: a guest who came twice, and one invited guest who answered.
+  const first = await createEvent({ slug: 'traction-one', title: 'Traction One', event_date: '2020-01-10' });
+  const second = await createEvent({ slug: 'traction-two', title: 'Traction Two', event_date: '2020-02-10' });
+  await createRsvp(first.id, { first_name: 'Rae', email: 'rae-traction@example.test' });
+  await createRsvp(second.id, { first_name: 'Rae', email: 'rae-traction@example.test' });
+  await createRsvp(second.id, { first_name: 'New', email: 'new-traction@example.test' });
+  await pool.query(
+    `INSERT INTO message_log (event_id, recipient, recipient_name, message_type, channel, status, created_at)
+     VALUES ($1,'rae-traction@example.test','Rae','previous_guest_invite','email','sent', NOW() - INTERVAL '1 day'),
+            ($1,'never-came@example.test','Never','previous_guest_invite','email','sent', NOW() - INTERVAL '1 day')`,
+    [second.id]
+  );
+  // An artist claim on the same host's event.
+  await pool.query(
+    `INSERT INTO event_artist_claims (event_id, slot, artist_name, email, status, organizer_id, claimed_at)
+     VALUES ($1,1,'DJ Traction','dj-traction@example.test','claimed',$2,NOW())`,
+    [second.id, organizerId]
+  );
+
+  // A flagged test account with its own event and RSVP must not count. The flag
+  // is a legacy column, so this part only runs where the column exists.
+  const flagged = (await pool.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_name='users' AND column_name='is_test_account'`
+  )).rowCount > 0;
+  // organizers.user_id must equal organizers.id for legacy rows, so the
+  // organizer is created first and the canonical user takes the same id.
+  const testHost = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ('test-data@example.test','Test Data') RETURNING id`
+  )).rows[0];
+  await pool.query(
+    flagged
+      ? `INSERT INTO users (id,name,is_test_account) VALUES ($1,'Test Data',TRUE)
+         ON CONFLICT (id) DO UPDATE SET is_test_account=TRUE`
+      : `INSERT INTO users (id,name) VALUES ($1,'Test Data') ON CONFLICT (id) DO NOTHING`,
+    [testHost.id]
+  );
+  await pool.query('UPDATE organizers SET user_id=$1 WHERE id=$1', [testHost.id]);
+  const testEvent = (await pool.query(
+    `INSERT INTO events (organizer_id,slug,title,event_date,start_time,venue_name,visibility,status)
+     VALUES ($1,'traction-test','Traction Test','2020-03-03','20:00','Hall','public','published') RETURNING id`,
+    [testHost.id]
+  )).rows[0];
+  await createRsvp(testEvent.id, { first_name: 'Ghost', email: 'ghost-traction@example.test' });
+
+  const { traction } = await (await fetch(`${baseUrl}/api/admin/traction`, { headers: { cookie: adminCookie } })).json();
+  assert.equal(traction.hosts_with_event, flagged ? 1 : 2, 'a flagged test host is excluded');
+  assert.equal(traction.hosts_with_second_event, 1);
+  assert.equal(traction.invites_sent, 2);
+  assert.equal(traction.invites_answered, 1, 'only the invited guest who RSVP\'d counts');
+  assert.equal(traction.rsvps_total, flagged ? 3 : 4, 'a flagged test host\'s RSVP is excluded');
+  assert.equal(traction.rsvps_returning, 1, 'Rae came to an earlier event by the same host');
+  assert.equal(traction.artists_invited, 1);
+  assert.equal(traction.artists_claimed, 1);
+  assert.equal(traction.artists_declined, 0);
+
+  assert.equal((await fetch(`${baseUrl}/api/admin/traction`, { headers: { cookie: hostCookie } })).status, 401,
+    'a signed-in host is not an admin');
+});

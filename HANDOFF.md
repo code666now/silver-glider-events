@@ -196,6 +196,13 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - The email has a single action: **Create your next event**. Keep it to one, and keep the recap to one email — this is the only unsolicited mail a host gets.
 - Tests: `test/host-recap.test.js` (contract) and an integration test that runs `runHostRecapPass({ hours })` directly. Note `mailer.devOutbox` keeps only the last 100 messages, so assert by subject, not by index.
 
+### Traction metrics — rules to keep (Claude)
+
+- `GET /api/admin/traction` is **read-only** and behind the existing admin guard. It answers four questions: do hosts run a second event, do Familiar Faces invitations become RSVPs, what share of RSVPs are returning guests, and do credited artists claim.
+- Accounts flagged as test data are excluded. The flag is a legacy column, so it is read as `to_jsonb(u) ->> 'is_test_account'` — a missing column reads as "not a test account" instead of failing the query.
+- "Returning" here uses the same definition as the manage screen and the recap: a confirmed RSVP by someone with a confirmed RSVP to an **earlier** event by the same host. If that definition changes, change it in all three.
+- The panel shows raw counts ("3 of 7"), never a bare percentage, so a small denominator stays obvious.
+
 ### Lineup claims — rules to keep (Claude)
 - **A claimed night is visible to the artist.** `GET /api/events/going` returns events the person RSVP'd to *and* lineup slots they claimed, one row per event, with `playing: true` winning over a plain RSVP. My Events tags those cards **Playing**, and Home treats a playing night as "your next night" while its counts stay about events you host.
 
