@@ -25,6 +25,11 @@ test('browser metadata assets are valid and match their declared icon sizes', ()
     const image = PNG.sync.read(fs.readFileSync(path.join(__dirname, '..', 'public', relativePath)));
     assert.equal(image.width, width, `${relativePath} width`);
     assert.equal(image.height, height, `${relativePath} height`);
+    if (relativePath === 'favicon.png') {
+      const alpha = Array.from({ length: image.width * image.height }, (_, index) => image.data[(index * 4) + 3]);
+      assert.ok(alpha.some(value => value === 0), 'favicon.png keeps a transparent browser-tab background');
+      assert.ok(alpha.some(value => value > 0), 'favicon.png keeps the Silver Glider mark visible');
+    }
   }
 
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'public', 'site.webmanifest'), 'utf8'));
