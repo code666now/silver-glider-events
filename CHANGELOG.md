@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.150
+
+Released September 29, 2026. Built and deployed by Codex.
+
+### Admin traction overview
+
+* The read-only admin Overview now shows hosts who created a second event, Familiar Faces invitations that became RSVPs, the share of RSVPs from returning guests, and lineup-claim results.
+* Raw counts stay visible beside each percentage so early results are not misleading when the audience is small.
+* Accounts explicitly marked as test data are excluded when the schema supports that flag, while older databases without the legacy column continue to work.
+* Returning-guest reporting follows the same chronological definition used by event management and host recaps, including two events held on the same day.
+
+### Verification
+
+* Static validation and all 494 automated tests pass, including dedicated-admin authorization, test-account filtering, invitation attribution, artist claims, and same-day returning guests.
+
 ## 1.0.149
 
 Released September 29, 2026. Built and deployed by Codex.
