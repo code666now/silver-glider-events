@@ -117,7 +117,7 @@ router.get('/api/admin/traction', async (req, res, next) => {
     const { rows } = await pool.query(
       `WITH real_hosts AS (${REAL_HOSTS}),
        published AS (
-         SELECT e.id, e.organizer_id, e.event_date, e.created_at
+         SELECT e.id, e.organizer_id, e.event_date, e.start_time, e.created_at
            FROM events e JOIN real_hosts h ON h.id=e.organizer_id
           WHERE e.status='published'
        ),
@@ -129,7 +129,8 @@ router.get('/api/admin/traction', async (req, res, next) => {
            FROM published GROUP BY organizer_id
        ),
        confirmed AS (
-         SELECT r.id, r.event_id, r.user_id, r.email, r.created_at, p.organizer_id, p.event_date
+         SELECT r.id, r.event_id, r.user_id, r.email, r.created_at,
+                p.organizer_id, p.event_date, p.start_time
            FROM rsvps r JOIN published p ON p.id=r.event_id
           WHERE r.status='confirmed'
        ),
@@ -139,7 +140,14 @@ router.get('/api/admin/traction', async (req, res, next) => {
                   SELECT 1 FROM confirmed prior
                    WHERE prior.organizer_id=c.organizer_id
                      AND prior.event_id<>c.event_id
-                     AND prior.event_date < c.event_date
+                     AND (
+                       prior.event_date < c.event_date
+                       OR (prior.event_date=c.event_date
+                           AND prior.start_time < c.start_time)
+                       OR (prior.event_date=c.event_date
+                           AND prior.start_time=c.start_time
+                           AND prior.event_id < c.event_id)
+                     )
                      AND ((c.user_id IS NOT NULL AND prior.user_id=c.user_id)
                           OR ((c.user_id IS NULL OR prior.user_id IS NULL)
                               AND LOWER(TRIM(prior.email))=LOWER(TRIM(c.email))))

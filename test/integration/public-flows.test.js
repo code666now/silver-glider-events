@@ -10481,8 +10481,12 @@ test('admin traction reports the loop numbers and ignores test accounts', async 
   const adminCookie = await signInAdminOperator(operator.email);
 
   // One host with two events: a guest who came twice, and one invited guest who answered.
-  const first = await createEvent({ slug: 'traction-one', title: 'Traction One', event_date: '2020-01-10' });
-  const second = await createEvent({ slug: 'traction-two', title: 'Traction Two', event_date: '2020-02-10' });
+  const first = await createEvent({
+    slug: 'traction-one', title: 'Traction One', event_date: '2020-01-10', start_time: '18:00'
+  });
+  const second = await createEvent({
+    slug: 'traction-two', title: 'Traction Two', event_date: '2020-01-10', start_time: '20:00'
+  });
   await createRsvp(first.id, { first_name: 'Rae', email: 'rae-traction@example.test' });
   await createRsvp(second.id, { first_name: 'Rae', email: 'rae-traction@example.test' });
   await createRsvp(second.id, { first_name: 'New', email: 'new-traction@example.test' });
@@ -10531,7 +10535,8 @@ test('admin traction reports the loop numbers and ignores test accounts', async 
   assert.equal(traction.invites_sent, 2);
   assert.equal(traction.invites_answered, 1, 'only the invited guest who RSVP\'d counts');
   assert.equal(traction.rsvps_total, flagged ? 3 : 4, 'a flagged test host\'s RSVP is excluded');
-  assert.equal(traction.rsvps_returning, 1, 'Rae came to an earlier event by the same host');
+  assert.equal(traction.rsvps_returning, 1,
+    'Rae came to an earlier event by the same host on the same day');
   assert.equal(traction.artists_invited, 1);
   assert.equal(traction.artists_claimed, 1);
   assert.equal(traction.artists_declined, 0);

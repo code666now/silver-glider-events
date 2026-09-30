@@ -85,6 +85,8 @@ test('admin traction measures the loops read-only and tolerates the legacy test 
   assert.match(routes, /AS hosts_with_second_event/);
   assert.match(routes, /AS invites_answered/);
   assert.match(routes, /AS rsvps_returning/);
+  assert.match(routes, /prior\.start_time < c\.start_time/,
+    'same-day earlier events use the shared returning-guest definition');
   assert.match(routes, /AS artists_claimed/);
   assert.doesNotMatch(routes.slice(routes.indexOf("router.get('/api/admin/traction'"), routes.indexOf("// GET /api/admin/hosts")),
     /INSERT|UPDATE|DELETE/, 'the traction endpoint only reads');
