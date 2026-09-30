@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
+const { sendInvitationUnavailable } = require('../lib/invitation-pages');
 
 const router = express.Router();
 const template = fs.readFileSync(path.join(__dirname, '..', 'views', 'invite.html'), 'utf8');
@@ -92,7 +93,7 @@ router.get('/invite/mmmargaritta', (req, res) => {
 
 router.get('/invite/:slug', (req, res) => {
   const invite = INVITES[req.params.slug];
-  if (!invite) return res.status(404).send('Invitation not found');
+  if (!invite) return sendInvitationUnavailable(res);
 
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.send(render(template, invite));
@@ -104,21 +105,22 @@ router.get('/i/:token', async (req, res, next) => {
     res.set('Referrer-Policy', 'no-referrer');
     res.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
     const token = String(req.params.token || '').trim();
-    if (!/^[a-z0-9-]{12,220}$/.test(token)) return res.status(404).send('Invitation not found');
+    if (!/^[a-z0-9-]{12,220}$/.test(token)) return sendInvitationUnavailable(res);
     const { rows } = await pool.query(
       `SELECT token, host_name, personal_note
          FROM host_invitations
         WHERE token=$1 AND revoked_at IS NULL`,
       [token]
     );
-    if (!rows.length) return res.status(404).send('Invitation not found');
+    if (!rows.length) return sendInvitationUnavailable(res);
 
     const invite = rows[0];
     const nextPath = `/host-invitation/${invite.token}`;
     res.send(render(generatedTemplate, {
       hostName: invite.host_name,
       personalNote: invite.personal_note,
-      ctaUrl: `/login?next=${encodeURIComponent(nextPath)}`
+      ctaUrl: `/login?next=${encodeURIComponent(nextPath)}`,
+      exampleUrl: '/e/vesuvio-night-ig8e'
     }));
   } catch (err) { next(err); }
 });

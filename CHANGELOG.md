@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.151
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### Warm invitation conversion
+
+* Personally selected Host invitations now lead with the promoter's outcome: a polished event page, RSVPs, automatic reminders, and an organized guest list.
+* The primary action clearly offers a free Host Page, sets an honest two-minute expectation, and links to a finished public event example without interrupting the invitation.
+* Valid personal invitations offer direct setup help from Adrian. Missing and revoked links never expose his phone number.
+* Missing and revoked links now show a branded, self-service recovery page with normal free signup, returning-user sign-in, and homepage paths instead of a plain-text dead end.
+* Normal customer authentication and the recipient-owned Host Page onboarding flow are unchanged.
+
+### Verification
+
+* Static validation and all 495 automated tests pass, including generated invitation privacy, authenticated claims, unavailable-link recovery, and unchanged email and phone sign-in behavior.
+* Mobile and desktop browser checks passed for the valid invitation, recovery actions, responsive sizing, and the public example event.
+
 ## 1.0.150
 
 Released September 29, 2026. Built and deployed by Codex.

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
+const { sendInvitationUnavailable } = require('../lib/invitation-pages');
 
 const router = express.Router();
 const onboardingView = fs.readFileSync(
@@ -139,10 +140,10 @@ router.get('/host-invitation/:token', async (req, res, next) => {
     const invitation = token ? await invitationByToken(pool, token) : null;
     invitationHeaders(res);
     if (!invitation) {
-      return res.status(404).type('text').send('Invitation not found');
+      return sendInvitationUnavailable(res);
     }
     if (invitation.revoked_at) {
-      return res.status(410).type('text').send('This invitation is no longer available');
+      return sendInvitationUnavailable(res, 410);
     }
     if (!req.sessionAccount) {
       const nextPath = `/host-invitation/${encodeURIComponent(token)}`;

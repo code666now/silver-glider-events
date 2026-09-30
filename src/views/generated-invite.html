@@ -57,6 +57,18 @@
     .selection p { color:#e3e3e5;font-size:18px;line-height:1.55;white-space:pre-line; }
     .invite-action { max-width:690px;margin-top:32px; }
     .invite-action .sg-btn { min-height:56px;padding:14px 24px;font-size:14px; }
+    .invite-action-meta { margin-top:12px;color:#85858c;font-size:12px;line-height:1.6; }
+    .invite-links { display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin-top:24px; }
+    .invite-links a {
+      min-height:44px;display:inline-flex;align-items:center;color:#b9b9be;font-size:13px;font-weight:700;
+      text-decoration:underline;text-underline-offset:4px;
+    }
+    .invite-help {
+      max-width:690px;margin-top:30px;padding-top:24px;border-top:1px solid rgba(255,255,255,.09);
+      color:#a6a6ac;font-size:13px;line-height:1.65;
+    }
+    .invite-help a { color:var(--sg-text);font-weight:800;text-decoration:underline;text-underline-offset:4px; }
+    @media (hover:hover) { .invite-links a:hover,.invite-help a:hover { color:var(--sg-accent); } }
     .invite-footer {
       margin-top:38px;color:#77777f;font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
     }
@@ -66,6 +78,8 @@
       .invite-brand { margin-bottom:34px; }
       .selection { padding:18px 19px; }
       .invite-action .sg-btn { width:100%; }
+      .invite-links { display:grid;gap:2px; }
+      .invite-links a { width:max-content; }
       .invite-footer { line-height:1.7; }
     }
     @media(prefers-reduced-motion:reduce) { .invite-bg video { display:none; } }
@@ -87,10 +101,10 @@
       </div>
 
       <p class="invite-eyebrow">Personally selected · {{HOST_NAME}}</p>
-      <h1>{{HOST_NAME}}, we’d like you to help shape a better way to launch events.</h1>
+      <h1>{{HOST_NAME}}, publish your next event and start building your crowd.</h1>
 
       <div class="invite-copy">
-        <p>We’re inviting a small group of independent hosts and creative event organizers to try Silver Glider Events.</p>
+        <p>Create a polished event page, collect RSVPs, send automatic reminders, and keep your guest list organized in one place.</p>
       </div>
 
       <div class="selection">
@@ -99,13 +113,18 @@
       </div>
 
       <div class="invite-copy">
-        <p>Publish unique event pages and collect RSVPs. Create a real or test event, explore the platform, and tell us what would make it genuinely useful for your work.</p>
+        <p>Silver Glider is free to create and publish. Use it for a real or test event, then tell us what would make it even more useful for your work.</p>
         <p class="sf-note">We’re based in San Francisco, California, with roots in the creative events community.</p>
       </div>
 
       <div class="invite-action">
-        <a class="sg-btn sg-btn-primary" href="{{CTA_URL}}">Accept invitation</a>
+        <a class="sg-btn sg-btn-primary" href="{{CTA_URL}}">Create my free Host Page</a>
+        <p class="invite-action-meta">About two minutes · No payment required</p>
+        <div class="invite-links">
+          <a href="{{EXAMPLE_URL}}" target="_blank" rel="noopener noreferrer">See an example event</a>
+        </div>
       </div>
+      <p class="invite-help">Questions? <a href="sms:+14152053302">Text Adrian at (415) 205-3302</a>. I’m happy to help you set up your Host Page or first event.</p>
       <footer class="invite-footer">Personally selected · Free to try · No commitment</footer>
     </article>
   </main>

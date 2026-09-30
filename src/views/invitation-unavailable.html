@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Invitation unavailable — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <style>
+    body { min-height:100svh;background:#0e0e0e;overflow-x:hidden; }
+    .recovery-bg {
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      background:
+        radial-gradient(80% 65% at 12% 18%,rgba(28,197,190,.22),transparent 62%),
+        radial-gradient(74% 64% at 88% 78%,rgba(255,138,42,.17),transparent 64%),
+        #0e0e0e;
+    }
+    .recovery-page {
+      position:relative;z-index:1;min-height:100svh;display:grid;align-content:center;
+      width:min(100%,720px);margin:auto;padding:48px 28px;
+    }
+    .recovery-brand { display:flex;align-items:center;gap:13px;margin-bottom:52px; }
+    .recovery-brand img { width:38px;height:38px;object-fit:contain; }
+    .recovery-brand span {
+      color:var(--sg-text-dim);font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;
+    }
+    .recovery-label {
+      margin-bottom:16px;color:var(--sg-accent);font-size:11px;font-weight:800;
+      letter-spacing:.17em;text-transform:uppercase;
+    }
+    h1 { max-width:650px;margin-bottom:20px;font-size:clamp(40px,7vw,62px);line-height:1.08;letter-spacing:-.025em; }
+    .recovery-copy { max-width:590px;color:#b7b7bb;font-size:16px;line-height:1.75; }
+    .recovery-actions { display:flex;flex-wrap:wrap;gap:12px;margin-top:34px; }
+    .recovery-actions .sg-btn { min-height:54px;padding:13px 24px; }
+    .recovery-home {
+      display:inline-block;margin-top:24px;color:var(--sg-text-dim);font-size:13px;font-weight:700;
+      text-decoration:underline;text-underline-offset:4px;
+    }
+    @media (hover:hover) { .recovery-home:hover { color:var(--sg-text); } }
+    .recovery-footer { margin-top:62px;color:#77777f;font-size:11px; }
+    .recovery-footer a { color:inherit;text-decoration:none; }
+    .recovery-footer span { margin:0 8px; }
+    @media(max-width:620px) {
+      .recovery-page { align-content:start;padding:calc(46px + env(safe-area-inset-top)) 24px calc(32px + env(safe-area-inset-bottom)); }
+      .recovery-brand { margin-bottom:68px; }
+      .recovery-copy { font-size:15px; }
+      .recovery-actions { display:grid; }
+      .recovery-actions .sg-btn { width:100%;min-height:58px; }
+      .recovery-footer { margin-top:52px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="recovery-bg" aria-hidden="true"></div>
+  <main class="recovery-page">
+    <div>
+      <div class="recovery-brand">
+        <img src="/logo.png" alt="">
+        <span>Silver Glider Events</span>
+      </div>
+      <p class="recovery-label">Invitation unavailable</p>
+      <h1>This invitation link is no longer available.</h1>
+      <p class="recovery-copy">You can still create a free Silver Glider account and publish an event, or sign in if you have already joined.</p>
+      <div class="recovery-actions">
+        <a class="sg-btn sg-btn-primary" href="/login?next=%2Fevents%2Fnew">Start free with Silver Glider</a>
+        <a class="sg-btn sg-btn-ghost" href="/login?next=%2Fdashboard">Sign in</a>
+      </div>
+      <a class="recovery-home" href="/">Return to the homepage</a>
+      <footer class="recovery-footer" data-sg-legal-footer>
+        <a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a>
+      </footer>
+    </div>
+  </main>
+</body>
+</html>

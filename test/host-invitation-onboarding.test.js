@@ -27,6 +27,25 @@ test('Host invitation onboarding browser code compiles', () => {
   assert.doesNotThrow(() => new vm.Script(scripts[0], { filename: 'host-invitation.html' }));
 });
 
+test('Personal invitations lead with host value and keep concierge help private to valid links', () => {
+  const invite = read('src/views/generated-invite.html');
+  const unavailable = read('src/views/invitation-unavailable.html');
+
+  assert.match(invite, /publish your next event and start building your crowd/i);
+  assert.match(invite, /collect RSVPs, send automatic reminders/);
+  assert.match(invite, /Create my free Host Page/);
+  assert.match(invite, /About two minutes · No payment required/);
+  assert.match(invite, /See an example event/);
+  assert.match(invite, /sms:\+14152053302/);
+  assert.match(invite, /Text Adrian at \(415\) 205-3302/);
+
+  assert.match(unavailable, /This invitation link is no longer available\./);
+  assert.match(unavailable, /Start free with Silver Glider/);
+  assert.match(unavailable, /href="\/login\?next=%2Fdashboard">Sign in/);
+  assert.match(unavailable, /Return to the homepage/);
+  assert.doesNotMatch(unavailable, /Adrian|415|sms:/);
+});
+
 test('Host invitation router exposes the exact, narrowly validated endpoints', () => {
   const route = read('src/routes/host-invitation-onboarding.js');
 

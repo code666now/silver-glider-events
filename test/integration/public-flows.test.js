@@ -2371,8 +2371,12 @@ test('host invitation onboarding preserves context through email auth and claims
   assert.equal(landing.headers.get('referrer-policy'), 'no-referrer');
   assert.match(landing.headers.get('x-robots-tag') || '', /noindex/);
   const landingHtml = await landing.text();
-  assert.match(landingHtml, /Accept invitation/);
-  assert.match(landingHtml, /Publish unique event pages and collect RSVPs\./);
+  assert.match(landingHtml, /Create my free Host Page/);
+  assert.match(landingHtml, /publish your next event and start building your crowd/i);
+  assert.match(landingHtml, /collect RSVPs, send automatic reminders/);
+  assert.match(landingHtml, /About two minutes · No payment required/);
+  assert.match(landingHtml, /href="\/e\/vesuvio-night-ig8e"[^>]*>See an example event<\/a>/);
+  assert.match(landingHtml, /href="sms:\+14152053302">Text Adrian at \(415\) 205-3302<\/a>/);
   assert.match(landingHtml, /href="\/login\?next=%2Fhost-invitation%2Fheat-34b8bbbbb785ec87"/);
   assert.match(landingHtml, /&lt;script&gt;alert\(&quot;private&quot;\)&lt;\/script&gt;/);
   assert.doesNotMatch(landingHtml, /<script>alert\("private"\)<\/script>/);
@@ -2540,12 +2544,28 @@ test('host invitation onboarding handles revoked and missing links without mutat
   ]) {
     const response = await fetch(`${baseUrl}${path}`);
     assert.equal(response.status, 404);
+    assert.match(response.headers.get('content-type') || '', /text\/html/);
     assert.match(response.headers.get('cache-control') || '', /private, no-store/);
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
     assert.match(response.headers.get('x-robots-tag') || '', /noindex/);
+    const html = await response.text();
+    assert.match(html, /This invitation link is no longer available\./);
+    assert.match(html, /Start free with Silver Glider/);
+    assert.match(html, /href="\/login\?next=%2Fdashboard">Sign in<\/a>/);
+    assert.doesNotMatch(html, /Adrian|415-205-3302|sms:/);
   }
-  assert.equal((await fetch(`${baseUrl}/host-invitation/${revokedToken}`)).status, 410);
-  assert.equal((await fetch(`${baseUrl}/host-invitation/${missingToken}`)).status, 404);
+  for (const [path, expected] of [
+    [`/host-invitation/${revokedToken}`, 410],
+    [`/host-invitation/${missingToken}`, 404]
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, expected);
+    assert.match(response.headers.get('content-type') || '', /text\/html/);
+    const html = await response.text();
+    assert.match(html, /This invitation link is no longer available\./);
+    assert.match(html, /Start free with Silver Glider/);
+    assert.doesNotMatch(html, /Adrian|415-205-3302|sms:/);
+  }
 
   for (const [path, expected] of [
     [`/api/public/host-invitations/${revokedToken}`, 410],
