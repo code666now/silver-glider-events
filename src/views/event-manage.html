@@ -26,6 +26,7 @@
     .cap-bar { height: 4px; background: var(--sg-surface); border-radius: 4px; margin-top: 10px; overflow: hidden; }
     .cap-bar div { height: 100%; background: var(--sg-accent); border-radius: 4px; }
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .toolbar > [hidden] { display:none !important; }
     .toolbar .sg-btn, .more-menu summary { padding: 10px 20px; font-size: 13px; }
     .more-menu { position: relative; }
     .more-menu summary { list-style: none; }
@@ -62,6 +63,9 @@
       letter-spacing:.14em;text-transform:uppercase;
     }
     .promotion-action-list { border-top:1px solid var(--sg-border-soft); }
+    .promotion-action-section-label {
+      margin:18px 8px 4px;padding-top:18px;border-top:1px solid var(--sg-border-soft);
+    }
     .promotion-action {
       width:100%;min-height:66px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;
       gap:12px;align-items:center;padding:12px 8px;border:0;border-bottom:1px solid var(--sg-border-soft);
@@ -105,6 +109,29 @@
     @media (hover: hover) { .line-submit:hover { border-color:var(--sg-accent);background:rgba(28,197,190,.14); } }
     .line-submit:focus-visible { outline:2px solid var(--sg-accent);outline-offset:2px; }
     .line-submit:disabled { cursor:not-allowed;opacity:.58; }
+    .lifecycle-receipt {
+      display:grid;grid-template-columns:38px minmax(0,1fr);gap:12px;align-items:center;
+      margin-top:18px;padding:16px;border:1px solid rgba(28,197,190,.18);border-radius:16px;
+      background:rgba(28,197,190,.045);
+    }
+    .lifecycle-receipt[hidden],.lifecycle-recap[hidden] { display:none; }
+    .lifecycle-receipt strong,.lifecycle-receipt span { display:block; }
+    .lifecycle-receipt strong { margin-bottom:3px;font-size:13px; }
+    .lifecycle-receipt span { color:var(--sg-text-dim);font-size:11px;line-height:1.45; }
+    .lifecycle-recap { margin-top:20px; }
+    .lifecycle-recap-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+    .lifecycle-recap-stat {
+      min-width:0;padding:20px 16px;border:1px solid rgba(28,197,190,.2);border-radius:16px;
+      background:rgba(28,197,190,.045);
+    }
+    .lifecycle-recap-stat strong { display:block;color:var(--sg-accent);font-family:var(--sg-font-display);font-size:36px;font-weight:400;line-height:1; }
+    .lifecycle-recap-stat span { display:block;margin-top:8px;color:var(--sg-text-faint);font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
+    .lifecycle-next-event {
+      width:100%;min-height:66px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:12px;align-items:center;
+      margin-top:16px;padding:12px 8px;border:0;border-top:1px solid var(--sg-border-soft);border-radius:0;
+      background:transparent;color:var(--sg-text);font-family:var(--sg-font-body);text-align:left;cursor:pointer;
+    }
+    @media (hover:hover) { .lifecycle-next-event:hover { background:rgba(255,255,255,.035); } }
     .photo-collection-summary {
       display:flex;align-items:center;justify-content:space-between;gap:12px;
       margin:20px 0 10px;padding-top:18px;border-top:1px solid var(--sg-border-soft);
@@ -511,11 +538,20 @@
       .promotion-action-title { font-size:16px; }
       .promotion-action-description { margin-top:4px;font-size:13px;line-height:1.45; }
       .promotion-action-count { min-width:40px;padding:7px 9px;font-size:12px; }
+      .promotion-action-section-label { margin:22px 6px 4px;padding-top:22px; }
       .line-feature { margin-top:22px;padding:18px;border-radius:18px; }
       .line-feature-head { grid-template-columns:46px minmax(0,1fr);gap:14px; }
       .line-feature h3 { font-size:19px; }
       .line-feature-copy { font-size:13px;line-height:1.55; }
       .line-submit { min-height:56px;margin-top:18px;border-radius:14px;font-size:15px; }
+      .lifecycle-receipt { grid-template-columns:46px minmax(0,1fr);gap:14px;margin-top:22px;padding:18px;border-radius:18px; }
+      .lifecycle-receipt strong { font-size:16px; }
+      .lifecycle-receipt span { font-size:13px;line-height:1.5; }
+      .lifecycle-recap { margin-top:24px; }
+      .lifecycle-recap-stat { min-height:118px;padding:22px 18px;border-radius:18px; }
+      .lifecycle-recap-stat strong { font-size:44px; }
+      .lifecycle-recap-stat span { font-size:11px; }
+      .lifecycle-next-event { min-height:96px;grid-template-columns:46px minmax(0,1fr) auto;gap:14px;padding:16px 6px; }
       .photo-collection-summary { margin-top:24px;padding-top:22px; }
       .photo-collection-summary strong { font-size:28px; }
       .photo-grid { gap:12px; }
@@ -605,7 +641,7 @@
         </button>
         <button class="manage-mobile-task" id="manage-mobile-task-promote" type="button" data-manage-mobile-open="promote" aria-controls="line-card" disabled>
           <span class="manage-mobile-task-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v8h14v-8"/></svg></span>
-          <span class="manage-mobile-task-copy"><strong>Promote</strong><small id="manage-mobile-summary-promote">Share, QR code, and The Line</small></span>
+          <span class="manage-mobile-task-copy"><strong id="manage-mobile-promote-label">Promote</strong><small id="manage-mobile-summary-promote">Share, QR code, and The Line</small></span>
           <span class="manage-mobile-task-arrow" aria-hidden="true">›</span>
         </button>
         <button class="manage-mobile-task" id="manage-mobile-task-photos" type="button" data-manage-mobile-open="photos" aria-controls="collect-photos-card" hidden disabled>
@@ -649,7 +685,7 @@
     <div class="notification-status" id="notification-status" role="status" hidden></div>
 
     <div class="toolbar" aria-label="Event actions">
-      <button class="sg-btn sg-btn-primary" id="copy-link" disabled>Copy event link</button>
+      <button class="sg-btn sg-btn-primary" id="copy-link" disabled>Share event link</button>
       <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank" aria-disabled="true" tabindex="-1">View page</a>
       <a class="sg-btn sg-btn-ghost" id="edit-link" aria-disabled="true" tabindex="-1">
         <span class="manage-edit-desktop-label">Edit</span>
@@ -668,11 +704,11 @@
       </details>
     </div>
 
-    <section class="promotion-card" id="line-card">
-      <h2>Promote your event</h2>
+    <section class="promotion-card" id="line-card" data-lifecycle-variant="new-event">
+      <h2 id="lifecycle-card-title">Promote your event</h2>
       <p id="promotion-copy">Choose how you want to get the word out.</p>
-      <p class="promotion-group-label">Get the word out</p>
-      <div class="promotion-action-list">
+      <p class="promotion-group-label" id="get-word-out-label">Get the word out</p>
+      <div class="promotion-action-list" id="promotion-action-list">
         <button class="promotion-action" id="share-event" type="button" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v8h14v-8"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title">Share event</strong><span class="promotion-action-description">Send or post your event link.</span></span>
@@ -688,6 +724,7 @@
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite Familiar Faces</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Choose people from your past events.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
+        <p class="promotion-group-label promotion-action-section-label" id="reach-guests-label">Reach your guests</p>
         <button class="promotion-action" id="sms-audience" type="button" hidden disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M9 6h6M10 18h4"/></svg></span>
           <span class="promotion-action-copy"><strong class="promotion-action-title" id="sms-audience-title">Day-before text reminder</strong><span class="promotion-action-description" id="sms-audience-copy">Checking opt-ins and texting balance…</span></span>
@@ -699,12 +736,27 @@
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
       </div>
+      <div class="lifecycle-receipt" id="lifecycle-receipt" role="status" hidden>
+        <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span>
+        <div><strong id="lifecycle-receipt-title">Reminder delivery</strong><span id="lifecycle-receipt-copy"></span></div>
+      </div>
       <section class="line-feature" id="line-feature" aria-label="The Line editorial opportunity">
         <div class="line-feature-head">
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h2m3-4v8m4-11v14m4-9v4m3-2h-1"/></svg></span>
           <div><p class="promotion-group-label">Editorial opportunity</p><h3 id="line-title">The Line</h3><p class="line-feature-copy" id="line-copy">We pick standout events and add them to Silver Glider's phone line for people to call.</p></div>
         </div>
         <button class="line-submit" id="submit-line" type="button" disabled>Submit to The Line</button>
+      </section>
+      <section class="lifecycle-recap" id="lifecycle-recap" aria-label="Event results" hidden>
+        <div class="lifecycle-recap-stats">
+          <div class="lifecycle-recap-stat"><strong id="lifecycle-recap-rsvps">0</strong><span>RSVPs</span></div>
+          <div class="lifecycle-recap-stat"><strong id="lifecycle-recap-followers">0</strong><span>New followers</span></div>
+        </div>
+        <button class="lifecycle-next-event" id="lifecycle-next-event" type="button">
+          <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 3v4m8-4v4M5 9h14"/><path d="M12 12v5m-2.5-2.5h5"/></svg></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Plan your next event</strong><span class="promotion-action-description">Invite this event's guests with Familiar Faces.</span></span>
+          <span class="promotion-action-arrow" aria-hidden="true">›</span>
+        </button>
       </section>
     </section>
 
@@ -822,6 +874,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/event-change-dialog.js"></script>
+  <script src="/js/event-lifecycle.js"></script>
   <script src="/js/manage.js"></script>
 </body>
 </html>

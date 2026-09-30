@@ -1387,7 +1387,7 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
 router.get('/api/events/:id/followers', async (req, res, next) => {
   try {
     const { rows: ev } = await pool.query(
-      `SELECT e.*,o.sms_credits,
+      `SELECT e.*,o.sms_credits,o.public_slug AS organizer_public_slug,
               COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label
          FROM events e JOIN organizers o ON o.id=e.organizer_id
         WHERE e.id=$1 AND e.organizer_id=$2`,
@@ -1408,6 +1408,9 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
       announcedAt: ev[0].announced_at,
       announcedCount: ev[0].announced_count,
       announcedTextCount: ev[0].announced_text_count,
+      hostPageUrl: ev[0].organizer_public_slug
+        ? `/h/${encodeURIComponent(ev[0].organizer_public_slug)}`
+        : null,
       canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' &&
         !didSendAnnouncement && (preview.emailCount > 0 || preview.textCount > 0)
     });

@@ -32,11 +32,13 @@ test('event management and promotion actions remain clearly separated', () => {
   const toolbar = view.slice(view.indexOf('<div class="toolbar"'), view.indexOf('<section class="promotion-card"'));
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<section class="manage-guest-section'));
 
-  for (const label of ['Copy event link', 'View page', 'Edit', 'Event actions']) {
+  for (const label of ['View page', 'Edit', 'Event actions']) {
     assert.match(toolbar, new RegExp(`\\b${label}\\b`));
     assert.doesNotMatch(promotion, new RegExp(`\\b${label}\\b`));
   }
-  for (const label of ['Share event', 'Download QR code', 'Submit to The Line']) {
+  assert.match(toolbar, /Share event link/);
+  assert.match(promotion, /Share event/);
+  for (const label of ['Download QR code', 'Submit to The Line']) {
     assert.match(promotion, new RegExp(label));
     assert.doesNotMatch(toolbar, new RegExp(label));
   }
@@ -61,7 +63,7 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /link\.download = `\$\{eventData\.slug\}-qr-code\.png`/);
   assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
   assert.match(client, /function setManageReady\(\)/);
-  assert.match(client, /secondaryTasks = eventData\.is_past/);
+  assert.match(client, /secondaryTasks = eventData\.lifecycle_phase === 'ended'/);
   assert.match(client, /desktopManageLayout = window\.matchMedia\('\(min-width: 1024px\)'\)/);
   assert.match(client, /eventData\?\.is_past && desktopManageLayout\.matches/);
   assert.match(client, /manage-guest-desktop-slot'\)\.append\(section\)/);

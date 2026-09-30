@@ -2,6 +2,24 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.152
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### Adaptive event lifecycle management
+
+* Event management now uses one responsive card that adapts across six useful states: a new event, funded text reminders, reminders needing credits, follower outreach, event night, and the post-event recap.
+* Upcoming events show real text opt-ins, credit cost and balance, event-local send dates, Familiar Faces, and either follower outreach or a Host Page sharing path when the audience is still empty.
+* Insufficient-credit messaging leads to the existing credit purchase flow and clearly confirms that free email reminders remain available.
+* Event night removes the long promotion toolbox, keeps one Last call action, and reports only recorded email and text delivery results.
+* Ended events show actual RSVP and newly attributed follower totals, then lead into the existing event-creation and Familiar Faces loop.
+* Lifecycle timing follows each event's timezone, and the existing optional photo-collection workspace remains separate and unchanged.
+
+### Verification
+
+* Static validation and all 500 automated tests pass, including event-local lifecycle boundaries, exact credit states, real delivery records, Host Page fallbacks, and unchanged photo collection.
+* The shared desktop and mobile card was checked across all six lifecycle states, including empty, funded, insufficient-credit, event-night, and ended presentations.
+
 ## 1.0.151
 
 Released September 30, 2026. Built and deployed by Codex.

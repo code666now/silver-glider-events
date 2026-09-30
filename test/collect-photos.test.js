@@ -79,15 +79,16 @@ test('public photo collection is private-by-default and bounded', () => {
   assert.match(client, /new FormData\(form\)/);
 });
 
-test('past-event management replaces promotion with one focused collection workflow', () => {
+test('past-event management keeps the lifecycle recap separate from optional photo collection', () => {
   const view = read('src/views/event-manage.html');
   const client = read('public/js/manage.js');
   assert.match(view, /id="collect-photos-card"/);
   for (const label of ['Ask RSVPs', 'Copy photo link', 'View photos', 'Photos received']) {
     assert.match(view, new RegExp(label));
   }
-  assert.match(client, /event\.is_past[\s\S]*\$\('line-card'\)\.style\.display = 'none'/);
-  assert.match(client, /eventData\.collect_photos_enabled \? \[loadPhotoCollection\(\)\] : \[\]/);
+  assert.match(client, /event\.is_past[\s\S]*\$\('line-card'\)\.style\.display = ''/);
+  assert.match(client, /eventData\.lifecycle_phase === 'ended'[\s\S]*eventData\.collect_photos_enabled \? \[loadPhotoCollection\(\)\] : \[\]/);
+  assert.match(client, /\$\('lifecycle-recap'\)\.hidden = variant !== 'ended'/);
   assert.match(client, /\/api\/events\/\$\{eventId\}\/photo-request/);
   assert.match(client, /\/photos\/\$\{featureButton\.dataset\.featurePhoto\}\/feature/);
   assert.match(client, /data-delete-photo/);

@@ -79,6 +79,7 @@ const EDITOR_EVENT_FIELDS = Object.freeze([
   'created_at',
   'updated_at',
   'is_past',
+  'lifecycle_phase',
   'rsvp_count',
   'guest_count',
   'total_attendance',
@@ -86,6 +87,13 @@ const EDITOR_EVENT_FIELDS = Object.freeze([
   'comment_count',
   'returning_count',
   'invited_returning_count',
+  'new_follower_count',
+  'day_before_email_sent_count',
+  'day_before_email_failed_count',
+  'day_before_sms_accepted_count',
+  'day_before_sms_delivered_count',
+  'day_before_sms_failed_count',
+  'day_before_sms_status',
   'latest_notification'
 ]);
 
@@ -486,6 +494,11 @@ async function getEventForEditor(db, { organizerId, eventId }) {
   const { rows } = await db.query(
     `SELECT e.*,
             e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+            CASE
+              WHEN e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date THEN 'ended'
+              WHEN e.event_date = (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date THEN 'tonight'
+              ELSE 'upcoming'
+            END AS lifecycle_phase,
             COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
             COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
             COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
@@ -550,6 +563,39 @@ async function getEventForEditor(db, { organizerId, eventId }) {
                                        AND LOWER(TRIM(invitation.recipient))=
                                            LOWER(TRIM(current_rsvp.email))))
                          )), 0)::int AS invited_returning_count
+            ,COALESCE((SELECT COUNT(*)
+                         FROM host_follows hf
+                        WHERE hf.host_organizer_id=e.organizer_id
+                          AND hf.source_event_id=e.id
+                          AND hf.unsubscribed_at IS NULL), 0)::int AS new_follower_count
+            ,COALESCE((SELECT COUNT(*)
+                         FROM message_log ml
+                        WHERE ml.event_id=e.id
+                          AND ml.message_type='reminder_day_before'
+                          AND ml.channel='email'
+                          AND ml.status='sent'), 0)::int AS day_before_email_sent_count
+            ,COALESCE((SELECT COUNT(*)
+                         FROM message_log ml
+                        WHERE ml.event_id=e.id
+                          AND ml.message_type='reminder_day_before'
+                          AND ml.channel='email'
+                          AND ml.status='failed'), 0)::int AS day_before_email_failed_count
+            ,COALESCE((SELECT b.accepted_count
+                         FROM sms_notification_batches b
+                        WHERE b.event_id=e.id AND b.kind='event_tomorrow'
+                        ORDER BY b.id DESC LIMIT 1), 0)::int AS day_before_sms_accepted_count
+            ,COALESCE((SELECT b.delivered_count
+                         FROM sms_notification_batches b
+                        WHERE b.event_id=e.id AND b.kind='event_tomorrow'
+                        ORDER BY b.id DESC LIMIT 1), 0)::int AS day_before_sms_delivered_count
+            ,COALESCE((SELECT b.failed_count
+                         FROM sms_notification_batches b
+                        WHERE b.event_id=e.id AND b.kind='event_tomorrow'
+                        ORDER BY b.id DESC LIMIT 1), 0)::int AS day_before_sms_failed_count
+            ,(SELECT b.status
+                FROM sms_notification_batches b
+               WHERE b.event_id=e.id AND b.kind='event_tomorrow'
+               ORDER BY b.id DESC LIMIT 1) AS day_before_sms_status
             ,(SELECT json_build_object(
                 'id', b.id, 'kind', b.kind, 'status', b.status,
                 'recipientCount', b.recipient_count, 'sentCount', b.sent_count,

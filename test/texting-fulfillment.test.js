@@ -61,7 +61,7 @@ test('automatic fulfillment is all-or-nothing, retry-safe, and gives each guest 
   assert.match(manage, /Ready · Guests can opt in when they RSVP\./);
   assert.match(manage, /textContent = 'ON'/);
   assert.match(manage, /promotion-action-ready/);
-  assert.match(manage, /textContent = 'Add funds'/);
+  assert.match(manage, /textContent = 'Add credits'/);
   assert.match(manage, /smsPreviewState\?\.needsFunds/);
   assert.doesNotMatch(manage, /SEND_TOMORROW_SMS/);
 });

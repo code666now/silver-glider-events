@@ -134,9 +134,24 @@ function updateMobileManageSummaries() {
   $('manage-mobile-summary-guests').textContent = guestCount
     ? `${guestCount} ${guestCount === 1 ? 'person' : 'people'} connected`
     : 'No RSVPs or invitations yet';
-  $('manage-mobile-summary-promote').textContent = eventData.visibility === 'private'
-    ? 'Share the private link or QR code'
-    : 'Share, QR code, followers, and The Line';
+  const lifecycleVariant = currentLifecycleVariant();
+  const lifecycleCopy = {
+    'new-event': ['Promote', eventData.visibility === 'private' ? 'Share the private link or QR code' : 'Share the link and start building your audience'],
+    'reminder-funded': ['Promote', 'Reminder funded · Keep sharing the event'],
+    'reminder-needs-credits': ['Promote', 'Text reminders need credits · Email stays free'],
+    'follower-outreach': ['Promote', 'Reach guests, followers, and Familiar Faces'],
+    tonight: ['Tonight', 'Last call and recorded reminder delivery'],
+    ended: ['Recap', 'See results and plan your next event']
+  }[lifecycleVariant] || ['Promote', 'Share, QR code, followers, and The Line'];
+  $('manage-mobile-promote-label').textContent = lifecycleCopy[0];
+  $('manage-mobile-summary-promote').textContent = lifecycleCopy[1];
+  mobileManageViews.promote.title = lifecycleCopy[0];
+  mobileManageViews.promote.subtitle = lifecycleCopy[1];
+  if (activeMobileManageView === 'promote') {
+    $('manage-mobile-nav-label').textContent = lifecycleCopy[0];
+    $('manage-mobile-screen-title').textContent = lifecycleCopy[0];
+    $('manage-mobile-screen-subtitle').textContent = lifecycleCopy[1];
+  }
 
   const photoCount = Number($('photo-count').textContent) || 0;
   $('manage-mobile-summary-photos').textContent = photoCount
@@ -151,7 +166,7 @@ function syncMobileManageAvailability() {
   });
   $('manage-mobile-task-promote').hidden = Boolean(eventData) && !mobileManageViewAvailable('promote');
   $('manage-mobile-task-photos').hidden = !eventData || !mobileManageViewAvailable('photos');
-  $('manage-mobile-share').hidden = Boolean(eventData?.is_past);
+  $('manage-mobile-share').hidden = currentLifecycleVariant() === 'ended';
   $('manage-mobile-share').disabled = !ready || $('share-event').disabled;
   updateMobileManageSummaries();
 
@@ -352,6 +367,8 @@ async function loadEvent() {
   const badge = $('status-badge');
   if (event.status === 'cancelled') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Cancelled'; }
   else if (event.status === 'draft') { badge.className = 'sg-badge'; badge.textContent = 'Draft'; }
+  else if (event.lifecycle_phase === 'tonight') { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Tonight'; }
+  else if (event.lifecycle_phase === 'ended') { badge.className = 'sg-badge'; badge.textContent = 'Ended'; }
   else if (event.secret_show_enabled) { badge.className = 'sg-badge'; badge.textContent = 'Secret Show'; }
   else if (event.visibility === 'private') { badge.className = 'sg-badge'; badge.textContent = 'Private — Link Only'; }
   else { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Live'; }
@@ -393,12 +410,13 @@ async function loadEvent() {
     $('line-card').style.display = 'none';
     $('collect-photos-card').hidden = true;
   } else if (event.is_past) {
-    $('line-card').style.display = 'none';
+    $('line-card').style.display = '';
     $('collect-photos-card').hidden = !event.collect_photos_enabled;
   } else if (event.visibility === 'private') {
     $('promotion-copy').textContent = 'Share your private event link or download its QR code.';
     $('line-feature').style.display = 'none';
   }
+  renderLifecycleCard();
   syncMobileManageAvailability();
 }
 
@@ -726,10 +744,7 @@ $('familiar-invite-back').addEventListener('click', () => {
 $('familiar-invite-close').addEventListener('click', closeFamiliarInviteDialog);
 $('familiar-invite-form').addEventListener('submit', event => event.preventDefault());
 
-$('copy-link').addEventListener('click', async () => {
-  await navigator.clipboard.writeText(eventUrl());
-  toast('Link copied');
-});
+$('copy-link').addEventListener('click', () => $('share-event').click());
 
 $('share-event').addEventListener('click', async () => {
   const shareData = { title: eventData.title, url: eventUrl() };
@@ -748,6 +763,10 @@ $('share-event').addEventListener('click', async () => {
 // Same share sheet as Promote → Share event; the click stays inside the tap so
 // the phone still allows the native share sheet.
 $('manage-mobile-share').addEventListener('click', () => $('share-event').click());
+
+$('lifecycle-next-event').addEventListener('click', () => {
+  window.location.assign('/events/new');
+});
 
 $('copy-photo-link').addEventListener('click', async () => {
   const url = $('collect-photos-card').dataset.collectionUrl;
@@ -858,6 +877,113 @@ $('duplicate').addEventListener('click', async () => {
 });
 
 let smsPreviewState = null;
+let followerPreviewState = null;
+
+function currentLifecycleVariant() {
+  if (!eventData || !window.SgeEventLifecycle) return 'new-event';
+  return window.SgeEventLifecycle.variantFor({
+    event: eventData,
+    smsPreview: smsPreviewState,
+    followerPreview: followerPreviewState
+  });
+}
+
+function setPromotionActionVisible(id, visible) {
+  const node = $(id);
+  node.hidden = !visible;
+  if (!visible) node.style.display = 'none';
+  else if (id !== 'invite-previous-guests' && id !== 'announce') node.style.display = '';
+}
+
+function renderReminderReceipt() {
+  const receipt = window.SgeEventLifecycle.deliveryReceipt(eventData);
+  const node = $('lifecycle-receipt');
+  node.hidden = false;
+  if (!receipt.hasRecordedSend) {
+    $('lifecycle-receipt-title').textContent = 'No day-before reminder was sent';
+    $('lifecycle-receipt-copy').textContent = 'There are no recorded text or email deliveries for this event.';
+    return;
+  }
+
+  $('lifecycle-receipt-title').textContent = 'Reminder sent yesterday';
+  const parts = [
+    `${receipt.textDelivered} delivered by text`,
+    `${receipt.emailSent} sent by email`
+  ];
+  if (receipt.textPending) parts.push(`${receipt.textPending} text ${receipt.textPending === 1 ? 'status' : 'statuses'} pending`);
+  if (receipt.textFailed || receipt.emailFailed) {
+    parts.push(`${receipt.textFailed + receipt.emailFailed} failed`);
+  }
+  $('lifecycle-receipt-copy').textContent = `${parts.join(' · ')}.`;
+}
+
+function renderLifecycleCard() {
+  if (!eventData) return;
+  const card = $('line-card');
+  if (eventData.status === 'cancelled') {
+    card.style.display = 'none';
+    return;
+  }
+
+  const variant = currentLifecycleVariant();
+  card.dataset.lifecycleVariant = variant;
+  card.style.display = '';
+  $('copy-link').hidden = variant === 'ended';
+  $('lifecycle-recap').hidden = variant !== 'ended';
+  $('lifecycle-receipt').hidden = variant !== 'tonight';
+  $('promotion-action-list').hidden = variant === 'ended';
+  $('get-word-out-label').hidden = variant === 'tonight' || variant === 'ended';
+  $('reach-guests-label').hidden = variant === 'tonight' || variant === 'ended';
+
+  if (variant === 'ended') {
+    $('lifecycle-card-title').textContent = 'How it went';
+    $('promotion-copy').textContent = "Thanks for hosting. Here's what the event brought in.";
+    $('line-feature').style.display = 'none';
+    $('lifecycle-recap-rsvps').textContent = (Number(eventData.rsvp_count) || 0).toLocaleString('en-US');
+    $('lifecycle-recap-followers').textContent = (Number(eventData.new_follower_count) || 0).toLocaleString('en-US');
+    updateMobileManageSummaries();
+    return;
+  }
+
+  $('lifecycle-recap').hidden = true;
+  $('promotion-action-list').hidden = false;
+  if (variant === 'tonight') {
+    const receipt = window.SgeEventLifecycle.deliveryReceipt(eventData);
+    $('lifecycle-card-title').textContent = 'Tonight';
+    $('promotion-copy').textContent = receipt.hasRecordedSend
+      ? 'Your guests have their reminder. One last push for anyone still deciding.'
+      : 'One last push for anyone still deciding before doors.';
+    setPromotionActionVisible('share-event', true);
+    setPromotionActionVisible('download-qr', false);
+    setPromotionActionVisible('invite-previous-guests', false);
+    setPromotionActionVisible('sms-audience', false);
+    setPromotionActionVisible('announce', false);
+    $('share-event').querySelector('.promotion-action-title').textContent = 'Last call';
+    $('share-event').querySelector('.promotion-action-description').textContent = 'Share your event link one more time before doors.';
+    $('line-feature').style.display = 'none';
+    renderReminderReceipt();
+    updateMobileManageSummaries();
+    return;
+  }
+
+  $('lifecycle-card-title').textContent = 'Promote your event';
+  $('promotion-copy').textContent = variant === 'new-event'
+    ? 'Start sharing. Reminder signups and followers will appear here.'
+    : 'Spread the word and keep your guests in the loop.';
+  $('get-word-out-label').hidden = false;
+  $('reach-guests-label').hidden = false;
+  setPromotionActionVisible('share-event', true);
+  setPromotionActionVisible('download-qr', true);
+  $('share-event').querySelector('.promotion-action-title').textContent = 'Share event';
+  $('share-event').querySelector('.promotion-action-description').textContent = eventData.sms_reminder_enabled
+    ? 'Share the RSVP link so guests can opt in to the reminder.'
+    : 'Send or post your event link.';
+  if (eventData.sms_reminder_enabled && smsPreviewState) renderSmsAction(smsPreviewState);
+  if (peopleState?.canInvite) renderPeopleAction();
+  if (followerPreviewState) renderFollowerAction(followerPreviewState);
+  $('line-feature').style.display = eventData.visibility === 'public' && eventData.status === 'published' ? '' : 'none';
+  updateMobileManageSummaries();
+}
 
 function shortEventDate(value) {
   const date = new Date(value);
@@ -1150,11 +1276,12 @@ function renderSmsAction(preview) {
   } else if (preview.needsFunds) {
     button.disabled = false;
     button.dataset.needsFunds = 'true';
-    $('sms-audience-count').textContent = 'Add funds';
-    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed · ${preview.balance} available. Add funds before it sends.`;
+    $('sms-audience-count').textContent = 'Add credits';
+    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed · ${preview.balance} available. Add credits to text them; email reminders still send free.`;
   } else {
     button.disabled = true;
-    $('sms-audience-copy').textContent = `${count} opted in · About ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${preview.balance} available. Sends automatically at 4 PM the day before.`;
+    const sendDate = window.SgeEventLifecycle.reminderDateLabel(eventData?.event_date);
+    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${preview.balance} available. Sends ${sendDate} at 4 PM.`;
   }
 }
 
@@ -1162,10 +1289,12 @@ async function loadSmsPreview() {
   try {
     smsPreviewState = await api(`/api/events/${eventId}/sms/tomorrow-preview`);
     renderSmsAction(smsPreviewState);
+    renderLifecycleCard();
     return smsPreviewState;
   } catch (_) {
     $('sms-audience').disabled = true;
     $('sms-audience-copy').textContent = 'Text reminder status is temporarily unavailable.';
+    renderLifecycleCard();
     return null;
   }
 }
@@ -1176,49 +1305,91 @@ $('sms-audience').addEventListener('click', () => {
   }
 });
 
+function renderFollowerAction(preview) {
+  const { count, emailCount, textCount, textCreditCost, textBalance, canIncludeTexts,
+    needsTextFunds, fingerprint, announcedAt, announcedCount, announcedTextCount, canAnnounce,
+    hostPageUrl } = preview;
+  const btn = $('announce');
+  btn.hidden = false;
+  btn.style.display = '';
+  for (const key of ['action', 'count', 'emailCount', 'textCount', 'textCreditCost', 'textBalance',
+    'includeTexts', 'needsTextFunds', 'fingerprint', 'hostPageUrl']) delete btn.dataset[key];
+
+  if (announcedAt) {
+    btn.disabled = true;
+    const total = announcedCount + Number(announcedTextCount || 0);
+    $('announce-title').textContent = `${total} ${total === 1 ? 'update' : 'updates'} sent`;
+    $('announce-copy').textContent = `${announcedCount} email${announcedCount === 1 ? '' : 's'} · ${Number(announcedTextCount || 0)} text${Number(announcedTextCount || 0) === 1 ? '' : 's'}. This action can only be used once.`;
+    return;
+  }
+
+  if (!canAnnounce || count === 0) {
+    btn.disabled = false;
+    btn.dataset.action = hostPageUrl ? 'share-host' : 'setup-host';
+    if (hostPageUrl) btn.dataset.hostPageUrl = hostPageUrl;
+    $('announce-title').textContent = hostPageUrl ? 'Copy and share your Host Page' : 'Set up your Host Page';
+    $('announce-copy').textContent = hostPageUrl
+      ? 'Followers get updates whenever you publish a public event.'
+      : 'Give people one place to follow every event you host.';
+    return;
+  }
+
+  btn.disabled = false;
+  btn.dataset.action = 'announce';
+  btn.dataset.count = count;
+  btn.dataset.emailCount = emailCount;
+  btn.dataset.textCount = textCount;
+  btn.dataset.textCreditCost = textCreditCost;
+  btn.dataset.textBalance = textBalance;
+  btn.dataset.includeTexts = String(canIncludeTexts);
+  btn.dataset.needsTextFunds = String(needsTextFunds);
+  btn.dataset.fingerprint = fingerprint;
+  if (emailCount === 0 && needsTextFunds) {
+    $('announce-title').textContent = `Add credits to update ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
+    $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} ${textCreditCost === 1 ? 'credit' : 'credits'} needed · ${textBalance} available.`;
+    return;
+  }
+  $('announce-title').textContent = `Update ${count} ${count === 1 ? 'follower' : 'followers'}`;
+  if (canIncludeTexts) {
+    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · ${textCount} text${textCount === 1 ? '' : 's'} · Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'}.`;
+  } else if (needsTextFunds) {
+    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} now · ${textCount} opted into texts (more texting credits needed).`;
+  } else {
+    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · No paid texts.`;
+  }
+}
+
 async function loadFollowers() {
   try {
-    const preview = await api(`/api/events/${eventId}/followers`);
-    const { count, emailCount, textCount, textCreditCost, textBalance, canIncludeTexts,
-      needsTextFunds, fingerprint, announcedAt, announcedCount, announcedTextCount, canAnnounce } = preview;
-    const btn = $('announce');
-    if (announcedAt) {
-      btn.style.display = '';
-      btn.disabled = true;
-      const total = announcedCount + Number(announcedTextCount || 0);
-      $('announce-title').textContent = `${total} ${total === 1 ? 'update' : 'updates'} sent`;
-      $('announce-copy').textContent = `${announcedCount} email${announcedCount === 1 ? '' : 's'} · ${Number(announcedTextCount || 0)} text${Number(announcedTextCount || 0) === 1 ? '' : 's'}. This action can only be used once.`;
-      return;
-    }
-    if (!canAnnounce || count === 0) return; // hidden: private/draft/cancelled or no followers yet
-    btn.style.display = '';
-    btn.disabled = false;
-    btn.dataset.count = count;
-    btn.dataset.emailCount = emailCount;
-    btn.dataset.textCount = textCount;
-    btn.dataset.textCreditCost = textCreditCost;
-    btn.dataset.textBalance = textBalance;
-    btn.dataset.includeTexts = String(canIncludeTexts);
-    btn.dataset.needsTextFunds = String(needsTextFunds);
-    btn.dataset.fingerprint = fingerprint;
-    if (emailCount === 0 && needsTextFunds) {
-      $('announce-title').textContent = `Add funds to update ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
-      $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} ${textCreditCost === 1 ? 'credit' : 'credits'} needed · ${textBalance} available.`;
-      return;
-    }
-    $('announce-title').textContent = `Update ${count} ${count === 1 ? 'follower' : 'followers'}`;
-    if (canIncludeTexts) {
-      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · ${textCount} text${textCount === 1 ? '' : 's'} · Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'}.`;
-    } else if (needsTextFunds) {
-      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} now · ${textCount} opted into texts (more texting credits needed).`;
-    } else {
-      $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · No paid texts.`;
-    }
-  } catch (_) {}
+    followerPreviewState = await api(`/api/events/${eventId}/followers`);
+    renderFollowerAction(followerPreviewState);
+    renderLifecycleCard();
+    return followerPreviewState;
+  } catch (_) {
+    followerPreviewState = null;
+    return null;
+  }
 }
 
 $('announce').addEventListener('click', async () => {
   const button = $('announce');
+  if (button.dataset.action === 'setup-host') {
+    window.location.assign('/settings/host-page');
+    return;
+  }
+  if (button.dataset.action === 'share-host') {
+    const url = new URL(button.dataset.hostPageUrl, location.origin).href;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Follow my events', url });
+      else {
+        await navigator.clipboard.writeText(url);
+        toast('Host Page link copied');
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') toast('Could not share your Host Page');
+    }
+    return;
+  }
   const count = button.dataset.count || 'your';
   const emailCount = Number(button.dataset.emailCount || 0);
   const textCount = Number(button.dataset.textCount || 0);
@@ -1316,9 +1487,11 @@ async function initializeManagePage() {
     await loadEvent();
     setManageReady();
     if (savedMessage) toast(savedMessage);
-    const secondaryTasks = eventData.is_past
+    const secondaryTasks = eventData.lifecycle_phase === 'ended'
       ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
-      : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];
+      : eventData.lifecycle_phase === 'tonight'
+        ? []
+        : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');
@@ -1335,7 +1508,7 @@ initializeMobileManage();
 initializeManagePage();
 
 window.setInterval(() => {
-  if (document.visibilityState === 'visible' && eventData?.sms_reminder_enabled && !eventData.is_past) {
+  if (document.visibilityState === 'visible' && eventData?.sms_reminder_enabled && eventData.lifecycle_phase === 'upcoming') {
     loadSmsPreview();
   }
 }, 60000);

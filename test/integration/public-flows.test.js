@@ -10456,6 +10456,56 @@ test('the morning after, the host gets one recap with the returning number', asy
   assert.equal(claims.find(row => row.id === quiet.id).host_recap_sent_at, null);
 });
 
+test('event management lifecycle uses event-local dates and recorded outreach results', async () => {
+  const { getEventForEditor } = require('../../src/lib/event-editor');
+  const timezone = 'America/Los_Angeles';
+  const dates = (await pool.query(
+    `SELECT (NOW() AT TIME ZONE $1)::date::text AS today,
+            ((NOW() AT TIME ZONE $1)::date - 1)::text AS yesterday,
+            ((NOW() AT TIME ZONE $1)::date + 1)::text AS tomorrow`,
+    [timezone]
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'lifecycle-records-night', title: 'Lifecycle Records Night',
+    event_date: dates.today, timezone, sms_reminder_enabled: true
+  });
+  const rsvp = await createRsvp(event.id, { email: 'lifecycle-records@example.test' });
+  await pool.query(
+    `INSERT INTO message_log (rsvp_id,event_id,recipient,message_type,channel,status,sent_at)
+     VALUES ($1,$2,$3,'reminder_day_before','email','sent',NOW())`,
+    [rsvp.id, event.id, rsvp.email]
+  );
+  await pool.query(
+    `INSERT INTO sms_notification_batches
+       (event_id,organizer_id,kind,message_body,segment_count,recipient_count,credit_cost,
+        status,accepted_count,delivered_count,failed_count)
+     VALUES ($1,$2,'event_tomorrow','Lifecycle reminder',1,3,3,'sent',3,2,1)`,
+    [event.id, organizerId]
+  );
+  const follower = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ('lifecycle-follower@example.test','Lifecycle Follower') RETURNING id`
+  )).rows[0];
+  await pool.query(
+    `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,source_event_id)
+     VALUES ($1,$2,$3)`,
+    [follower.id, organizerId, event.id]
+  );
+
+  const tonight = (await getEventForEditor(pool, { organizerId, eventId: event.id })).event;
+  assert.equal(tonight.lifecycle_phase, 'tonight');
+  assert.equal(tonight.new_follower_count, 1);
+  assert.equal(tonight.day_before_email_sent_count, 1);
+  assert.equal(tonight.day_before_sms_accepted_count, 3);
+  assert.equal(tonight.day_before_sms_delivered_count, 2);
+  assert.equal(tonight.day_before_sms_failed_count, 1);
+  assert.equal(tonight.day_before_sms_status, 'sent');
+
+  await pool.query('UPDATE events SET event_date=$2 WHERE id=$1', [event.id, dates.yesterday]);
+  assert.equal((await getEventForEditor(pool, { organizerId, eventId: event.id })).event.lifecycle_phase, 'ended');
+  await pool.query('UPDATE events SET event_date=$2 WHERE id=$1', [event.id, dates.tomorrow]);
+  assert.equal((await getEventForEditor(pool, { organizerId, eventId: event.id })).event.lifecycle_phase, 'upcoming');
+});
+
 test('a claimed lineup night appears in the artist’s own list, tagged playing', async () => {
   const hostCookie = `sge_session=${signSession(organizerId)}`;
   const event = await createEvent({
