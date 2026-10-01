@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.154
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### Browse before following
+
+* Host Settings now shares the clean public Host Page instead of a link that immediately opens the Follow dialog.
+* Shared-link copy invites people to view upcoming events first and follow only when they are ready.
+* Copy, native share, email, and social share destinations all use the clean Host Page URL; the Follow deep link remains reserved for internal authentication continuity.
+
+### Verification
+
+* Follow-sharing regression coverage and static validation pass, including clean URLs, updated accessible labels, native sharing, and the absence of the public `?follow=1` parameter.
+
 ## 1.0.153
 
 Released September 30, 2026. Built and deployed by Codex.

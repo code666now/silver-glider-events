@@ -241,11 +241,9 @@ function populateHostFields(organizer) {
   const followShare = settingsElement('host-follow-share');
   followShare.hidden = !organizer.public_slug;
   if (organizer.public_slug) {
-    const followUrl = `${window.location.origin}/h/${encodeURIComponent(organizer.public_slug)}?follow=1`;
-    settingsElement('host-follow-share-url').value = followUrl;
-    settingsElement('host-follow-share-copy').textContent = Number(organizer.sms_credits || 0) > 0
-      ? 'Fans get email updates and can optionally add text updates.'
-      : 'Fans can follow for new-event emails.';
+    const hostPageUrl = `${window.location.origin}/h/${encodeURIComponent(organizer.public_slug)}`;
+    settingsElement('host-follow-share-url').value = hostPageUrl;
+    settingsElement('host-follow-share-copy').textContent = 'Let people see your events and follow when they’re ready.';
   }
   renderHostMedia(organizer);
   savedHostSnapshot = JSON.stringify(hostFormValue());
@@ -1042,8 +1040,8 @@ let hostFollowShareReturnFocus = null;
 function hostFollowShareDetails() {
   const url = settingsElement('host-follow-share-url').value;
   const hostName = currentOrganizer?.org_name || currentOrganizer?.name || 'my events';
-  const title = `Follow ${hostName}`;
-  const message = `Follow ${hostName} on Silver Glider Events for new-event updates.`;
+  const title = `${hostName} on Silver Glider Events`;
+  const message = `See upcoming events from ${hostName} and follow for future announcements.`;
   return { url, title, message };
 }
 
@@ -1069,7 +1067,7 @@ async function copyHostFollowLink({ selectOnFailure = true } = {}) {
     fallback.remove();
   }
   if (copied) {
-    settingsElement('host-follow-share-status').textContent = 'Follow link copied.';
+    settingsElement('host-follow-share-status').textContent = 'Host Page link copied.';
   } else if (selectOnFailure) {
     settingsElement('host-follow-share-url').select();
     settingsElement('host-follow-share-status').textContent = 'Link selected. Copy it from the field.';
