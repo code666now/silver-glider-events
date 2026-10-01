@@ -103,6 +103,8 @@ test('public host page separates upcoming and past public events in the requeste
   assert.match(view, /<title>{{HOST_NAME}} events \| Silver Glider<\/title>/);
   assert.match(view, /Powered by <a href="\/">Silver Glider<\/a>/);
   assert.match(view, /data-host-follow/);
+  assert.match(view, /\.host-event-art img,\.host-event-placeholder \{[^}]*object-fit:cover;/);
+  assert.doesNotMatch(view, /\.host-event-art img\.flyer-art/);
   assert.match(view, /\.host-owner-dashboard \{[\s\S]*?right:clamp\(24px,2vw,40px\)/);
   assert.match(view, /@media\(max-width:680px\)[\s\S]*?\.host-owner-dashboard \{ top:15px;right:16px;/);
 });

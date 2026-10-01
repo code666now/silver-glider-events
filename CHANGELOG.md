@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.155
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### Full-bleed Flyer artwork on Host Pages
+
+* Flyer-mode event artwork now fills the complete 16:9 image area on Host Page cards, matching Standard events instead of leaving black side gutters.
+* The full event page keeps its existing poster-first Flyer presentation; this change is isolated to Host Page discovery cards.
+
+### Verification
+
+* Host Page and Flyer presentation regression tests pass, including explicit full-bleed card coverage and unchanged Flyer event-page rendering.
+
 ## 1.0.154
 
 Released September 30, 2026. Built and deployed by Codex.
