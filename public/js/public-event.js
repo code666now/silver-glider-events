@@ -7,6 +7,33 @@ const personalAccess = {
   rsvpToken: eventUrlParams.get('rsvp') || ''
 };
 const hasPersonalAccess = () => Boolean(personalAccess.inviteToken || personalAccess.rsvpToken);
+let eventFollowFlow = null;
+
+function getEventFollowFlow() {
+  if (eventFollowFlow || !EVENT.hostSlug || !window.SGFollowFlow) return eventFollowFlow;
+  eventFollowFlow = window.SGFollowFlow.mount({
+    hostSlug: EVENT.hostSlug,
+    hostName: EVENT.hostName,
+    sourceEventSlug: EVENT.slug,
+    onChange(state) {
+      if (state.following && $('rsvp-follow-host')) $('rsvp-follow-host').hidden = true;
+    }
+  });
+  return eventFollowFlow;
+}
+
+async function prepareFollowAfterRsvp() {
+  const card = $('rsvp-follow-host');
+  const flow = getEventFollowFlow();
+  if (!card || !flow) return;
+  card.hidden = true;
+  try {
+    const state = await flow.status();
+    card.hidden = Boolean(state.following);
+  } catch (_) {
+    // RSVP completion remains useful if Follow status is temporarily unavailable.
+  }
+}
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
 $('cal-btn').href = icsUrl;
@@ -417,6 +444,8 @@ function renderConfirmationDialog() {
   const calendar = $('rsvp-confirmation-calendar');
   calendar.href = confirmationCalendarUrl();
   calendar.hidden = response !== 'going' || confirmationEditing;
+  const followCard = $('rsvp-follow-host');
+  if (followCard && (!confirmationFresh || confirmationEditing)) followCard.hidden = true;
   setReturningSelection(response);
 }
 
@@ -430,6 +459,7 @@ function openRsvpConfirmation({ fresh = false, editing = false, trigger = null }
     if (typeof confirmationDialog.showModal === 'function') confirmationDialog.showModal();
     else confirmationDialog.setAttribute('open', '');
   }
+  if (fresh && !editing) prepareFollowAfterRsvp();
   requestAnimationFrame(() => {
     const focusTarget = confirmationEditing
       ? confirmationDialog.querySelector('.confirmation-choice.is-selected') || confirmationDialog.querySelector('.confirmation-choice')
@@ -517,6 +547,23 @@ $('rsvp-confirmation-change')?.addEventListener('click', () => {
   renderConfirmationDialog();
   confirmationDialog.querySelector('.confirmation-choice.is-selected')?.focus({ preventScroll: true });
 });
+
+$('rsvp-follow-host-button')?.addEventListener('click', () => {
+  const flow = getEventFollowFlow();
+  if (!flow) return;
+  closeRsvpConfirmation();
+  flow.open();
+});
+
+if (EVENT.hostSlug && eventUrlParams.get('follow') === '1') {
+  ['follow', 'after_rsvp'].forEach(key => eventUrlParams.delete(key));
+  const query = eventUrlParams.toString();
+  history.replaceState({}, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
+  requestAnimationFrame(() => {
+    closeRsvpConfirmation();
+    getEventFollowFlow()?.open();
+  });
+}
 
 [$('rsvp-confirmation-close'), $('rsvp-confirmation-back')].forEach(button => {
   button?.addEventListener('click', closeRsvpConfirmation);
@@ -695,7 +742,7 @@ async function submitRsvp({ afterVerification = false } = {}) {
         guest_name: $('guest_name')?.value.trim() || null,
         guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
-        organizer_optin: $('organizer_optin').checked,
+        organizer_optin: false,
         sms_optin: Boolean(smsOptin?.checked),
         ...personalAccess
       })

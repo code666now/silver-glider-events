@@ -113,10 +113,10 @@ router.get('/h/:slug', async (req, res, next) => {
       : '';
     const follow = !isOwnHost && session
       ? await followStatus(pool, session.id, host.id)
-      : { following: false, emailOn: false, textOn: false, smsAvailable: Number(host.sms_credits || 0) > 0 };
+      : { following: false, emailOn: false, textOn: false, smsAvailable: true, hostHasSmsCredits: Number(host.sms_credits || 0) > 0 };
     const followSummary = follow.following
-      ? `Following · Email ${follow.emailOn ? 'on' : 'off'}${follow.textOn || follow.smsAvailable ? ` · Texts ${follow.textOn ? 'on' : 'available'}` : ''}`
-      : `Email updates${follow.smsAvailable ? ' · Optional text updates' : ''}`;
+      ? `Following · Email ${follow.emailOn ? 'on' : 'off'} · Text ${follow.textOn ? 'on' : 'off'}`
+      : 'Choose email, text, or both';
     const followHtml = isOwnHost ? '' : `<div class="host-follow" data-host-follow data-host-slug="${esc(host.public_slug)}" data-host-name="${esc(host.org_name)}" data-signed-in="${session ? 'true' : 'false'}" data-following="${follow.following ? 'true' : 'false'}" data-email-on="${follow.emailOn ? 'true' : 'false'}" data-text-on="${follow.textOn ? 'true' : 'false'}" data-sms-available="${follow.smsAvailable ? 'true' : 'false'}">
       <button class="host-follow-button${follow.following ? ' following' : ''}" type="button" data-follow-button aria-pressed="${follow.following ? 'true' : 'false'}">${follow.following ? 'Following <span aria-hidden="true">✓</span>' : 'Follow'}</button>
       <p data-follow-summary>${esc(followSummary)}</p>

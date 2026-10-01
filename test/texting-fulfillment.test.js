@@ -24,7 +24,7 @@ test('day-before texting automation is additive, event-scoped, and off by defaul
   assert.match(events, /Day-before text reminders are not available for Secret Shows yet/);
 });
 
-test('RSVP reminder consent is conditional, unchecked, and separate from host marketing', () => {
+test('RSVP reminder consent is conditional and Follow remains a post-confirmation choice', () => {
   const publicRoute = read('src/routes/public.js');
   const client = read('public/js/public-event.js');
   const standard = read('src/views/event-public.html');
@@ -37,8 +37,11 @@ test('RSVP reminder consent is conditional, unchecked, and separate from host ma
   assert.match(client, /smsPhoneField\.hidden = !smsOptin\.checked/);
   for (const template of [standard, flyer]) {
     assert.match(template, /\{\{SMS_REMINDER_OPTIN_HTML\}\}/);
-    assert.ok(template.indexOf('{{SMS_REMINDER_OPTIN_HTML}}') < template.indexOf('<details class="rsvp-options">'));
+    assert.doesNotMatch(template, /id="organizer_optin"|<details class="rsvp-options">/);
+    assert.match(template, /\/js\/follow-flow\.js/);
   }
+  assert.match(publicRoute, /id="rsvp-follow-host" hidden/);
+  assert.match(client, /organizer_optin: false/);
 });
 
 test('automatic fulfillment is all-or-nothing, retry-safe, and gives each guest a private event link', () => {

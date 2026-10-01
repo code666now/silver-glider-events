@@ -2,6 +2,24 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.153
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### Contextual Follow sign-in and channel preferences
+
+* Host Page Follow now uses the normal global account system: signed-out visitors choose email or phone, verify once, return to the exact Host Page or event, and stay remembered on that device.
+* Desktop leads with email in a centered dialog, while mobile leads with phone in a bottom sheet; either channel remains available from both layouts.
+* Signed-in people choose email, text, or both using already verified account identities, and can verify a new phone without leaving the contextual Follow flow.
+* Text followers can opt in even when a host has no SMS credits. Credits are checked only when the host later sends an announcement, so demand is collected instead of discarded.
+* Fresh RSVP confirmations optionally offer Follow without changing the existing event-specific RSVP reminder system, and the prompt stays hidden for people who already follow that host.
+* Follow preferences are independent, preserve source-event attribution, and require a canonical verified phone before text updates can be enabled.
+
+### Verification
+
+* Static validation, 388 unit tests, and 115 PostgreSQL integration tests pass, including zero-credit text opt-in, verified identity reuse, source attribution, independent channel preferences, unfollowing, and unchanged RSVP reminders.
+* Desktop and mobile browser checks confirm the responsive dialog/bottom-sheet layouts, device-aware email/phone ordering, alternate sign-in paths, and accessible touch targets.
+
 ## 1.0.152
 
 Released September 30, 2026. Built and deployed by Codex.

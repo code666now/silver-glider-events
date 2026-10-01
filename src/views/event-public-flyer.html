@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/event-public-flyer.css">
   <link rel="stylesheet" href="/css/rsvp-confirmation.css">
+  <link rel="stylesheet" href="/css/follow-flow.css">
   <link rel="stylesheet" href="/css/event-owner-editor.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
   <link rel="stylesheet" href="/css/event-share.css">
@@ -79,12 +80,6 @@
             {{GUEST_FIELDS_HTML}}
             <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
             {{SMS_REMINDER_OPTIN_HTML}}
-            <details class="rsvp-options">
-              <summary><span>More options</span><small>Host updates</small></summary>
-              <div class="rsvp-options-body">
-                <label class="check"><input type="checkbox" id="organizer_optin"><span class="channel-consent-copy"><strong>{{EMAIL_CONSENT_HEADING}}</strong><small>Unsubscribe anytime.</small></span></label>
-              </div>
-            </details>
             <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit">Confirm RSVP</button>
           </form>
         </div>
@@ -173,6 +168,7 @@
   <script src="/js/location-utils.js"></script>
   <script src="/js/seamless-video-loop.js"></script>
   <script src="/js/email-code-input.js"></script>
+  <script src="/js/follow-flow.js"></script>
   <script src="/js/public-event.js"></script>
   <script src="/js/event-change-dialog.js"></script>
   <script src="/js/event-owner-editor.js"></script>

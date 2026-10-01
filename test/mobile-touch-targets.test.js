@@ -27,13 +27,14 @@ test('shared and public-event secondary actions keep 44px touch targets', () => 
 
 test('host page and owner photo browser keep quiet controls thumb friendly', () => {
   const host = read('src/views/host-public.html');
+  const follow = read('public/css/follow-flow.css');
   const ownerEditor = read('public/css/event-owner-editor.css');
 
   assert.match(host, /\.host-owner-dashboard \{[\s\S]*?min-height:44px/);
   assert.match(host, /\.host-link \{[\s\S]*?width:44px;height:44px/);
-  assert.match(host, /\.follow-modal-close \{ width:44px;height:44px/);
-  assert.match(host, /\.follow-use-email \{ min-height:44px/);
-  assert.match(host, /\.follow-account-secondary \{ min-height:44px/);
+  assert.match(follow, /\.sg-follow-close \{[\s\S]*?width:44px;height:44px/);
+  assert.match(follow, /\.sg-follow-secondary \{[\s\S]*?min-height:44px/);
+  assert.match(follow, /\.sg-follow-method \{[\s\S]*?min-height:58px/);
   assert.match(host, /\.host-footer a \{ min-height:44px/);
   assert.match(ownerEditor, /@media \(max-width: 879px\), \(hover: none\) and \(pointer: coarse\) \{[\s\S]*?\.owner-photo-category \{ min-height: 44px; \}/);
 });

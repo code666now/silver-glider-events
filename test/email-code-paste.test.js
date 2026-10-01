@@ -87,7 +87,7 @@ test('input fallback keeps at most six digits for autofill and non-paste entry',
 test('every emailed six-digit code surface opts into the shared paste behavior', () => {
   const surfaces = [
     ['src/views/login.html', 'id="code"'],
-    ['src/views/host-public.html', 'id="follow-code"'],
+    ['public/js/follow-flow.js', 'id="sg-follow-email-code"'],
     ['public/js/public-event.js', 'data-code-input'],
     ['src/views/settings-v2.html', 'id="identity-code"'],
     ['src/views/admin-login.html', 'id="admin-code"'],
@@ -110,7 +110,6 @@ test('every emailed six-digit code surface opts into the shared paste behavior',
 test('each code-entry page loads the shared handler before its consumer script', () => {
   const inlineViews = [
     'src/views/login.html',
-    'src/views/host-public.html',
     'src/views/admin-login.html'
   ];
   for (const relativePath of inlineViews) {
@@ -118,6 +117,7 @@ test('each code-entry page loads the shared handler before its consumer script',
   }
 
   const scriptPairs = [
+    ['src/views/host-public.html', 'follow-flow'],
     ['src/views/event-public.html', 'public-event'],
     ['src/views/event-public-flyer.html', 'public-event'],
     ['src/views/settings-v2.html', 'api'],

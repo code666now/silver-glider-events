@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const {
-  findPublicHost, followHost, unfollowHost, followStatus, enableFollowSms
+  findPublicHost, followHost, unfollowHost, followStatus, enableFollowSms, setFollowPreferences
 } = require('../lib/host-follows');
 
 const router = express.Router();
@@ -34,6 +34,46 @@ router.post('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) 
     res.json(result);
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.get('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) => {
+  try {
+    const host = await findPublicHost(pool, req.params.slug);
+    if (!host) return res.status(404).json({ error: 'Host Page not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await followStatus(pool, req.organizer.id, host.id));
+  } catch (err) { next(err); }
+});
+
+router.patch('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) => {
+  try {
+    const result = await inFollowTransaction(async client => {
+      const host = await findPublicHost(client, req.params.slug);
+      if (!host) return null;
+      let sourceEventId = null;
+      const sourceEventSlug = String(req.body?.sourceEventSlug || '').trim();
+      if (sourceEventSlug) {
+        const sourceEvent = (await client.query(
+          'SELECT id FROM events WHERE slug=$1 AND organizer_id=$2',
+          [sourceEventSlug, host.id]
+        )).rows[0];
+        sourceEventId = sourceEvent?.id || null;
+      }
+      await setFollowPreferences(client, req.organizer.id, host.id, {
+        emailEnabled: req.body?.email === true,
+        textEnabled: req.body?.text === true,
+        sourceEventId
+      });
+      return followStatus(client, req.organizer.id, host.id);
+    });
+    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode || err.status) {
+      return res.status(err.statusCode || err.status).json({ error: err.code || 'follow_preferences_error', message: err.message });
+    }
     next(err);
   }
 });

@@ -76,6 +76,14 @@
 .rsvp-confirmation-summary-actions .sg-btn[hidden] { display:none; }
 .rsvp-confirmation-summary-actions.is-single { grid-template-columns:1fr; }
 .rsvp-confirmation-summary-actions .sg-btn { min-height:50px;display:flex;align-items:center;justify-content:center; }
+.rsvp-follow-host {
+  margin:18px 0 0;padding:18px;border:1px solid rgba(28,197,190,.25);border-radius:17px;background:rgba(28,197,190,.055);
+}
+.rsvp-follow-host[hidden] { display:none; }
+.rsvp-follow-host-label { margin:0 0 7px;color:var(--sg-accent,#1cc5be);font-size:10px;font-weight:800;letter-spacing:.15em;text-transform:uppercase; }
+.rsvp-follow-host h3 { margin:0 0 7px;font-size:20px;line-height:1.2; }
+.rsvp-follow-host > p:not(.rsvp-follow-host-label) { margin:0 0 14px;color:var(--sg-text-dim,#aaa);font-size:12px;line-height:1.55; }
+.rsvp-follow-host .sg-btn { min-height:48px; }
 .rsvp-confirmation-editor { margin:18px 0 0;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(0,0,0,.2); }
 .rsvp-confirmation-editor[hidden] { display:none; }
 .rsvp-confirmation-editor > p:first-child { margin:0 0 13px;font-size:13px;font-weight:800; }

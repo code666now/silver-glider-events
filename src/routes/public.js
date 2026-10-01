@@ -442,6 +442,13 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location })
         <button class="sg-btn sg-btn-ghost" id="rsvp-confirmation-change" type="button">Change my answer</button>
       </div>
 
+      ${event.organizer_public_slug ? `<section class="rsvp-follow-host" id="rsvp-follow-host" hidden aria-labelledby="rsvp-follow-host-title">
+        <p class="rsvp-follow-host-label">Future events</p>
+        <h3 id="rsvp-follow-host-title">Follow ${esc(hostName)}</h3>
+        <p>Choose email, text, or both for new-event announcements. Your RSVP reminders stay the same.</p>
+        <button class="sg-btn sg-btn-ghost sg-btn-block" id="rsvp-follow-host-button" type="button">Choose notifications</button>
+      </section>` : ''}
+
       <div class="rsvp-confirmation-editor" id="rsvp-confirmation-editor" hidden>
         <p>Update your answer</p>
         <div class="rsvp-confirmation-choices" role="group" aria-label="Change your RSVP">
@@ -871,6 +878,8 @@ router.get('/e/:slug', async (req, res, next) => {
       coverFitMode,
       adaptiveBackground: theme === 'adaptive',
       ownerPreview,
+      hostSlug: event.organizer_public_slug && !ownerPreview ? event.organizer_public_slug : null,
+      hostName: event.organizer_public_slug && !ownerPreview ? event.org_name : null,
       returningGuest: returningGuestJson,
       bgEffect: isEffect ? theme : null
     };

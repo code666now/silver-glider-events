@@ -35,30 +35,76 @@ test('follow intent is stored server-side and verification completes it transact
   assert.doesNotMatch(auth, /intent=\$\{|host_id=\$\{/);
 });
 
-test('public Host Page offers an explicit accessible follow flow without replacing event actions', () => {
+test('public Host Page uses the shared contextual sign-in and notification-preference flow', () => {
   const view = source('src/views/host-public.html');
   const route = source('src/routes/public-hosts.js');
+  const flow = source('public/js/follow-flow.js');
+  const styles = source('public/css/follow-flow.css');
   assert.match(view, /data-host-follow/);
-  assert.match(view, /id="follow-modal" role="dialog" aria-modal="true"/);
-  assert.match(view, /Enter your email to follow\./);
-  assert.match(view, /id="follow-returning" hidden/);
-  assert.match(view, /Continue as \$\{guest\.firstName\}/);
-  assert.match(view, /\/api\/public\/guest-session/);
-  assert.match(view, /\/api\/auth\/guest-magic-link/);
-  assert.match(view, /Use a different email/);
-  assert.match(view, /intent: 'follow_host'/);
-  assert.match(view, /id="follow-text-toggle" type="checkbox"/);
-  assert.match(view, /Email updates included/);
-  assert.match(view, /Reply STOP to opt out/);
-  assert.match(view, /method: 'DELETE'/);
-  assert.match(view, /\/follow\/texts/);
-  assert.match(view, /event\.key === 'Escape'/);
-  assert.match(route, /Email updates/);
-  assert.match(route, /Optional text updates/);
+  assert.match(view, /\/css\/follow-flow\.css/);
+  assert.match(view, /\/js\/follow-flow\.js/);
+  assert.match(view, /SGFollowFlow\.mount/);
+  assert.match(flow, /<dialog class="sg-follow-dialog"/);
+  assert.match(flow, /Sign in once to follow \$\{hostName\}/);
+  assert.match(flow, /Continue with phone/);
+  assert.match(flow, /Continue with email/);
+  assert.match(flow, /matchMedia\('\(max-width: 879px\)'\)/);
+  assert.match(flow, /\/api\/auth\/phone\/start/);
+  assert.match(flow, /\/api\/auth\/phone\/verify/);
+  assert.match(flow, /\/api\/auth\/magic-link/);
+  assert.match(flow, /\/api\/auth\/guest-magic-link/);
+  assert.match(flow, /\/api\/me\/identities/);
+  assert.match(flow, /\/api\/me\/identities\/phone\/start/);
+  assert.match(flow, /\/api\/me\/identities\/phone\/verify/);
+  assert.match(flow, /data-channel="text"/);
+  assert.match(flow, /data-channel="email"/);
+  assert.match(flow, /Reply STOP to opt out/);
+  assert.match(flow, /Your RSVP confirmations and event reminders stay separate/);
+  assert.match(flow, /method: 'PATCH'/);
+  assert.match(styles, /\.sg-follow-dialog::backdrop/);
+  assert.match(styles, /@media \(max-width:640px\)/);
+  assert.doesNotMatch(view, /id="follow-modal"/);
+  assert.match(route, /Choose email, text, or both/);
   assert.match(route, /: 'Follow'/);
   assert.match(route, /Following <span aria-hidden="true">✓<\/span>/);
   assert.match(view, /Upcoming Events/);
   assert.match(view, /Past Events/);
+});
+
+test('Follow preferences are independent, use verified identity, and do not depend on host credits', () => {
+  const follows = source('src/lib/host-follows.js');
+  const routes = source('src/routes/follows.js');
+  assert.match(follows, /async function setFollowPreferences/);
+  assert.match(follows, /async function verifiedFollowPhone/);
+  assert.match(follows, /identity\.verification_scope='account'/);
+  assert.match(follows, /const wantsEmail = emailEnabled === true/);
+  assert.match(follows, /const wantsText = textEnabled === true/);
+  assert.match(follows, /smsAvailable: true/);
+  assert.match(follows, /hostHasSmsCredits/);
+  assert.doesNotMatch(follows, /No text credits available/);
+  assert.match(routes, /router\.get\('\/api\/hosts\/:slug\/follow'/);
+  assert.match(routes, /router\.patch\('\/api\/hosts\/:slug\/follow'/);
+  assert.match(routes, /sourceEventSlug/);
+  assert.match(routes, /setFollowPreferences/);
+});
+
+test('RSVP success optionally offers Follow without changing RSVP reminder consent', () => {
+  const publicRoute = source('src/routes/public.js');
+  const browser = source('public/js/public-event.js');
+  for (const viewPath of ['src/views/event-public.html', 'src/views/event-public-flyer.html']) {
+    const view = source(viewPath);
+    assert.match(view, /\/css\/follow-flow\.css/);
+    assert.match(view, /\/js\/follow-flow\.js/);
+    assert.doesNotMatch(view, /id="organizer_optin"/);
+  }
+  assert.match(publicRoute, /id="rsvp-follow-host" hidden/);
+  assert.match(publicRoute, /Choose email, text, or both for new-event announcements/);
+  assert.match(publicRoute, /hostSlug: event\.organizer_public_slug/);
+  assert.match(browser, /async function prepareFollowAfterRsvp/);
+  assert.match(browser, /card\.hidden = Boolean\(state\.following\)/);
+  assert.match(browser, /organizer_optin: false/);
+  assert.match(browser, /sourceEventSlug: EVENT\.slug/);
+  assert.match(browser, /eventUrlParams\.get\('follow'\) === '1'/);
 });
 
 test('Following is a lightweight authenticated list in the shared navigation', () => {

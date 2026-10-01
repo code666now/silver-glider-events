@@ -37,6 +37,7 @@ const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
 const { signOptout } = require('../../src/lib/followers');
 const { signEmailPreference } = require('../../src/lib/email-preferences');
+const { attachVerifiedPhoneIdentity } = require('../../src/lib/canonical-identity');
 const sms = require('../../src/lib/sms');
 const phoneVerification = require('../../src/lib/phone-verification');
 const paypal = require('../../src/lib/paypal');
@@ -998,7 +999,9 @@ test('RSVP SMS consent requires an enabled reminder and valid phone, then powers
   const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
   const publicHtml = await publicPage.text();
   assert.match(publicHtml, /Text me a reminder the day before this event from Test Host through Silver Glider\./);
-  assert.match(publicHtml, /Keep me posted about future events and updates from Test Host\./);
+  assert.match(publicHtml, /<section class="rsvp-follow-host" id="rsvp-follow-host" hidden/);
+  assert.match(publicHtml, /Follow Test Host/);
+  assert.match(publicHtml, /Choose email, text, or both for new-event announcements\./);
   assert.match(publicHtml, /Consent isn’t required to RSVP\./);
   assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
   assert.doesNotMatch(publicHtml, /id="organizer_optin"[^>]*checked/);
@@ -2062,7 +2065,8 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   });
   assert.equal(signedInFollow.status, 200);
   assert.deepEqual(await signedInFollow.json(), {
-    following: true, emailOn: true, textOn: false, smsAvailable: false, phoneLast4: null
+    following: true, emailOn: true, textOn: false, smsAvailable: true,
+    hostHasSmsCredits: false, phoneLast4: null
   });
   const canonicalFollow = (await pool.query(
     `SELECT follow.follower_user_id, follower.user_id
@@ -2092,7 +2096,8 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     method: 'DELETE', headers: { cookie: `sge_session=${signSession(organizerId)}` }
   });
   assert.deepEqual(await unfollow.json(), {
-    following: false, emailOn: false, textOn: false, smsAvailable: false, phoneLast4: null
+    following: false, emailOn: false, textOn: false, smsAvailable: true,
+    hostHasSmsCredits: false, phoneLast4: null
   });
   await fetch(`${baseUrl}/api/hosts/second-host/follow`, {
     method: 'POST', headers: { cookie: `sge_session=${signSession(organizerId)}` }
@@ -2214,6 +2219,82 @@ test('completes logged-in and magic-link Host follows without creating Host Page
   assert.match(await rememberedHostPage.text(), /data-following="true"/);
 });
 
+test('Follow stores independent email and text preferences even when the host has zero credits', async () => {
+  await pool.query('UPDATE organizers SET sms_credits=0 WHERE id=$1', [organizerId]);
+  const sourceEvent = await createEvent({
+    slug: 'follow-preferences-source', title: 'Follow Preferences Source'
+  });
+  const follower = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('preference-follower@example.test','Preference Follower') RETURNING id`
+  )).rows[0];
+  const followerUserId = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [follower.id]
+  )).rows[0].user_id;
+  await attachVerifiedPhoneIdentity(pool, {
+    userId: followerUserId,
+    phone: '+14155550188',
+    verifiedAt: new Date(),
+    verificationSource: 'follow_preferences_test'
+  });
+  const cookie = `sge_session=${signSession(follower.id)}`;
+
+  const textsOnly = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ email: false, text: true, sourceEventSlug: sourceEvent.slug })
+  });
+  assert.equal(textsOnly.status, 200);
+  assert.deepEqual(await textsOnly.json(), {
+    following: true, emailOn: false, textOn: true, smsAvailable: true,
+    hostHasSmsCredits: false, phoneLast4: '0188'
+  });
+  const stored = (await pool.query(
+    `SELECT source_event_id,email_opted_in_at,sms_opted_in_at,sms_opted_out_at
+       FROM host_follows WHERE follower_organizer_id=$1 AND host_organizer_id=$2`,
+    [follower.id, organizerId]
+  )).rows[0];
+  assert.equal(Number(stored.source_event_id), Number(sourceEvent.id));
+  assert.equal(stored.email_opted_in_at, null);
+  assert.ok(stored.sms_opted_in_at instanceof Date);
+  assert.equal(stored.sms_opted_out_at, null);
+
+  const status = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    headers: { cookie }
+  });
+  assert.equal(status.headers.get('cache-control'), 'private, no-store');
+  assert.equal((await status.json()).textOn, true);
+
+  const emailOnly = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ email: true, text: false })
+  });
+  assert.deepEqual(await emailOnly.json(), {
+    following: true, emailOn: true, textOn: false, smsAvailable: true,
+    hostHasSmsCredits: false, phoneLast4: '0188'
+  });
+
+  const neither = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ email: false, text: false })
+  });
+  assert.equal((await neither.json()).following, false);
+
+  const unverified = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('unverified-text-follower@example.test','Unverified Text Follower') RETURNING id`
+  )).rows[0];
+  const rejected = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: `sge_session=${signSession(unverified.id)}` },
+    body: JSON.stringify({ email: false, text: true })
+  });
+  assert.equal(rejected.status, 409);
+  assert.equal((await rejected.json()).error, 'verified_phone_required');
+});
+
 test('Follow includes email, offers optional paid texts, and sends one audited host update', async () => {
   await pool.query('UPDATE organizers SET sms_credits=10 WHERE id=$1', [organizerId]);
   const follower = (await pool.query(
@@ -2223,6 +2304,12 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
   const followerUserId = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [follower.id]
   )).rows[0].user_id;
+  await attachVerifiedPhoneIdentity(pool, {
+    userId: followerUserId,
+    phone: '+14155550199',
+    verifiedAt: new Date(),
+    verificationSource: 'follow_integration_test'
+  });
   const earlierEvent = await createEvent({
     slug: 'follow-update-history', title: 'Follow Update History', event_date: '2020-04-04'
   });
@@ -2235,7 +2322,8 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     method: 'POST', headers: { cookie: followerCookie }
   });
   assert.deepEqual(await followed.json(), {
-    following: true, emailOn: true, textOn: false, smsAvailable: true, phoneLast4: null
+    following: true, emailOn: true, textOn: false, smsAvailable: true,
+    hostHasSmsCredits: true, phoneLast4: null
   });
   const textOptIn = await fetch(`${baseUrl}/api/hosts/test-host/follow/texts`, {
     method: 'PATCH',
@@ -2243,7 +2331,8 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     body: JSON.stringify({ phone: '(415) 555-0199' })
   });
   assert.deepEqual(await textOptIn.json(), {
-    following: true, emailOn: true, textOn: true, smsAvailable: true, phoneLast4: '0199'
+    following: true, emailOn: true, textOn: true, smsAvailable: true,
+    hostHasSmsCredits: true, phoneLast4: '0199'
   });
   const consent = (await pool.query(
     `SELECT email_consent_version,sms_phone,sms_consent_version,sms_consent_text
@@ -2324,7 +2413,8 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     method: 'DELETE', headers: { cookie: followerCookie }
   });
   assert.deepEqual(await unfollowed.json(), {
-    following: false, emailOn: false, textOn: false, smsAvailable: true, phoneLast4: '0199'
+    following: false, emailOn: false, textOn: false, smsAvailable: true,
+    hostHasSmsCredits: true, phoneLast4: '0199'
   });
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM follower_optouts

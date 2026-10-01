@@ -124,10 +124,12 @@ test('signing out forgets the remembered guest and "all devices" revokes server-
 test('the sign-in page and Host Page follow modal accept the emailed code', () => {
   const login = read('src/views/login.html');
   const host = read('src/views/host-public.html');
-  for (const view of [login, host]) {
-    assert.match(view, /autocomplete="one-time-code"/);
-    assert.match(view, /\/api\/auth\/verify-code/);
-  }
+  const followFlow = read('public/js/follow-flow.js');
+  assert.match(login, /autocomplete="one-time-code"/);
+  assert.match(login, /\/api\/auth\/verify-code/);
+  assert.match(host, /\/js\/follow-flow\.js/);
+  assert.match(followFlow, /autocomplete="one-time-code"/);
+  assert.match(followFlow, /\/api\/auth\/verify-code/);
   assert.match(login, /Enter the 6-digit code/);
 });
 

@@ -63,15 +63,24 @@ async function followHost(db, followerOrganizerId, hostOrganizerId, sourceEventI
 
 async function enableFollowSms(db, followerOrganizerId, hostOrganizerId, phone) {
   const host = (await db.query(
-    `SELECT COALESCE(org_name,name,'this host') AS host_name,sms_credits
+    `SELECT COALESCE(org_name,name,'this host') AS host_name
        FROM organizers WHERE id=$1`, [hostOrganizerId]
   )).rows[0];
-  if (!host || Number(host.sms_credits || 0) < 1) {
-    const error = new Error('Text updates are not available for this host right now');
+  if (!host) throw new Error('Follow target is no longer available');
+  const verifiedPhone = await verifiedFollowPhone(db, followerOrganizerId);
+  if (!verifiedPhone) {
+    const error = new Error('Verify a mobile number before turning on text updates');
     error.statusCode = 409;
+    error.code = 'verified_phone_required';
     throw error;
   }
-  const consent = prepareFollowSmsConsent({ phone, hostName: host.host_name });
+  if (phone && prepareFollowSmsConsent({ phone, hostName: host.host_name }).phone !== verifiedPhone) {
+    const error = new Error('Use the verified mobile number connected to your account');
+    error.statusCode = 409;
+    error.code = 'verified_phone_mismatch';
+    throw error;
+  }
+  const consent = prepareFollowSmsConsent({ phone: verifiedPhone, hostName: host.host_name });
   const { rows } = await db.query(
     `UPDATE host_follows
         SET sms_phone=$3,sms_opted_in_at=$4,sms_opted_out_at=NULL,
@@ -89,6 +98,114 @@ async function enableFollowSms(db, followerOrganizerId, hostOrganizerId, phone) 
     throw error;
   }
   return rows[0];
+}
+
+async function verifiedFollowPhone(db, followerOrganizerId) {
+  const { rows } = await db.query(
+    `SELECT identity.normalized_value
+       FROM organizers follower
+       JOIN user_identities identity ON identity.user_id=follower.user_id
+      WHERE follower.id=$1
+        AND identity.identity_type='phone'
+        AND identity.verification_scope='account'
+        AND identity.verified_at IS NOT NULL
+        AND identity.revoked_at IS NULL
+      ORDER BY identity.is_primary DESC,identity.created_at DESC,identity.id DESC
+      LIMIT 1`,
+    [followerOrganizerId]
+  );
+  return rows[0]?.normalized_value || null;
+}
+
+// Follow preferences are notification consent, not a sending decision. A host
+// may collect text followers with a zero balance; credits are checked only when
+// that host later chooses to send an announcement.
+async function setFollowPreferences(db, followerOrganizerId, hostOrganizerId, {
+  emailEnabled,
+  textEnabled,
+  sourceEventId = null
+} = {}) {
+  const wantsEmail = emailEnabled === true;
+  const wantsText = textEnabled === true;
+  if (!wantsEmail && !wantsText) {
+    await unfollowHost(db, followerOrganizerId, hostOrganizerId);
+    return;
+  }
+  if (Number(followerOrganizerId) === Number(hostOrganizerId)) {
+    const error = new Error('You cannot follow your own Host Page');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { rows: identityRows } = await db.query(
+    `SELECT follower.email,follower.user_id AS follower_user_id,
+            COALESCE(host.org_name,host.name,'this host') AS host_name
+       FROM organizers follower CROSS JOIN organizers host
+      WHERE follower.id=$1 AND host.id=$2`,
+    [followerOrganizerId, hostOrganizerId]
+  );
+  if (!identityRows.length) throw new Error('Follow identity is no longer available');
+  const identity = identityRows[0];
+  const emailConsentText = followEmailConsentCopy(identity.host_name);
+  const phone = wantsText ? await verifiedFollowPhone(db, followerOrganizerId) : null;
+  if (wantsText && !phone) {
+    const error = new Error('Verify a mobile number before turning on text updates');
+    error.statusCode = 409;
+    error.code = 'verified_phone_required';
+    throw error;
+  }
+  const smsConsent = wantsText
+    ? prepareFollowSmsConsent({ phone, hostName: identity.host_name })
+    : null;
+
+  await db.query(
+    `INSERT INTO host_follows
+       (follower_organizer_id,follower_user_id,host_organizer_id,source_event_id)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (follower_organizer_id,host_organizer_id)
+     DO UPDATE SET follower_user_id=EXCLUDED.follower_user_id,
+                   source_event_id=COALESCE(host_follows.source_event_id,EXCLUDED.source_event_id),
+                   unsubscribed_at=NULL,updated_at=NOW()`,
+    [followerOrganizerId, identity.follower_user_id, hostOrganizerId, sourceEventId]
+  );
+  await db.query(
+    `UPDATE host_follows
+        SET email_opted_in_at=CASE WHEN $3 THEN NOW() ELSE NULL END,
+            email_consent_source=CASE WHEN $3 THEN $4 ELSE email_consent_source END,
+            email_consent_version=CASE WHEN $3 THEN $5 ELSE email_consent_version END,
+            email_consent_text=CASE WHEN $3 THEN $6 ELSE email_consent_text END,
+            sms_phone=CASE WHEN $7 THEN $8 ELSE sms_phone END,
+            sms_opted_in_at=CASE WHEN $7 THEN $9 ELSE sms_opted_in_at END,
+            sms_opted_out_at=CASE
+              WHEN $7 THEN NULL
+              WHEN sms_opted_in_at IS NOT NULL THEN COALESCE(sms_opted_out_at,NOW())
+              ELSE sms_opted_out_at
+            END,
+            sms_consent_source=CASE WHEN $7 THEN $10 ELSE sms_consent_source END,
+            sms_consent_version=CASE WHEN $7 THEN $11 ELSE sms_consent_version END,
+            sms_consent_text=CASE WHEN $7 THEN $12 ELSE sms_consent_text END,
+            updated_at=NOW()
+      WHERE follower_organizer_id=$1 AND host_organizer_id=$2`,
+    [followerOrganizerId, hostOrganizerId, wantsEmail,
+     FOLLOW_EMAIL_CONSENT_SOURCE, FOLLOW_EMAIL_CONSENT_VERSION, emailConsentText,
+     wantsText, smsConsent?.phone || null, smsConsent?.consentedAt || null,
+     smsConsent?.source || null, smsConsent?.version || null, smsConsent?.text || null]
+  );
+
+  if (wantsEmail) {
+    await db.query(
+      `DELETE FROM follower_optouts
+        WHERE organizer_id=$1 AND LOWER(email)=LOWER($2)`,
+      [hostOrganizerId, identity.email]
+    );
+  } else {
+    await db.query(
+      `INSERT INTO follower_optouts (organizer_id,email)
+       VALUES ($1,$2)
+       ON CONFLICT DO NOTHING`,
+      [hostOrganizerId, identity.email]
+    );
+  }
 }
 
 async function unfollowHost(db, followerOrganizerId, hostOrganizerId) {
@@ -148,11 +265,13 @@ async function followStatus(db, followerOrganizerId, hostOrganizerId) {
       && row.email_consent_version === FOLLOW_EMAIL_CONSENT_VERSION && !row.email_opted_out),
     textOn: Boolean(following && row.sms_phone && row.sms_opted_in_at
       && row.sms_consent_version === FOLLOW_SMS_CONSENT_VERSION && !row.sms_opted_out_at),
-    smsAvailable: Number(row.sms_credits || 0) > 0,
+    smsAvailable: true,
+    hostHasSmsCredits: Number(row.sms_credits || 0) > 0,
     phoneLast4: row.sms_phone ? String(row.sms_phone).slice(-4) : null
   };
 }
 
 module.exports = {
-  findPublicHost, followHost, unfollowHost, isFollowingHost, followStatus, enableFollowSms
+  findPublicHost, followHost, unfollowHost, isFollowingHost, followStatus, enableFollowSms,
+  setFollowPreferences, verifiedFollowPhone
 };
