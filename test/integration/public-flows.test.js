@@ -935,6 +935,75 @@ test('personal Familiar Faces links are permanent, cross-device, and link a matc
   assert.equal((await fetch(`${baseUrl}${personalLocation}`)).status, 404);
 });
 
+test('a signed-in Familiar Faces recipient can answer a second event in one tap', async () => {
+  const source = await createEvent({ slug: 'signed-in-invite-source', title: 'Signed-in Invite Source' });
+  const target = await createEvent({ slug: 'signed-in-invite-target', title: 'Signed-in Invite Target' });
+  const account = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('signed-in-invite@example.test','Maya Lopez') RETURNING id`
+  )).rows[0];
+  account.user_id = (await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [account.id]
+  )).rows[0].user_id;
+  const priorRsvp = await createRsvp(source.id, {
+    first_name: 'Maya', last_name: 'Lopez', email: 'signed-in-invite@example.test',
+    account_id: account.id, user_id: account.user_id
+  });
+  const message = (await pool.query(
+    `INSERT INTO message_log
+       (event_id,rsvp_id,recipient,recipient_name,recipient_user_id,message_type,channel,status)
+     VALUES ($1,$2,'signed-in-invite@example.test','Maya Lopez',$3,
+             'previous_guest_invite','email','sent')
+     RETURNING id`,
+    [target.id, priorRsvp.id, account.user_id]
+  )).rows[0];
+  const invitation = await createGuestInvitation(pool, {
+    messageLogId: message.id,
+    eventId: target.id,
+    eventDate: target.event_date,
+    email: 'signed-in-invite@example.test',
+    recipientName: 'Maya Lopez'
+  });
+  const personalLocation = `/e/${target.slug}?invite=${encodeURIComponent(invitation.token)}`;
+  const matchingCookie = `sge_session=${signSession(account.id)}`;
+
+  const matchingPage = await fetch(`${baseUrl}${personalLocation}`, {
+    headers: { cookie: matchingCookie }
+  });
+  assert.match(await matchingPage.text(),
+    /"returningGuest":\{"firstName":"Maya","source":"invitation","response":null,"calendarUrl":"\/e\/signed-in-invite-target\/calendar\.ics"\}/);
+
+  const otherAccount = (await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ('forwarded-invite@example.test','Forwarded Guest') RETURNING id`
+  )).rows[0];
+  const forwardedPage = await fetch(`${baseUrl}${personalLocation}`, {
+    headers: { cookie: `sge_session=${signSession(otherAccount.id)}` }
+  });
+  assert.match(await forwardedPage.text(), /"returningGuest":null/,
+    'a forwarded invitation never adopts the signed-in viewer as its recipient');
+
+  const answer = await fetch(`${baseUrl}/api/public/events/${target.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: matchingCookie },
+    body: JSON.stringify({ response: 'going', inviteToken: invitation.token })
+  });
+  assert.equal(answer.status, 200);
+  assert.equal((await answer.json()).response, 'going');
+
+  const linked = (await pool.query(
+    `SELECT r.status,r.account_id,r.user_id,t.response
+       FROM rsvps r
+       JOIN guest_invitation_tokens t ON t.rsvp_id=r.id
+      WHERE r.event_id=$1`,
+    [target.id]
+  )).rows[0];
+  assert.equal(linked.status, 'confirmed');
+  assert.equal(Number(linked.account_id), Number(account.id));
+  assert.equal(Number(linked.user_id), Number(account.user_id));
+  assert.equal(linked.response, 'going');
+});
+
 test('a changed-email invitation reuses its canonical RSVP instead of creating a duplicate', async () => {
   const event = await createEvent({ slug: 'canonical-rsvp-alias', title: 'Canonical RSVP Alias' });
   const account = (await pool.query(

@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.156
+
+Released September 30, 2026. Built and deployed by Codex.
+
+### One-tap Familiar Faces RSVPs
+
+* A signed-in Familiar Faces recipient now lands on the personalized Going / Not going choice for a second event instead of seeing the full RSVP form again.
+* Forwarded invitations and signed-in identity mismatches keep the existing full-form safety path.
+* The resulting RSVP remains linked to the canonical person and invitation record.
+
+### Verification
+
+* Integration coverage verifies matching-account one-tap RSVP creation, canonical identity linkage, and forwarded-invitation isolation.
+
 ## 1.0.155
 
 Released September 30, 2026. Built and deployed by Codex.

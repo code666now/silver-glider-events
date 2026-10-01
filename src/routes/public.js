@@ -472,6 +472,12 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
     const resolved = await resolveGuestInvitation(db, invitationToken, { eventId });
     if (!resolved) return { invalidPersonalToken: true };
     const { invitation, rsvp } = resolved;
+    const sessionAccount = req.sessionAccount;
+    const sessionMatchesInvitation = Boolean(sessionAccount && (
+      (invitation.user_id != null && Number(invitation.user_id) === Number(sessionAccount.user_id)) ||
+      (invitation.user_id == null && invitation.identity_id != null &&
+        Number(invitation.identity_id) === Number(sessionAccount.id))
+    ));
     const displayName = String(invitation.recipient_name || '').trim() || firstNameFrom(invitation.recipient);
     return {
       identityId: invitation.identity_id,
@@ -484,6 +490,7 @@ async function returningGuestContext(db, req, eventId, { invitationToken = '', r
       verified: true,
       source: 'invitation',
       invitationId: invitation.id,
+      sessionMatchesInvitation,
       sessionId: null,
       rsvp
     };
@@ -687,8 +694,10 @@ router.get('/e/:slug', async (req, res, next) => {
       : recognizedGuestCandidate;
     if (recognizedGuest?.invalidPersonalToken) return res.status(404).send(render404());
     // An unanswered personal invitation keeps the ordinary lightweight RSVP
-    // form. The token is submitted with it and safely links a matching inbox.
-    const returningGuest = recognizedGuest?.source === 'invitation' && !recognizedGuest.rsvp
+    // form unless its canonical recipient is already signed in. Matching
+    // accounts can answer in one tap; forwarded links never inherit that ease.
+    const returningGuest = recognizedGuest?.source === 'invitation' && !recognizedGuest.rsvp &&
+      !recognizedGuest.sessionMatchesInvitation
       ? null
       : recognizedGuest;
 
