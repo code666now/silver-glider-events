@@ -259,7 +259,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-color: #171717;
   background-image:
     linear-gradient(rgba(10,10,10,.76), rgba(10,10,10,.76)),
-    url('/images/flyer-plaster-wall.jpg');
+    url('/images/flyer-plaster-wall.webp');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -350,7 +350,7 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-swatch.bg-plaster {
   background-image:
     linear-gradient(rgba(10,10,10,.38), rgba(10,10,10,.38)),
-    url('/images/flyer-plaster-wall.jpg');
+    url('/images/flyer-plaster-wall.webp');
   background-position: center;
   background-size: cover;
 }

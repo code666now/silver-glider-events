@@ -893,6 +893,12 @@ router.get('/e/:slug', async (req, res, next) => {
       bgEffect: isEffect ? theme : null
     };
     const ownerEditorHtml = ownerPreview ? renderOwnerEditor(event) : '';
+    const ownerEditorStyles = ownerPreview
+      ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
+      : '';
+    const ownerEditorScripts = ownerPreview
+      ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
+      : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate
@@ -936,7 +942,9 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{SECONDARY_ACTION_HTML}}/g, flyerSecondaryActionHtml)
       .replace(/{{ADDITIONAL_DETAILS_HTML}}/g, flyerAdditionalDetailsHtml)
       .replace(/{{MOBILE_PRIMARY_ACTION_HTML}}/g, flyerMobileActionHtml)
+      .replace(/{{OWNER_EDITOR_STYLES}}/g, ownerEditorStyles)
       .replace(/{{OWNER_EDITOR_HTML}}/g, ownerEditorHtml)
+      .replace(/{{OWNER_EDITOR_SCRIPTS}}/g, ownerEditorScripts)
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);

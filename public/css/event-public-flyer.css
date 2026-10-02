@@ -12,7 +12,7 @@
   background-color: #171717;
   background-image:
     linear-gradient(rgba(10,10,10,.76), rgba(10,10,10,.76)),
-    url('/images/flyer-plaster-wall.jpg');
+    url('/images/flyer-plaster-wall.webp');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -73,7 +73,7 @@
   background-color: #171717;
   background-image:
     linear-gradient(rgba(10,10,10,.76), rgba(10,10,10,.76)),
-    url('/images/flyer-plaster-wall.jpg');
+    url('/images/flyer-plaster-wall.webp');
   background-position: center;
   background-size: cover;
   filter: grayscale(1) contrast(1.08);

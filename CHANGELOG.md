@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.157
+
+Released October 1, 2026. Built and deployed by Codex.
+
+### Faster public event pages
+
+* Guest-facing Standard and Flyer pages no longer download the host-only editor and event-change assets; authenticated owners retain the complete live editor.
+* HTML now versions local browser assets so current files can use long-lived immutable caching, while unversioned legacy URLs retain a safe one-hour cache.
+* Compressible HTML, CSS, and JavaScript responses now use standard HTTP compression when the browser supports it.
+* The Flyer plaster texture keeps its existing dimensions and appearance in WebP while shrinking from about 672 KB to 280 KB.
+* The retired original Settings template and superseded JPEG texture were removed.
+
+### Verification
+
+* Static validation, 391 unit tests, and 118 PostgreSQL integration tests pass, including Standard and Flyer guest/owner asset isolation, response compression, versioned caching, and legacy cache behavior.
+* The production dependency audit reports zero known vulnerabilities after non-breaking patch updates.
+
 ## 1.0.156
 
 Released September 30, 2026. Built and deployed by Codex.

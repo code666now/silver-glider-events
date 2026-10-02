@@ -2,6 +2,7 @@ require('dotenv').config({ quiet: true });
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const compression = require('compression');
 const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
@@ -9,13 +10,19 @@ const { renderLegalPage } = require('./lib/legal-pages');
 const { esc } = require('./lib/public-html');
 const { inspectCriticalPublicAssets } = require('./lib/critical-assets');
 const { version: APP_VERSION } = require('../package.json');
+const {
+  markVersionedAssetRequest,
+  sendHtmlFile,
+  setStaticCacheHeaders,
+  versionHtmlResponses
+} = require('./lib/static-assets');
 
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3100;
 
 const VIEWS = path.join(__dirname, 'views');
-const view = name => (req, res) => res.sendFile(path.join(VIEWS, name));
+const view = name => (req, res) => sendHtmlFile(res, path.join(VIEWS, name));
 const safeNext = value => {
   const next = String(value || '').trim().slice(0, 700);
   if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\') || /%5c/i.test(next)) return '';
@@ -43,9 +50,15 @@ app.use(
   express.raw({ type: 'application/json', limit: '256kb' }),
   require('./routes/stripe-sms-webhook')
 );
+app.use(compression({ threshold: 1024 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(markVersionedAssetRequest(APP_VERSION));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  maxAge: '1h',
+  setHeaders: setStaticCacheHeaders
+}));
+app.use(versionHtmlResponses(APP_VERSION));
 // Resolve the signed-in account (with server-side revocation) once per request.
 app.use(require('./lib/session').sessionMiddleware(pool));
 
@@ -91,7 +104,7 @@ app.get('/account/verify-change', (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-  res.sendFile(path.join(VIEWS, 'account-verify-change.html'));
+  sendHtmlFile(res, path.join(VIEWS, 'account-verify-change.html'));
 });
 // Skip the email screen if there's already a valid session
 app.get('/login', (req, res) => {
@@ -100,7 +113,7 @@ app.get('/login', (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
-  res.sendFile(path.join(VIEWS, 'login.html'));
+  sendHtmlFile(res, path.join(VIEWS, 'login.html'));
 });
 app.get('/admin/login', async (req, res, next) => {
   try {
@@ -114,7 +127,7 @@ app.get('/admin/login', async (req, res, next) => {
     const dedicated = await loadAdminOperator(pool, req);
     if (dedicated.operator) return res.redirect(destination);
     if (dedicated.stale) clearAdminSessionCookie(res);
-    res.sendFile(path.join(VIEWS, 'admin-login.html'));
+    sendHtmlFile(res, path.join(VIEWS, 'admin-login.html'));
   } catch (error) { next(error); }
 });
 
@@ -159,7 +172,7 @@ app.get('/events/new', (req, res, next) => {
   return next();
 }, requireOrganizer, (req, res) => {
   const advancedEditor = Boolean(String(req.query.id || '').trim()) || req.query.advanced === '1';
-  return res.sendFile(path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
+  return sendHtmlFile(res, path.join(VIEWS, advancedEditor ? 'event-form.html' : 'event-create.html'));
 });
 // Hosts type or bookmark /events/123 without /manage; send them to the page
 // they meant rather than "Cannot GET". Non-numeric ids fall through to 404.
@@ -191,7 +204,7 @@ app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
 app.get('/admin/done-for-you', requireAdmin, requireAdmin.requireDedicatedAdmin, view('admin-done-for-you.html'));
 app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
-  return res.sendFile(path.join(VIEWS, 'admin-done-for-you-detail.html'));
+  return sendHtmlFile(res, path.join(VIEWS, 'admin-done-for-you-detail.html'));
 });
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/events', requireAdmin, view('admin-events.html'));
@@ -200,7 +213,7 @@ app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));
 app.get('/admin/team', requireAdmin, (req, res) => {
   if (!requireAdmin.isDedicatedSuperAdmin(req)) return res.redirect('/admin');
-  return res.sendFile(path.join(VIEWS, 'admin-team.html'));
+  return sendHtmlFile(res, path.join(VIEWS, 'admin-team.html'));
 });
 
 app.get('/health', async (req, res) => {

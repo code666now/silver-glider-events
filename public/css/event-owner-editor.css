@@ -422,7 +422,7 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
     radial-gradient(70% 62% at 108% 18%, var(--owner-adaptive-b), transparent 60%),
     radial-gradient(78% 66% at 82% 116%, var(--owner-adaptive-c), transparent 64%);
 }
-.owner-theme-plaster { background-image: linear-gradient(rgba(10,10,10,.38),rgba(10,10,10,.38)),url('/images/flyer-plaster-wall.jpg'); }
+.owner-theme-plaster { background-image: linear-gradient(rgba(10,10,10,.38),rgba(10,10,10,.38)),url('/images/flyer-plaster-wall.webp'); }
 .owner-theme-halloween { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/halloween.jpg"); }
 .owner-theme-liquid-stardust { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/liquid-stardust.jpg"); }
 .owner-theme-color-static { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/color-static.jpg"); }

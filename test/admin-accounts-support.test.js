@@ -101,7 +101,7 @@ test('dedicated admin operators are independent principals with isolated passcod
   assert.match(index, /app\.get\('\/admin\/login'/);
   assert.doesNotMatch(index, /sessionAccount\?\.is_admin|legacyFallbackEnabled/);
   assert.doesNotMatch(read('public/js/settings.js'), /organizer\.is_admin/);
-  assert.doesNotMatch(read('src/views/settings.html'), /organizer\.is_admin/);
+  assert.doesNotMatch(read('src/views/settings-v2.html'), /organizer\.is_admin/);
   assert.doesNotMatch(read('.env.example'), /LEGACY_ADMIN_AUTH_ENABLED/);
   assert.doesNotMatch(adminRoutes, /legacy_user|adminActor\.userId|legacyOrganizerId/);
   assert.match(adminRoutes, /adminOperatorId: String\(req\.adminOperator\.id\)/);

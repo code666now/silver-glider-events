@@ -623,6 +623,19 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(publicHtml, /class="event-wall"/);
   assert.match(publicHtml, /class="event-bg bg-theme fx-liquid-stardust"/);
   assert.match(publicHtml, /sg-events\/effects\/liquid-stardust/);
+  assert.match(publicHtml, new RegExp(`/js/public-event\\.js\\?v=${appVersion.replace(/\./g, '\\.')}"`));
+  assert.doesNotMatch(publicHtml, /event-owner-editor\.(?:css|js)/);
+  assert.doesNotMatch(publicHtml, /event-change-dialog\.(?:css|js)/);
+
+  const ownerPage = await fetch(`${baseUrl}/e/${payload.event.slug}`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(ownerPage.status, 200);
+  const ownerHtml = await ownerPage.text();
+  assert.match(ownerHtml, /event-owner-editor\.css\?v=/);
+  assert.match(ownerHtml, /event-owner-editor\.js\?v=/);
+  assert.match(ownerHtml, /event-change-dialog\.css\?v=/);
+  assert.match(ownerHtml, /event-change-dialog\.js\?v=/);
 
   const rsvp = await fetch(`${baseUrl}/api/public/events/${payload.event.slug}/rsvp`, {
     method: 'POST',
@@ -649,6 +662,48 @@ test('creates an event only for an authenticated organizer and publishes its pag
   assert.match(updatedHtml, /class="guest-avatar"/);
   assert.match(updatedHtml, /<span>Public<\/span><\/li>/);
   await waitForConfirmation('public-attendee@example.test');
+});
+
+test('flyer event guests omit owner assets while its owner keeps the editor', async () => {
+  const event = await createEvent({
+    slug: 'flyer-owner-assets',
+    title: 'Flyer Owner Assets',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://images.example.test/flyer.jpg'
+  });
+  const guestPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(guestPage.status, 200);
+  const guestHtml = await guestPage.text();
+  assert.match(guestHtml, /class="flyer-public-page/);
+  assert.doesNotMatch(guestHtml, /event-owner-editor\.(?:css|js)/);
+  assert.doesNotMatch(guestHtml, /event-change-dialog\.(?:css|js)/);
+
+  const ownerPage = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(ownerPage.status, 200);
+  const ownerHtml = await ownerPage.text();
+  assert.match(ownerHtml, /event-owner-editor\.css\?v=/);
+  assert.match(ownerHtml, /event-owner-editor\.js\?v=/);
+  assert.match(ownerHtml, /id="owner-edit-root"/);
+});
+
+test('static assets are compressed and cache current versioned URLs immutably', async () => {
+  const compressed = await fetch(`${baseUrl}/js/event-owner-editor.js?v=${encodeURIComponent(appVersion)}`, {
+    headers: { 'accept-encoding': 'gzip' }
+  });
+  assert.equal(compressed.status, 200);
+  assert.equal(compressed.headers.get('content-encoding'), 'gzip');
+  assert.equal(compressed.headers.get('vary'), 'Accept-Encoding');
+  assert.equal(compressed.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.match(await compressed.text(), /owner-edit-root/);
+
+  const legacy = await fetch(`${baseUrl}/js/event-owner-editor.js`, {
+    headers: { 'accept-encoding': 'identity' }
+  });
+  assert.equal(legacy.status, 200);
+  assert.equal(legacy.headers.get('cache-control'), 'public, max-age=3600');
+  assert.equal(legacy.headers.get('content-encoding'), null);
 });
 
 test('minimal creation makes an owner-only draft without exposing guest actions', async () => {

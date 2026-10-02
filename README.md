@@ -68,7 +68,7 @@ Standard and Flyer public pages are intentionally isolated:
 - Flyer-only styles: `public/css/event-public-flyer.css`
 - Shared event client: `public/js/public-event.js`
 
-Standard pages retain their existing animated gradients and cover-derived adaptive palette. Flyer pages skip adaptive palette extraction and, unless an explicit effect is selected, use the fixed darkened plaster background at `public/images/flyer-plaster-wall.jpg`. This keeps Flyer pages tactile and poster-like without changing Standard events.
+Standard pages retain their existing animated gradients and cover-derived adaptive palette. Flyer pages skip adaptive palette extraction and, unless an explicit effect is selected, use the fixed darkened plaster background at `public/images/flyer-plaster-wall.webp`. This keeps Flyer pages tactile and poster-like without changing Standard events.
 
 Organizer pages remain mobile-first but expand at desktop widths: My Events can present upcoming events two-up, create/edit separates Page Design from Event Information, and event management places artwork beside a structured actions panel before the full-width Familiar Faces view. The Standard editor keeps background choices available after cover selection.
 

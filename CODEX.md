@@ -60,7 +60,7 @@ Keep Standard and Flyer behavior isolated.
 - Template: `src/views/event-public-flyer.html`
 - Styles: `public/css/event-public-flyer.css`
 - Centered, narrow, poster-first layout; the flyer preserves its aspect ratio and is never cropped.
-- Default backdrop: fixed darkened plaster photo at `public/images/flyer-plaster-wall.jpg`.
+- Default backdrop: fixed darkened plaster photo at `public/images/flyer-plaster-wall.webp`.
 - `applyCoverPalette()` intentionally returns early on `.flyer-public-page`; do not reintroduce adaptive colors or moving gradients without explicit approval.
 - An explicitly chosen event effect can still override the default plaster backdrop.
 - Reuse the existing RSVP, external ticket, guests, comments, host, calendar, privacy, and management systems. Do not duplicate endpoints or storage.

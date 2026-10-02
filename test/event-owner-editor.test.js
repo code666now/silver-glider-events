@@ -14,7 +14,11 @@ test('public event pages provide an owner-only progressive live editing shell', 
 
   assert.match(route, /const ownerPreview = organizerViewer\(req, event\)/);
   assert.match(route, /const ownerEditorHtml = ownerPreview \? renderOwnerEditor\(event\) : ''/);
+  assert.match(route, /const ownerEditorStyles = ownerPreview/);
+  assert.match(route, /const ownerEditorScripts = ownerPreview/);
+  assert.match(route, /replace\(\/\{\{OWNER_EDITOR_STYLES\}\}\/g, ownerEditorStyles\)/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_HTML\}\}\/g, ownerEditorHtml\)/);
+  assert.match(route, /replace\(\/\{\{OWNER_EDITOR_SCRIPTS\}\}\/g, ownerEditorScripts\)/);
   assert.match(renderer, /id="owner-edit-trigger"/);
   assert.match(renderer, /role="tablist" aria-label="Event editing sections"/);
   assert.match(renderer, /data-owner-tab="appearance"/);
@@ -174,9 +178,11 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
   assert.match(styles, /\.pac-container \{[\s\S]*z-index: 2000;[\s\S]*background: #141416;/);
 
   for (const template of [standard, flyer]) {
-    assert.match(template, /event-owner-editor\.css/);
+    assert.match(template, /\{\{OWNER_EDITOR_STYLES\}\}/);
     assert.match(template, /\{\{OWNER_EDITOR_HTML\}\}/);
-    assert.match(template, /event-owner-editor\.js/);
+    assert.match(template, /\{\{OWNER_EDITOR_SCRIPTS\}\}/);
+    assert.doesNotMatch(template, /event-owner-editor\.(?:css|js)/);
+    assert.doesNotMatch(template, /event-change-dialog\.(?:css|js)/);
   }
 });
 

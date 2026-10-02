@@ -28,6 +28,7 @@ const {
 } = require('../lib/admin-editor-workspace');
 
 const router = express.Router();
+const { sendHtmlFile } = require('../lib/static-assets');
 const VIEWS = path.join(__dirname, '..', 'views');
 
 const upload = multer({
@@ -323,13 +324,13 @@ router.get('/events/new', (req, res) => {
   const workspace = req.adminEditorWorkspace;
   if (workspace.eventId == null) {
     if (req.query.id || req.query.advanced === '1') return res.redirect('/admin-editor/events/new');
-    return res.sendFile(path.join(VIEWS, 'event-create.html'));
+    return sendHtmlFile(res, path.join(VIEWS, 'event-create.html'));
   }
   const requestedId = positiveId(req.query.id);
   if (requestedId !== workspace.eventId || req.query.advanced !== '1') {
     return res.redirect(`/admin-editor/events/new?id=${workspace.eventId}&advanced=1`);
   }
-  return res.sendFile(path.join(VIEWS, 'event-form.html'));
+  return sendHtmlFile(res, path.join(VIEWS, 'event-form.html'));
 });
 
 router.get('/api/workspace', async (req, res, next) => {

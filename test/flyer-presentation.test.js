@@ -419,7 +419,7 @@ test('Flyer pages keep Plaster while also supporting gradients and artwork match
   const artworkColor = read('public/js/artwork-color.js');
 
   assert.doesNotMatch(flyerTemplate, /flyer-print-texture|has-adaptive-print/);
-  assert.match(flyerStyles, /url\('\/images\/flyer-plaster-wall\.jpg'\)/);
+  assert.match(flyerStyles, /url\('\/images\/flyer-plaster-wall\.webp'\)/);
   assert.match(flyerStyles, /linear-gradient\(rgba\(10,10,10,\.76\), rgba\(10,10,10,\.76\)\)/);
   for (const theme of ['midnight', 'aurora', 'sunset', 'ocean', 'adaptive', 'plaster']) {
     assert.match(flyerStyles, new RegExp(`\\.event-bg\\.bg-${theme}`));

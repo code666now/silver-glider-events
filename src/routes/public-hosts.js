@@ -18,7 +18,7 @@ function eventCardVisual(event) {
     return `<img src="${esc(event.cover_image_url)}" alt="" loading="lazy">`;
   }
   const posters = {
-    plaster: '/images/flyer-plaster-wall.jpg',
+    plaster: '/images/flyer-plaster-wall.webp',
     paper: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/textures/kraft-paper.jpg',
     halloween: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/halloween.jpg',
     'liquid-stardust': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/liquid-stardust.jpg',
