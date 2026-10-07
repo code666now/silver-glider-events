@@ -2586,7 +2586,7 @@ test('host invitation onboarding preserves context through email auth and claims
   assert.match(landing.headers.get('x-robots-tag') || '', /noindex/);
   const landingHtml = await landing.text();
   assert.match(landingHtml, /Create my free Host Page/);
-  assert.match(landingHtml, /publish your next event and start building your crowd/i);
+  assert.match(landingHtml, /publish your next event\./i);
   assert.match(landingHtml, /collect RSVPs, send automatic reminders/);
   assert.match(landingHtml, /About two minutes · No payment required/);
   assert.match(landingHtml, /href="\/e\/vesuvio-night-ig8e"[^>]*>See an example event<\/a>/);

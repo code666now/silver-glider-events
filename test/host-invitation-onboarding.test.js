@@ -31,7 +31,7 @@ test('Personal invitations lead with host value and keep concierge help private 
   const invite = read('src/views/generated-invite.html');
   const unavailable = read('src/views/invitation-unavailable.html');
 
-  assert.match(invite, /publish your next event and start building your crowd/i);
+  assert.match(invite, /publish your next event\./i);
   assert.match(invite, /collect RSVPs, send automatic reminders/);
   assert.match(invite, /Create my free Host Page/);
   assert.match(invite, /About two minutes · No payment required/);

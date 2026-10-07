@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.158
+
+Released October 6, 2026. Built and deployed by Codex.
+
+### Clearer promoter invitations
+
+* Personalized invitation pages now use the shorter, more direct headline “{Host name}, publish your next event.”
+
+### Verification
+
+* Focused invitation template tests and the PostgreSQL invitation onboarding flow pass.
+
 ## 1.0.157
 
 Released October 1, 2026. Built and deployed by Codex.
