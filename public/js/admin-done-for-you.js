@@ -129,12 +129,12 @@ function dfyFlyerStatus(value) {
 
 function dfyFlyerRequestRow(request) {
   const artwork = sgSafeHttpUrl(request.flyer_url);
-  return `<article class="dfy-request-row" data-request-id="${dfyEsc(request.id)}">
+  return `<button class="dfy-request-row" type="button" data-request-id="${dfyEsc(request.id)}" aria-label="Open flyer request from ${dfyEsc(request.host_name || 'untitled host')}">
     <span class="dfy-request-art">${artwork ? `<img src="${dfyEsc(artwork)}" alt="" loading="lazy">` : ''}</span>
     <span class="dfy-request-copy"><strong>${dfyEsc(request.host_name || 'Untitled host')}</strong><span>${dfyEsc(request.submitter_name || 'Unnamed submitter')}</span></span>
     <span class="dfy-request-contact"><strong>${dfyEsc(request.email || 'No email')}</strong><span>${dfyEsc(dfyMaskedPhone(request.phone_e164))}</span></span>
-    <span class="dfy-request-state"><span class="dfy-status-pill ${dfyEsc(String(request.status || 'submitted'))}">${dfyEsc(dfyFlyerStatus(request.status))}</span><time datetime="${dfyEsc(request.created_at || '')}">${dfyEsc(dfyDate(request.created_at))}</time></span>
-  </article>`;
+    <span class="dfy-request-state"><span class="dfy-status-pill ${dfyEsc(String(request.status || 'submitted'))}">${dfyEsc(dfyFlyerStatus(request.status))}</span><time datetime="${dfyEsc(request.created_at || '')}">${dfyEsc(dfyDate(request.created_at))}</time><span class="dfy-request-arrow" aria-hidden="true">›</span></span>
+  </button>`;
 }
 
 function dfyDuration(seconds) {
@@ -164,6 +164,9 @@ function dfyRenderIntake(data) {
   document.getElementById('dfy-metric-published').textContent = Number(metrics.publishedCount || 0).toLocaleString('en-US');
   dfyRequestList.classList.remove('admin-skeleton-stack');
   dfyRequestList.innerHTML = dfyState.flyerRequests.map(dfyFlyerRequestRow).join('');
+  dfyRequestList.querySelectorAll('[data-request-id]').forEach(row => row.addEventListener('click', () => {
+    location.href = `/admin/done-for-you/flyer-requests/${encodeURIComponent(row.dataset.requestId)}`;
+  }));
   dfyRequestList.hidden = dfyState.flyerRequests.length === 0;
   dfyRequestEmpty.hidden = dfyState.flyerRequests.length !== 0;
   dfyRequestList.setAttribute('aria-busy', 'false');

@@ -28,6 +28,12 @@
     .quick-create-error { min-height: 22px; margin: 6px 0 12px; color: var(--sg-danger); font-size: 12px; line-height: 1.5; }
     .quick-create-submit { min-height: 56px; font-size: 15px; }
     .quick-create-footnote { margin: 12px 0 0; color: var(--sg-text-faint); font-size: 11px; line-height: 1.5; text-align: center; }
+    .quick-create-flyer-handoff { display:grid; grid-template-columns:72px minmax(0,1fr); gap:14px; align-items:center; margin:0 0 26px; padding:12px; border:1px solid rgba(28,197,190,.28); border-radius:16px; background:rgba(28,197,190,.055); }
+    .quick-create-flyer-handoff[hidden] { display:none; }
+    .quick-create-flyer-handoff img { width:72px; height:82px; display:block; object-fit:contain; border-radius:10px; background:#080809; }
+    .quick-create-flyer-handoff strong,.quick-create-flyer-handoff span { display:block; }
+    .quick-create-flyer-handoff strong { font-size:13px; }
+    .quick-create-flyer-handoff span { margin-top:4px; color:var(--sg-text-dim); font-size:11px; line-height:1.45; }
     @media (max-width: 879px) {
       body.quick-create-mobile-flow { overflow-x: hidden; }
       body.quick-create-mobile-flow .sg-aurora,
@@ -146,6 +152,8 @@
       .quick-create-submit { min-height: var(--sg-mobile-control-height); border-radius: var(--sg-mobile-control-radius); font-size: 17px; }
       .quick-create-footnote { margin: 8px 0 0; font-size: 13px; line-height: 1.45; }
       .quick-create-footnote[hidden] { display: none; }
+      .quick-create-flyer-handoff { grid-template-columns:56px minmax(0,1fr); margin-bottom:22px; padding:10px; }
+      .quick-create-flyer-handoff img { width:56px; height:64px; }
     }
     @media (max-width: 879px) and (max-height: 600px) {
       .quick-create-shell {
@@ -187,6 +195,10 @@
       </div>
 
       <form id="quick-create-form" novalidate>
+        <aside class="quick-create-flyer-handoff" id="quick-create-flyer-handoff" hidden>
+          <img id="quick-create-flyer-image" alt="Submitted flyer">
+          <div><strong>Flyer already added</strong><span>Start with the event basics. The full editor will open in Flyer mode next.</span></div>
+        </aside>
         <section class="quick-create-step" data-create-step="title" aria-labelledby="quick-create-title-step">
           <div class="quick-create-mobile-copy">
             <p class="quick-create-kicker">Event basics</p>

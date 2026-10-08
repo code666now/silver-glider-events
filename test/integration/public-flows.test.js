@@ -9053,6 +9053,97 @@ test('flyer intake is off by default, Super Admin controlled, and visible in the
   assert.equal(audit.after_state.acceptingSubmissions, true);
 });
 
+test('a reviewed flyer request safely provisions one client and preloads one private event draft', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('flyer-builder@example.test', 'support');
+  const adminSession = await signInAdminOperator(operator.email);
+  const flyerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/flyers/handoff.jpg';
+  const request = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,artwork_credit,flyer_url,
+        flyer_public_id,flyer_accent_color,sms_consent_at,sms_consent_version)
+     VALUES ('Maya Client','Moonlight Social','maya-flyer@example.test',
+             '+14155550181','Night Artist',$1,'sg-events-dev/flyers/handoff',
+             '#8A56E8',NOW(),'dfy-transactional-v1')
+     RETURNING id`,
+    [flyerUrl]
+  )).rows[0];
+
+  const detail = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}`, {
+    headers: { cookie: adminSession }
+  });
+  assert.equal(detail.status, 200);
+  const detailBody = await detail.json();
+  assert.equal(detailBody.lookup.expectedUserId, null);
+  assert.equal(detailBody.request.status, 'submitted');
+
+  const prepared = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/prepare`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: JSON.stringify({ expectedUserId: null })
+  });
+  assert.equal(prepared.status, 200);
+  const preparedBody = await prepared.json();
+  assert.equal(preparedBody.request.status, 'building');
+  assert.equal(typeof preparedBody.client.id, 'number');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM users WHERE name=$1', ['Maya Client']
+  )).rows[0].count, 1);
+
+  const opened = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/editor-workspace`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: '{}'
+  });
+  assert.equal(opened.status, 201);
+  const openedBody = await opened.json();
+  assert.equal(openedBody.workspace.flyerRequestId, Number(request.id));
+  const editorCookie = responseCookie(opened, 'sge_admin_editor');
+  const editorSession = cookieHeader(adminSession, editorCookie);
+
+  const context = await fetch(`${baseUrl}/admin-editor/api/workspace`, {
+    headers: { cookie: editorSession }
+  });
+  assert.equal(context.status, 200);
+  const contextBody = await context.json();
+  assert.equal(contextBody.flyerRequest.flyerUrl, flyerUrl);
+  assert.equal(contextBody.flyerRequest.artworkCredit, 'Night Artist');
+  assert.equal(contextBody.flyerRequest.accentColor, '#8A56E8');
+
+  const created = await fetch(`${baseUrl}/admin-editor/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: editorSession },
+    body: JSON.stringify({
+      title: 'Moonlight Night', event_date: '2034-07-12', start_time: '20:00',
+      venue_name: 'Moon Room', presentation_mode: 'flyer', flyer_image_url: flyerUrl,
+      flyer_designer_name: 'Night Artist', artwork_accent_color: '#8A56E8',
+      background_theme: 'adaptive', visibility: 'public', admission_type: 'free_rsvp'
+    })
+  });
+  assert.equal(created.status, 201);
+  const createdBody = await created.json();
+  assert.equal(createdBody.event.status, 'draft');
+  assert.equal(createdBody.event.presentation_mode, 'flyer');
+  assert.equal(createdBody.event.flyer_image_url, flyerUrl);
+  assert.equal(createdBody.event.background_theme, 'adaptive');
+  const linked = (await pool.query(
+    'SELECT event_id,status FROM admin_flyer_requests WHERE id=$1', [request.id]
+  )).rows[0];
+  assert.equal(Number(linked.event_id), Number(createdBody.event.id));
+  assert.equal(linked.status, 'building');
+
+  const ready = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/ready`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: '{}'
+  });
+  assert.equal(ready.status, 200);
+  assert.equal((await ready.json()).request.status, 'ready_for_review');
+  assert.equal((await pool.query(
+    'SELECT status FROM events WHERE id=$1', [createdBody.event.id]
+  )).rows[0].status, 'draft', 'review readiness never publishes the event');
+});
+
 test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('dfy-race@example.test', 'support');

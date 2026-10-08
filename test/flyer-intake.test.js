@@ -10,6 +10,10 @@ const { normalizeSubmission, SMS_CONSENT_VERSION } = require('../src/routes/flye
 test('flyer intake stays human-reviewed, bounded, and off by default', () => {
   const migration = read('src/db/migrations/061_done_for_you_flyer_intake.sql');
   const route = read('src/routes/flyer-intake.js');
+  const publicRoute = route.slice(
+    route.indexOf("router.post('/api/flyer-intake'"),
+    route.indexOf("router.use('/api/admin/done-for-you/flyer-intake'")
+  );
   const index = read('src/index.js');
 
   assert.match(migration, /accepting_submissions\s+BOOLEAN NOT NULL DEFAULT FALSE/);
@@ -20,8 +24,29 @@ test('flyer intake stays human-reviewed, bounded, and off by default', () => {
   assert.match(route, /max: 6/);
   assert.match(route, /sms_consent_at,sms_consent_version/);
   assert.match(route, /nothing was submitted/i);
-  assert.doesNotMatch(route, /sendSms|createEvent|INSERT INTO events|provisionDoneForYouClient/);
+  assert.doesNotMatch(publicRoute, /sendSms|createEvent|INSERT INTO events|provisionDoneForYouClient/);
   assert.match(index, /app\.get\('\/flyer'/);
+});
+
+test('reviewed flyer requests enter the existing isolated editor without publishing', () => {
+  const migration = read('src/db/migrations/062_flyer_request_editor_handoff.sql');
+  const route = read('src/routes/flyer-intake.js');
+  const workspace = read('src/lib/admin-editor-workspace.js');
+  const editor = read('src/routes/admin-editor.js');
+  const quickCreate = read('public/js/event-create.js');
+  const detail = read('src/views/admin-flyer-request.html');
+
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS flyer_request_id/);
+  assert.match(migration, /flyer_request_id IS DISTINCT FROM NEW\.flyer_request_id/);
+  assert.match(route, /provisionDoneForYouClient/);
+  assert.match(route, /flyer-intake\/:id\/editor-workspace/);
+  assert.match(route, /flyer-intake\/:id\/ready/);
+  assert.match(workspace, /flyer_request_id/);
+  assert.match(editor, /flyerRequest/);
+  assert.match(quickCreate, /presentation_mode: flyerRequestDefaults \? 'flyer' : 'standard'/);
+  assert.match(quickCreate, /background_theme: flyerRequestDefaults \? 'adaptive' : 'midnight'/);
+  assert.match(detail, /existing private Done For You editor/i);
+  assert.doesNotMatch(route, /publishEventInTransaction|sendSms/);
 });
 
 test('public flyer page asks for private identity, public host identity, and explicit text consent', () => {

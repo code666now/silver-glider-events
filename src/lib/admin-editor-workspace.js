@@ -46,6 +46,7 @@ function safeWorkspace(row) {
     targetUserId: Number(row.target_user_id),
     organizerId: Number(row.organizer_id),
     eventId: row.event_id == null ? null : Number(row.event_id),
+    flyerRequestId: row.flyer_request_id == null ? null : Number(row.flyer_request_id),
     status: row.status,
     expiresAt: row.expires_at
   };
@@ -182,6 +183,23 @@ async function bindAdminEditorWorkspaceEventInTransaction(db, {
       409
     );
   }
+  if (workspace.flyer_request_id != null) {
+    const linked = (await db.query(
+      `UPDATE admin_flyer_requests
+          SET event_id=$2,status='building',updated_at=NOW()
+        WHERE id=$1 AND done_for_you_client_id=$3
+          AND event_id IS NULL AND status IN ('building','changes_requested')
+        RETURNING id`,
+      [workspace.flyer_request_id, eventId, workspace.done_for_you_client_id]
+    )).rows[0];
+    if (!linked) {
+      throw new AdminEditorWorkspaceError(
+        'flyer_request_event_scope_changed',
+        'This flyer request can no longer be connected to that draft.',
+        409
+      );
+    }
+  }
   await writeAudit(db, {
     operatorId: actorAdminOperatorId,
     targetUserId: workspace.target_user_id,
@@ -192,7 +210,8 @@ async function bindAdminEditorWorkspaceEventInTransaction(db, {
     metadata: {
       workspaceId: Number(workspace.id),
       doneForYouClientId: Number(workspace.done_for_you_client_id),
-      organizerId: Number(workspace.organizer_id)
+      organizerId: Number(workspace.organizer_id),
+      flyerRequestId: workspace.flyer_request_id == null ? null : Number(workspace.flyer_request_id)
     },
     requestIp,
     userAgent
@@ -240,6 +259,7 @@ async function openAdminEditorWorkspace(db, {
   actorAdminOperatorId,
   sessionIssuedAt,
   eventId = null,
+  flyerRequestId = null,
   requestIp = null,
   userAgent = null
 }) {
@@ -336,6 +356,29 @@ async function openAdminEditorWorkspace(db, {
       );
     }
 
+    let flyerRequest = null;
+    if (flyerRequestId != null) {
+      flyerRequest = (await client.query(
+        `SELECT id,done_for_you_client_id,event_id,status
+           FROM admin_flyer_requests
+          WHERE id=$1
+          FOR UPDATE`,
+        [flyerRequestId]
+      )).rows[0];
+      const requestEventId = flyerRequest?.event_id == null ? null : Number(flyerRequest.event_id);
+      const exactRequest = flyerRequest &&
+        Number(flyerRequest.done_for_you_client_id) === Number(doneForYouClientId) &&
+        requestEventId === (eventId == null ? null : Number(eventId)) &&
+        ['building', 'changes_requested', 'ready_for_review'].includes(flyerRequest.status);
+      if (!exactRequest) {
+        throw new AdminEditorWorkspaceError(
+          'flyer_request_not_available',
+          'This flyer request is not available in the selected client workspace.',
+          409
+        );
+      }
+    }
+
     if (eventId != null) {
       const event = (await client.query(
         `SELECT id,organizer_id,status FROM events WHERE id=$1 FOR UPDATE`,
@@ -392,11 +435,12 @@ async function openAdminEditorWorkspace(db, {
     const workspace = (await client.query(
       `INSERT INTO admin_event_editor_workspaces
          (token_hash,done_for_you_client_id,actor_admin_operator_id,target_user_id,
-          organizer_id,event_id,expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW() + make_interval(secs => $7))
-       RETURNING id,done_for_you_client_id,target_user_id,organizer_id,event_id,status,expires_at`,
+          organizer_id,event_id,flyer_request_id,expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + make_interval(secs => $8))
+       RETURNING id,done_for_you_client_id,target_user_id,organizer_id,event_id,
+                 flyer_request_id,status,expires_at`,
       [tokenHash(token), doneForYouClientId, actorAdminOperatorId, marker.target_user_id,
-       organizer.id, eventId, MAX_AGE_SECONDS]
+       organizer.id, eventId, flyerRequestId, MAX_AGE_SECONDS]
     )).rows[0];
 
     await writeAudit(client, {
@@ -412,6 +456,7 @@ async function openAdminEditorWorkspace(db, {
       metadata: {
         doneForYouClientId: Number(doneForYouClientId),
         organizerId: Number(organizer.id),
+        flyerRequestId: flyerRequestId == null ? null : Number(flyerRequestId),
         replacedWorkspaceIds: replaced.map(row => Number(row.id))
       },
       requestIp,
@@ -436,7 +481,10 @@ async function readAdminEditorWorkspace(db, rawToken) {
             organizer.user_id AS organizer_user_id,
             operator.status AS operator_status,
             event.organizer_id AS event_organizer_id,
-            event.status AS event_status
+            event.status AS event_status,
+            flyer_request.done_for_you_client_id AS request_client_id,
+            flyer_request.event_id AS request_event_id,
+            flyer_request.status AS request_status
        FROM admin_event_editor_workspaces workspace
        LEFT JOIN admin_done_for_you_clients marker
          ON marker.id=workspace.done_for_you_client_id
@@ -446,6 +494,8 @@ async function readAdminEditorWorkspace(db, rawToken) {
        LEFT JOIN admin_operators operator
          ON operator.id=workspace.actor_admin_operator_id
        LEFT JOIN events event ON event.id=workspace.event_id
+       LEFT JOIN admin_flyer_requests flyer_request
+         ON flyer_request.id=workspace.flyer_request_id
       WHERE workspace.token_hash=$1
       LIMIT 1`,
     [tokenHash(rawToken)]

@@ -7,6 +7,16 @@ const { uploadFlyer, deleteManagedPublicId, configured } = require('../lib/cloud
 const { IDENTITY_TYPES, normalizeIdentity } = require('../lib/canonical-identity');
 const { selectAccentColor } = require('../../public/js/artwork-color');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
+const {
+  DoneForYouProvisioningError,
+  lookupDoneForYouClient,
+  provisionDoneForYouClient
+} = require('../lib/admin-done-for-you');
+const {
+  AdminEditorWorkspaceError,
+  openAdminEditorWorkspace,
+  setAdminEditorCookie
+} = require('../lib/admin-editor-workspace');
 
 const router = express.Router();
 const SMS_CONSENT_VERSION = 'dfy-transactional-v1';
@@ -40,6 +50,71 @@ function handleFlyerUpload(req, res, next) {
 function cleanText(value, maxLength) {
   const text = String(value || '').trim().replace(/\s+/g, ' ');
   return text.slice(0, maxLength);
+}
+
+function positiveId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function requestContext(req) {
+  return {
+    requestIp: String(clientIp(req) || '').slice(0, 100) || null,
+    userAgent: String(req.get('user-agent') || '').slice(0, 1000) || null
+  };
+}
+
+function provisioningError(error, res, next) {
+  if (!(error instanceof DoneForYouProvisioningError)) return next(error);
+  const safeId = value => positiveId(value);
+  const ownerUserIds = Array.isArray(error.ownerUserIds)
+    ? [...new Set(error.ownerUserIds.map(safeId).filter(Boolean))]
+    : [];
+  return res.status(error.status).json({
+    error: error.code,
+    message: error.message,
+    ...(error.expectedUserId !== undefined ? { expectedUserId: error.expectedUserId } : {}),
+    ...(error.actualUserId !== undefined ? { actualUserId: error.actualUserId } : {}),
+    ...(ownerUserIds.length ? { ownerUserIds } : {}),
+    ...(safeId(error.emailOwnerUserId) ? { emailOwnerUserId: safeId(error.emailOwnerUserId) } : {}),
+    ...(safeId(error.phoneOwnerUserId) ? { phoneOwnerUserId: safeId(error.phoneOwnerUserId) } : {})
+  });
+}
+
+async function readFlyerRequest(db, id, { forUpdate = false } = {}) {
+  const result = await db.query(
+    `SELECT request.*,operator.email AS assigned_admin_email,
+            event.slug AS event_slug,event.title AS event_title,event.status AS event_status,
+            marker.target_user_id
+       FROM admin_flyer_requests request
+       LEFT JOIN admin_operators operator ON operator.id=request.assigned_admin_operator_id
+       LEFT JOIN events event ON event.id=request.event_id
+       LEFT JOIN admin_done_for_you_clients marker ON marker.id=request.done_for_you_client_id
+      WHERE request.id=$1
+      ${forUpdate ? 'FOR UPDATE OF request' : ''}`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function writeFlyerAudit(db, req, request, actionType, beforeState, afterState) {
+  await db.query(
+    `INSERT INTO admin_account_audit_log
+       (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+        before_state,after_state,metadata,request_ip,user_agent)
+     VALUES (NULL,$1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9)`,
+    [
+      req.adminOperator.id,
+      request.target_user_id || null,
+      actionType,
+      'Administrator advanced a reviewed Done For You flyer request',
+      JSON.stringify(beforeState || {}),
+      JSON.stringify(afterState || {}),
+      JSON.stringify({ flyerRequestId: Number(request.id) }),
+      requestContext(req).requestIp,
+      requestContext(req).userAgent
+    ]
+  );
 }
 
 function normalizeSubmission(body) {
@@ -281,6 +356,210 @@ router.patch(
     } finally { client.release(); }
   }
 );
+
+router.get('/api/admin/done-for-you/flyer-intake/:id', async (req, res, next) => {
+  const id = positiveId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+  try {
+    const request = await readFlyerRequest(pool, id);
+    if (!request) return res.status(404).json({ error: 'flyer_request_not_found' });
+    const lookup = request.done_for_you_client_id == null
+      ? await lookupDoneForYouClient(pool, {
+        email: request.email,
+        phone: request.phone_e164
+      })
+      : {
+        expectedUserId: request.target_user_id == null ? null : Number(request.target_user_id),
+        matched: request.target_user_id != null,
+        matchedBy: ['linked_done_for_you_client'],
+        account: null
+      };
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      request,
+      lookup,
+      capabilities: {
+        manageIntake: req.adminOperator.role === 'super_admin',
+        sendPreview: req.adminOperator.role === 'super_admin',
+        publish: req.adminOperator.role === 'super_admin'
+      }
+    });
+  } catch (error) { provisioningError(error, res, next); }
+});
+
+router.post('/api/admin/done-for-you/flyer-intake/:id/prepare', async (req, res, next) => {
+  const id = positiveId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'expectedUserId')) {
+    return res.status(409).json({
+      error: 'done_for_you_lookup_required',
+      message: 'Review the exact account match before preparing this flyer.'
+    });
+  }
+  const connection = await pool.connect();
+  try {
+    await connection.query('BEGIN');
+    const request = await readFlyerRequest(connection, id, { forUpdate: true });
+    if (!request) {
+      await connection.query('ROLLBACK');
+      return res.status(404).json({ error: 'flyer_request_not_found' });
+    }
+    if (!['submitted', 'building', 'changes_requested'].includes(request.status)) {
+      await connection.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'flyer_request_not_preparable',
+        message: 'This flyer request has already moved beyond setup.'
+      });
+    }
+
+    let preparedClient = null;
+    if (request.done_for_you_client_id == null) {
+      preparedClient = await provisionDoneForYouClient(pool, {
+        actorAdminOperatorId: req.adminOperator.id,
+        expectedUserId: req.body.expectedUserId,
+        hostName: request.host_name,
+        contactName: request.submitter_name,
+        email: request.email,
+        phone: request.phone_e164,
+        ...requestContext(req)
+      });
+    } else {
+      const marker = await connection.query(
+        `SELECT marker.id,marker.target_user_id,organizer.id AS organizer_id
+           FROM admin_done_for_you_clients marker
+           JOIN users target ON target.id=marker.target_user_id AND target.account_status='active'
+           JOIN organizers organizer ON organizer.user_id=target.id
+          WHERE marker.id=$1`,
+        [request.done_for_you_client_id]
+      );
+      if (!marker.rows[0]) {
+        throw new DoneForYouProvisioningError(
+          'done_for_you_client_not_available',
+          'The client linked to this flyer is no longer available.',
+          409
+        );
+      }
+      preparedClient = {
+        id: Number(marker.rows[0].id),
+        userId: Number(marker.rows[0].target_user_id),
+        organizerId: Number(marker.rows[0].organizer_id),
+        noOp: true
+      };
+    }
+
+    const updated = (await connection.query(
+      `UPDATE admin_flyer_requests
+          SET done_for_you_client_id=$2,
+              assigned_admin_operator_id=COALESCE(assigned_admin_operator_id,$3),
+              started_at=COALESCE(started_at,NOW()),
+              status=CASE WHEN status='submitted' THEN 'building' ELSE status END,
+              updated_at=NOW()
+        WHERE id=$1
+        RETURNING *`,
+      [id, preparedClient.id, req.adminOperator.id]
+    )).rows[0];
+    updated.target_user_id = preparedClient.userId;
+    await writeFlyerAudit(connection, req, updated, 'flyer_request_preparation_started', {
+      status: request.status,
+      doneForYouClientId: request.done_for_you_client_id
+    }, {
+      status: updated.status,
+      doneForYouClientId: Number(updated.done_for_you_client_id)
+    });
+    await connection.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ request: updated, client: preparedClient });
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => {});
+    provisioningError(error, res, next);
+  } finally { connection.release(); }
+});
+
+router.post('/api/admin/done-for-you/flyer-intake/:id/editor-workspace', async (req, res, next) => {
+  const id = positiveId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+  try {
+    const request = await readFlyerRequest(pool, id);
+    if (!request || request.done_for_you_client_id == null ||
+        !['building', 'changes_requested', 'ready_for_review'].includes(request.status)) {
+      return res.status(409).json({
+        error: 'flyer_request_not_ready_for_editor',
+        message: 'Prepare this flyer request before opening the event editor.'
+      });
+    }
+    if (request.event_id != null && request.event_status !== 'draft') {
+      return res.status(409).json({
+        error: 'flyer_request_event_not_editable',
+        message: 'The event connected to this request is no longer an unpublished draft.'
+      });
+    }
+    const opened = await openAdminEditorWorkspace(pool, {
+      doneForYouClientId: Number(request.done_for_you_client_id),
+      actorAdminOperatorId: req.adminOperator.id,
+      sessionIssuedAt: req.adminSession.issuedAt,
+      eventId: request.event_id == null ? null : Number(request.event_id),
+      flyerRequestId: id,
+      ...requestContext(req)
+    });
+    setAdminEditorCookie(res, opened.token);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(201).json({
+      workspace: opened.workspace,
+      redirect: request.event_id == null
+        ? '/admin-editor/events/new'
+        : `/admin-editor/events/new?id=${Number(request.event_id)}&advanced=1`
+    });
+  } catch (error) {
+    if (!(error instanceof AdminEditorWorkspaceError)) return next(error);
+    res.status(error.status).json({ error: error.code, message: error.message });
+  }
+});
+
+router.post('/api/admin/done-for-you/flyer-intake/:id/ready', async (req, res, next) => {
+  const id = positiveId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+  const connection = await pool.connect();
+  try {
+    await connection.query('BEGIN');
+    const request = await readFlyerRequest(connection, id, { forUpdate: true });
+    if (!request || request.event_id == null ||
+        !['building', 'changes_requested'].includes(request.status)) {
+      await connection.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'flyer_request_not_ready',
+        message: 'Finish the unpublished event draft before sending it for review.'
+      });
+    }
+    if (request.event_status !== 'draft') {
+      await connection.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'flyer_request_event_not_editable',
+        message: 'Only an unpublished draft can be sent for review.'
+      });
+    }
+    const updated = (await connection.query(
+      `UPDATE admin_flyer_requests
+          SET status='ready_for_review',ready_for_review_at=NOW(),updated_at=NOW(),
+              preview_revision=preview_revision + CASE WHEN status='changes_requested' THEN 1 ELSE 0 END
+        WHERE id=$1
+        RETURNING *`,
+      [id]
+    )).rows[0];
+    await writeFlyerAudit(connection, req, request, 'flyer_request_ready_for_review', {
+      status: request.status,
+      previewRevision: Number(request.preview_revision)
+    }, {
+      status: updated.status,
+      previewRevision: Number(updated.preview_revision)
+    });
+    await connection.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ request: updated });
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { connection.release(); }
+});
 
 module.exports = router;
 module.exports._test = { normalizeSubmission, readSettings, SMS_CONSENT_VERSION };

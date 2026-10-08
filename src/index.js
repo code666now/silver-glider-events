@@ -207,6 +207,10 @@ app.get('/admin', requireAdmin, view('admin-overview.html'));
 app.get('/admin/line', requireAdmin, view('admin-line.html'));
 app.get('/admin/accounts', requireAdmin, view('admin-accounts.html'));
 app.get('/admin/done-for-you', requireAdmin, requireAdmin.requireDedicatedAdmin, view('admin-done-for-you.html'));
+app.get('/admin/done-for-you/flyer-requests/:id', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next();
+  return sendHtmlFile(res, path.join(VIEWS, 'admin-flyer-request.html'));
+});
 app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res, next) => {
   if (!/^\d+$/.test(req.params.id)) return next();
   return sendHtmlFile(res, path.join(VIEWS, 'admin-done-for-you-detail.html'));

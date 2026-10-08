@@ -70,7 +70,9 @@ function placesApiKey() {
 }
 
 function editorRedirect(workspace) {
-  return `/admin/done-for-you/${workspace.doneForYouClientId}`;
+  return workspace.flyerRequestId == null
+    ? `/admin/done-for-you/${workspace.doneForYouClientId}`
+    : `/admin/done-for-you/flyer-requests/${workspace.flyerRequestId}`;
 }
 
 function sendEditorError(error, res, next) {
@@ -164,6 +166,16 @@ async function lockMutationScope(db, req, { bound }) {
     [workspace.id, req.adminOperator.id]
   )).rows[0];
 
+  const flyerRequest = lockedWorkspace?.flyer_request_id == null
+    ? null
+    : (await db.query(
+      `SELECT id,done_for_you_client_id,event_id,status
+         FROM admin_flyer_requests
+        WHERE id=$1
+        FOR UPDATE`,
+      [lockedWorkspace.flyer_request_id]
+    )).rows[0];
+
   const exactScope = marker && target && organizer && lockedWorkspace &&
     Number(marker.target_user_id) === workspace.targetUserId &&
     Number(target.id) === workspace.targetUserId &&
@@ -172,6 +184,9 @@ async function lockMutationScope(db, req, { bound }) {
     Number(lockedWorkspace.done_for_you_client_id) === workspace.doneForYouClientId &&
     Number(lockedWorkspace.target_user_id) === workspace.targetUserId &&
     Number(lockedWorkspace.organizer_id) === workspace.organizerId &&
+    (lockedWorkspace.flyer_request_id == null
+      ? workspace.flyerRequestId == null
+      : Number(lockedWorkspace.flyer_request_id) === workspace.flyerRequestId) &&
     Number(lockedWorkspace.actor_admin_operator_id) === Number(req.adminOperator.id) &&
     lockedWorkspace.status === 'active' &&
     new Date(lockedWorkspace.expires_at).getTime() > Date.now();
@@ -181,6 +196,21 @@ async function lockMutationScope(db, req, { bound }) {
       'This client or draft can no longer be edited.',
       403
     );
+  }
+
+  if (workspace.flyerRequestId != null) {
+    const requestEventId = flyerRequest?.event_id == null ? null : Number(flyerRequest.event_id);
+    const expectedEventId = bound ? workspace.eventId : null;
+    if (!flyerRequest ||
+        Number(flyerRequest.done_for_you_client_id) !== workspace.doneForYouClientId ||
+        requestEventId !== expectedEventId ||
+        !['building', 'changes_requested', 'ready_for_review'].includes(flyerRequest.status)) {
+      throw new AdminEditorWorkspaceError(
+        'flyer_request_not_available',
+        'This flyer request can no longer be edited in this workspace.',
+        409
+      );
+    }
   }
 
   if (bound) {
@@ -214,7 +244,7 @@ async function lockMutationScope(db, req, { bound }) {
     );
   }
 
-  return { marker, target, organizer, workspace: lockedWorkspace };
+  return { marker, target, organizer, workspace: lockedWorkspace, flyerRequest };
 }
 
 async function readWorkspaceContext(req) {
@@ -237,6 +267,36 @@ async function readWorkspaceContext(req) {
     );
   }
   return result.rows[0];
+}
+
+async function readFlyerRequestContext(req) {
+  const workspace = req.adminEditorWorkspace;
+  if (workspace.flyerRequestId == null) return null;
+  const result = await pool.query(
+    `SELECT id,host_name,artwork_credit,flyer_url,flyer_accent_color,status,event_id
+       FROM admin_flyer_requests
+      WHERE id=$1 AND done_for_you_client_id=$2
+        AND (event_id IS NULL OR event_id=$3)
+        AND status IN ('building','changes_requested','ready_for_review')`,
+    [workspace.flyerRequestId, workspace.doneForYouClientId, workspace.eventId]
+  );
+  const request = result.rows[0];
+  if (!request) {
+    throw new AdminEditorWorkspaceError(
+      'flyer_request_not_available',
+      'This flyer request can no longer be edited in this workspace.',
+      409
+    );
+  }
+  return {
+    id: Number(request.id),
+    hostName: request.host_name,
+    artworkCredit: request.artwork_credit || null,
+    flyerUrl: request.flyer_url,
+    accentColor: request.flyer_accent_color || null,
+    status: request.status,
+    eventId: request.event_id == null ? null : Number(request.event_id)
+  };
 }
 
 function safeHost(row, workspace) {
@@ -335,10 +395,14 @@ router.get('/events/new', (req, res) => {
 
 router.get('/api/workspace', async (req, res, next) => {
   try {
-    const host = await readWorkspaceContext(req);
+    const [host, flyerRequest] = await Promise.all([
+      readWorkspaceContext(req),
+      readFlyerRequestContext(req)
+    ]);
     res.json({
       workspace: req.adminEditorWorkspace,
-      host: safeHost(host, req.adminEditorWorkspace)
+      host: safeHost(host, req.adminEditorWorkspace),
+      flyerRequest
     });
   } catch (error) { sendEditorError(error, res, next); }
 });

@@ -27,6 +27,7 @@
   let mobileHistoryReady = false;
   let quickCreateDirty = false;
   let requiresHostName = false;
+  let flyerRequestDefaults = null;
 
   function configureHostName(organizer = {}) {
     const hostName = String(organizer.org_name || '').trim();
@@ -36,8 +37,24 @@
     if (requiresHostName && !$('create-host-name').value.trim()) $('create-host-name').value = hostName;
   }
 
+  function configureFlyerRequest(flyerRequest) {
+    const flyerUrl = sgSafeHttpUrl(flyerRequest?.flyerUrl);
+    if (!flyerUrl) return;
+    flyerRequestDefaults = {
+      flyerUrl,
+      artworkCredit: safeText(flyerRequest.artworkCredit, 160) || null,
+      accentColor: /^#[0-9a-f]{6}$/i.test(String(flyerRequest.accentColor || ''))
+        ? String(flyerRequest.accentColor)
+        : null
+    };
+    $('quick-create-flyer-image').src = flyerUrl;
+    $('quick-create-flyer-handoff').hidden = false;
+  }
+
   const organizerProfileReady = adminEditorMode
-    ? Promise.resolve()
+    ? api('/api/workspace')
+      .then(({ flyerRequest }) => configureFlyerRequest(flyerRequest))
+      .catch(() => {})
     : api('/api/auth/me')
       .then(({ organizer }) => configureHostName(organizer))
       .catch(() => configureHostName());
@@ -441,7 +458,11 @@
           venue_latitude: location.venueLatitude,
           venue_longitude: location.venueLongitude,
           google_place_id: location.googlePlaceId || null,
-          presentation_mode: 'standard',
+          presentation_mode: flyerRequestDefaults ? 'flyer' : 'standard',
+          flyer_image_url: flyerRequestDefaults?.flyerUrl || null,
+          flyer_designer_name: flyerRequestDefaults?.artworkCredit || null,
+          artwork_accent_color: flyerRequestDefaults?.accentColor || null,
+          background_theme: flyerRequestDefaults ? 'adaptive' : 'midnight',
           admission_type: 'free_rsvp',
           visibility: 'public'
         }

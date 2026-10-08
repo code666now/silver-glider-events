@@ -92,8 +92,15 @@ async function requireAdminEditorWorkspace(req, res, next) {
       Number(row.event_organizer_id) === Number(row.organizer_id) &&
       row.event_status === 'draft'
     );
+    const exactFlyerRequest = row.flyer_request_id == null || (
+      Number(row.request_client_id) === Number(row.done_for_you_client_id) &&
+      (row.event_id == null
+        ? row.request_event_id == null
+        : Number(row.request_event_id) === Number(row.event_id)) &&
+      ['building', 'changes_requested', 'ready_for_review'].includes(row.request_status)
+    );
     if (row.operator_status !== 'active' || row.target_account_status !== 'active' ||
-        !exactTarget || !exactDraft) {
+        !exactTarget || !exactDraft || !exactFlyerRequest) {
       await closeWorkspace(pool, {
         workspaceId: row.id,
         actorAdminOperatorId: operatorId,
