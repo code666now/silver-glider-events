@@ -4,6 +4,9 @@ renderNav('');
 
 const dfyState = {
   clients: [],
+  flyerRequests: [],
+  acceptingSubmissions: false,
+  canManageIntake: false,
   lookup: null,
   lookupInput: null,
   creating: false,
@@ -20,6 +23,12 @@ const dfyPreflight = document.getElementById('client-preflight');
 const dfyError = document.getElementById('client-form-error');
 const dfyLookupButton = document.getElementById('lookup-client');
 const dfyCreateButton = document.getElementById('create-client');
+const dfyRequestList = document.getElementById('dfy-request-list');
+const dfyRequestEmpty = document.getElementById('dfy-request-empty');
+const dfyIntakeSwitch = document.getElementById('dfy-intake-switch');
+const dfyIntakeToggle = document.getElementById('dfy-intake-toggle');
+const dfyIntakeCaption = document.getElementById('dfy-intake-caption');
+const dfyIntakeStatus = document.getElementById('dfy-intake-status');
 const dfyEditButton = document.getElementById('edit-client');
 
 function dfyEsc(value) { return sgEscapeHtml(value); }
@@ -87,6 +96,132 @@ function dfyClientRow(client) {
     <span class="dfy-client-events">${events} event${events === 1 ? '' : 's'}</span>
     <span class="dfy-row-arrow" aria-hidden="true">›</span>
   </button>`;
+}
+
+function dfyDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  }).format(date);
+}
+
+function dfyMaskedPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length >= 4 ? `••• ${digits.slice(-4)}` : 'Mobile provided';
+}
+
+function dfyFlyerStatus(value) {
+  const status = String(value || 'submitted');
+  const labels = {
+    submitted: 'Submitted',
+    building: 'Building',
+    ready_for_review: 'Ready for review',
+    preview_sent: 'Preview sent',
+    changes_requested: 'Changes requested',
+    promoter_approved: 'Approved',
+    published: 'Published',
+    rejected: 'Rejected'
+  };
+  return labels[status] || 'Submitted';
+}
+
+function dfyFlyerRequestRow(request) {
+  const artwork = sgSafeHttpUrl(request.flyer_url);
+  return `<article class="dfy-request-row" data-request-id="${dfyEsc(request.id)}">
+    <span class="dfy-request-art">${artwork ? `<img src="${dfyEsc(artwork)}" alt="" loading="lazy">` : ''}</span>
+    <span class="dfy-request-copy"><strong>${dfyEsc(request.host_name || 'Untitled host')}</strong><span>${dfyEsc(request.submitter_name || 'Unnamed submitter')}</span></span>
+    <span class="dfy-request-contact"><strong>${dfyEsc(request.email || 'No email')}</strong><span>${dfyEsc(dfyMaskedPhone(request.phone_e164))}</span></span>
+    <span class="dfy-request-state"><span class="dfy-status-pill ${dfyEsc(String(request.status || 'submitted'))}">${dfyEsc(dfyFlyerStatus(request.status))}</span><time datetime="${dfyEsc(request.created_at || '')}">${dfyEsc(dfyDate(request.created_at))}</time></span>
+  </article>`;
+}
+
+function dfyDuration(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value < 3600) return `${Math.max(1, Math.round(value / 60))}m`;
+  if (value < 86400) return `${Math.round(value / 3600)}h`;
+  return `${(value / 86400).toFixed(value < 172800 ? 1 : 0)}d`;
+}
+
+function dfyRenderIntake(data) {
+  const settings = data.settings || {};
+  const metrics = data.metrics || {};
+  dfyState.flyerRequests = dfyArray(data.requests);
+  dfyState.acceptingSubmissions = settings.acceptingSubmissions === true;
+  dfyState.canManageIntake = data.capabilities?.manageIntake === true;
+  dfyIntakeSwitch.hidden = !dfyState.canManageIntake;
+  dfyIntakeToggle.setAttribute('aria-checked', String(dfyState.acceptingSubmissions));
+  dfyIntakeCaption.textContent = dfyState.acceptingSubmissions
+    ? 'On · the 24-hour promise is visible'
+    : 'Off · the public page shows submissions paused';
+  document.getElementById('dfy-metric-submissions').textContent = Number(metrics.submissionCount || 0).toLocaleString('en-US');
+  document.getElementById('dfy-metric-creation').textContent = dfyDuration(metrics.medianCreationSeconds);
+  document.getElementById('dfy-metric-claims').textContent = Number.isFinite(Number(metrics.claimRate))
+    ? `${Math.round(Number(metrics.claimRate) * 100)}%`
+    : '—';
+  document.getElementById('dfy-metric-published').textContent = Number(metrics.publishedCount || 0).toLocaleString('en-US');
+  dfyRequestList.classList.remove('admin-skeleton-stack');
+  dfyRequestList.innerHTML = dfyState.flyerRequests.map(dfyFlyerRequestRow).join('');
+  dfyRequestList.hidden = dfyState.flyerRequests.length === 0;
+  dfyRequestEmpty.hidden = dfyState.flyerRequests.length !== 0;
+  dfyRequestList.setAttribute('aria-busy', 'false');
+}
+
+async function dfyLoadIntake() {
+  dfyRequestList.hidden = false;
+  dfyRequestEmpty.hidden = true;
+  dfyRequestList.setAttribute('aria-busy', 'true');
+  try {
+    const data = await api('/api/admin/done-for-you/flyer-intake');
+    dfyRenderIntake(data);
+  } catch (error) {
+    dfyRequestList.classList.remove('admin-skeleton-stack');
+    dfyRequestList.innerHTML = `<div class="admin-load-error"><strong>We couldn’t load flyer requests.</strong><p>${dfyEsc(error.message)}</p><button class="sg-btn sg-btn-ghost" id="retry-dfy-intake" type="button">Try again</button></div>`;
+    document.getElementById('retry-dfy-intake').addEventListener('click', dfyLoadIntake);
+    dfyRequestList.setAttribute('aria-busy', 'false');
+  }
+}
+
+async function dfyToggleIntake() {
+  if (!dfyState.canManageIntake || dfyIntakeToggle.disabled) return;
+  const acceptingSubmissions = !dfyState.acceptingSubmissions;
+  dfyIntakeToggle.disabled = true;
+  dfyIntakeStatus.className = 'dfy-action-status';
+  dfyIntakeStatus.textContent = acceptingSubmissions ? 'Opening submissions…' : 'Pausing submissions…';
+  try {
+    const data = await api('/api/admin/done-for-you/flyer-intake/settings', {
+      method: 'PATCH', body: { acceptingSubmissions }
+    });
+    dfyState.acceptingSubmissions = data.settings?.acceptingSubmissions === true;
+    dfyIntakeToggle.setAttribute('aria-checked', String(dfyState.acceptingSubmissions));
+    dfyIntakeCaption.textContent = dfyState.acceptingSubmissions
+      ? 'On · the 24-hour promise is visible'
+      : 'Off · the public page shows submissions paused';
+    dfyIntakeStatus.textContent = dfyState.acceptingSubmissions
+      ? 'Flyer submissions are open.'
+      : 'Flyer submissions are paused.';
+  } catch (error) {
+    dfyIntakeStatus.className = 'dfy-action-status error';
+    dfyIntakeStatus.textContent = error.message;
+  } finally {
+    dfyIntakeToggle.disabled = false;
+  }
+}
+
+async function dfyCopyFlyerLink() {
+  const field = document.getElementById('dfy-flyer-link');
+  const button = document.getElementById('copy-flyer-link');
+  try {
+    await navigator.clipboard.writeText(field.value);
+  } catch (_) {
+    field.select();
+    document.execCommand('copy');
+    field.setSelectionRange(0, 0);
+  }
+  button.textContent = 'Copied';
+  setTimeout(() => { button.textContent = 'Copy link'; }, 1600);
 }
 
 function dfyRenderClients() {
@@ -328,11 +463,13 @@ dfyForm.addEventListener('submit', dfyLookup);
 dfyCreateButton.addEventListener('click', dfyCreateClient);
 dfyFields.addEventListener('input', () => { if (dfyState.lookup) dfyResetPreflight(); });
 dfySearch.addEventListener('input', dfyRenderClients);
+dfyIntakeToggle.addEventListener('click', dfyToggleIntake);
+document.getElementById('copy-flyer-link').addEventListener('click', dfyCopyFlyerLink);
 
 window.adminShellSession.then(session => {
   if (session?.capabilities?.manageDoneForYou !== true) {
     location.replace('/admin');
     return;
   }
-  dfyLoadClients();
+  Promise.all([dfyLoadClients(), dfyLoadIntake()]);
 }).catch(() => {});

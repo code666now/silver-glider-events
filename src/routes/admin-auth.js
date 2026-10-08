@@ -310,6 +310,7 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
     manageDoneForYou: Boolean(req.adminOperator),
     suspendAccounts: true,
     deleteAccounts: dedicatedSuperAdmin,
+    manageFlyerIntake: dedicatedSuperAdmin,
     manageOperators: dedicatedSuperAdmin
   };
   res.json({

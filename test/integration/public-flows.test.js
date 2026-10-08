@@ -8997,6 +8997,62 @@ test('Done For You provisioning is dedicated-admin only, aligned, unverified, id
   assert.equal((await detail.json()).owner.userId, first.userId);
 });
 
+test('flyer intake is off by default, Super Admin controlled, and visible in the Done For You queue', async () => {
+  resetRateLimits();
+  const initial = await fetch(`${baseUrl}/api/flyer-intake`);
+  assert.equal(initial.status, 200);
+  assert.equal((await initial.json()).acceptingSubmissions, false);
+
+  const support = await createAdminOperator('flyer-support@example.test', 'support');
+  const supportCookie = await signInAdminOperator(support.email);
+  const blockedToggle = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/settings`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: supportCookie },
+    body: JSON.stringify({ acceptingSubmissions: true })
+  });
+  assert.equal(blockedToggle.status, 403);
+  assert.equal((await blockedToggle.json()).error, 'super_admin_required');
+
+  const superAdmin = await createAdminOperator('flyer-super@example.test', 'super_admin');
+  const superCookie = await signInAdminOperator(superAdmin.email);
+  const opened = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/settings`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', cookie: superCookie },
+    body: JSON.stringify({ acceptingSubmissions: true })
+  });
+  assert.equal(opened.status, 200);
+  assert.equal((await opened.json()).settings.acceptingSubmissions, true);
+  assert.equal((await (await fetch(`${baseUrl}/api/flyer-intake`)).json()).acceptingSubmissions, true);
+
+  await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,artwork_credit,flyer_url,
+        flyer_public_id,flyer_accent_color,sms_consent_at,sms_consent_version)
+     VALUES ('Adrian Martinez','Heat Wave Booking','adrian-flyer@example.test',
+             '+14155550123','Flyer Artist','https://images.example.test/flyer.jpg',
+             'sg-events-dev/flyers/integration','#1CC5BE',NOW(),'dfy-transactional-v1')`
+  );
+  const queue = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake`, {
+    headers: { cookie: supportCookie }
+  });
+  assert.equal(queue.status, 200);
+  const queueBody = await queue.json();
+  assert.equal(queueBody.capabilities.manageIntake, false);
+  assert.equal(queueBody.requests.length, 1);
+  assert.equal(queueBody.requests[0].host_name, 'Heat Wave Booking');
+  assert.equal(queueBody.metrics.submissionCount, 1);
+  assert.equal(queueBody.metrics.publishedCount, 0);
+
+  const audit = (await pool.query(
+    `SELECT actor_admin_operator_id,before_state,after_state
+       FROM admin_account_audit_log
+      WHERE action_type='flyer_intake_toggled'`
+  )).rows[0];
+  assert.equal(Number(audit.actor_admin_operator_id), Number(superAdmin.id));
+  assert.equal(audit.before_state.acceptingSubmissions, false);
+  assert.equal(audit.after_state.acceptingSubmissions, true);
+});
+
 test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('dfy-race@example.test', 'support');

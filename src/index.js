@@ -66,6 +66,7 @@ app.use(require('./lib/session').sessionMiddleware(pool));
 app.use(require('./routes/auth'));
 app.use(require('./routes/admin-auth'));
 app.use(require('./routes/admin-operators'));
+app.use(require('./routes/flyer-intake'));
 app.use(require('./routes/admin-done-for-you'));
 app.use('/admin-editor', require('./routes/admin-editor'));
 app.use(require('./routes/events'));
@@ -96,6 +97,10 @@ const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-sess
 
 // Public pages
 app.get('/', view('index.html'));
+app.get('/flyer', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  return sendHtmlFile(res, path.join(VIEWS, 'flyer-intake.html'));
+});
 app.get('/privacy', (req, res) => res.type('html').send(renderLegalPage('privacy')));
 app.get('/terms', (req, res) => res.type('html').send(renderLegalPage('terms')));
 app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));

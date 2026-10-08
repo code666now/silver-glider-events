@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="description" content="Send Silver Glider your flyer and get a free event page to preview within 24 hours.">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Send us your flyer — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/flyer-intake.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <script src="/js/flyer-intake.js" defer></script>
+</head>
+<body>
+  <div class="flyer-intake-glow" aria-hidden="true"></div>
+  <main class="flyer-intake-shell">
+    <nav class="flyer-intake-nav" aria-label="Flyer submission navigation">
+      <a class="flyer-intake-brand" href="/" aria-label="Silver Glider Events home">
+        <img src="/logo.png" alt=""><span>Silver Glider Events</span>
+      </a>
+      <a class="flyer-intake-home" href="/">Home</a>
+    </nav>
+
+    <header class="flyer-intake-hero">
+      <p class="flyer-intake-kicker">Silver Glider Events</p>
+      <h1>Your flyer deserves its own event page.</h1>
+      <p>Send us your flyer. We’ll build your event page for free and text you a preview within 24 hours.</p>
+    </header>
+
+    <section class="flyer-intake-benefits" aria-label="What your event page includes">
+      <article><span aria-hidden="true">↗</span><div><h2>Share your own event page</h2><p>Your flyer, lineup, venue, and details, all in one beautiful page.</p></div></article>
+      <article><span aria-hidden="true">✓</span><div><h2>Collect RSVPs</h2><p>See who’s coming and keep your guest list organized.</p></div></article>
+      <article><span aria-hidden="true">＋</span><div><h2>Grow your following</h2><p>Let people follow you and hear about your future shows.</p></div></article>
+    </section>
+
+    <div class="flyer-intake-loading" id="flyer-intake-loading" aria-live="polite">
+      <span class="flyer-intake-spinner" aria-hidden="true"></span> Checking availability…
+    </div>
+
+    <section class="flyer-intake-closed" id="flyer-intake-closed" hidden aria-labelledby="flyer-intake-closed-title">
+      <p class="flyer-intake-kicker">Submissions paused</p>
+      <h2 id="flyer-intake-closed-title">We’re taking a short break from flyer submissions.</h2>
+      <p>You can still create and publish an event yourself.</p>
+      <a class="sg-btn sg-btn-primary" href="/events/new">Create an event</a>
+    </section>
+
+    <section class="flyer-intake-workspace" id="flyer-intake-workspace" hidden aria-labelledby="flyer-intake-form-title">
+      <div class="flyer-intake-preview-card">
+        <div class="flyer-intake-preview" id="flyer-preview">
+          <img id="flyer-preview-image" alt="Your selected flyer preview" hidden>
+          <div id="flyer-preview-empty">
+            <span aria-hidden="true">＋</span>
+            <strong>Upload your flyer</strong>
+            <small>JPG, PNG, WebP, or GIF · up to 5 MB</small>
+          </div>
+        </div>
+        <button class="sg-btn sg-btn-ghost flyer-file-button" id="choose-flyer" type="button">Choose flyer</button>
+      </div>
+
+      <form class="flyer-intake-form" id="flyer-intake-form" novalidate>
+        <div class="flyer-intake-form-head">
+          <p class="flyer-intake-kicker">Upload your flyer</p>
+          <h2 id="flyer-intake-form-title">We’ll take care of the setup.</h2>
+        </div>
+
+        <input id="flyer-file" name="flyer" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required hidden>
+
+        <label class="flyer-field" for="flyer-name">
+          <span>What should we call you?</span>
+          <input id="flyer-name" name="submitterName" type="text" maxlength="160" autocomplete="name" placeholder="Adrian Martinez" required>
+          <small>This stays private and becomes your account name if you’re new.</small>
+        </label>
+
+        <label class="flyer-field" for="flyer-host-name">
+          <span>Who’s putting on the show?</span>
+          <input id="flyer-host-name" name="hostName" type="text" maxlength="100" autocomplete="organization" placeholder="Heat Wave Booking" required>
+          <small>The promoter, venue, collective, artist, or public name guests should see.</small>
+        </label>
+
+        <div class="flyer-intake-field-grid">
+          <label class="flyer-field" for="flyer-phone">
+            <span>Your phone number</span>
+            <input id="flyer-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" inputmode="tel" placeholder="(415) 555-0123" required>
+            <small>We’ll text you when the page is ready.</small>
+          </label>
+          <label class="flyer-field" for="flyer-email">
+            <span>Your email</span>
+            <input id="flyer-email" name="email" type="email" maxlength="320" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
+            <small>Used later to securely claim your Home Base.</small>
+          </label>
+        </div>
+
+        <label class="flyer-field" for="flyer-credit">
+          <span>Flyer artwork by <em>Optional</em></span>
+          <input id="flyer-credit" name="artworkCredit" type="text" maxlength="160" autocomplete="off" placeholder="Artist name or @handle">
+        </label>
+
+        <label class="flyer-consent" for="flyer-consent">
+          <input id="flyer-consent" name="smsConsent" type="checkbox" value="yes" required>
+          <span>I agree to receive transactional texts about this flyer, including its preview, verification code, and publication. Message and data rates may apply.</span>
+        </label>
+
+        <p class="flyer-intake-error" id="flyer-intake-error" role="alert" aria-live="assertive"></p>
+        <button class="sg-btn sg-btn-primary flyer-intake-submit" id="flyer-intake-submit" type="submit">Send My Flyer</button>
+        <p class="flyer-intake-promise">Free event-page setup · Preview ready within 24 hours</p>
+      </form>
+    </section>
+
+    <section class="flyer-intake-success" id="flyer-intake-success" hidden tabindex="-1" aria-labelledby="flyer-intake-success-title">
+      <span class="flyer-intake-success-mark" aria-hidden="true">✓</span>
+      <p class="flyer-intake-kicker">Flyer received</p>
+      <h2 id="flyer-intake-success-title">We got your flyer!</h2>
+      <p>We’ll create your event page and text you a preview within 24 hours. You’ll approve it before it goes live.</p>
+      <a class="sg-btn sg-btn-ghost" href="/">Back to Silver Glider</a>
+    </section>
+
+    <footer class="flyer-intake-footer" data-sg-legal-footer></footer>
+  </main>
+</body>
+</html>

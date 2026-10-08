@@ -27,6 +27,52 @@
       <button class="sg-btn sg-btn-primary" id="open-client-dialog" type="button">Add a client</button>
     </header>
 
+    <section class="dfy-pilot-panel" aria-labelledby="dfy-pilot-title">
+      <div class="dfy-pilot-copy">
+        <p class="dfy-eyebrow">SMS-first pilot</p>
+        <h2 id="dfy-pilot-title">Flyer submissions</h2>
+        <p>Share one link with the promoters you select. Submissions enter this queue; nothing creates an account, event, or text automatically.</p>
+      </div>
+      <div class="dfy-pilot-controls">
+        <label class="dfy-public-link" for="dfy-flyer-link">
+          <span>Personal reach link</span>
+          <span class="dfy-public-link-row">
+            <input class="sg-input" id="dfy-flyer-link" type="url" value="https://silvergliderevents.com/flyer" readonly>
+            <button class="sg-btn sg-btn-ghost" id="copy-flyer-link" type="button">Copy link</button>
+            <a class="sg-btn sg-btn-ghost" href="/flyer" target="_blank" rel="noopener">Preview page</a>
+          </span>
+        </label>
+        <div class="dfy-intake-switch" id="dfy-intake-switch" hidden>
+          <span><strong>Accepting Submissions</strong><small id="dfy-intake-caption">Loading…</small></span>
+          <button class="dfy-switch" id="dfy-intake-toggle" type="button" role="switch" aria-checked="false" aria-label="Accepting Submissions"></button>
+        </div>
+        <p class="dfy-action-status" id="dfy-intake-status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="dfy-metrics" aria-label="Flyer pilot metrics">
+      <article><strong id="dfy-metric-submissions">—</strong><span>Submissions</span></article>
+      <article><strong id="dfy-metric-creation">—</strong><span>Median creation time</span></article>
+      <article><strong id="dfy-metric-claims">—</strong><span>Claim rate</span></article>
+      <article><strong id="dfy-metric-published">—</strong><span>Published events</span></article>
+    </section>
+
+    <section class="dfy-request-section" aria-labelledby="dfy-requests-title">
+      <div class="dfy-section-head">
+        <div>
+          <h2 id="dfy-requests-title">New flyer requests</h2>
+          <p>Newest first. A team member must review every submission before setup begins.</p>
+        </div>
+      </div>
+      <div class="dfy-request-list admin-skeleton-stack" id="dfy-request-list" aria-live="polite" aria-busy="true">
+        <div class="admin-skeleton-card admin-skeleton-row" aria-hidden="true"><span class="sg-skeleton admin-skeleton-title"></span><span class="sg-skeleton admin-skeleton-action"></span></div>
+      </div>
+      <div class="dfy-empty" id="dfy-request-empty" hidden>
+        <h3>No flyer requests yet</h3>
+        <p>When someone sends a flyer through your reach link, it will appear here.</p>
+      </div>
+    </section>
+
     <section class="dfy-trust-note" aria-labelledby="dfy-trust-title">
       <span class="dfy-trust-icon" aria-hidden="true">✓</span>
       <div>

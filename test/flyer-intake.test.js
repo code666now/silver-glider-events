@@ -1,0 +1,82 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.join(__dirname, '..');
+const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
+const { normalizeSubmission, SMS_CONSENT_VERSION } = require('../src/routes/flyer-intake')._test;
+
+test('flyer intake stays human-reviewed, bounded, and off by default', () => {
+  const migration = read('src/db/migrations/061_done_for_you_flyer_intake.sql');
+  const route = read('src/routes/flyer-intake.js');
+  const index = read('src/index.js');
+
+  assert.match(migration, /accepting_submissions\s+BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(migration, /'submitted','building','ready_for_review','preview_sent'/);
+  assert.match(migration, /admin_flyer_request_messages/);
+  assert.match(migration, /UNIQUE \(flyer_request_id,message_kind,revision\)/);
+  assert.match(route, /LIMIT_FILE_SIZE/);
+  assert.match(route, /max: 6/);
+  assert.match(route, /sms_consent_at,sms_consent_version/);
+  assert.match(route, /nothing was submitted/i);
+  assert.doesNotMatch(route, /sendSms|createEvent|INSERT INTO events|provisionDoneForYouClient/);
+  assert.match(index, /app\.get\('\/flyer'/);
+});
+
+test('public flyer page asks for private identity, public host identity, and explicit text consent', () => {
+  const html = read('src/views/flyer-intake.html');
+  const script = read('public/js/flyer-intake.js');
+  const css = read('public/css/flyer-intake.css');
+
+  assert.match(html, /Your flyer deserves its own event page\./);
+  assert.match(html, /id="flyer-name"[^>]*required/);
+  assert.match(html, /id="flyer-host-name"[^>]*required/);
+  assert.match(html, /id="flyer-phone"[^>]*required/);
+  assert.match(html, /id="flyer-email"[^>]*required/);
+  assert.match(html, /id="flyer-consent"[^>]*required/);
+  assert.match(html, /text you a preview within 24 hours/);
+  assert.match(script, /new FormData\(form\)/);
+  assert.match(script, /5 \* 1024 \* 1024/);
+  assert.match(css, /@media\(max-width:780px\)/);
+  assert.match(css, /min-height:60px/);
+});
+
+test('submission normalization keeps account name and public host name separate', () => {
+  const result = normalizeSubmission({
+    submitterName: '  Adrian   Martinez ',
+    hostName: ' Heat Wave Booking ',
+    email: ' ADRIAN@EXAMPLE.COM ',
+    phone: '(415) 555-0123',
+    artworkCredit: '  Ziggy  ',
+    smsConsent: 'yes'
+  });
+  assert.deepEqual(result, {
+    submitterName: 'Adrian Martinez',
+    hostName: 'Heat Wave Booking',
+    email: 'adrian@example.com',
+    phone: '+14155550123',
+    artworkCredit: 'Ziggy'
+  });
+  assert.equal(SMS_CONSENT_VERSION, 'dfy-transactional-v1');
+  assert.equal(normalizeSubmission({ submitterName: 'A', hostName: 'H' }).error, 'invalid_email');
+  assert.equal(normalizeSubmission({
+    submitterName: 'A', hostName: 'H', email: 'a@example.com', phone: '+14155550123'
+  }).error, 'sms_consent_required');
+});
+
+test('Done For You exposes the pilot link, queue, metrics, and Super Admin switch', () => {
+  const html = read('src/views/admin-done-for-you.html');
+  const script = read('public/js/admin-done-for-you.js');
+  const route = read('src/routes/flyer-intake.js');
+  const auth = read('src/routes/admin-auth.js');
+
+  assert.match(html, /value="https:\/\/silvergliderevents\.com\/flyer"/);
+  assert.match(html, /Accepting Submissions/);
+  assert.match(html, /New flyer requests/);
+  assert.match(script, /api\('\/api\/admin\/done-for-you\/flyer-intake'/);
+  assert.match(script, /api\('\/api\/admin\/done-for-you\/flyer-intake\/settings'/);
+  assert.match(route, /requireSuperAdmin/);
+  assert.match(route, /percentile_cont\(0\.5\)/);
+  assert.match(auth, /manageFlyerIntake: dedicatedSuperAdmin/);
+});
