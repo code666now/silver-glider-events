@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
-  <title>Hosts — Silver Glider Events</title>
+  <title>Following — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
   <script src="/js/legal-footer.js" defer></script>
@@ -72,9 +72,9 @@
 <body>
   <div class="sg-shell following-shell">
     <nav id="nav"></nav>
-    <h1 class="sg-page-title">Hosts</h1>
-    <p class="sg-page-sub">The hosts, artists, venues, and promoters you follow.</p>
-    <div class="following-grid" id="following-list" aria-busy="true" aria-label="Loading followed hosts">
+    <h1 class="sg-page-title">Following</h1>
+    <p class="sg-page-sub">The people and places you follow.</p>
+    <div class="following-grid" id="following-list" aria-busy="true" aria-label="Loading people and places you follow">
       <div class="following-card following-card-skeleton" aria-hidden="true">
         <span class="sg-skeleton following-skeleton-art"></span>
         <span class="following-skeleton-copy"><span class="sg-skeleton following-skeleton-title"></span><span class="sg-skeleton following-skeleton-meta"></span><span class="sg-skeleton following-skeleton-link"></span></span>
@@ -85,8 +85,8 @@
       </div>
     </div>
     <div class="sg-empty" id="following-empty" hidden>
-      <h3>No followed Hosts yet</h3>
-      <p>Hosts you follow will appear here.</p>
+      <h3>You’re not following anyone yet.</h3>
+      <p>Follow people and places you like. They’ll show up here.</p>
     </div>
   </div>
   <script src="/js/api.js"></script>
@@ -115,7 +115,7 @@
         const name = sgEscapeHtml(host.org_name);
         const slug = encodeURIComponent(host.public_slug);
         const count = Number(host.upcoming_count) || 0;
-        return `<a class="following-card" href="/h/${slug}" aria-label="View ${name} Host Page">
+        return `<a class="following-card" href="/h/${slug}" aria-label="View ${name}’s page">
           <div class="following-art">${hostArt(host)}</div>
           <div class="following-copy"><h2>${name}</h2><p class="following-count">${count} upcoming ${count === 1 ? 'show' : 'shows'}</p><span class="following-link">View page →</span></div>
         </a>`;

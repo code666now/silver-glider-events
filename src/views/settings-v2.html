@@ -18,7 +18,7 @@
     <nav id="nav"></nav>
     <header class="settings-page-intro">
       <h1 class="sg-page-title">Settings</h1>
-      <p class="sg-page-sub">Manage your account, messaging, and public host page.</p>
+      <p class="sg-page-sub">Manage your account, messaging, and public page.</p>
     </header>
 
     <div class="settings-loading" id="settings-loading" aria-label="Loading settings">
@@ -49,7 +49,7 @@
             <span class="settings-index-value" id="settings-index-credit-balance">—</span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
           <a class="settings-index-link" href="/settings/host-page">
-            <span><strong>Host page</strong><span class="settings-index-description">Public identity, links, and images.</span></span>
+            <span><strong>Your page</strong><span class="settings-index-description">Public identity, links, and images.</span></span>
             <span class="settings-index-value"></span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
         </nav>
@@ -62,7 +62,7 @@
           <nav class="settings-rail-nav" aria-label="Settings sections">
             <a class="settings-rail-link" data-settings-link="account" href="/settings/account"><span>Account</span></a>
             <a class="settings-rail-link" data-settings-link="messaging" href="/settings/messaging"><span>Messaging</span><span class="settings-rail-balance" id="settings-rail-credit-balance"></span></a>
-            <a class="settings-rail-link" data-settings-link="host-page" href="/settings/host-page"><span>Host page</span></a>
+            <a class="settings-rail-link" data-settings-link="host-page" href="/settings/host-page"><span>Your page</span></a>
           </nav>
         </aside>
 
@@ -75,7 +75,7 @@
             <form id="account-form">
               <div class="settings-list">
                 <div class="settings-row">
-                  <div class="settings-row-copy"><span class="settings-row-label" id="account-avatar-title">Your RSVP photo</span><span class="settings-row-description">Shown with your name on guest lists. Your Host Page logo stays separate.</span></div>
+                  <div class="settings-row-copy"><span class="settings-row-label" id="account-avatar-title">Your RSVP photo</span><span class="settings-row-description">Shown with your name on guest lists. Your page logo stays separate.</span></div>
                   <div class="settings-row-control">
                     <div class="account-avatar-control">
                       <div class="account-avatar-preview" aria-hidden="true"><span id="account-avatar-fallback">😎</span><img id="account-avatar-image" alt="" hidden></div>
@@ -147,35 +147,35 @@
           <section class="settings-panel" id="settings-host-page" data-settings-section="host-page" aria-labelledby="host-page-title" hidden>
             <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
             <div class="settings-section-head">
-              <div><h2 id="host-page-title">Host page</h2><p>Give guests one public home for your events and host identity.</p></div>
+              <div><h2 id="host-page-title">Your page</h2><p>Give guests one public home for your events and host identity.</p></div>
               <a class="sg-btn sg-btn-ghost" id="host-summary-view" target="_blank" rel="noopener" hidden>View page</a>
             </div>
             <section class="host-follow-share" id="host-follow-share" hidden aria-labelledby="host-follow-share-title">
-              <div><h3 id="host-follow-share-title">Share your Host Page</h3><p id="host-follow-share-copy">Let people see your events and follow when they’re ready.</p></div>
-              <div class="host-follow-share-row"><input class="sg-input" id="host-follow-share-url" readonly aria-label="Host Page link"><button class="sg-btn sg-btn-ghost" id="host-follow-copy" type="button">Copy link</button><button class="sg-btn sg-btn-primary" id="host-follow-native-share" type="button">Share</button></div>
+              <div><h3 id="host-follow-share-title">Share your page</h3><p id="host-follow-share-copy">Let people see your events and follow when they’re ready.</p></div>
+              <div class="host-follow-share-row"><input class="sg-input" id="host-follow-share-url" readonly aria-label="Your page link"><button class="sg-btn sg-btn-ghost" id="host-follow-copy" type="button">Copy link</button><button class="sg-btn sg-btn-primary" id="host-follow-native-share" type="button">Share</button></div>
               <p class="upload-status" id="host-follow-share-status" role="status" aria-live="polite"></p>
             </section>
             <form id="host-profile-form">
-              <nav class="host-mobile-flow" aria-label="Host page setup">
+              <nav class="host-mobile-flow" aria-label="Your page setup">
                 <button class="host-mobile-flow-row" type="button" data-host-mobile-open="basics"><span><strong>Basics</strong><small>Public name, page address, and introduction</small></span><span aria-hidden="true">›</span></button>
                 <button class="host-mobile-flow-row" type="button" data-host-mobile-open="links"><span><strong>Links</strong><small>Instagram and website</small></span><span aria-hidden="true">›</span></button>
-                <button class="host-mobile-flow-row" type="button" data-host-mobile-open="images"><span><strong>Images</strong><small>Header image and host logo</small></span><span aria-hidden="true">›</span></button>
+                <button class="host-mobile-flow-row" type="button" data-host-mobile-open="images"><span><strong>Images</strong><small>Header image and page logo</small></span><span aria-hidden="true">›</span></button>
               </nav>
               <section class="host-form-group" data-host-mobile-panel="basics" aria-labelledby="host-basics-title">
-                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Your page</button>
                 <div class="host-form-group-head"><h3 id="host-basics-title">Basics</h3><p>Your public name, page address, and short introduction.</p></div>
                 <div class="host-fields">
-                  <div class="host-field"><label for="org_name">Public host name</label><input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking"></div>
+                  <div class="host-field"><label for="org_name">Who’s hosting?</label><input class="sg-input" id="org_name" maxlength="100" placeholder="Heat Wave Booking"></div>
                   <div class="host-field">
                     <label for="public_slug">Page address</label>
                     <div class="slug-field"><span class="slug-field-prefix" id="host-url-prefix">silvergliderevents.com/h/</span><input class="sg-input" id="public_slug" maxlength="70" placeholder="created-after-save" disabled></div>
-                    <p class="host-field-help" id="slug-help">Save a public host name to create your page address.</p>
+                    <p class="host-field-help" id="slug-help">Add who’s hosting to create your page address.</p>
                   </div>
                   <div class="host-field"><label for="bio">Bio or tagline</label><textarea class="sg-textarea" id="bio" maxlength="500" placeholder="Independent parties, late-night sounds, and good rooms."></textarea></div>
                 </div>
               </section>
               <section class="host-form-group" data-host-mobile-panel="links" aria-labelledby="host-links-title">
-                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Your page</button>
                 <div class="host-form-group-head"><h3 id="host-links-title">Links</h3><p>Help guests find your work elsewhere.</p></div>
                 <div class="host-fields two-up">
                   <div class="host-field"><label for="instagram_handle">Instagram</label><input class="sg-input" id="instagram_handle" maxlength="500" placeholder="@silverglidertix" autocomplete="off"></div>
@@ -183,7 +183,7 @@
                 </div>
               </section>
               <section class="host-form-group" data-host-mobile-panel="images" aria-labelledby="host-images-title">
-                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Host page</button>
+                <button class="host-mobile-subback" type="button" data-host-mobile-back>‹ Your page</button>
                 <div class="host-form-group-head"><h3 id="host-images-title">Images</h3><p>Use a wide header and a compact logo for a polished public page.</p></div>
                 <div class="host-images">
                   <div class="host-image-row" id="host-header-field">
@@ -200,8 +200,8 @@
                   <div class="host-image-row" id="host-logo-field">
                     <div>
                       <div class="host-image-copy">
-                        <div class="host-image-preview logo" id="logo-preview-wrap"><span id="logo-preview-empty">SG</span><img id="logo-preview" alt="Host logo" hidden></div>
-                        <div class="host-image-label"><strong>Host logo</strong><span>Kept separate from your RSVP photo.</span></div>
+                        <div class="host-image-preview logo" id="logo-preview-wrap"><span id="logo-preview-empty">SG</span><img id="logo-preview" alt="Page logo" hidden></div>
+                        <div class="host-image-label"><strong>Page logo</strong><span>Kept separate from your RSVP photo.</span></div>
                       </div>
                       <p class="upload-status" id="logo-status"></p>
                     </div>
@@ -252,7 +252,7 @@
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </div>
-    <div class="host-share-options" role="group" aria-label="Share Host Page">
+    <div class="host-share-options" role="group" aria-label="Share your page">
       <a class="host-share-option" id="host-follow-share-email" href="#">
         <span class="host-share-option-icon email" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6.5h18v12H3zM3.5 7l8.5 6 8.5-6"/></svg></span>
         <span>Email</span>

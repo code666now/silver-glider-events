@@ -473,7 +473,7 @@
           : ev.visibility === 'private' ? '<span class="sg-badge">Private</span>' : ''
       ].filter(Boolean).join(' ');
       const going = mode === 'going';
-      const hostName = String(ev.host_name || ev.host_person_name || 'Silver Glider host');
+      const hostName = String(ev.host_name || '').trim();
       return `
         <a class="sg-event-card${going ? ' going-card' : ''}" href="${going ? `/e/${encodeURIComponent(String(ev.slug))}` : `/events/${encodeURIComponent(String(ev.id))}/manage`}">
           ${coverUrl
@@ -482,7 +482,7 @@
           <div class="sg-event-meta">
             <h3>${sgEscapeHtml(title)}</h3>
             <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name || '')}</p>
-            ${going ? `<p style="margin-top:6px">Hosted by ${sgEscapeHtml(hostName)}</p>` : ''}
+            ${going && hostName ? `<p style="margin-top:6px">Hosted by ${sgEscapeHtml(hostName)}</p>` : ''}
             ${badges ? `<p style="margin-top:6px">${badges}</p>` : ''}
           </div>
           <div class="sg-event-count">

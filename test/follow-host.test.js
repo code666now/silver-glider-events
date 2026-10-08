@@ -112,9 +112,10 @@ test('Following is a lightweight authenticated list in the shared navigation', (
   const nav = source('public/js/api.js');
   const routes = source('src/routes/follows.js');
   const customerNav = nav.slice(nav.indexOf('function renderNav(active)'), nav.indexOf('async function sgExitAdminEditorWorkspace'));
-  assert.match(customerNav, /\['following', '\/following', 'Hosts'\]/);
+  assert.match(customerNav, /\['following', '\/following', 'Following'\]/);
   assert.match(view, /renderNav\('following'\)/);
-  assert.match(view, /Hosts you follow will appear here\./);
+  assert.match(view, /You’re not following anyone yet\./);
+  assert.match(view, /Follow people and places you like\. They’ll show up here\./);
   assert.match(view, /upcoming.*show/);
   assert.match(view, /id="following-list" aria-busy="true"/);
   assert.equal((view.match(/following-card following-card-skeleton/g) || []).length, 2);
@@ -145,14 +146,14 @@ test('new-event updates combine legacy consent and explicit Host follows without
   assert.match(follows, /prepareFollowSmsConsent/);
 });
 
-test('Host settings share the public Host Page before asking visitors to follow', () => {
+test('settings share the public page before asking visitors to follow', () => {
   const view = source('src/views/settings-v2.html');
   const browser = source('public/js/settings.js');
-  assert.match(view, /Share your Host Page/);
+  assert.match(view, /Share your page/);
   assert.match(view, /Let people see your events and follow when they’re ready\./);
   assert.match(browser, /\/h\/\$\{encodeURIComponent\(organizer\.public_slug\)\}`/);
   assert.doesNotMatch(browser, /public_slug\)}\?follow=1/);
-  assert.match(browser, /Host Page link copied\./);
+  assert.match(browser, /Page link copied\./);
   assert.match(browser, /navigator\.share/);
   assert.doesNotMatch(`${view}\n${browser}`, /text-signup|text_signup|signup-for-text/i);
 });
@@ -163,7 +164,7 @@ test('Follow sharing uses the native mobile sheet and an accessible desktop menu
   const styles = source('public/css/settings.css');
 
   assert.match(view, /<dialog class="host-share-dialog" id="host-follow-share-dialog" aria-modal="true" aria-labelledby="host-follow-share-dialog-title">/);
-  assert.match(view, /class="host-share-options" role="group" aria-label="Share Host Page"/);
+  assert.match(view, /class="host-share-options" role="group" aria-label="Share your page"/);
   for (const option of ['Email', 'Pinterest', 'Facebook', 'X', 'Copy link']) {
     assert.match(view, new RegExp(`>${option}<`));
   }

@@ -74,7 +74,7 @@ if (new URLSearchParams(location.search).get('created')) {
   $('created-note').style.display = 'block';
   api('/api/auth/me').then(({ organizer }) => {
     if (!organizer.public_slug) return;
-    $('created-host-note').innerHTML = ` Your host page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings">add a logo</a>.`;
+    $('created-host-note').innerHTML = ` Your page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings">add a logo</a>.`;
   }).catch(() => {});
 }
 
@@ -1327,7 +1327,7 @@ function renderFollowerAction(preview) {
     btn.disabled = false;
     btn.dataset.action = hostPageUrl ? 'share-host' : 'setup-host';
     if (hostPageUrl) btn.dataset.hostPageUrl = hostPageUrl;
-    $('announce-title').textContent = hostPageUrl ? 'Copy and share your Host Page' : 'Set up your Host Page';
+    $('announce-title').textContent = hostPageUrl ? 'Copy and share your page' : 'Set up your page';
     $('announce-copy').textContent = hostPageUrl
       ? 'Followers get updates whenever you publish a public event.'
       : 'Give people one place to follow every event you host.';
@@ -1383,10 +1383,10 @@ $('announce').addEventListener('click', async () => {
       if (navigator.share) await navigator.share({ title: 'Follow my events', url });
       else {
         await navigator.clipboard.writeText(url);
-        toast('Host Page link copied');
+        toast('Page link copied');
       }
     } catch (err) {
-      if (err.name !== 'AbortError') toast('Could not share your Host Page');
+      if (err.name !== 'AbortError') toast('Could not share your page');
     }
     return;
   }

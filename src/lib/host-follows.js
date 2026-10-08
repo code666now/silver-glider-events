@@ -22,7 +22,7 @@ async function findPublicHost(db, slug) {
 
 async function followHost(db, followerOrganizerId, hostOrganizerId, sourceEventId = null) {
   if (Number(followerOrganizerId) === Number(hostOrganizerId)) {
-    const err = new Error('You cannot follow your own Host Page');
+    const err = new Error('You cannot follow your own page');
     err.statusCode = 400;
     throw err;
   }
@@ -132,7 +132,7 @@ async function setFollowPreferences(db, followerOrganizerId, hostOrganizerId, {
     return;
   }
   if (Number(followerOrganizerId) === Number(hostOrganizerId)) {
-    const error = new Error('You cannot follow your own Host Page');
+    const error = new Error('You cannot follow your own page');
     error.statusCode = 400;
     throw error;
   }

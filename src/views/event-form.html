@@ -1827,10 +1827,10 @@
       <details class="event-editor-disclosure" id="more-details">
         <summary><span>Add more details<small>Host, description, and music</small></span></summary>
         <div class="event-editor-disclosure-body">
-          <div class="sg-field mobile-host-identity-field">
-            <label for="presenter_name">Presented by <span style="opacity:.5;text-transform:none;letter-spacing:0">(optional)</span></label>
+          <div class="sg-field mobile-host-identity-field" id="presenter-field" hidden>
+            <label for="presenter_name">Who’s hosting this?</label>
             <input class="sg-input" id="presenter_name" maxlength="100" placeholder="Heat Wave Booking">
-            <p id="presenter-help" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">Add a promoter or host name to create a reusable public host page.</p>
+            <p id="presenter-help" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">This is the name guests will see.</p>
           </div>
 
           <div class="sg-field" data-mobile-flow-panel="description">
@@ -1980,13 +1980,13 @@
                 <span class="visibility-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15.3 15.3 0 0 1 0 18"/><path d="M12 3a15.3 15.3 0 0 0 0 18"/></svg>
                 </span>
-                <span class="visibility-copy"><strong>Public</strong><span>Shown on your Host Page and may appear in Silver Glider discovery. Anyone can share it.</span></span>
+                <span class="visibility-copy"><strong>Public</strong><span>Shown on your page and may appear in Silver Glider discovery. Anyone can share it.</span></span>
               </button>
               <button type="button" id="vis-private" aria-pressed="false">
                 <span class="visibility-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" focusable="false"><path d="M10.7 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a13.8 13.8 0 0 1-2 3.4"/><path d="M6.6 6.6C3.7 8.6 2 12 2 12s3.5 7 10 7a10 10 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>
                 </span>
-                <span class="visibility-copy"><strong>Private link only</strong><span>Hidden from your Host Page and discovery. Anyone with the link can view it.</span></span>
+                <span class="visibility-copy"><strong>Private link only</strong><span>Hidden from your page and discovery. Anyone with the link can view it.</span></span>
               </button>
               <button type="button" id="vis-secret" class="mobile-secret-visibility" aria-pressed="false">
                 <span class="visibility-icon" aria-hidden="true">

@@ -1,4 +1,4 @@
-/* Responsive Settings sections, account profile, Host Page, and SMS credits. */
+/* Responsive Settings sections, account profile, public page, and SMS credits. */
 
 renderNav('settings');
 
@@ -232,8 +232,8 @@ function populateHostFields(organizer) {
   settingsElement('website_url').value = organizer.website_url || '';
   settingsElement('host-url-prefix').textContent = `${window.location.host}/h/`;
   settingsElement('slug-help').textContent = organizer.public_slug
-    ? 'Changing this address breaks host-page links you have already shared.'
-    : 'Save a public host name to create your page address.';
+    ? 'Changing this address breaks page links you have already shared.'
+    : 'Add who’s hosting to create your page address.';
   settingsElement('host-summary-view').hidden = !organizer.public_slug;
   if (organizer.public_slug) {
     settingsElement('host-summary-view').href = `/h/${encodeURIComponent(organizer.public_slug)}`;
@@ -1067,7 +1067,7 @@ async function copyHostFollowLink({ selectOnFailure = true } = {}) {
     fallback.remove();
   }
   if (copied) {
-    settingsElement('host-follow-share-status').textContent = 'Host Page link copied.';
+    settingsElement('host-follow-share-status').textContent = 'Page link copied.';
   } else if (selectOnFailure) {
     settingsElement('host-follow-share-url').select();
     settingsElement('host-follow-share-status').textContent = 'Link selected. Copy it from the field.';

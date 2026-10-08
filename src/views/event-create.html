@@ -23,6 +23,7 @@
     .quick-create-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .quick-create-card .owner-field > span,
     .quick-create-card .owner-field-label { color: var(--sg-text-dim); }
+    .quick-create-host { margin-top: 22px; }
     .quick-create-location { margin-top: 2px; }
     .quick-create-error { min-height: 22px; margin: 6px 0 12px; color: var(--sg-danger); font-size: 12px; line-height: 1.5; }
     .quick-create-submit { min-height: 56px; font-size: 15px; }
@@ -193,6 +194,7 @@
             <p>Give guests a name they’ll recognize.</p>
           </div>
           <label class="owner-field"><span>Event title</span><input class="owner-input" id="create-title" maxlength="140" required placeholder="Vinyl Night at Make Out Room" autocomplete="off"></label>
+          <label class="owner-field quick-create-host" id="create-host-field" hidden><span>Who’s hosting this?</span><input class="owner-input" id="create-host-name" maxlength="100" placeholder="Heat Wave Booking" autocomplete="organization"><small>This is the name guests will see.</small></label>
         </section>
 
         <section class="quick-create-step" data-create-step="when" aria-labelledby="quick-create-when-step">

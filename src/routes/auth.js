@@ -275,7 +275,7 @@ router.post('/api/auth/magic-link', async (req, res, next) => {
     if (!limitEmailRequest(req, res, email)) return;
 
     const challenge = await signInIntent(req.body);
-    if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
+    if (!challenge) return res.status(404).json({ error: 'Page not found' });
     await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, codeLength: CODE_LENGTH });
   } catch (err) {
@@ -292,7 +292,7 @@ router.post('/api/auth/guest-magic-link', async (req, res, next) => {
     const email = String(guest.email || '').trim().toLowerCase();
     if (!limitEmailRequest(req, res, email)) return;
     const challenge = await signInIntent(req.body);
-    if (!challenge) return res.status(404).json({ error: 'Host Page not found' });
+    if (!challenge) return res.status(404).json({ error: 'Page not found' });
     await issueSignIn(req, res, { email, ...challenge });
     res.json({ ok: true, maskedEmail: maskEmail(email), codeLength: CODE_LENGTH });
   } catch (error) { next(error); }

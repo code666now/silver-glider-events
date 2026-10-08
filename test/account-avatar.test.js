@@ -14,7 +14,7 @@ test('personal avatars extend accounts and RSVPs without changing Host Page artw
 
   const settings = read('src/views/settings-v2.html');
   assert.match(settings, /id="account-avatar-title">Your RSVP photo/);
-  assert.match(settings, /Your Host Page logo stays separate/);
+  assert.match(settings, /Your page logo stays separate/);
   assert.match(settings, /id="account-avatar-fallback">😎/);
   assert.match(settings, /id="account-avatar-btn"[^>]*>Add photo/);
   assert.match(settings, /id="account-avatar-remove" hidden>Remove photo/);
@@ -99,7 +99,7 @@ test('desktop navigation keeps primary destinations in the header and account ac
   assert.match(shell, /class="sg-account-popover"[^>]*role="menu" hidden/);
   assert.match(renderNav, /\['dashboard', '\/dashboard', 'Home'\]/);
   assert.match(renderNav, /\['events', '\/events', 'Events'\]/);
-  assert.match(renderNav, /\['following', '\/following', 'Hosts'\]/);
+  assert.match(renderNav, /\['following', '\/following', 'Following'\]/);
   assert.doesNotMatch(renderNav, /\['settings', '\/settings'/, 'Settings belongs in the account menu, not the desktop header');
   assert.match(renderNav, /sgAccountMenuMarkup\('sg-app-account'\)/, 'the app menu uses the non-primary default variant');
 
@@ -116,7 +116,7 @@ test('desktop navigation keeps primary destinations in the header and account ac
   assert.match(accountMenu, /class="[^"]*\bsg-account-menu-signout\b[^"]*"[^>]*role="menuitem"/);
   assert.match(accountMenu, /href="\/privacy"[^>]*>Privacy(?: Policy)?<\/a>/);
   assert.match(accountMenu, /href="\/terms"[^>]*>Terms<\/a>/);
-  assert.match(accountMenu, /includePrimaryLinks\s*\?[^:]*href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Hosts</);
+  assert.match(accountMenu, /includePrimaryLinks\s*\?[^:]*href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Following</);
   assert.match(shell, /function bindAccountMenu\(menu/);
   assert.match(shell, /event\.key === 'ArrowDown'/);
   assert.match(shell, /event\.key === 'Escape'/);

@@ -47,7 +47,7 @@ test('homepage desktop menu retains primary links while shared account actions m
   assert.match(menuSheet, /document\.body\.classList\.contains\('sg-home-page'\)/);
   assert.match(menuSheet, /homePrimaryLinks/);
   assert.match(shell, /account\.public_slug/);
-  assert.match(accountMenu, /data-sg-account-host-label>Host Page/);
+  assert.match(accountMenu, /data-sg-account-host-label>Your page/);
   assert.match(accountMenu, /data-sg-account-host-value>Set up/);
   assert.match(shell, /sgPaintAvatar\(el, sgCurrentAccount\)/);
   assert.match(shell, /fetch\('\/api\/admin\/auth\/me'/);

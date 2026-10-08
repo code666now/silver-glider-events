@@ -416,22 +416,25 @@ $('presentation-standard').addEventListener('change', () => setPresentationMode(
 $('presentation-flyer').addEventListener('change', () => setPresentationMode('flyer'));
 
 function applyOrganizerProfile(organizer) {
+  const field = $('presenter-field');
   const input = $('presenter_name');
   const help = $('presenter-help');
   input.value = organizer.org_name || '';
 
   if (adminEditorMode) {
+    field.hidden = false;
     input.readOnly = true;
     help.textContent = 'Host identity is managed from the Done For You client record.';
     return;
   }
 
-  if (organizer.public_slug) {
-    input.readOnly = true;
-    help.innerHTML = `Used across your events · <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View host page</a> · <a href="/settings">Manage in Settings</a>`;
-  } else if (editId) {
-    input.readOnly = true;
-    help.innerHTML = 'Host identity is shared across events. <a href="/settings">Set it up in Settings</a>.';
+  const needsHostName = !organizer.org_name || !organizer.public_slug;
+  field.hidden = Boolean(editId) || !needsHostName;
+  input.required = !editId && needsHostName;
+  input.readOnly = false;
+  if (!editId && needsHostName) {
+    help.textContent = 'This is the name guests will see.';
+    $('more-details').open = true;
   }
 }
 

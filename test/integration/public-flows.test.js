@@ -664,6 +664,48 @@ test('creates an event only for an authenticated organizer and publishes its pag
   await waitForConfirmation('public-attendee@example.test');
 });
 
+test('a first event requires and saves the public hosting name before publishing', async () => {
+  resetRateLimits();
+  const { sessionCookie } = await signInAccount('first-event-host@example.test', '/events/new');
+  const eventBody = {
+    title: 'First Human Event',
+    event_date: '2030-11-14',
+    start_time: '20:00',
+    venue_name: 'First Night Hall',
+    visibility: 'public',
+    presentation_mode: 'standard',
+    admission_type: 'free_rsvp'
+  };
+
+  const missingName = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify(eventBody)
+  });
+  assert.equal(missingName.status, 400);
+  assert.deepEqual(await missingName.json(), { error: 'Tell guests who’s hosting this event.' });
+
+  const created = await fetch(`${baseUrl}/api/events`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ ...eventBody, presenter_name: 'First Night Friends' })
+  });
+  assert.equal(created.status, 201);
+  const { event } = await created.json();
+  const profile = (await pool.query(
+    `SELECT org_name, public_slug FROM organizers WHERE email='first-event-host@example.test'`
+  )).rows[0];
+  assert.equal(profile.org_name, 'First Night Friends');
+  assert.match(profile.public_slug, /^first-night-friends(?:-[a-f0-9]+)?$/);
+
+  const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(publicPage.status, 200);
+  const publicHtml = await publicPage.text();
+  assert.match(publicHtml, /Presented by/);
+  assert.match(publicHtml, /First Night Friends/);
+  assert.doesNotMatch(publicHtml, /Silver Glider host/);
+});
+
 test('flyer event guests omit owner assets while its owner keeps the editor', async () => {
   const event = await createEvent({
     slug: 'flyer-owner-assets',
@@ -2143,12 +2185,12 @@ test('ticketing launch interest is reversible, admin-visible, and safely gated',
   assert.ok(afterRemovalData.interests[0].removed_at);
 });
 
-test('renders the Host Page Dashboard control only for its authenticated owner', async () => {
+test('renders the Home base control only for the authenticated page owner', async () => {
   const publicPage = await fetch(`${baseUrl}/h/test-host`);
   const publicHtml = await publicPage.text();
   assert.equal(publicPage.status, 200);
   assert.doesNotMatch(publicHtml, /<a class="host-owner-dashboard"/);
-  assert.doesNotMatch(publicHtml, /← Dashboard/);
+  assert.doesNotMatch(publicHtml, /← Home base/);
 
   const ownerPage = await fetch(`${baseUrl}/h/test-host`, {
     headers: { cookie: `sge_session=${signSession(organizerId)}` }
@@ -2156,7 +2198,7 @@ test('renders the Host Page Dashboard control only for its authenticated owner',
   const ownerHtml = await ownerPage.text();
   assert.equal(ownerPage.status, 200);
   assert.match(ownerHtml, /class="host-owner-dashboard" href="\/dashboard"/);
-  assert.match(ownerHtml, /← Dashboard<\/a>/);
+  assert.match(ownerHtml, /← Home base<\/a>/);
   assert.doesNotMatch(ownerHtml, /<div class="host-follow" data-host-follow/);
 
   const visitorId = (await pool.query(
@@ -2585,7 +2627,7 @@ test('host invitation onboarding preserves context through email auth and claims
   assert.equal(landing.headers.get('referrer-policy'), 'no-referrer');
   assert.match(landing.headers.get('x-robots-tag') || '', /noindex/);
   const landingHtml = await landing.text();
-  assert.match(landingHtml, /Create my free Host Page/);
+  assert.match(landingHtml, /Create my free page/);
   assert.match(landingHtml, /publish your next event\./i);
   assert.match(landingHtml, /collect RSVPs, send automatic reminders/);
   assert.match(landingHtml, /About two minutes · No payment required/);

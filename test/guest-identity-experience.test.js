@@ -121,7 +121,7 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(api, /\['dashboard', '\/dashboard', 'Home'/);
   assert.match(api, /\['events', '\/events', 'Events'/);
   assert.match(api, /\['create', '\/events\/new', 'Create'/);
-  assert.match(api, /\['following', '\/following', 'Hosts'/);
+  assert.match(api, /\['following', '\/following', 'Following'/);
   assert.match(api, /\['profile', '\/profile', 'You', null\]/);
   assert.match(api, /if \(usesMenuSheet\(\)\) \{\s*openMenuSheet\(toggle\);/);
   assert.match(api, /setAttribute\('aria-modal', 'true'\)/);
@@ -137,7 +137,7 @@ test('phone tab bar puts Create and your avatar in the bar and the ☰ opens a f
   assert.match(menuSheet, /data-menu-signout/);
   assert.match(menuSheet, /href="\/privacy">Privacy Policy<\/a>[\s\S]*href="\/terms">Terms<\/a>/);
   assert.match(menuSheet, /document\.body\.classList\.contains\('sg-home-page'\)[\s\S]*homePrimaryLinks/);
-  assert.match(menuSheet, /href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Hosts</);
+  assert.match(menuSheet, /href="\/dashboard"[\s\S]*?>Home<[\s\S]*?href="\/events"[\s\S]*?>Events<[\s\S]*?href="\/following"[\s\S]*?>Following</);
   assert.match(styles, /body\.has-tab-bar \.sg-mobile-sticky-action \{ display: none !important; \}/);
   assert.match(styles, /grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(styles, /@media \(max-width: 879px\) \{[\s\S]*?\.sg-account-menu \{ display: none; \}/);

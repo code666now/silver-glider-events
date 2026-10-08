@@ -30,7 +30,7 @@ router.post('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) 
       await followHost(client, req.organizer.id, host.id);
       return followStatus(client, req.organizer.id, host.id);
     });
-    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    if (!result) return res.status(404).json({ error: 'Page not found' });
     res.json(result);
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
@@ -41,7 +41,7 @@ router.post('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) 
 router.get('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next) => {
   try {
     const host = await findPublicHost(pool, req.params.slug);
-    if (!host) return res.status(404).json({ error: 'Host Page not found' });
+    if (!host) return res.status(404).json({ error: 'Page not found' });
     res.setHeader('Cache-Control', 'private, no-store');
     res.json(await followStatus(pool, req.organizer.id, host.id));
   } catch (err) { next(err); }
@@ -68,7 +68,7 @@ router.patch('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next)
       });
       return followStatus(client, req.organizer.id, host.id);
     });
-    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    if (!result) return res.status(404).json({ error: 'Page not found' });
     res.json(result);
   } catch (err) {
     if (err.statusCode || err.status) {
@@ -86,7 +86,7 @@ router.delete('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next
       await unfollowHost(client, req.organizer.id, host.id);
       return followStatus(client, req.organizer.id, host.id);
     });
-    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    if (!result) return res.status(404).json({ error: 'Page not found' });
     res.json(result);
   } catch (err) { next(err); }
 });
@@ -99,7 +99,7 @@ router.patch('/api/hosts/:slug/follow/texts', requireOrganizer, async (req, res,
       await enableFollowSms(client, req.organizer.id, host.id, req.body?.phone);
       return followStatus(client, req.organizer.id, host.id);
     });
-    if (!result) return res.status(404).json({ error: 'Host Page not found' });
+    if (!result) return res.status(404).json({ error: 'Page not found' });
     res.json(result);
   } catch (err) {
     if (err.statusCode || err.status) return res.status(err.statusCode || err.status).json({ error: err.message });

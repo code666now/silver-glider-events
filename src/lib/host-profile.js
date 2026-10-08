@@ -12,9 +12,9 @@ function cleanHostBio(value) {
 
 function cleanHostSlug(value) {
   const slug = String(value ?? '').trim().toLowerCase();
-  if (!slug) return { value: null, error: 'Enter a host page slug' };
+  if (!slug) return { value: null, error: 'Enter a page address' };
   if (slug.length < 2 || slug.length > 70 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    return { value: null, error: 'Use 2–70 lowercase letters, numbers, and single hyphens for the host slug' };
+    return { value: null, error: 'Use 2–70 lowercase letters, numbers, and single hyphens for the page address' };
   }
   return { value: slug, error: null };
 }
@@ -82,7 +82,7 @@ function cleanContactEmail(value) {
 function normalizeHostProfile(body, current = {}) {
   const orgName = cleanHostName(body.org_name);
   if (current.public_slug && !orgName) {
-    return { error: 'A public host page needs a host name' };
+    return { error: 'Your public page needs a name' };
   }
 
   let publicSlug = current.public_slug || null;
@@ -107,7 +107,7 @@ function normalizeHostProfile(body, current = {}) {
   if (contact.error) return { error: contact.error };
 
   const hasProfileDetails = Boolean(cleanHostBio(body.bio) || website.value || instagram.value || contact.value);
-  if (!orgName && hasProfileDetails) return { error: 'Add a public host name before adding host-page details' };
+  if (!orgName && hasProfileDetails) return { error: 'Add who’s hosting before adding page details' };
 
   return {
     value: {
@@ -139,7 +139,19 @@ async function ensureHostProfile(organizerId, hostName) {
 
   const current = await organizerWithHostProfile(organizerId);
   if (!current) return null;
-  if (current.public_slug) return current;
+  if (current.public_slug) {
+    if (cleanHostName(current.org_name)) return current;
+    const { rows } = await pool.query(
+      `UPDATE organizers
+          SET org_name=$2, updated_at=NOW()
+        WHERE id=$1 AND (org_name IS NULL OR BTRIM(org_name)='')
+        RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
+                  bio, website_url, instagram_handle, instagram_url, contact_email,
+                  plan, is_admin, created_at, updated_at`,
+      [organizerId, cleanName]
+    );
+    return rows[0] || organizerWithHostProfile(organizerId);
+  }
 
   const base = slugify(cleanName) || 'host';
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -161,7 +173,7 @@ async function ensureHostProfile(organizerId, hostName) {
       throw err;
     }
   }
-  throw new Error('Could not create a unique host page');
+  throw new Error('Could not create a unique page address');
 }
 
 module.exports = {

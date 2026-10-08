@@ -33,7 +33,7 @@ test('Personal invitations lead with host value and keep concierge help private 
 
   assert.match(invite, /publish your next event\./i);
   assert.match(invite, /collect RSVPs, send automatic reminders/);
-  assert.match(invite, /Create my free Host Page/);
+  assert.match(invite, /Create my free page/);
   assert.match(invite, /About two minutes · No payment required/);
   assert.match(invite, /See an example event/);
   assert.match(invite, /sms:\+14152053302/);
@@ -110,10 +110,10 @@ test('Partial legacy Host Pages recover through setup without replacing their st
 
   assert.match(view, /function hostPageReady\(organizer\)[\s\S]*organizer\?\.publicSlug[\s\S]*organizer\?\.orgName/);
   assert.match(view, /if \(!hostPageReady\(organizer\)\) return showSetup\(\)/);
-  assert.match(view, /state\.organizer\.publicSlug[\s\S]*\? 'Complete Host Page'[\s\S]*: 'Create Host Page'/);
+  assert.match(view, /state\.organizer\.publicSlug[\s\S]*\? 'Complete your page'[\s\S]*: 'Create your page'/);
   assert.match(view, /state\.existingHostPage = hostPageReady\(state\.organizer\)/);
-  assert.match(view, /if \(!state\.existingHostPage\)[\s\S]*still needs a Host name/);
-  assert.match(view, /Your details were saved, but the Host Page is not ready/);
+  assert.match(view, /if \(!state\.existingHostPage\)[\s\S]*Your page still needs a name/);
+  assert.match(view, /Your details were saved, but your page is not ready/);
   assert.match(view, /continue-without-logo'\)\.hidden = !profileReady/);
   assert.doesNotMatch(view, /public_slug\s*:/);
   assert.doesNotMatch(route, /UPDATE organizers/);
@@ -140,7 +140,7 @@ test('Onboarding keeps an existing public Host Page intact and has accessible re
   const view = read('src/views/host-invitation.html');
 
   assert.match(view, /if \(state\.screen === 'ready'\) return showReady\(\{ existing: state\.existingHostPage \}\)/);
-  assert.match(view, /We kept your existing Host Page exactly as it was/);
+  assert.match(view, /We kept your existing page exactly as it was/);
   assert.match(view, /role="alert"/);
   assert.match(view, /aria-live="polite"/);
   assert.match(view, /heading\?\.focus\(\{ preventScroll: true \}\)/);

@@ -145,7 +145,7 @@ function fillAccountMenu(menu, account) {
   const hostValue = host?.querySelector('[data-sg-account-host-value]');
   if (host) {
     host.href = account.public_slug ? `/h/${encodeURIComponent(account.public_slug)}` : '/settings/host-page';
-    if (hostLabel) hostLabel.textContent = 'Host Page';
+    if (hostLabel) hostLabel.textContent = 'Your page';
     if (hostValue) hostValue.textContent = account.public_slug ? 'View' : 'Set up';
   }
   const credits = Number(account.sms_credits) || 0;
@@ -159,7 +159,7 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = fa
         <div class="sg-account-popover-group sg-account-popover-primary">
           <a class="sg-account-menu-row" href="/dashboard" role="menuitem">${menuIcon('dashboard')}<span>Home</span></a>
           <a class="sg-account-menu-row" href="/events" role="menuitem">${menuIcon('events')}<span>Events</span></a>
-          <a class="sg-account-menu-row" href="/following" role="menuitem">${menuIcon('following')}<span>Hosts</span></a>
+          <a class="sg-account-menu-row" href="/following" role="menuitem">${menuIcon('following')}<span>Following</span></a>
         </div>` : '';
   return `
     <div class="sg-account-menu">
@@ -180,7 +180,7 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = fa
         </a>
         ${primaryLinks}
         <div class="sg-account-popover-group">
-          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Host Page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
+          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Your page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
           <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits>0 credits</span></a>
           <button class="sg-account-menu-row" type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
         </div>
@@ -311,7 +311,7 @@ function renderNav(active) {
   const links = [
     ['dashboard', '/dashboard', 'Home'],
     ['events', '/events', 'Events'],
-    ['following', '/following', 'Hosts']
+    ['following', '/following', 'Following']
   ];
   el.className = 'sg-nav';
   // On phones, signed-in pages keep Feedback and the legal links inside this menu
@@ -455,14 +455,14 @@ function renderAdminNav(el) {
   }).catch(() => {});
 }
 
-// Phones: Home, Events, Create, Hosts and You sit in a bottom tab bar, within
+// Phones: Home, Events, Create, Following and You sit in a bottom tab bar, within
 // thumb reach. The ☰ then opens a full-screen menu panel instead of the dropdown.
 const TAB_BAR_KEYS = ['dashboard', 'events', 'following', 'profile', 'settings'];
 const TAB_BAR_TABS = [
   ['dashboard', '/dashboard', 'Home', '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-5h4v5"/>'],
   ['events', '/events', 'Events', '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'],
   ['create', '/events/new', 'Create', '<rect x="3.5" y="3.5" width="17" height="17" rx="5"/><path d="M12 8v8M8 12h8"/>'],
-  ['following', '/following', 'Hosts', '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 5.3"/>'],
+  ['following', '/following', 'Following', '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17 14.2a5 5 0 0 1 3.5 5.3"/>'],
   ['profile', '/profile', 'You', null]
 ];
 
@@ -527,7 +527,7 @@ function buildMenuSheet() {
     ? `<div class="sg-menu-group sg-menu-primary-group">
         <a class="sg-menu-row" href="/dashboard">${menuIcon('dashboard')}<span>Home</span></a>
         <a class="sg-menu-row" href="/events">${menuIcon('events')}<span>Events</span></a>
-        <a class="sg-menu-row" href="/following">${menuIcon('following')}<span>Hosts</span></a>
+        <a class="sg-menu-row" href="/following">${menuIcon('following')}<span>Following</span></a>
       </div>`
     : '';
   sheet.innerHTML = `
@@ -544,7 +544,7 @@ function buildMenuSheet() {
       </a>
       ${homePrimaryLinks}
       <div class="sg-menu-group">
-        <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>Host page</span><span class="sg-menu-value" data-menu-host-value></span></a>
+        <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>Your page</span><span class="sg-menu-value" data-menu-host-value></span></a>
         <a class="sg-menu-row" href="/settings/messaging">${menuIcon('messaging')}<span>Messaging</span><span class="sg-menu-value" data-menu-credits></span></a>
         <button class="sg-menu-row" type="button" data-menu-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
       </div>

@@ -93,7 +93,7 @@
         </section>
         <p class="profile-stats-status" id="profile-stats-status" role="status" aria-live="polite"></p>
         <a class="profile-host" id="profile-host" href="/settings/host-page" hidden>
-          <span><strong id="profile-host-title">Your host page</strong><small id="profile-host-copy">See what guests see.</small></span>
+          <span><strong id="profile-host-title">Your page</strong><small id="profile-host-copy">See what guests see.</small></span>
           <span aria-hidden="true">›</span>
         </a>
       </div>
@@ -114,11 +114,11 @@
       const host = $('profile-host');
       if (organizer.public_slug) {
         host.href = `/h/${encodeURIComponent(organizer.public_slug)}`;
-        $('profile-host-title').textContent = 'Your host page';
+        $('profile-host-title').textContent = 'Your page';
         $('profile-host-copy').textContent = 'See what guests see.';
       } else {
         host.href = '/settings/host-page';
-        $('profile-host-title').textContent = 'Set up your host page';
+        $('profile-host-title').textContent = 'Set up your page';
         $('profile-host-copy').textContent = 'A public page for all your events.';
       }
       host.hidden = false;

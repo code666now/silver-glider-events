@@ -109,7 +109,7 @@ router.get('/h/:slug', async (req, res, next) => {
     const session = req.sessionAccount;
     const isOwnHost = Number(session?.id) === Number(host.id);
     const ownerNavHtml = isOwnHost
-      ? '<a class="host-owner-dashboard" href="/dashboard" aria-label="Return to Dashboard">← Dashboard</a>'
+      ? '<a class="host-owner-dashboard" href="/dashboard" aria-label="Return to Home base">← Home base</a>'
       : '';
     const follow = !isOwnHost && session
       ? await followStatus(pool, session.id, host.id)

@@ -292,7 +292,7 @@ function renderOwnerEditor(event) {
             <div class="owner-settings-group" data-owner-mobile-section="visibility">
               <fieldset class="owner-choice-field owner-visibility-field">
                 <legend>Visibility</legend>
-                <label class="owner-choice"><input type="radio" name="owner_visibility" value="public"><span><strong>Public</strong><small>Visible on your Host Page and shareable.</small></span></label>
+                <label class="owner-choice"><input type="radio" name="owner_visibility" value="public"><span><strong>Public</strong><small>Visible on your page and shareable.</small></span></label>
                 <label class="owner-choice"><input type="radio" name="owner_visibility" value="private"><span><strong>Private link only</strong><small>Hidden from discovery. Anyone with the link can view it.</small></span></label>
                 <label class="owner-choice owner-mobile-secret-choice"><input type="radio" name="owner_visibility" value="secret"><span><strong>Secret Show</strong><small>Private, with a six-character code guests enter to view.</small></span></label>
               </fieldset>

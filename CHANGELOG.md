@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.159
+
+Released October 7, 2026. Built and deployed by Codex.
+
+### A warmer product voice
+
+* Customer navigation now says **Your page**, **Home base**, and **Following**, replacing the more generic Host Page, Host Dashboard, and Hosts labels.
+* Following now speaks plainly about “people and places,” with a warmer empty state that does not send people to a discovery experience that does not exist yet.
+* Page settings ask **Who’s hosting?**, and a creator without a public identity is asked **Who’s hosting this?** while making their first event.
+* The first-event rule is enforced on the server as well as in both event builders, saves the canonical public identity, and never invents “Silver Glider host” for guests.
+* My Events deliberately keeps **Hosting** beside **Going**, where the word describes the person’s relationship to each event.
+
+### Verification
+
+* Static validation, 394 unit tests, and 119 PostgreSQL integration tests pass.
+* Regression coverage includes first-event identity creation, partial legacy-page repair, guest-facing attribution, responsive navigation labels, the Following empty state, and the owner-only Home base return link.
+
 ## 1.0.158
 
 Released October 6, 2026. Built and deployed by Codex.

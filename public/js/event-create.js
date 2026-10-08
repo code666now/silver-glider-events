@@ -26,6 +26,21 @@
   let mobileStep = 0;
   let mobileHistoryReady = false;
   let quickCreateDirty = false;
+  let requiresHostName = false;
+
+  function configureHostName(organizer = {}) {
+    const hostName = String(organizer.org_name || '').trim();
+    requiresHostName = !hostName || !organizer.public_slug;
+    $('create-host-field').hidden = !requiresHostName;
+    $('create-host-name').required = requiresHostName;
+    if (requiresHostName && !$('create-host-name').value.trim()) $('create-host-name').value = hostName;
+  }
+
+  const organizerProfileReady = adminEditorMode
+    ? Promise.resolve()
+    : api('/api/auth/me')
+      .then(({ organizer }) => configureHostName(organizer))
+      .catch(() => configureHostName());
 
   const today = new Date();
   const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -64,6 +79,7 @@
     if (!mobileFlowEnabled()) return;
     const draft = {
       title: $('create-title').value,
+      hostName: $('create-host-name').value,
       eventDate: $('create-date').value,
       startTime: $('create-start-time').value,
       locationSearch: $('create-location-search').value,
@@ -103,6 +119,7 @@
     if (!draft || typeof draft !== 'object' || Array.isArray(draft)) return;
 
     $('create-title').value = safeText(draft.title, 140);
+    $('create-host-name').value = safeText(draft.hostName, 100);
     $('create-date').value = safeText(draft.eventDate, 10);
     $('create-start-time').value = safeText(draft.startTime, 8);
     $('create-location-search').value = safeText(draft.locationSearch);
@@ -224,7 +241,10 @@
   }
   function validateMobileStep(index) {
     $('quick-create-error').textContent = '';
-    if (index === 0) return reportField($('create-title'));
+    if (index === 0) {
+      return reportField($('create-title'))
+        && (!requiresHostName || reportField($('create-host-name')));
+    }
     if (index === 1) return reportField($('create-date')) && reportField($('create-start-time'));
     return validateLocation();
   }
@@ -394,6 +414,7 @@
     event.preventDefault();
     const error = $('quick-create-error');
     error.textContent = '';
+    await organizerProfileReady;
     if (mobileFlowEnabled() && mobileStep < mobileSteps.length - 1) {
       if (!validateMobileStep(mobileStep)) return;
       pushMobileStep(mobileStep + 1);
@@ -410,6 +431,7 @@
         body: {
           status: 'draft',
           title: $('create-title').value.trim(),
+          presenter_name: requiresHostName ? $('create-host-name').value.trim() : null,
           event_date: $('create-date').value,
           start_time: $('create-start-time').value,
           venue_name: location.venueName || LocationUtils.addressFallback(location.venueAddress),

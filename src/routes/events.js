@@ -176,9 +176,16 @@ router.post('/api/events', async (req, res, next) => {
   try {
     validateCreateEventInput(req.body);
 
-    const presenterName = cleanHostName(req.body.presenter_name);
-    if (!req.organizer.public_slug && presenterName) {
-      await ensureHostProfile(req.organizer.id, presenterName);
+    const presenterName = cleanHostName(req.body.presenter_name) || cleanHostName(req.organizer.org_name);
+    let effectiveOrganizer = req.organizer;
+    if (!req.organizer.public_slug || !cleanHostName(req.organizer.org_name)) {
+      if (!presenterName) {
+        throw new EventEditorError('host_name_required', 'Tell guests who’s hosting this event.');
+      }
+      effectiveOrganizer = await ensureHostProfile(req.organizer.id, presenterName) || {
+        ...req.organizer,
+        org_name: presenterName
+      };
     }
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -191,7 +198,7 @@ router.post('/api/events', async (req, res, next) => {
         });
         const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
         await client.query('COMMIT');
-        await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
+        await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(effectiveOrganizer), invites });
         return res.status(201).json(result);
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1544,7 +1551,7 @@ router.put('/api/settings', async (req, res, next) => {
     );
     res.json({ organizer: rows[0] });
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'That host page slug is already taken' });
+    if (err.code === '23505') return res.status(409).json({ error: 'That page address is already taken' });
     next(err);
   }
 });

@@ -154,7 +154,7 @@ router.post('/api/uploads/host-logo', requireOrganizer, handleUpload, async (req
 
 router.post('/api/uploads/host-header', requireOrganizer, handleUpload, async (req, res) => {
   if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
-  if (!req.organizer.public_slug) return res.status(400).json({ error: 'Save a public host name before adding a header image' });
+  if (!req.organizer.public_slug) return res.status(400).json({ error: 'Add who’s hosting before adding a header image' });
   if (!req.file) return res.status(400).json({ error: 'Choose a header image (JPG, PNG, WebP, or GIF, max 5 MB)' });
   try {
     const result = await uploadHostHeader(req.file.buffer);
