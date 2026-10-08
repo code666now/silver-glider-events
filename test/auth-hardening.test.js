@@ -133,6 +133,19 @@ test('the sign-in page and Host Page follow modal accept the emailed code', () =
   assert.match(login, /Enter the 6-digit code/);
 });
 
+test('missing-name onboarding is conditional, required, and preserves the intended destination', () => {
+  const auth = read('src/routes/auth.js');
+  assert.match(auth, /router\.get\('\/onboarding\/name', requireOrganizer/);
+  assert.match(auth, /router\.post\('\/onboarding\/name', requireOrganizer/);
+  assert.match(auth, /What should we call you\?/);
+  assert.match(auth, /placeholder="Ziggy Stardust" value="\$\{esc\(value\)\}"/);
+  assert.match(auth, /name="name"[^>]*required/);
+  assert.match(auth, />Let's go<\/button>/);
+  assert.match(auth, /WHERE id=\$1 AND NULLIF\(BTRIM\(name\),''\) IS NULL/);
+  assert.match(auth, /nameOnboardingRedirect\(destination\)/);
+  assert.match(auth, /fillMissingDisplayNameFromRsvp/);
+});
+
 test('only a typed guest verification code promotes the guest to an account session', () => {
   const auth = read('src/routes/auth.js');
   const verifyLink = auth.slice(auth.indexOf("router.post('/auth/verify'"), auth.indexOf('const CODE_ERRORS'));

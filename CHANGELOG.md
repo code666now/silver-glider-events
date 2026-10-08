@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.161
+
+Released October 7, 2026. Built and deployed by Codex.
+
+### Names that follow people through the product
+
+* New and returning accounts without a name now get one focused **What should we call you?** step immediately after sign-in.
+* Names already collected through RSVP are recovered automatically, so those people are never asked twice.
+* Saved names persist to the canonical account, appear in Admin, and power the existing first-name welcome without changing verification or RSVP reminders.
+* The original destination survives the extra step, while valid existing names are never overwritten.
+
+### Verification
+
+* Static validation and all 516 automated tests pass.
+* Real browser walkthroughs cover email verification, name persistence, destination recovery, and first-name greetings at desktop and mobile widths.
+
 ## 1.0.160
 
 Released October 7, 2026. Built and deployed by Codex.

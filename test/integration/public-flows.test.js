@@ -555,6 +555,142 @@ test('serves each protected settings destination from the responsive settings sh
   }
 });
 
+test('missing display names are collected once, persisted, and shown in admin', async () => {
+  const email = 'new-name@example.test';
+  const firstSignIn = await signInAccount(email, '/events/new');
+  assert.equal(
+    firstSignIn.body.redirect,
+    '/onboarding/name?next=%2Fevents%2Fnew',
+    'a new unnamed account pauses only after authentication'
+  );
+  assert.ok(firstSignIn.sessionCookie, 'the normal account session is already established');
+
+  const page = await fetch(`${baseUrl}${firstSignIn.body.redirect}`, {
+    headers: { cookie: firstSignIn.sessionCookie },
+    redirect: 'manual'
+  });
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get('cache-control'), 'private, no-store');
+  const html = await page.text();
+  assert.match(html, /What should we call you\?/);
+  assert.match(html, /placeholder="Ziggy Stardust" value=""/);
+  assert.match(html, /name="name"[^>]*required/);
+  assert.match(html, />Let's go<\/button>/);
+  assert.match(html, /name="next" value="\/events\/new"/);
+
+  const blank = await fetch(`${baseUrl}/onboarding/name`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: firstSignIn.sessionCookie
+    },
+    body: new URLSearchParams({ name: '   ', next: '/events/new' })
+  });
+  assert.equal(blank.status, 400);
+  assert.match(await blank.text(), /Enter your name\./);
+
+  const saved = await fetch(`${baseUrl}/onboarding/name`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: firstSignIn.sessionCookie
+    },
+    body: new URLSearchParams({ name: '  Adrian   Martinez  ', next: '/events/new' })
+  });
+  assert.equal(saved.status, 303);
+  assert.equal(saved.headers.get('location'), '/events/new');
+
+  const account = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE LOWER(organizer.email)=LOWER($1)`,
+    [email]
+  )).rows[0];
+  assert.deepEqual(account, {
+    name: 'Adrian Martinez',
+    organizer_name: 'Adrian Martinez'
+  });
+
+  const duplicateSubmit = await fetch(`${baseUrl}/onboarding/name`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: firstSignIn.sessionCookie
+    },
+    body: new URLSearchParams({ name: 'Overwrite Attempt', next: '/profile' })
+  });
+  assert.equal(duplicateSubmit.status, 303);
+  assert.equal((await pool.query(
+    'SELECT name FROM organizers WHERE LOWER(email)=LOWER($1)', [email]
+  )).rows[0].name, 'Adrian Martinez', 'onboarding never overwrites a valid name');
+
+  const alreadyNamedPage = await fetch(`${baseUrl}/onboarding/name?next=%2Fprofile`, {
+    headers: { cookie: firstSignIn.sessionCookie },
+    redirect: 'manual'
+  });
+  assert.equal(alreadyNamedPage.status, 303);
+  assert.equal(alreadyNamedPage.headers.get('location'), '/profile');
+
+  const returning = await signInAccount(email, '/dashboard');
+  assert.equal(returning.body.redirect, '/dashboard', 'returning named users skip onboarding');
+
+  await createAdminOperator('name-support@example.test', 'support');
+  const adminCookie = await signInAdminOperator('name-support@example.test');
+  const adminAccounts = await fetch(
+    `${baseUrl}/api/admin/accounts?q=${encodeURIComponent(email)}`,
+    { headers: { cookie: adminCookie } }
+  );
+  assert.equal(adminAccounts.status, 200);
+  const adminAccount = (await adminAccounts.json()).accounts.find(item => item.email === email);
+  assert.equal(adminAccount?.name, 'Adrian Martinez');
+});
+
+test('sign-in reuses an RSVP name and magic links preserve name onboarding redirects', async () => {
+  const event = await createEvent({ slug: 'name-reuse-night' });
+  const rsvpEmail = 'rsvp-name@example.test';
+  await pool.query(
+    `INSERT INTO organizers (email,name)
+     VALUES ($1,NULL)`,
+    [rsvpEmail]
+  );
+  await createRsvp(event.id, {
+    first_name: 'Romy',
+    last_name: 'Mars',
+    email: rsvpEmail
+  });
+
+  const rsvpSignIn = await signInAccount(rsvpEmail, '/profile');
+  assert.equal(rsvpSignIn.body.redirect, '/profile', 'a known RSVP name avoids a duplicate question');
+  const reused = (await pool.query(
+    `SELECT canonical_user.name,organizer.name AS organizer_name
+       FROM users canonical_user
+       JOIN organizers organizer ON organizer.user_id=canonical_user.id
+      WHERE LOWER(organizer.email)=LOWER($1)`,
+    [rsvpEmail]
+  )).rows[0];
+  assert.deepEqual(reused, { name: 'Romy Mars', organizer_name: 'Romy Mars' });
+
+  const unnamedEmail = 'existing-unnamed@example.test';
+  await pool.query('INSERT INTO organizers (email,name) VALUES ($1,NULL)', [unnamedEmail]);
+  const started = await fetch(`${baseUrl}/api/auth/magic-link`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: unnamedEmail, next: '/settings/account' })
+  });
+  assert.equal(started.status, 200);
+  const completed = await followSignInLink(lastDevEmail(unnamedEmail, 'magic_link').link);
+  assert.equal(completed.status, 303);
+  assert.equal(
+    completed.headers.get('location'),
+    '/onboarding/name?next=%2Fsettings%2Faccount',
+    'magic-link sign-in keeps the intended destination behind onboarding'
+  );
+});
+
 test('creates an event only for an authenticated organizer and publishes its page', async () => {
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
@@ -2291,7 +2427,11 @@ test('completes logged-in and magic-link Host follows without creating Host Page
 
   const verify = await followSignInLink(followEmail.link, { next: '/dashboard' });
   assert.equal(verify.status, 303);
-  assert.equal(verify.headers.get('location'), '/h/test-host?followed=1', 'stored intent return must win over URL tampering');
+  assert.equal(
+    verify.headers.get('location'),
+    '/onboarding/name?next=%2Fh%2Ftest-host%3Ffollowed%3D1',
+    'the stored intent return must survive name onboarding and win over URL tampering'
+  );
   const follower = (await pool.query(
     `SELECT id, org_name, public_slug FROM organizers WHERE email='new-follower@example.test'`
   )).rows[0];
@@ -2588,7 +2728,7 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
   )).rows[0].count, 1, 'unfollow also suppresses older RSVP-based host updates');
 });
 
-test('keeps ordinary Create Event magic-link destinations unchanged', async () => {
+test('keeps ordinary Create Event magic-link destinations behind one-time name onboarding', async () => {
   const request = await fetch(`${baseUrl}/api/auth/magic-link`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email: 'creator-flow@example.test', next: '/events/new' })
@@ -2603,7 +2743,7 @@ test('keeps ordinary Create Event magic-link destinations unchanged', async () =
   assert.equal(pending.return_path, '/events/new');
   const verify = await followSignInLink(lastDevEmail('creator-flow@example.test', 'magic_link').link);
   assert.equal(verify.status, 303);
-  assert.equal(verify.headers.get('location'), '/events/new');
+  assert.equal(verify.headers.get('location'), '/onboarding/name?next=%2Fevents%2Fnew');
   assert.equal((await pool.query(
     `SELECT COUNT(*)::int AS count FROM host_follows hf
       JOIN organizers o ON o.id=hf.follower_organizer_id
@@ -2709,13 +2849,28 @@ test('host invitation onboarding preserves context through email auth and claims
   )).rows[0].return_path, nextPath);
   const completedSignIn = await followSignInLink(lastDevEmail(invitedEmail, 'magic_link').link);
   assert.equal(completedSignIn.status, 303);
-  assert.equal(completedSignIn.headers.get('location'), nextPath);
+  assert.equal(
+    completedSignIn.headers.get('location'),
+    `/onboarding/name?next=${encodeURIComponent(nextPath)}`
+  );
   const invitedCookie = responseCookie(completedSignIn, 'sge_session');
   assert.ok(invitedCookie);
   const invitedAccount = (await pool.query(
     'SELECT id FROM organizers WHERE LOWER(email)=LOWER($1)', [invitedEmail]
   )).rows[0];
   assert.ok(invitedAccount);
+
+  const namedInvitationAccount = await fetch(`${baseUrl}/onboarding/name`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: invitedCookie
+    },
+    body: new URLSearchParams({ name: 'Heat Promoter', next: nextPath })
+  });
+  assert.equal(namedInvitationAccount.status, 303);
+  assert.equal(namedInvitationAccount.headers.get('location'), nextPath);
 
   const acceptHeaders = {
     'content-type': 'application/json',
@@ -4625,7 +4780,7 @@ test('email scanners cannot use up a sign-in link, and signed-in people are not 
 
   const signedIn = await followSignInLink(link);
   assert.equal(signedIn.status, 303);
-  assert.equal(signedIn.headers.get('location'), '/events');
+  assert.equal(signedIn.headers.get('location'), '/onboarding/name?next=%2Fevents');
   const sessionCookie = responseCookie(signedIn, 'sge_session');
   assert.ok(sessionCookie);
   const canonicalLogin = (await pool.query(
@@ -4716,7 +4871,7 @@ test('a 6-digit code signs in only the browser that asked for it and locks after
   assert.equal(ok.status, 200);
   const okBody = await ok.json();
   assert.equal(okBody.kind, 'account');
-  assert.equal(okBody.redirect, '/events/new');
+  assert.equal(okBody.redirect, '/onboarding/name?next=%2Fevents%2Fnew');
   const sessionCookie = responseCookie(ok, 'sge_session');
   const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: sessionCookie }, redirect: 'manual' });
   assert.equal(dashboard.status, 200);
@@ -4842,7 +4997,7 @@ test('expired and superseded email codes fail while the latest resent code creat
     ok: true,
     kind: 'account',
     firstName: null,
-    redirect: '/events'
+    redirect: '/onboarding/name?next=%2Fevents'
   });
   const sessionCookie = responseCookie(latestVerify, 'sge_session');
   assert.ok(sessionCookie);

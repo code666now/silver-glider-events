@@ -434,7 +434,8 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           });
         }
         const { rows } = await client.query(
-          `SELECT account.id,canonical_user.account_status
+          `SELECT account.id,account.user_id,account.email,account.name,
+                  canonical_user.account_status
              FROM organizers account
              JOIN users canonical_user ON canonical_user.id=account.user_id
             WHERE account.id=$1
@@ -472,6 +473,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
             WHERE organizer_id=$1 AND phone_e164=$2 AND revoked_at IS NULL`,
           [account.id, locked.phone_e164]
         );
+        const namedAccount = await fillMissingDisplayNameFromRsvp(client, account);
         await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
         await client.query('COMMIT');
         clearPhoneAuthCookie(res);
@@ -479,7 +481,13 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         setSessionCookie(res, account.id);
         setIdentityStepUpCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
-        return res.json({ ok: true, redirect: phoneSignInNext(locked.return_path) || '/dashboard' });
+        const destination = phoneSignInNext(locked.return_path) || '/dashboard';
+        return res.json({
+          ok: true,
+          redirect: hasDisplayName(namedAccount.name)
+            ? destination
+            : nameOnboardingRedirect(destination)
+        });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
         throw error;
@@ -578,6 +586,123 @@ function displayNameParts(value, email) {
   const fallback = String(email || '').split('@')[0] || 'there';
   const full = (name || fallback).slice(0, 160);
   return { full, first: full.split(' ')[0].slice(0, 80) || 'there' };
+}
+
+function cleanDisplayName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function hasDisplayName(value) {
+  return Boolean(cleanDisplayName(value));
+}
+
+function nameOnboardingDestination(value) {
+  const destination = safeNext(value) || '/dashboard';
+  return destination === '/onboarding/name' || destination.startsWith('/onboarding/name?')
+    ? '/dashboard'
+    : destination;
+}
+
+function nameOnboardingRedirect(destination) {
+  return `/onboarding/name?next=${encodeURIComponent(nameOnboardingDestination(destination))}`;
+}
+
+// An RSVP name is already owned account data after linkVerifiedRsvps has run.
+// Recover it for older blank accounts before asking the person to type it again.
+// The conditional UPDATE makes this safe if another request saves a name first.
+async function fillMissingDisplayNameFromRsvp(db, organizer) {
+  if (!organizer || hasDisplayName(organizer.name)) return organizer;
+  const userId = Number(organizer.user_id || organizer.id);
+  const organizerId = Number(organizer.id);
+  const { rows: rsvpRows } = await db.query(
+    `SELECT first_name,last_name
+       FROM rsvps
+      WHERE (user_id=$1 OR (user_id IS NULL AND account_id=$2))
+        AND NULLIF(BTRIM(first_name),'') IS NOT NULL
+      ORDER BY id DESC
+      LIMIT 1`,
+    [userId, organizerId]
+  );
+  const recoveredName = cleanDisplayName(
+    rsvpRows[0] ? `${rsvpRows[0].first_name || ''} ${rsvpRows[0].last_name || ''}` : ''
+  ).slice(0, 100);
+  if (!recoveredName) return organizer;
+
+  const { rows: updatedRows } = await db.query(
+    `UPDATE organizers
+        SET name=$2,updated_at=NOW()
+      WHERE id=$1 AND NULLIF(BTRIM(name),'') IS NULL
+      RETURNING *`,
+    [organizerId, recoveredName]
+  );
+  if (updatedRows[0]) return updatedRows[0];
+  const { rows: currentRows } = await db.query(
+    'SELECT * FROM organizers WHERE id=$1',
+    [organizerId]
+  );
+  return currentRows[0] || organizer;
+}
+
+function nameOnboardingPage({ destination, error = '', value = '' }) {
+  const safeDestination = nameOnboardingDestination(destination);
+  const errorMarkup = error
+    ? `<p class="name-error" role="alert">${esc(error)}</p>`
+    : '';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>What should we call you? — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <style>
+    .name-shell{width:min(100%,400px);margin:0 auto;padding:12vh 24px 40px}
+    .name-brand{margin-bottom:clamp(54px,12vh,96px)}
+    .name-heading{font-size:34px;margin-bottom:12px}
+    .name-copy{color:var(--sg-text-dim);font-size:15px;line-height:1.65;margin-bottom:28px}
+    .name-error{color:var(--sg-danger);font-size:14px;line-height:1.5;margin-bottom:18px}
+    @media (max-width:879px){
+      body{min-height:100vh;min-height:100dvh}
+      .name-shell{width:100%;max-width:none;min-height:100vh;min-height:100dvh;padding:calc(42px + env(safe-area-inset-top)) var(--sg-mobile-page-gutter) calc(34px + env(safe-area-inset-bottom))}
+      .name-brand{font-size:13px;letter-spacing:.15em}
+      .name-heading{font-size:var(--sg-mobile-page-title-size);line-height:1.08}
+      .name-copy{font-size:var(--sg-mobile-helper-size);line-height:1.5}
+      .sg-field{margin-bottom:22px}
+      .sg-field label{margin-bottom:10px;font-size:14px;letter-spacing:.08em}
+      .sg-input{min-height:60px;padding:15px 17px;border-radius:17px;font-size:16px}
+      .sg-btn{min-height:60px;border-radius:19px;font-size:17px}
+    }
+    @media (max-width:879px) and (max-height:620px){
+      .name-shell{padding-top:calc(22px + env(safe-area-inset-top))}
+      .name-brand{margin-bottom:30px}
+    }
+  </style>
+</head>
+<body>
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
+  <main class="name-shell">
+    <p class="sg-label name-brand">Silver Glider Events</p>
+    <h1 class="name-heading">What should we call you?</h1>
+    <p class="name-copy">Add the name you want people to see around Silver Glider.</p>
+    ${errorMarkup}
+    <form method="POST" action="/onboarding/name">
+      <input type="hidden" name="next" value="${esc(safeDestination)}">
+      <div class="sg-field">
+        <label for="display-name">Your name</label>
+        <input class="sg-input" id="display-name" name="name" type="text" autocomplete="name" maxlength="100" required autofocus placeholder="Ziggy Stardust" value="${esc(value)}">
+      </div>
+      <button class="sg-btn sg-btn-primary sg-btn-block" type="submit">Let's go</button>
+    </form>
+  </main>
+</body>
+</html>`;
 }
 
 async function assertEmailAccountActive(client, email) {
@@ -926,7 +1051,7 @@ async function completeChallenge(client, req, pending, {
           verificationSource: emailProofSource
         }
       });
-  const organizer = (await client.query(
+  let organizer = (await client.query(
     'SELECT * FROM organizers WHERE id=$1', [canonical.user.id]
   )).rows[0];
 
@@ -1016,6 +1141,7 @@ async function completeChallenge(client, req, pending, {
   // Reaching this point proves control of the email. Historical email-only
   // RSVPs may now safely use this account's current avatar.
   await linkVerifiedRsvps(client, organizer.id, email);
+  organizer = await fillMissingDisplayNameFromRsvp(client, organizer);
 
   if (pending.intent === 'follow_host') {
     const { rows: targetRows } = await client.query(
@@ -1032,6 +1158,7 @@ async function completeChallenge(client, req, pending, {
   return {
     kind: 'account',
     redirect: safeNext(pending.return_path) || null,
+    needsDisplayName: !hasDisplayName(organizer.name),
     afterCommit: res => {
       clearPhotoAccessCookie(res);
       if (pending.intent === 'bind_phone') clearPhoneAuthCookie(res);
@@ -1151,6 +1278,46 @@ function sameOriginPost(req) {
   return allowed.filter(Boolean).includes(originHost);
 }
 
+router.get('/onboarding/name', requireOrganizer, async (req, res, next) => {
+  try {
+    const destination = nameOnboardingDestination(req.query.next);
+    const organizer = await fillMissingDisplayNameFromRsvp(pool, req.organizer);
+    if (hasDisplayName(organizer.name)) return res.redirect(303, destination);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    res.type('html').send(nameOnboardingPage({ destination }));
+  } catch (error) { next(error); }
+});
+
+router.post('/onboarding/name', requireOrganizer, async (req, res, next) => {
+  if (!sameOriginPost(req)) return res.status(403).send('Forbidden');
+  const destination = nameOnboardingDestination(req.body?.next);
+  const name = cleanDisplayName(req.body?.name);
+  if (!name || name.length > 100) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return res.status(400).type('html').send(nameOnboardingPage({
+      destination,
+      error: name ? 'Use a name with 100 characters or fewer.' : 'Enter your name.',
+      value: name.slice(0, 100)
+    }));
+  }
+
+  try {
+    // Do not overwrite a name supplied by an RSVP, invitation, settings, or a
+    // concurrent request. Updating organizers also synchronizes users.name via
+    // the existing canonical-identity trigger.
+    await pool.query(
+      `UPDATE organizers
+          SET name=$2,updated_at=NOW()
+        WHERE id=$1 AND NULLIF(BTRIM(name),'') IS NULL`,
+      [req.organizer.id, name]
+    );
+    return res.redirect(303, destination);
+  } catch (error) { next(error); }
+});
+
 // POST /auth/verify — the Continue button. Uses the link up and signs in.
 router.post('/auth/verify', async (req, res, next) => {
   if (!sameOriginPost(req)) return res.status(403).send('Forbidden');
@@ -1181,7 +1348,10 @@ router.post('/auth/verify', async (req, res, next) => {
     outcome.afterCommit(res);
     clearSignInRequestCookie(res);
     const fallback = outcome.kind === 'guest' ? '/' : '/dashboard';
-    res.redirect(303, outcome.redirect || legacyNext || fallback);
+    const destination = outcome.redirect || legacyNext || fallback;
+    res.redirect(303, outcome.needsDisplayName
+      ? nameOnboardingRedirect(destination)
+      : destination);
   } catch (err) {
     if (err instanceof CanonicalIdentityError &&
         [
@@ -1239,11 +1409,14 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     clearSignInRequestCookie(res);
     res.setHeader('Cache-Control', 'private, no-store');
     const fallback = outcome.kind === 'account' ? '/dashboard' : null;
+    const destination = outcome.redirect || fallback;
     res.json({
       ok: true,
       kind: outcome.kind,
       firstName: outcome.firstName || null,
-      redirect: outcome.redirect || fallback
+      redirect: outcome.needsDisplayName && destination
+        ? nameOnboardingRedirect(destination)
+        : destination
     });
   } catch (err) {
     if (err instanceof CanonicalIdentityError &&
