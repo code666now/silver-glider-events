@@ -145,7 +145,7 @@ function fillAccountMenu(menu, account) {
   const hostValue = host?.querySelector('[data-sg-account-host-value]');
   if (host) {
     host.href = account.public_slug ? `/h/${encodeURIComponent(account.public_slug)}` : '/settings/host-page';
-    if (hostLabel) hostLabel.textContent = 'Your page';
+    if (hostLabel) hostLabel.textContent = 'My public page';
     if (hostValue) hostValue.textContent = account.public_slug ? 'View' : 'Set up';
   }
   const credits = Number(account.sms_credits) || 0;
@@ -180,7 +180,7 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = fa
         </a>
         ${primaryLinks}
         <div class="sg-account-popover-group">
-          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>Your page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
+          <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>My public page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
           <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits>0 credits</span></a>
           <button class="sg-account-menu-row" type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
         </div>
@@ -544,7 +544,7 @@ function buildMenuSheet() {
       </a>
       ${homePrimaryLinks}
       <div class="sg-menu-group">
-        <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>Your page</span><span class="sg-menu-value" data-menu-host-value></span></a>
+        <a class="sg-menu-row" data-menu-host href="/settings/host-page">${menuIcon('host')}<span>My public page</span><span class="sg-menu-value" data-menu-host-value></span></a>
         <a class="sg-menu-row" href="/settings/messaging">${menuIcon('messaging')}<span>Messaging</span><span class="sg-menu-value" data-menu-credits></span></a>
         <button class="sg-menu-row" type="button" data-menu-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
       </div>

@@ -233,7 +233,7 @@ function populateHostFields(organizer) {
   settingsElement('host-url-prefix').textContent = `${window.location.host}/h/`;
   settingsElement('slug-help').textContent = organizer.public_slug
     ? 'Changing this address breaks page links you have already shared.'
-    : 'Add who’s hosting to create your page address.';
+    : 'Add who’s hosting to create your public page address.';
   settingsElement('host-summary-view').hidden = !organizer.public_slug;
   if (organizer.public_slug) {
     settingsElement('host-summary-view').href = `/h/${encodeURIComponent(organizer.public_slug)}`;

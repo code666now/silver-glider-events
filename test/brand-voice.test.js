@@ -12,7 +12,7 @@ test('customer navigation uses the warmer page, Home base, and Following languag
   const publicHosts = read('src/routes/public-hosts.js');
   const following = read('src/views/following.html');
 
-  assert.match(shell, /data-sg-account-host-label>Your page/);
+  assert.match(shell, /data-sg-account-host-label>My public page/);
   assert.match(shell, /\['following', '\/following', 'Following'\]/);
   assert.match(dashboard, /dashboard-eyebrow dashboard-desktop-only">Home base</);
   assert.match(publicHosts, /aria-label="Return to Home base">← Home base<\/a>/);
@@ -31,7 +31,8 @@ test('page settings and first-event creation ask who is hosting in human languag
   const eventsRoute = read('src/routes/events.js');
   const hostProfile = read('src/lib/host-profile.js');
 
-  assert.match(settings, /id="host-page-title">Your page<\/h2>/);
+  assert.match(settings, /id="host-page-title">Your public page<\/h2>/);
+  assert.match(settings, /data-settings-link="host-page"[\s\S]*Your public page/);
   assert.match(settings, /Give guests one public home for your events and host identity\./);
   assert.match(settings, /<label for="org_name">Who’s hosting\?<\/label>/);
   assert.match(quickCreate, /id="create-host-field" hidden>[\s\S]*Who’s hosting this\?/);

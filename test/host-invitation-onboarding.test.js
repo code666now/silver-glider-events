@@ -110,10 +110,10 @@ test('Partial legacy Host Pages recover through setup without replacing their st
 
   assert.match(view, /function hostPageReady\(organizer\)[\s\S]*organizer\?\.publicSlug[\s\S]*organizer\?\.orgName/);
   assert.match(view, /if \(!hostPageReady\(organizer\)\) return showSetup\(\)/);
-  assert.match(view, /state\.organizer\.publicSlug[\s\S]*\? 'Complete your page'[\s\S]*: 'Create your page'/);
+  assert.match(view, /state\.organizer\.publicSlug[\s\S]*\? 'Complete your public page'[\s\S]*: 'Create your public page'/);
   assert.match(view, /state\.existingHostPage = hostPageReady\(state\.organizer\)/);
-  assert.match(view, /if \(!state\.existingHostPage\)[\s\S]*Your page still needs a name/);
-  assert.match(view, /Your details were saved, but your page is not ready/);
+  assert.match(view, /if \(!state\.existingHostPage\)[\s\S]*Your public page still needs a name/);
+  assert.match(view, /Your details were saved, but your public page is not ready/);
   assert.match(view, /continue-without-logo'\)\.hidden = !profileReady/);
   assert.doesNotMatch(view, /public_slug\s*:/);
   assert.doesNotMatch(route, /UPDATE organizers/);

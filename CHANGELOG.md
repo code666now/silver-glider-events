@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.160
+
+Released October 7, 2026. Built and deployed by Codex.
+
+### A clearer public-page identity
+
+* Account menus now say **My public page**, clearly separating the promoter-facing destination from the person’s private profile and individual event pages.
+* Settings, setup, invitation, and sharing flows now consistently say **Your public page** wherever they refer to that public destination.
+* Event visibility descriptions now explicitly explain whether an event appears on the creator’s public page.
+
+### Verification
+
+* Static validation and all 513 automated tests pass.
+* Signed-in desktop and mobile checks cover the account menu, Settings navigation, public-page heading, and responsive wrapping.
+
 ## 1.0.159
 
 Released October 7, 2026. Built and deployed by Codex.

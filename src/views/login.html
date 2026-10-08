@@ -212,9 +212,9 @@
     if (invitationAuthFlow) {
       document.getElementById('phone-progress').textContent = 'Accept your invitation';
       document.getElementById('phone-heading').textContent = 'Start with your phone';
-      document.getElementById('phone-copy').textContent = 'Sign in to create your page. Publish unique event pages and collect RSVPs.';
+      document.getElementById('phone-copy').textContent = 'Sign in to create your public page. Publish unique event pages and collect RSVPs.';
       document.getElementById('email-heading').textContent = 'Accept your invitation';
-      document.getElementById('email-copy').textContent = 'Sign in to create your page. Publish unique event pages and collect RSVPs.';
+      document.getElementById('email-copy').textContent = 'Sign in to create your public page. Publish unique event pages and collect RSVPs.';
       document.getElementById('email-progress').hidden = false;
       const invitationToken = next.slice('/host-invitation/'.length);
       fetch(`/api/public/host-invitations/${encodeURIComponent(invitationToken)}`, {

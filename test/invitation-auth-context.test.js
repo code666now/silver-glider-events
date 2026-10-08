@@ -46,7 +46,7 @@ test('invitation sign-in explains the public-page journey with approved product 
   const login = read('src/views/login.html');
 
   assert.match(login, /Accept your invitation/);
-  assert.match(login, /Sign in to create your page\. Publish unique event pages and collect RSVPs\./);
+  assert.match(login, /Sign in to create your public page\. Publish unique event pages and collect RSVPs\./);
   assert.match(login, /fetch\(`\/api\/public\/host-invitations\/\$\{encodeURIComponent\(invitationToken\)\}`/);
   assert.match(login, /Host invitation · \$\{hostName\}/);
   assert.doesNotMatch(login, /Publish beautiful event pages and collect RSVPs/);

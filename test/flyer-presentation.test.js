@@ -246,9 +246,9 @@ test('desktop keeps venue, admission, and event settings in order while mobile g
   assert.match(form, /id="automatic-text-settings"[^>]+data-mobile-flow-panel="reminders"/);
   assert.match(form, /id="private-settings"[^>]+data-mobile-flow-panel="visibility"/);
   assert.doesNotMatch(form, /Tickets and visibility/);
-  assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your page and may appear in Silver Glider discovery/);
+  assert.match(form, /id="vis-public"[\s\S]*visibility-icon[\s\S]*Shown on your public page and may appear in Silver Glider discovery/);
   assert.match(form, /id="vis-public"[\s\S]*<circle cx="12" cy="12" r="9"\/>[\s\S]*<path d="M3 12h18"\/>/);
-  assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your page and discovery/);
+  assert.match(form, /id="vis-private"[\s\S]*visibility-icon[\s\S]*Hidden from your public page and discovery/);
   assert.match(form, /id="vis-secret"[\s\S]*Secret Show[\s\S]*six-character code/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Show guest list[\s\S]*Show attendee first names and avatars on the event page/);
   assert.match(form, /id="guest-experience-settings"[\s\S]*Allow \+1s[\s\S]*Let each RSVP bring one guest/);

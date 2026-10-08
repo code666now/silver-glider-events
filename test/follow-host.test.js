@@ -149,7 +149,7 @@ test('new-event updates combine legacy consent and explicit Host follows without
 test('settings share the public page before asking visitors to follow', () => {
   const view = source('src/views/settings-v2.html');
   const browser = source('public/js/settings.js');
-  assert.match(view, /Share your page/);
+  assert.match(view, /Share your public page/);
   assert.match(view, /Let people see your events and follow when they’re ready\./);
   assert.match(browser, /\/h\/\$\{encodeURIComponent\(organizer\.public_slug\)\}`/);
   assert.doesNotMatch(browser, /public_slug\)}\?follow=1/);
@@ -164,7 +164,7 @@ test('Follow sharing uses the native mobile sheet and an accessible desktop menu
   const styles = source('public/css/settings.css');
 
   assert.match(view, /<dialog class="host-share-dialog" id="host-follow-share-dialog" aria-modal="true" aria-labelledby="host-follow-share-dialog-title">/);
-  assert.match(view, /class="host-share-options" role="group" aria-label="Share your page"/);
+  assert.match(view, /class="host-share-options" role="group" aria-label="Share your public page"/);
   for (const option of ['Email', 'Pinterest', 'Facebook', 'X', 'Copy link']) {
     assert.match(view, new RegExp(`>${option}<`));
   }

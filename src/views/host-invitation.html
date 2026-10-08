@@ -113,20 +113,20 @@
       <h1 id="welcome-title" tabindex="-1">Welcome to Silver Glider Events.</h1>
       <p class="onboarding-intro">You’ve been invited as a host. Start with your public home, then create and share your events.</p>
       <ul class="benefit-list">
-        <li class="benefit-item"><span class="benefit-icon" aria-hidden="true">◎</span><span><strong>Create your page</strong><span>Keep your events and public identity in one place.</span></span></li>
+        <li class="benefit-item"><span class="benefit-icon" aria-hidden="true">◎</span><span><strong>Create your public page</strong><span>Keep your events and public identity in one place.</span></span></li>
         <li class="benefit-item"><span class="benefit-icon" aria-hidden="true">◇</span><span><strong>Share your events</strong><span>Publish unique event pages and collect RSVPs.</span></span></li>
-        <li class="benefit-item"><span class="benefit-icon" aria-hidden="true">＋</span><span><strong>Build your audience</strong><span>Let people follow your page for future events.</span></span></li>
+        <li class="benefit-item"><span class="benefit-icon" aria-hidden="true">＋</span><span><strong>Build your audience</strong><span>Let people follow your public page for future events.</span></span></li>
       </ul>
       <div class="onboarding-actions">
-        <button class="sg-btn sg-btn-primary" id="accept-setup" type="button">Set up your page</button>
+        <button class="sg-btn sg-btn-primary" id="accept-setup" type="button">Set up your public page</button>
         <button class="onboarding-secondary" id="accept-dashboard" type="button">Explore the dashboard first</button>
       </div>
       <p class="onboarding-status" id="welcome-status" role="status" aria-live="polite"></p>
     </section>
 
     <section class="onboarding-panel" id="setup-panel" hidden aria-labelledby="setup-title">
-      <p class="onboarding-kicker">Your page</p>
-      <h1 id="setup-title" tabindex="-1">Create your page.</h1>
+      <p class="onboarding-kicker">Your public page</p>
+      <h1 id="setup-title" tabindex="-1">Create your public page.</h1>
       <p class="onboarding-intro">This is the public home for your events. Only the Host name is required.</p>
       <form class="setup-form" id="setup-form" novalidate>
         <div class="setup-fields">
@@ -143,7 +143,7 @@
           <div class="setup-field"><label for="host-instagram">Instagram <span aria-hidden="true">·</span> optional</label><input class="setup-input" id="host-instagram" maxlength="500" autocomplete="off" placeholder="@yourhandle"></div>
           <div class="setup-field"><label for="host-bio">Short bio <span aria-hidden="true">·</span> optional</label><textarea class="setup-textarea" id="host-bio" maxlength="500" placeholder="Independent events, good rooms, and late-night sounds."></textarea><small>Tell guests what you host in a sentence or two.</small></div>
         </div>
-        <div class="onboarding-actions"><button class="sg-btn sg-btn-primary" id="setup-submit" type="submit">Create your page</button></div>
+        <div class="onboarding-actions"><button class="sg-btn sg-btn-primary" id="setup-submit" type="submit">Create your public page</button></div>
         <p class="onboarding-status" id="setup-status" role="status" aria-live="polite" aria-atomic="true"></p>
         <button class="onboarding-secondary" id="continue-without-logo" type="button" hidden>Continue without the logo</button>
       </form>
@@ -151,7 +151,7 @@
 
     <section class="onboarding-panel" id="ready-panel" hidden aria-labelledby="ready-title">
       <p class="onboarding-kicker">You’re ready</p>
-      <h1 id="ready-title" tabindex="-1">Your page is ready.</h1>
+      <h1 id="ready-title" tabindex="-1">Your public page is ready.</h1>
       <p class="onboarding-intro" id="ready-copy">Create your first event and give guests something to RSVP to.</p>
       <div class="ready-card">
         <span class="ready-mark" aria-hidden="true">✓</span>
@@ -160,7 +160,7 @@
       </div>
       <div class="onboarding-actions">
         <a class="sg-btn sg-btn-primary" href="/events/new">Create your first event</a>
-        <a class="sg-btn sg-btn-ghost" id="ready-view" target="_blank" rel="noopener">View your page</a>
+        <a class="sg-btn sg-btn-ghost" id="ready-view" target="_blank" rel="noopener">View your public page</a>
         <a class="onboarding-secondary" href="/dashboard">Go to dashboard</a>
       </div>
     </section>
@@ -274,8 +274,8 @@
           setupInitialized = true;
         }
         $('setup-submit').textContent = state.organizer.publicSlug
-          ? 'Complete your page'
-          : 'Create your page';
+          ? 'Complete your public page'
+          : 'Create your public page';
         reveal('setup-panel');
       }
 
@@ -284,7 +284,7 @@
         if (!hostPageReady(organizer)) return showSetup();
         const slug = organizer.publicSlug || '';
         const hostName = organizer.orgName || state.suggestedHostName || state.invitation.hostName;
-        $('ready-title').textContent = existing ? 'Your page is already ready.' : 'Your page is ready.';
+        $('ready-title').textContent = existing ? 'Your public page is already ready.' : 'Your public page is ready.';
         $('ready-copy').textContent = existing
           ? 'We kept your existing page exactly as it was. You can continue with your events.'
           : 'Create your first event and give guests something to RSVP to.';
@@ -395,7 +395,7 @@
           $('host-name').focus();
           return;
         }
-        setButtonBusy(button, true, 'Creating your page…', 'Create your page');
+        setButtonBusy(button, true, 'Creating your public page…', 'Create your public page');
         let profileSaved = false;
         let profileReady = false;
         try {
@@ -415,7 +415,7 @@
           state.suggestedHostName = state.organizer.orgName;
           state.existingHostPage = hostPageReady(state.organizer);
           if (!state.existingHostPage) {
-            throw new Error('Your page still needs a name before it can be opened.');
+            throw new Error('Your public page still needs a name before it can be opened.');
           }
           profileReady = true;
           if (logoFile) {
@@ -426,16 +426,16 @@
           showReady();
         } catch (error) {
           status.textContent = !profileSaved
-            ? (error.message || 'Your page could not be created. Try again.')
+            ? (error.message || 'Your public page could not be created. Try again.')
             : (profileReady
-              ? `Your page was created, but the logo was not uploaded. ${error.message}`
-              : `Your details were saved, but your page is not ready. ${error.message}`);
+              ? `Your public page was created, but the logo was not uploaded. ${error.message}`
+              : `Your details were saved, but your public page is not ready. ${error.message}`);
           status.classList.add('error');
           $('continue-without-logo').hidden = !profileReady;
         } finally {
           const readyLabel = hostPageReady(state?.organizer)
             ? 'Save and continue'
-            : (state?.organizer?.publicSlug ? 'Complete your page' : 'Create your page');
+            : (state?.organizer?.publicSlug ? 'Complete your public page' : 'Create your public page');
           setButtonBusy(button, false, '', readyLabel);
         }
       });

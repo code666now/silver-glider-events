@@ -14,7 +14,7 @@ test('personal avatars extend accounts and RSVPs without changing Host Page artw
 
   const settings = read('src/views/settings-v2.html');
   assert.match(settings, /id="account-avatar-title">Your RSVP photo/);
-  assert.match(settings, /Your page logo stays separate/);
+  assert.match(settings, /Your public page logo stays separate/);
   assert.match(settings, /id="account-avatar-fallback">😎/);
   assert.match(settings, /id="account-avatar-btn"[^>]*>Add photo/);
   assert.match(settings, /id="account-avatar-remove" hidden>Remove photo/);

@@ -54,7 +54,7 @@ test('lifecycle card uses existing share, credits, host page, and create-event f
   assert.match(view, /script src="\/js\/event-lifecycle\.js"/);
   assert.match(client, /settings\/messaging\?return=/);
   assert.match(client, /window\.location\.assign\('\/events\/new'\)/);
-  assert.match(client, /Copy and share your page/);
+  assert.match(client, /Copy and share your public page/);
   assert.match(client, /email reminders still send free/i);
   assert.match(client, /Reminder sent yesterday/);
   assert.match(editor, /AS lifecycle_phase/);
