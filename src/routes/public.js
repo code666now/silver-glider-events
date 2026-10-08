@@ -29,6 +29,7 @@ const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission')
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
+const { readFlyerPreviewAccess } = require('../lib/flyer-preview-access');
 const { cleanInstagramHandle } = require('../lib/host-profile');
 const { isManagedVibePhotoUrl } = require('../lib/cloudinary');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
@@ -404,6 +405,29 @@ function organizerViewer(req, event) {
   return Number(req.sessionAccount?.id) === Number(event.organizer_id);
 }
 
+function renderFlyerPreviewTools(preview) {
+  const approved = preview.status === 'promoter_approved';
+  const changesRequested = preview.status === 'changes_requested';
+  const statusCopy = approved
+    ? '<strong>Approved</strong><span>Silver Glider will publish it next.</span>'
+    : changesRequested
+      ? '<strong>Fix requested</strong><span>We’ll text you when the update is ready.</span>'
+      : '<strong>Your event is ready</strong><span>Take a look before it goes live.</span>';
+  const actions = approved || changesRequested
+    ? ''
+    : `<button type="button" data-preview-action="look">Change the look</button>
+       <button type="button" data-preview-action="fix">Request a fix</button>
+       <button class="is-primary" type="button" data-preview-action="approve">Looks good</button>`;
+  return `<aside class="flyer-preview-bar" id="flyer-preview-tools" aria-label="Unpublished preview controls">
+    <div class="flyer-preview-status"><span class="flyer-preview-mark" aria-hidden="true">SG</span><p>${statusCopy}</p></div>
+    <div class="flyer-preview-actions">${actions}</div>
+  </aside>
+  <dialog class="flyer-preview-dialog" id="flyer-preview-dialog" aria-labelledby="flyer-preview-dialog-title">
+    <button class="flyer-preview-close" type="button" data-preview-close aria-label="Close">×</button>
+    <div id="flyer-preview-dialog-body"></div>
+  </dialog>`;
+}
+
 function verifiedSessionAccountId(req, email) {
   const account = req.sessionAccount;
   if (!account) return null;
@@ -662,7 +686,11 @@ router.get('/e/:slug', async (req, res, next) => {
     const accessEvent = await loadEventAccessEnvelope(req.params.slug, { includeDraft: true });
     if (!accessEvent) return res.status(404).send(render404());
     const ownerDraft = accessEvent.status === 'draft';
-    if (ownerDraft && !organizerViewer(req, accessEvent)) return res.status(404).send(render404());
+    const organizerDraftViewer = ownerDraft && organizerViewer(req, accessEvent);
+    const flyerPreview = ownerDraft && !organizerDraftViewer
+      ? await readFlyerPreviewAccess(pool, req, { eventId: Number(accessEvent.id) })
+      : null;
+    if (ownerDraft && !organizerDraftViewer && !flyerPreview) return res.status(404).send(render404());
     if (ownerDraft) {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
       res.setHeader('Cache-Control', 'private, no-store');
@@ -671,7 +699,7 @@ router.get('/e/:slug', async (req, res, next) => {
     if (accessEvent.secret_show_enabled) {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
       res.setHeader('Cache-Control', 'private, no-store');
-      if (secretShowLocked(req, accessEvent)) {
+      if (!flyerPreview && secretShowLocked(req, accessEvent)) {
         ensureAttemptSession(req, res);
         return res.type('html').send(secretShowTemplate);
       }
@@ -892,13 +920,15 @@ router.get('/e/:slug', async (req, res, next) => {
       returningGuest: returningGuestJson,
       bgEffect: isEffect ? theme : null
     };
-    const ownerEditorHtml = ownerPreview ? renderOwnerEditor(event) : '';
+    const ownerEditorHtml = ownerPreview
+      ? renderOwnerEditor(event)
+      : flyerPreview ? renderFlyerPreviewTools(flyerPreview) : '';
     const ownerEditorStyles = ownerPreview
       ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
-      : '';
+      : flyerPreview ? '<link rel="stylesheet" href="/css/flyer-preview.css">' : '';
     const ownerEditorScripts = ownerPreview
       ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
-      : '';
+      : flyerPreview ? '<script src="/js/flyer-preview.js"></script>' : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate

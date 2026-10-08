@@ -52,6 +52,7 @@ const adminAuthRoutes = require('../../src/routes/admin-auth');
 const adminIdentityChangeRoutes = require('../../src/routes/admin-identity-changes');
 const adminDoneForYouRoutes = require('../../src/routes/admin-done-for-you');
 const adminEditorRoutes = require('../../src/routes/admin-editor');
+const flyerIntakeRoutes = require('../../src/routes/flyer-intake');
 const uploadRoutes = require('../../src/routes/uploads');
 const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
 
@@ -101,6 +102,7 @@ function resetRateLimits() {
   adminIdentityChangeRoutes.resetRateLimitsForTests();
   adminDoneForYouRoutes.resetRateLimitsForTests();
   adminDoneForYouRoutes.setClaimSenderForTests();
+  flyerIntakeRoutes.resetRateLimitsForTests();
   adminEditorRoutes.setEventUploadsForTests({
     configured: false,
     cover: require('../../src/lib/cloudinary').uploadCover,
@@ -9053,10 +9055,32 @@ test('flyer intake is off by default, Super Admin controlled, and visible in the
   assert.equal(audit.after_state.acceptingSubmissions, true);
 });
 
-test('a reviewed flyer request safely provisions one client and preloads one private event draft', async () => {
+test('a reviewed flyer request safely provisions, previews, revises, and receives phone-scoped approval', async t => {
   resetRateLimits();
-  const operator = await createAdminOperator('flyer-builder@example.test', 'support');
+  const operator = await createAdminOperator('flyer-builder@example.test', 'super_admin');
   const adminSession = await signInAdminOperator(operator.email);
+  const originalSendSms = sms.sendSms;
+  const originalStartVerification = phoneVerification.startVerification;
+  const originalCheckVerification = phoneVerification.checkVerification;
+  const sentTexts = [];
+  const verificationSid = `VE${'a'.repeat(32)}`;
+  sms.sendSms = async message => {
+    sentTexts.push(message);
+    return { sid: `SM${String(sentTexts.length).repeat(32)}`, status: 'accepted', recipient: message.to };
+  };
+  phoneVerification.startVerification = async phone => ({ verificationSid, phone, status: 'pending' });
+  phoneVerification.checkVerification = async ({ verificationSid: sid, code }) => {
+    assert.equal(sid, verificationSid);
+    if (code !== '246810') throw new phoneVerification.PhoneVerificationError('That code is invalid', {
+      code: 'invalid_phone_verification_code', status: 400
+    });
+    return { approved: true, verificationSid: sid, phone: '+14155550181', status: 'approved' };
+  };
+  t.after(() => {
+    sms.sendSms = originalSendSms;
+    phoneVerification.startVerification = originalStartVerification;
+    phoneVerification.checkVerification = originalCheckVerification;
+  });
   const flyerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/flyers/handoff.jpg';
   const request = (await pool.query(
     `INSERT INTO admin_flyer_requests
@@ -9142,6 +9166,110 @@ test('a reviewed flyer request safely provisions one client and preloads one pri
   assert.equal((await pool.query(
     'SELECT status FROM events WHERE id=$1', [createdBody.event.id]
   )).rows[0].status, 'draft', 'review readiness never publishes the event');
+
+  const sentPreview = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/send-preview`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: adminSession },
+    body: '{}'
+  });
+  assert.equal(sentPreview.status, 200);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(sentTexts[0].to, '+14155550181');
+  assert.match(sentTexts[0].body, /Preview and approve it here:/);
+  const firstPreviewUrl = sentTexts[0].body.match(/https?:\/\/\S+/)?.[0];
+  const firstPreviewPath = new URL(firstPreviewUrl).pathname;
+  const rawFirstToken = firstPreviewPath.split('/').pop();
+  const storedPreview = (await pool.query(
+    'SELECT status,preview_token_hash,preview_revision FROM admin_flyer_requests WHERE id=$1',
+    [request.id]
+  )).rows[0];
+  assert.equal(storedPreview.status, 'preview_sent');
+  assert.equal(storedPreview.preview_revision, 1);
+  assert.notEqual(storedPreview.preview_token_hash, rawFirstToken);
+  assert.doesNotMatch(JSON.stringify(await (await fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}`,
+    { headers: { cookie: adminSession } }
+  )).json()), /preview_token_hash/);
+
+  const firstExchange = await fetch(`${baseUrl}${firstPreviewPath}`, { redirect: 'manual' });
+  assert.equal(firstExchange.status, 303);
+  const firstPreviewCookie = responseCookie(firstExchange, 'sge_flyer_preview');
+  assert.ok(firstPreviewCookie);
+  const recipientPage = await fetch(`${baseUrl}${firstExchange.headers.get('location')}`, {
+    headers: { cookie: firstPreviewCookie }
+  });
+  assert.equal(recipientPage.status, 200);
+  const recipientHtml = await recipientPage.text();
+  assert.match(recipientHtml, /Your event is ready/);
+  assert.match(recipientHtml, /flyer-preview\.js/);
+  assert.doesNotMatch(recipientHtml, /event-owner-editor\.js/);
+
+  const changedLook = await fetch(`${baseUrl}/api/flyer-preview/look`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstPreviewCookie },
+    body: JSON.stringify({ backgroundTheme: 'disco', title: 'Must not change' })
+  });
+  assert.equal(changedLook.status, 200);
+  const changedEvent = (await pool.query(
+    'SELECT title,background_theme,status FROM events WHERE id=$1', [createdBody.event.id]
+  )).rows[0];
+  assert.deepEqual(changedEvent, { title: 'Moonlight Night', background_theme: 'disco', status: 'draft' });
+
+  const requestedFix = await fetch(`${baseUrl}/api/flyer-preview/fix`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: firstPreviewCookie },
+    body: JSON.stringify({ message: 'Please change the door time to 7:30.' })
+  });
+  assert.equal(requestedFix.status, 200);
+  assert.equal((await pool.query(
+    'SELECT status,latest_fix_request FROM admin_flyer_requests WHERE id=$1', [request.id]
+  )).rows[0].status, 'changes_requested');
+
+  const revisedReady = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/ready`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  });
+  assert.equal(revisedReady.status, 200);
+  assert.equal((await revisedReady.json()).request.preview_revision, 2);
+  const revisedSent = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/send-preview`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  });
+  assert.equal(revisedSent.status, 200);
+  assert.equal(sentTexts.length, 2);
+  assert.equal((await fetch(`${baseUrl}/api/flyer-preview`, {
+    headers: { cookie: firstPreviewCookie }
+  })).status, 404, 'rotating the revision invalidates the earlier preview browser');
+
+  const secondPreviewPath = new URL(sentTexts[1].body.match(/https?:\/\/\S+/)?.[0]).pathname;
+  const secondExchange = await fetch(`${baseUrl}${secondPreviewPath}`, { redirect: 'manual' });
+  const secondPreviewCookie = responseCookie(secondExchange, 'sge_flyer_preview');
+  const startedApproval = await fetch(`${baseUrl}/api/flyer-preview/approve/start`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie }, body: '{}'
+  });
+  assert.equal(startedApproval.status, 200);
+  const wrongApproval = await fetch(`${baseUrl}/api/flyer-preview/approve/verify`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie },
+    body: JSON.stringify({ code: '000000' })
+  });
+  assert.equal(wrongApproval.status, 400);
+  const approved = await fetch(`${baseUrl}/api/flyer-preview/approve/verify`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie },
+    body: JSON.stringify({ code: '246810' })
+  });
+  assert.equal(approved.status, 200);
+  assert.equal((await approved.json()).status, 'promoter_approved');
+  const approvedState = (await pool.query(
+    `SELECT request.status,request.phone_verified_at,request.promoter_approved_at,event.status AS event_status
+       FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
+      WHERE request.id=$1`, [request.id]
+  )).rows[0];
+  assert.equal(approvedState.status, 'promoter_approved');
+  assert.ok(approvedState.phone_verified_at);
+  assert.ok(approvedState.promoter_approved_at);
+  assert.equal(approvedState.event_status, 'draft', 'recipient approval never publishes');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE phone_e164=$1',
+    ['+14155550181']
+  )).rows[0].count, 0, 'request-scoped approval never becomes an account credential');
 });
 
 test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {

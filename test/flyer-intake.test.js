@@ -46,7 +46,34 @@ test('reviewed flyer requests enter the existing isolated editor without publish
   assert.match(quickCreate, /presentation_mode: flyerRequestDefaults \? 'flyer' : 'standard'/);
   assert.match(quickCreate, /background_theme: flyerRequestDefaults \? 'adaptive' : 'midnight'/);
   assert.match(detail, /existing private Done For You editor/i);
-  assert.doesNotMatch(route, /publishEventInTransaction|sendSms/);
+  assert.doesNotMatch(route, /publishEventInTransaction/);
+});
+
+test('secure flyer previews expose only look, fix, and recipient approval controls', () => {
+  const migration = read('src/db/migrations/063_flyer_preview_approval.sql');
+  const route = read('src/routes/flyer-intake.js');
+  const access = read('src/lib/flyer-preview-access.js');
+  const publicRoute = read('src/routes/public.js');
+  const script = read('public/js/flyer-preview.js');
+  const css = read('public/css/flyer-preview.css');
+
+  assert.match(migration, /admin_flyer_request_phone_challenges/);
+  assert.match(migration, /never an account authentication credential/i);
+  assert.match(access, /crypto\.randomBytes\(32\)/);
+  assert.match(access, /preview_token_hash=\$1/);
+  assert.match(route, /flyer-intake\/:id\/send-preview/);
+  assert.match(route, /Your Silver Glider event page is ready!/);
+  assert.match(route, /\/api\/flyer-preview\/look/);
+  assert.match(route, /\/api\/flyer-preview\/fix/);
+  assert.match(route, /\/api\/flyer-preview\/approve\/start/);
+  assert.match(route, /\/api\/flyer-preview\/approve\/verify/);
+  assert.match(route, /presentation_mode='flyer'/);
+  assert.match(publicRoute, /readFlyerPreviewAccess/);
+  assert.match(script, /Change the look/);
+  assert.match(script, /Request a fix/);
+  assert.match(script, /Looks good/);
+  assert.match(css, /@media\(max-width:720px\)/);
+  assert.doesNotMatch(route, /setSessionCookie|attachIdentity|account_phone_credentials/);
 });
 
 test('public flyer page asks for private identity, public host identity, and explicit text consent', () => {

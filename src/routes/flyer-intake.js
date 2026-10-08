@@ -7,6 +7,18 @@ const { uploadFlyer, deleteManagedPublicId, configured } = require('../lib/cloud
 const { IDENTITY_TYPES, normalizeIdentity } = require('../lib/canonical-identity');
 const { selectAccentColor } = require('../../public/js/artwork-color');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
+const sms = require('../lib/sms');
+const phoneVerification = require('../lib/phone-verification');
+const EventBackgrounds = require('../../public/js/event-backgrounds');
+const {
+  TOKEN_TTL_SECONDS,
+  createPreviewToken,
+  previewCookieToken,
+  readFlyerPreviewAccess,
+  readPreviewByToken,
+  setPreviewCookie,
+  tokenHash
+} = require('../lib/flyer-preview-access');
 const {
   DoneForYouProvisioningError,
   lookupDoneForYouClient,
@@ -34,8 +46,28 @@ const intakeLimiter = createRateLimiter({
   rules: [{ name: 'ip', max: 6, key: context => context.ip }]
 });
 
+const previewLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  rules: [
+    { name: 'ip', max: 80, key: context => context.ip },
+    { name: 'token', max: 50, key: context => context.tokenHash }
+  ]
+});
+const previewVerificationLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  rules: [
+    { name: 'ip', max: 12, key: context => context.ip },
+    { name: 'token', max: 8, key: context => context.tokenHash }
+  ]
+});
+
 const limiterTimer = setInterval(() => intakeLimiter.prune(), 60 * 60 * 1000);
 limiterTimer.unref();
+const previewLimiterTimer = setInterval(() => {
+  previewLimiter.prune();
+  previewVerificationLimiter.prune();
+}, 15 * 60 * 1000);
+previewLimiterTimer.unref();
 
 function handleFlyerUpload(req, res, next) {
   upload.single('flyer')(req, res, error => {
@@ -95,6 +127,39 @@ async function readFlyerRequest(db, id, { forUpdate = false } = {}) {
     [id]
   );
   return result.rows[0] || null;
+}
+
+function publicAdminRequest(request) {
+  if (!request) return null;
+  const {
+    preview_token_hash: ignoredPreviewHash,
+    ...safe
+  } = request;
+  return safe;
+}
+
+function previewRate(req, res, limiter = previewLimiter) {
+  const token = previewCookieToken(req);
+  const result = limiter.consume({
+    ip: clientIp(req),
+    tokenHash: token ? tokenHash(token) : 'missing'
+  });
+  if (result.allowed) return true;
+  res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+  res.status(429).json({
+    error: 'too_many_preview_requests',
+    message: 'Too many requests. Wait a few minutes and try again.'
+  });
+  return false;
+}
+
+function previewError(res, status, error, message) {
+  return res.status(status).json({ error, message });
+}
+
+function maskedPhone(phone) {
+  const value = String(phone || '');
+  return value.length > 4 ? `••• ••• ${value.slice(-4)}` : 'your phone';
 }
 
 async function writeFlyerAudit(db, req, request, actionType, beforeState, afterState) {
@@ -250,6 +315,246 @@ router.post('/api/flyer-intake', async (req, res, next) => {
   });
 });
 
+// The raw high-entropy token is removed from the address bar immediately. The
+// browser keeps it in an HttpOnly, same-site cookie so page scripts cannot read
+// or leak it while the recipient reviews the real unpublished event.
+router.get('/p/:token', async (req, res, next) => {
+  try {
+    const preview = await readPreviewByToken(pool, req.params.token);
+    if (!preview) return res.status(404).send('Preview not found or expired.');
+    const remainingSeconds = Math.max(1, Math.min(
+      TOKEN_TTL_SECONDS,
+      Math.floor((new Date(preview.preview_token_expires_at).getTime() - Date.now()) / 1000)
+    ));
+    setPreviewCookie(res, req.params.token, remainingSeconds);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return res.redirect(303, `/e/${encodeURIComponent(preview.event_slug)}?preview=1`);
+  } catch (error) { next(error); }
+});
+
+router.get('/api/flyer-preview', async (req, res, next) => {
+  if (!previewRate(req, res)) return;
+  try {
+    const preview = await readFlyerPreviewAccess(pool, req);
+    if (!preview) return previewError(res, 404, 'preview_not_found', 'This preview has expired. Ask Silver Glider for a new link.');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({
+      preview: {
+        hostName: preview.host_name,
+        eventTitle: preview.event_title,
+        status: preview.status,
+        revision: Number(preview.preview_revision),
+        backgroundTheme: preview.background_theme,
+        phone: maskedPhone(preview.phone_e164),
+        approved: preview.status === 'promoter_approved' || preview.status === 'published',
+        published: preview.status === 'published'
+      },
+      looks: EventBackgrounds.options.map(option => ({
+        key: option.key,
+        label: EventBackgrounds.label(option.key, 'flyer'),
+        group: option.group
+      }))
+    });
+  } catch (error) { next(error); }
+});
+
+router.post('/api/flyer-preview/look', async (req, res, next) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  if (!previewRate(req, res)) return;
+  const backgroundTheme = String(req.body?.backgroundTheme || '').trim();
+  if (!EventBackgrounds.keys.includes(backgroundTheme)) {
+    return previewError(res, 400, 'invalid_look', 'Choose one of the available looks.');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const preview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
+    if (!preview || !['preview_sent', 'changes_requested'].includes(preview.status) || preview.event_status !== 'draft') {
+      await client.query('ROLLBACK');
+      return previewError(res, 409, 'preview_not_editable', 'This preview can no longer be changed.');
+    }
+    const updated = (await client.query(
+      `UPDATE events
+          SET background_theme=$1,updated_at=NOW()
+        WHERE id=$2 AND status='draft' AND presentation_mode='flyer'
+        RETURNING background_theme`,
+      [backgroundTheme, preview.event_id]
+    )).rows[0];
+    if (!updated) {
+      await client.query('ROLLBACK');
+      return previewError(res, 409, 'preview_not_editable', 'This flyer preview can no longer be changed.');
+    }
+    await client.query('UPDATE admin_flyer_requests SET updated_at=NOW() WHERE id=$1', [preview.id]);
+    await client.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, backgroundTheme: updated.background_theme });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { client.release(); }
+});
+
+router.post('/api/flyer-preview/fix', async (req, res, next) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  if (!previewRate(req, res)) return;
+  const message = cleanText(req.body?.message, 1000);
+  if (!message) return previewError(res, 400, 'missing_fix_request', 'Tell us what you would like changed.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const preview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
+    if (!preview || preview.status !== 'preview_sent' || preview.event_status !== 'draft') {
+      await client.query('ROLLBACK');
+      return previewError(res, 409, 'fix_request_unavailable', 'This preview is not waiting for changes.');
+    }
+    await client.query(
+      `UPDATE admin_flyer_requests
+          SET status='changes_requested',latest_fix_request=$2,
+              changes_requested_at=NOW(),updated_at=NOW()
+        WHERE id=$1`,
+      [preview.id, message]
+    );
+    await client.query(
+      `UPDATE admin_flyer_request_phone_challenges
+          SET superseded_at=NOW()
+        WHERE flyer_request_id=$1 AND verified_at IS NULL AND superseded_at IS NULL`,
+      [preview.id]
+    );
+    await client.query('COMMIT');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, status: 'changes_requested' });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { client.release(); }
+});
+
+router.post('/api/flyer-preview/approve/start', async (req, res, next) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  if (!previewRate(req, res, previewVerificationLimiter)) return;
+  try {
+    const preview = await readFlyerPreviewAccess(pool, req);
+    if (!preview || preview.status !== 'preview_sent' || preview.event_status !== 'draft') {
+      return previewError(res, 409, 'approval_unavailable', 'This preview is not ready for approval.');
+    }
+    const verification = await phoneVerification.startVerification(preview.phone_e164);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await readFlyerPreviewAccess(client, req, { forUpdate: true });
+      if (!locked || locked.status !== 'preview_sent' || locked.event_status !== 'draft' ||
+          locked.phone_e164 !== verification.phone) {
+        await client.query('ROLLBACK');
+        return previewError(res, 409, 'approval_unavailable', 'This preview changed. Open the latest link and try again.');
+      }
+      await client.query(
+        `UPDATE admin_flyer_request_phone_challenges
+            SET superseded_at=NOW()
+          WHERE flyer_request_id=$1 AND verified_at IS NULL AND superseded_at IS NULL`,
+        [locked.id]
+      );
+      await client.query(
+        `INSERT INTO admin_flyer_request_phone_challenges
+           (flyer_request_id,preview_revision,provider_sid,phone_e164,expires_at)
+         VALUES ($1,$2,$3,$4,NOW() + INTERVAL '10 minutes')`,
+        [locked.id, locked.preview_revision, verification.verificationSid, verification.phone]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, phone: maskedPhone(preview.phone_e164), codeLength: 6 });
+  } catch (error) {
+    if (error instanceof phoneVerification.PhoneVerificationError) {
+      return previewError(res, error.status, error.code, error.message);
+    }
+    next(error);
+  }
+});
+
+router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  if (!previewRate(req, res, previewVerificationLimiter)) return;
+  let preview;
+  let challenge;
+  try {
+    preview = await readFlyerPreviewAccess(pool, req);
+    if (!preview || preview.status !== 'preview_sent' || preview.event_status !== 'draft') {
+      return previewError(res, 409, 'approval_unavailable', 'This preview is not ready for approval.');
+    }
+    challenge = (await pool.query(
+      `SELECT * FROM admin_flyer_request_phone_challenges
+        WHERE flyer_request_id=$1 AND verified_at IS NULL AND superseded_at IS NULL
+          AND expires_at>NOW() AND verification_attempts<5
+        ORDER BY created_at DESC LIMIT 1`,
+      [preview.id]
+    )).rows[0];
+    if (!challenge) return previewError(res, 400, 'verification_expired', 'Request a new verification code.');
+
+    const verification = await phoneVerification.checkVerification({
+      verificationSid: challenge.provider_sid,
+      code: req.body?.code
+    });
+    if (verification.phone !== preview.phone_e164) {
+      return previewError(res, 400, 'verification_mismatch', 'Phone verification could not be completed.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lockedPreview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
+      const lockedChallenge = (await client.query(
+        `SELECT * FROM admin_flyer_request_phone_challenges
+          WHERE id=$1 FOR UPDATE`,
+        [challenge.id]
+      )).rows[0];
+      if (!lockedPreview || lockedPreview.status !== 'preview_sent' ||
+          !lockedChallenge || lockedChallenge.verified_at || lockedChallenge.superseded_at ||
+          lockedChallenge.provider_sid !== verification.verificationSid ||
+          Number(lockedChallenge.preview_revision) !== Number(lockedPreview.preview_revision) ||
+          lockedChallenge.phone_e164 !== verification.phone ||
+          new Date(lockedChallenge.expires_at).getTime() <= Date.now()) {
+        await client.query('ROLLBACK');
+        return previewError(res, 409, 'verification_expired', 'This verification is no longer active.');
+      }
+      await client.query(
+        'UPDATE admin_flyer_request_phone_challenges SET verified_at=NOW() WHERE id=$1',
+        [lockedChallenge.id]
+      );
+      await client.query(
+        `UPDATE admin_flyer_requests
+            SET status='promoter_approved',phone_verified_at=NOW(),
+                promoter_approved_at=NOW(),updated_at=NOW()
+          WHERE id=$1`,
+        [lockedPreview.id]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { client.release(); }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ ok: true, status: 'promoter_approved' });
+  } catch (error) {
+    if (challenge && error instanceof phoneVerification.PhoneVerificationError && error.status === 400) {
+      await pool.query(
+        `UPDATE admin_flyer_request_phone_challenges
+            SET verification_attempts=LEAST(5,verification_attempts+1)
+          WHERE id=$1 AND verified_at IS NULL AND superseded_at IS NULL`,
+        [challenge.id]
+      ).catch(() => {});
+    }
+    if (error instanceof phoneVerification.PhoneVerificationError) {
+      return previewError(res, error.status, error.code, error.message);
+    }
+    next(error);
+  }
+});
+
 router.use('/api/admin/done-for-you/flyer-intake', requireAdmin, requireDedicatedAdmin);
 
 router.get('/api/admin/done-for-you/flyer-intake', async (req, res, next) => {
@@ -376,7 +681,7 @@ router.get('/api/admin/done-for-you/flyer-intake/:id', async (req, res, next) =>
       };
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
-      request,
+      request: publicAdminRequest(request),
       lookup,
       capabilities: {
         manageIntake: req.adminOperator.role === 'super_admin',
@@ -561,5 +866,121 @@ router.post('/api/admin/done-for-you/flyer-intake/:id/ready', async (req, res, n
   } finally { connection.release(); }
 });
 
+router.post(
+  '/api/admin/done-for-you/flyer-intake/:id/send-preview',
+  requireSuperAdmin,
+  async (req, res, next) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+    const rawToken = createPreviewToken();
+    const appUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
+    if (!appUrl) return res.status(503).json({ error: 'app_url_not_configured', message: 'Preview links are not configured.' });
+    const client = await pool.connect();
+    let request;
+    let messageId;
+    try {
+      await client.query('BEGIN');
+      request = await readFlyerRequest(client, id, { forUpdate: true });
+      if (!request || request.status !== 'ready_for_review' || request.event_status !== 'draft') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_preview_not_ready',
+          message: 'The real unpublished event must be ready for Super Admin review first.'
+        });
+      }
+      const prior = (await client.query(
+        `SELECT * FROM admin_flyer_request_messages
+          WHERE flyer_request_id=$1 AND message_kind='preview' AND revision=$2
+          FOR UPDATE`,
+        [id, request.preview_revision]
+      )).rows[0];
+      if (prior?.status === 'sent' ||
+          (prior?.status === 'sending' && Date.now() - new Date(prior.created_at).getTime() < 10 * 60 * 1000)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_preview_already_sent',
+          message: 'This preview revision has already been sent.'
+        });
+      }
+      const ledger = (await client.query(
+        `INSERT INTO admin_flyer_request_messages
+           (flyer_request_id,message_kind,revision,recipient,status,initiated_by_admin_operator_id)
+         VALUES ($1,'preview',$2,$3,'sending',$4)
+         ON CONFLICT (flyer_request_id,message_kind,revision)
+         DO UPDATE SET recipient=EXCLUDED.recipient,status='sending',provider_id=NULL,
+                       error=NULL,initiated_by_admin_operator_id=EXCLUDED.initiated_by_admin_operator_id,
+                       created_at=NOW(),sent_at=NULL
+         RETURNING id`,
+        [id, request.preview_revision, request.phone_e164, req.adminOperator.id]
+      )).rows[0];
+      messageId = Number(ledger.id);
+      await client.query(
+        `UPDATE admin_flyer_requests
+            SET preview_token_hash=$2,
+                preview_token_expires_at=NOW() + INTERVAL '7 days',updated_at=NOW()
+          WHERE id=$1`,
+        [id, tokenHash(rawToken)]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+      return next(error);
+    }
+    client.release();
+
+    const link = `${appUrl}/p/${rawToken}`;
+    const body = `Your Silver Glider event page is ready! 🎸\nPreview and approve it here: ${link}`;
+    try {
+      const delivered = await sms.sendSms({ to: request.phone_e164, body });
+      const saved = await pool.connect();
+      try {
+        await saved.query('BEGIN');
+        const updated = (await saved.query(
+          `UPDATE admin_flyer_requests
+              SET status='preview_sent',preview_sent_at=NOW(),updated_at=NOW()
+            WHERE id=$1 AND status='ready_for_review'
+            RETURNING *`,
+          [id]
+        )).rows[0];
+        if (!updated) throw new Error('Flyer request changed while the preview text was sending');
+        await saved.query(
+          `UPDATE admin_flyer_request_messages
+              SET status='sent',provider_id=$2,sent_at=NOW()
+            WHERE id=$1 AND status='sending'`,
+          [messageId, delivered.sid]
+        );
+        updated.target_user_id = request.target_user_id;
+        await writeFlyerAudit(saved, req, updated, 'flyer_preview_sent', {
+          status: request.status,
+          previewRevision: Number(request.preview_revision)
+        }, {
+          status: 'preview_sent',
+          previewRevision: Number(request.preview_revision)
+        });
+        await saved.query('COMMIT');
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.json({ request: publicAdminRequest(updated), message: { status: 'sent' } });
+      } catch (error) {
+        await saved.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { saved.release(); }
+    } catch (error) {
+      await pool.query(
+        `UPDATE admin_flyer_request_messages
+            SET status='failed',error=$2
+          WHERE id=$1 AND status='sending'`,
+        [messageId, cleanText(error.message, 500) || 'SMS delivery failed']
+      ).catch(() => {});
+      return next(error);
+    }
+  }
+);
+
 module.exports = router;
+module.exports.resetRateLimitsForTests = () => {
+  intakeLimiter.reset();
+  previewLimiter.reset();
+  previewVerificationLimiter.reset();
+};
 module.exports._test = { normalizeSubmission, readSettings, SMS_CONSENT_VERSION };

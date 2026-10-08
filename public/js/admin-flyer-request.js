@@ -42,7 +42,7 @@ function actionButton(id, text, primary = false) {
   return `<button class="sg-btn ${primary ? 'sg-btn-primary' : 'sg-btn-ghost'}" id="${id}" type="button">${esc(text)}</button>`;
 }
 
-function renderWorkflow(request) {
+function renderWorkflow(request, capabilities = {}) {
   const root = document.getElementById('flyer-request-workflow');
   const steps = [];
   if (!request.done_for_you_client_id) {
@@ -53,11 +53,19 @@ function renderWorkflow(request) {
     steps.push(actionButton('open-flyer-editor', 'Start event draft', true));
   } else if (['building', 'changes_requested'].includes(request.status)) {
     steps.push(`<p><strong>${esc(request.event_title || 'Event draft')}</strong> is private and still being prepared.</p>`);
+    if (request.status === 'changes_requested' && request.latest_fix_request) {
+      steps.push(`<blockquote class="dfy-fix-request"><strong>Promoter’s request</strong><span>${esc(request.latest_fix_request)}</span></blockquote>`);
+    }
     steps.push(actionButton('open-flyer-editor', 'Continue editing', true));
     steps.push(actionButton('mark-flyer-ready', request.status === 'changes_requested' ? 'Fix complete — ready again' : 'Ready for Super Admin review'));
   } else if (request.status === 'ready_for_review') {
     steps.push('<p><strong>Ready for review.</strong> A Super Admin must inspect the real event page before any preview text can be sent.</p>');
     steps.push(actionButton('open-flyer-editor', 'Inspect draft'));
+    if (capabilities.sendPreview) steps.push(actionButton('send-flyer-preview', 'Send preview text', true));
+  } else if (request.status === 'preview_sent') {
+    steps.push(`<p><strong>Preview sent.</strong> The promoter can try approved looks, request one fix, or approve from the secure page sent to ${esc(request.phone_e164)}.</p>`);
+  } else if (request.status === 'promoter_approved') {
+    steps.push('<p><strong>Approved by the verified flyer recipient.</strong> The draft stays private until a Super Admin publishes it.</p>');
   } else if (request.event_id) {
     steps.push(`<p>The linked event is ${esc(label(request.status).toLowerCase())}. Later lifecycle actions appear here as they become available.</p>`);
   }
@@ -65,6 +73,7 @@ function renderWorkflow(request) {
   document.getElementById('prepare-flyer-request')?.addEventListener('click', prepare);
   document.getElementById('open-flyer-editor')?.addEventListener('click', openEditor);
   document.getElementById('mark-flyer-ready')?.addEventListener('click', markReady);
+  document.getElementById('send-flyer-preview')?.addEventListener('click', sendPreview);
 }
 
 function render(payload) {
@@ -82,7 +91,7 @@ function render(payload) {
     <div><dt>Mobile</dt><dd>${esc(request.phone_e164)}</dd></div>
     <div><dt>Flyer artwork</dt><dd>${esc(request.artwork_credit || 'Not provided')}</dd></div>`;
   renderMatch(payload.lookup || {}, request);
-  renderWorkflow(request);
+  renderWorkflow(request, payload.capabilities || {});
   loading.hidden = true;
   errorPanel.hidden = true;
   detail.hidden = false;
@@ -139,6 +148,15 @@ async function markReady(event) {
     await runAction(event.currentTarget, 'Sending for review…', () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/ready`, { method: 'POST', body: {} }));
     await load();
     actionStatus.textContent = 'Ready for Super Admin review.';
+  } catch (_) {}
+}
+
+async function sendPreview(event) {
+  if (!confirm('Send the secure event preview to the submitted phone number?')) return;
+  try {
+    await runAction(event.currentTarget, 'Sending preview…', () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/send-preview`, { method: 'POST', body: {} }));
+    await load();
+    actionStatus.textContent = 'Preview text sent.';
   } catch (_) {}
 }
 
