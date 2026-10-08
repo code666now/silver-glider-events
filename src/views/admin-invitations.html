@@ -22,7 +22,7 @@
     .created-panel strong { display:block;margin-bottom:5px;font-size:14px; }
     .created-panel p { margin-bottom:13px;color:var(--sg-text-dim);font-size:12px;overflow-wrap:anywhere; }
     .created-actions,.invite-row-actions { display:flex;flex-wrap:wrap;gap:8px; }
-    .created-actions .sg-btn,.invite-row-actions .sg-btn { padding:8px 14px;font-size:11px; }
+    .created-actions .sg-btn,.invite-row-actions .sg-btn { min-height:40px;padding:8px 14px;font-size:11px; }
     .invite-list-head { display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px; }
     .invite-list-head h2 { font-size:23px;margin-bottom:4px; }
     .invite-list-head p { color:var(--sg-text-dim);font-size:12px; }
@@ -46,6 +46,8 @@
       .invite-row-head { flex-direction:column;gap:9px; }
       .invite-status { align-self:flex-start; }
       .invite-form-card,.invite-admin-row { padding:18px; }
+      .invite-row-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .invite-row-actions .sg-btn { min-height:44px;justify-content:center;text-align:center; }
     }
   </style>
 </head>
@@ -71,7 +73,7 @@
           <button class="sg-btn sg-btn-primary sg-btn-block" id="create-invite" type="submit">Create invitation</button>
         </form>
         <div class="created-panel" id="created-panel" aria-live="polite">
-          <strong>Invitation ready</strong>
+          <strong id="created-title">Invitation ready</strong>
           <p id="created-url"></p>
           <div class="created-actions">
             <button class="sg-btn sg-btn-primary" id="created-copy" type="button">Copy link</button>
@@ -168,12 +170,38 @@
           <p class="invite-path">${esc(fullUrl(item.path))}</p>
           <div class="invite-row-actions">
             ${item.revoked_at ? '' : `<a class="sg-btn sg-btn-ghost" href="${esc(item.path)}" target="_blank" rel="noopener">Preview</a><button class="sg-btn sg-btn-ghost" type="button" data-copy="${esc(item.path)}">Copy link</button>`}
+            ${item.joined_organizer_id ? `<button class="sg-btn sg-btn-ghost" type="button" data-reset="${item.id}">Reset invitation</button>` : ''}
             <button class="sg-btn ${item.revoked_at ? 'sg-btn-ghost' : 'sg-btn-danger'}" type="button" data-toggle="${item.id}" data-revoked="${item.revoked_at ? 'false' : 'true'}">${item.revoked_at ? 'Restore' : 'Revoke'}</button>
           </div>
         </article>`;
         }).join('');
 
         list.querySelectorAll('[data-copy]').forEach(button => button.addEventListener('click', () => copyPath(button.dataset.copy)));
+        list.querySelectorAll('[data-reset]').forEach(button => button.addEventListener('click', async () => {
+        const confirmed = confirm(
+          'Reset this invitation for a new person? The current link will stop working. ' +
+          'The joined account and its events will not be changed. A fresh link will be created.'
+        );
+        if (!confirmed) return;
+        button.disabled = true;
+        button.textContent = 'Resetting…';
+        try {
+          const { invitation } = await api(`/api/admin/invitations/${button.dataset.reset}/reset`, {
+            method:'POST',body:{confirm:'RESET_INVITATION'}
+          });
+          createdPath = invitation.path;
+          document.getElementById('created-title').textContent = 'Fresh invitation ready';
+          document.getElementById('created-url').textContent = fullUrl(createdPath);
+          document.getElementById('created-open').href = createdPath;
+          document.getElementById('created-panel').classList.add('open');
+          toast('Invitation reset with a fresh link');
+          await loadInvitations();
+        } catch (err) {
+          button.disabled = false;
+          button.textContent = 'Reset invitation';
+          toast(err.message);
+        }
+        }));
         list.querySelectorAll('[data-toggle]').forEach(button => button.addEventListener('click', async () => {
         const revoke = button.dataset.revoked === 'true';
         if (revoke && !confirm('Revoke this invitation? Its private link will stop working.')) return;
@@ -207,6 +235,7 @@
           method:'POST',body:{host_name:hostName.value,personal_note:personalNote.value}
         });
         createdPath = invitation.path;
+        document.getElementById('created-title').textContent = 'Invitation ready';
         document.getElementById('created-url').textContent = fullUrl(createdPath);
         document.getElementById('created-open').href = createdPath;
         document.getElementById('created-panel').classList.add('open');

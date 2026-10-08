@@ -45,3 +45,19 @@ test('admin workspace uses consistent responsive loading and recovery states', (
   assert.match(ticketing, /id="send-launch"[^>]*disabled/);
   assert.match(ticketing, /id="retry-interest"/);
 });
+
+test('joined host invitations can be reset with clear consequences and mobile-safe controls', () => {
+  const invitations = read('src/views/admin-invitations.html');
+  const adminRoutes = read('src/routes/admin.js');
+
+  assert.match(invitations, /data-reset="\$\{item\.id\}">Reset invitation/);
+  assert.match(invitations, /The current link will stop working/);
+  assert.match(invitations, /The joined account and its events will not be changed/);
+  assert.match(invitations, /body:\{confirm:'RESET_INVITATION'\}/);
+  assert.match(invitations, /Fresh invitation ready/);
+  assert.match(invitations, /@media\(max-width:560px\)[\s\S]*min-height:44px/);
+
+  assert.match(adminRoutes, /\/api\/admin\/invitations\/:id\/reset', requireSuperAdmin/);
+  assert.match(adminRoutes, /SET token=\$2,joined_organizer_id=NULL,joined_at=NULL/);
+  assert.match(adminRoutes, /action_type,reason,[\s\S]*'host_invitation_reset'/);
+});

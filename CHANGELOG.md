@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.162
+
+Released October 8, 2026. Built and deployed by Codex.
+
+### Fresh links for tested invitations
+
+* A Super Admin can now reset a joined personalized invitation for its intended recipient.
+* Resetting rotates the private link, clears only that invitation's joined claim, and preserves its name and personal note.
+* The account used during testing—and its public page, events, and other data—remains unchanged.
+* The reset requires explicit confirmation, records an immutable audit entry, and presents the fresh link immediately for copying or previewing.
+* Joined invitation controls now keep full-size touch targets and a clear two-column action layout on phones.
+
+### Verification
+
+* Static validation and all 518 automated tests pass.
+* Real Admin browser checks cover the complete reset interaction at 1440×900 and 390×844, including the resulting fresh-link state.
+
 ## 1.0.161
 
 Released October 7, 2026. Built and deployed by Codex.

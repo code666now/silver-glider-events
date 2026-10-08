@@ -6854,6 +6854,139 @@ test('dedicated admin mutations enforce same-origin and retain the operator audi
   assert.match(logout.headers.get('set-cookie') || '', /sge_admin_session=;/);
 });
 
+test('a Super Admin can reset a joined host invitation without changing the joined account', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('invitation-reset-admin@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const support = await createAdminOperator('invitation-reset-support@example.test', 'support');
+  const supportSession = await signInAdminOperator(support.email);
+  const oldToken = 'reset-this-host-123456789';
+  const beforeAccount = (await pool.query(
+    `SELECT id,user_id,email,name,org_name,public_slug
+       FROM organizers WHERE id=$1`,
+    [organizerId]
+  )).rows[0];
+  const invitation = (await pool.query(
+    `INSERT INTO host_invitations
+       (token,host_name,personal_note,joined_organizer_id,joined_at,revoked_at,
+        created_by_admin_operator_id)
+     VALUES ($1,'Reset Ready Host','Keep this personal invitation message exactly as written.',
+             $2,NOW(),NOW(),$3)
+     RETURNING id`,
+    [oldToken, organizerId, operator.id]
+  )).rows[0];
+  const unjoined = (await pool.query(
+    `INSERT INTO host_invitations
+       (token,host_name,personal_note,created_by_admin_operator_id)
+     VALUES ('not-joined-reset-123456789','Not Joined Host',
+             'An unused invitation should not be reset.', $1)
+     RETURNING id`,
+    [operator.id]
+  )).rows[0];
+
+  const resetUrl = `${baseUrl}/api/admin/invitations/${invitation.id}/reset`;
+  const adminHeaders = {
+    'content-type': 'application/json',
+    cookie: adminSession,
+    origin: baseUrl,
+    'sec-fetch-site': 'same-origin'
+  };
+  const missingConfirmation = await fetch(resetUrl, {
+    method: 'POST', headers: adminHeaders, body: '{}'
+  });
+  assert.equal(missingConfirmation.status, 400);
+  assert.equal((await missingConfirmation.json()).code, 'confirmation_required');
+
+  const supportReset = await fetch(resetUrl, {
+    method: 'POST',
+    headers: { ...adminHeaders, cookie: supportSession },
+    body: JSON.stringify({ confirm: 'RESET_INVITATION' })
+  });
+  assert.equal(supportReset.status, 403);
+
+  const unusedReset = await fetch(
+    `${baseUrl}/api/admin/invitations/${unjoined.id}/reset`,
+    {
+      method: 'POST', headers: adminHeaders,
+      body: JSON.stringify({ confirm: 'RESET_INVITATION' })
+    }
+  );
+  assert.equal(unusedReset.status, 409);
+  assert.equal((await unusedReset.json()).code, 'invitation_not_joined');
+
+  const reset = await fetch(resetUrl, {
+    method: 'POST', headers: adminHeaders,
+    body: JSON.stringify({ confirm: 'RESET_INVITATION' })
+  });
+  assert.equal(reset.status, 200);
+  const resetInvitation = (await reset.json()).invitation;
+  assert.equal(Number(resetInvitation.id), Number(invitation.id));
+  assert.notEqual(resetInvitation.token, oldToken);
+  assert.equal(resetInvitation.path, `/i/${resetInvitation.token}`);
+  assert.equal(resetInvitation.host_name, 'Reset Ready Host');
+  assert.equal(resetInvitation.personal_note, 'Keep this personal invitation message exactly as written.');
+  assert.equal(resetInvitation.joined_organizer_id, null);
+  assert.equal(resetInvitation.joined_at, null);
+  assert.equal(resetInvitation.revoked_at, null);
+
+  const stored = (await pool.query(
+    `SELECT token,host_name,personal_note,joined_organizer_id,joined_at,revoked_at
+       FROM host_invitations WHERE id=$1`,
+    [invitation.id]
+  )).rows[0];
+  assert.equal(stored.token, resetInvitation.token);
+  assert.equal(stored.host_name, 'Reset Ready Host');
+  assert.equal(stored.personal_note, 'Keep this personal invitation message exactly as written.');
+  assert.equal(stored.joined_organizer_id, null);
+  assert.equal(stored.joined_at, null);
+  assert.equal(stored.revoked_at, null);
+  assert.deepEqual((await pool.query(
+    `SELECT id,user_id,email,name,org_name,public_slug
+       FROM organizers WHERE id=$1`,
+    [organizerId]
+  )).rows[0], beforeAccount, 'resetting the invitation does not alter the prior account');
+
+  assert.equal((await fetch(`${baseUrl}/i/${oldToken}`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}${resetInvitation.path}`)).status, 200);
+  const audit = (await pool.query(
+    `SELECT actor_admin_operator_id,target_user_id,action_type,before_state,after_state,metadata
+       FROM admin_account_audit_log
+      WHERE action_type='host_invitation_reset'
+      ORDER BY id DESC LIMIT 1`
+  )).rows[0];
+  assert.equal(Number(audit.actor_admin_operator_id), Number(operator.id));
+  assert.equal(Number(audit.target_user_id), Number(beforeAccount.user_id));
+  assert.equal(audit.action_type, 'host_invitation_reset');
+  assert.deepEqual(audit.before_state, { joined: true, revoked: true });
+  assert.deepEqual(audit.after_state, { joined: false, revoked: false, linkRotated: true });
+  assert.equal(Number(audit.metadata.invitationId), Number(invitation.id));
+  assert.equal(Number(audit.metadata.previousOrganizerId), Number(organizerId));
+
+  const newRecipient = (await pool.query(
+    `INSERT INTO organizers (email,name,last_login_at)
+     VALUES ('fresh-invitation-recipient@example.test','Fresh Recipient',NOW())
+     RETURNING id`
+  )).rows[0];
+  const claimed = await fetch(
+    `${baseUrl}/api/host-invitations/${resetInvitation.token}/accept`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `sge_session=${signSession(newRecipient.id)}`,
+        origin: baseUrl,
+        'sec-fetch-site': 'same-origin'
+      },
+      body: '{}'
+    }
+  );
+  assert.equal(claimed.status, 200);
+  assert.equal(Number((await pool.query(
+    'SELECT joined_organizer_id FROM host_invitations WHERE id=$1',
+    [invitation.id]
+  )).rows[0].joined_organizer_id), Number(newRecipient.id));
+});
+
 test('Accounts & Support returns complete verified and contact-only identity data to admins', async () => {
   const operator = await createAdminOperator('accounts-support@example.test', 'support');
   const adminCookie = await signInAdminOperator(operator.email);

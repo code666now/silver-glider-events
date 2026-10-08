@@ -54,6 +54,10 @@ function slugify(value) {
     .replace(/^-+|-+$/g, '').slice(0, 70) || 'host';
 }
 
+function invitationToken(hostName) {
+  return `${slugify(hostName)}-${crypto.randomBytes(8).toString('hex')}`;
+}
+
 const invitationSelect = `
   SELECT i.id, i.token, i.host_name, i.personal_note,
          i.created_by_organizer_id, i.joined_organizer_id,
@@ -551,7 +555,7 @@ router.post('/api/admin/invitations', async (req, res, next) => {
       return res.status(400).json({ error: 'Enter a personal reason between 8 and 500 characters' });
     }
 
-    const token = `${slugify(hostName)}-${crypto.randomBytes(8).toString('hex')}`;
+    const token = invitationToken(hostName);
     const actor = actorIds(req);
     const { rows } = await pool.query(
       `INSERT INTO host_invitations
@@ -584,6 +588,86 @@ router.patch('/api/admin/invitations/:id', async (req, res, next) => {
     if (!rows.length) return res.status(404).json({ error: 'Invitation not found' });
     res.json({ invitation: { ...rows[0], path: `/i/${rows[0].token}` } });
   } catch (err) { next(err); }
+});
+
+// POST /api/admin/invitations/:id/reset — release a joined invitation for a
+// different recipient. The old bearer link is rotated, while the account that
+// previously joined (and all of its events and profile data) remains intact.
+router.post('/api/admin/invitations/:id/reset', requireSuperAdmin, async (req, res, next) => {
+  const id = positiveId(req.params.id);
+  if (!id) return res.status(404).json({ error: 'Invitation not found' });
+  if (req.body?.confirm !== 'RESET_INVITATION') {
+    return res.status(400).json({
+      error: 'Confirm that you want to reset this invitation',
+      code: 'confirmation_required'
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `SELECT i.*, joined.user_id AS joined_user_id
+         FROM host_invitations i
+         LEFT JOIN organizers joined ON joined.id=i.joined_organizer_id
+        WHERE i.id=$1
+        FOR UPDATE OF i`,
+      [id]
+    );
+    const invitation = rows[0];
+    if (!invitation) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Invitation not found' });
+    }
+    if (invitation.joined_organizer_id == null) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'Only a joined invitation can be reset',
+        code: 'invitation_not_joined'
+      });
+    }
+
+    const token = invitationToken(invitation.host_name);
+    const { rows: updatedRows } = await client.query(
+      `UPDATE host_invitations
+          SET token=$2,joined_organizer_id=NULL,joined_at=NULL,
+              revoked_at=NULL,updated_at=NOW()
+        WHERE id=$1
+        RETURNING *`,
+      [id, token]
+    );
+    const updated = updatedRows[0];
+    const actor = actorIds(req);
+    await client.query(
+      `INSERT INTO admin_account_audit_log
+         (actor_user_id,actor_admin_operator_id,target_user_id,action_type,reason,
+          before_state,after_state,metadata,request_ip,user_agent)
+       VALUES ($1,$2,$3,'host_invitation_reset',
+               'Reset a joined host invitation for a new recipient',
+               $4::jsonb,$5::jsonb,$6::jsonb,$7,$8)`,
+      [
+        actor.actorUserId,
+        actor.actorAdminOperatorId,
+        invitation.joined_user_id || null,
+        JSON.stringify({ joined: true, revoked: Boolean(invitation.revoked_at) }),
+        JSON.stringify({ joined: false, revoked: false, linkRotated: true }),
+        JSON.stringify({
+          invitationId: Number(invitation.id),
+          previousOrganizerId: Number(invitation.joined_organizer_id),
+          hostName: invitation.host_name
+        }),
+        String(clientIp(req) || '').slice(0, 100) || null,
+        String(req.get('user-agent') || '').slice(0, 1000) || null
+      ]
+    );
+    await client.query('COMMIT');
+    res.json({ invitation: { ...updated, path: `/i/${updated.token}` } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // POST /api/admin/sms/test — one fixed, admin-only Messaging Service proof.
