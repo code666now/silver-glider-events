@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+process.env.SESSION_SECRET ||= 'flyer-intake-unit-secret';
+
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const { normalizeSubmission, SMS_CONSENT_VERSION } = require('../src/routes/flyer-intake')._test;
@@ -46,7 +48,7 @@ test('reviewed flyer requests enter the existing isolated editor without publish
   assert.match(quickCreate, /presentation_mode: flyerRequestDefaults \? 'flyer' : 'standard'/);
   assert.match(quickCreate, /background_theme: flyerRequestDefaults \? 'adaptive' : 'midnight'/);
   assert.match(detail, /existing private Done For You editor/i);
-  assert.doesNotMatch(route, /publishEventInTransaction/);
+  assert.match(route, /publishEventInTransaction/);
 });
 
 test('secure flyer previews expose only look, fix, and recipient approval controls', () => {
@@ -74,6 +76,29 @@ test('secure flyer previews expose only look, fix, and recipient approval contro
   assert.match(script, /Looks good/);
   assert.match(css, /@media\(max-width:720px\)/);
   assert.doesNotMatch(route, /setSessionCookie|attachIdentity|account_phone_credentials/);
+});
+
+test('approved flyer publishing is Super Admin controlled, retry-safe, and records the real account claim', () => {
+  const migration = read('src/db/migrations/064_flyer_publish_handoff.sql');
+  const route = read('src/routes/flyer-intake.js');
+  const auth = read('src/routes/auth.js');
+  const editor = read('src/routes/admin-editor.js');
+  const adminUi = read('public/js/admin-flyer-request.js');
+  const editorUi = read('public/js/event-form.js');
+  const mailer = read('src/lib/mailer.js');
+
+  assert.match(migration, /claim_invitation_id/);
+  assert.match(migration, /claim_invitation_status/);
+  assert.match(route, /flyer-intake\/:id\/publish/);
+  assert.match(route, /requireSuperAdmin/);
+  assert.match(route, /message_kind='live'/);
+  assert.match(route, /Your show is live!/);
+  assert.match(route, /sendDoneForYouClaimInvitation/);
+  assert.match(auth, /WHERE claim_invitation_id=\$1/);
+  assert.match(editor, /flyer_request_publish_requires_approval/);
+  assert.match(editorUi, /Save draft/);
+  assert.match(adminUi, /Publish and notify/);
+  assert.match(mailer, /sendDoneForYouWelcome/);
 });
 
 test('public flyer page asks for private identity, public host identity, and explicit text consent', () => {

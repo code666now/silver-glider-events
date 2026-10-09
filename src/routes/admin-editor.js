@@ -551,6 +551,12 @@ router.put('/api/events/:id', requireBoundWorkspace, requireExactEvent, async (r
 });
 
 router.post('/api/events/:id/publish', requireBoundWorkspace, requireExactEvent, async (req, res, next) => {
+  if (req.adminEditorWorkspace.flyerRequestId != null) {
+    return res.status(409).json({
+      error: 'flyer_request_publish_requires_approval',
+      message: 'Save this flyer draft, then use its request page for recipient approval and publishing.'
+    });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -9,6 +9,7 @@ const { selectAccentColor } = require('../../public/js/artwork-color');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
+const { sendDoneForYouWelcome } = require('../lib/mailer');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
 const {
   TOKEN_TTL_SECONDS,
@@ -24,6 +25,8 @@ const {
   lookupDoneForYouClient,
   provisionDoneForYouClient
 } = require('../lib/admin-done-for-you');
+const { sendDoneForYouClaimInvitation } = require('../lib/done-for-you-claim-invitation');
+const { EventEditorError, publishEventInTransaction } = require('../lib/event-editor');
 const {
   AdminEditorWorkspaceError,
   openAdminEditorWorkspace,
@@ -32,6 +35,7 @@ const {
 
 const router = express.Router();
 const SMS_CONSENT_VERSION = 'dfy-transactional-v1';
+let deliverFlyerWelcome = sendDoneForYouWelcome;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -117,10 +121,21 @@ async function readFlyerRequest(db, id, { forUpdate = false } = {}) {
   const result = await db.query(
     `SELECT request.*,operator.email AS assigned_admin_email,
             event.slug AS event_slug,event.title AS event_title,event.status AS event_status,
-            marker.target_user_id
+            event.organizer_id AS event_organizer_id,
+            organizer.public_slug AS event_public_host_slug,
+            marker.target_user_id,
+            (SELECT message.status
+               FROM admin_flyer_request_messages message
+              WHERE message.flyer_request_id=request.id AND message.message_kind='live'
+              ORDER BY message.revision DESC LIMIT 1) AS live_sms_status,
+            (SELECT message.error
+               FROM admin_flyer_request_messages message
+              WHERE message.flyer_request_id=request.id AND message.message_kind='live'
+              ORDER BY message.revision DESC LIMIT 1) AS live_sms_error
        FROM admin_flyer_requests request
        LEFT JOIN admin_operators operator ON operator.id=request.assigned_admin_operator_id
        LEFT JOIN events event ON event.id=request.event_id
+       LEFT JOIN organizers organizer ON organizer.id=event.organizer_id
        LEFT JOIN admin_done_for_you_clients marker ON marker.id=request.done_for_you_client_id
       WHERE request.id=$1
       ${forUpdate ? 'FOR UPDATE OF request' : ''}`,
@@ -976,6 +991,245 @@ router.post(
     }
   }
 );
+
+router.post(
+  '/api/admin/done-for-you/flyer-intake/:id/publish',
+  requireSuperAdmin,
+  async (req, res, next) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+    const appUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
+    if (!appUrl) {
+      return res.status(503).json({
+        error: 'app_url_not_configured',
+        message: 'Live event links are not configured.'
+      });
+    }
+
+    const connection = await pool.connect();
+    let request;
+    let event;
+    let liveMessageId = null;
+    let shouldSendLiveText = false;
+    let shouldSendClaimEmail = false;
+    try {
+      await connection.query('BEGIN');
+      request = await readFlyerRequest(connection, id, { forUpdate: true });
+      if (!request || request.event_id == null || request.done_for_you_client_id == null) {
+        await connection.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_request_not_publishable',
+          message: 'Connect the reviewed flyer request to its exact client and event first.'
+        });
+      }
+      if (!['promoter_approved', 'published'].includes(request.status) || !request.phone_verified_at) {
+        await connection.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_request_not_approved',
+          message: 'The flyer recipient must approve this preview by phone before it can be published.'
+        });
+      }
+
+      if (request.status === 'promoter_approved') {
+        if (request.event_status !== 'draft') {
+          await connection.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'flyer_request_event_not_draft',
+            message: 'The approved event is no longer an unpublished draft.'
+          });
+        }
+        const published = await publishEventInTransaction(connection, {
+          organizerId: Number(request.event_organizer_id),
+          eventId: Number(request.event_id)
+        });
+        event = published.event;
+        await connection.query(
+          `UPDATE admin_flyer_requests
+              SET status='published',published_at=COALESCE(published_at,NOW()),
+                  preview_token_hash=NULL,preview_token_expires_at=NULL,updated_at=NOW()
+            WHERE id=$1`,
+          [id]
+        );
+        await writeFlyerAudit(connection, req, request, 'flyer_request_published', {
+          status: request.status,
+          eventStatus: request.event_status
+        }, {
+          status: 'published',
+          eventStatus: 'published'
+        });
+        request.status = 'published';
+        request.event_status = 'published';
+        request.published_at = new Date();
+      } else {
+        if (request.event_status !== 'published') {
+          await connection.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'flyer_request_publish_state_mismatch',
+            message: 'This request and its event are out of sync. Review them before retrying.'
+          });
+        }
+        event = {
+          id: Number(request.event_id),
+          slug: request.event_slug,
+          title: request.event_title,
+          status: request.event_status
+        };
+      }
+
+      const liveMessage = (await connection.query(
+        `SELECT * FROM admin_flyer_request_messages
+          WHERE flyer_request_id=$1 AND message_kind='live' AND revision=$2
+          FOR UPDATE`,
+        [id, request.preview_revision]
+      )).rows[0];
+      const liveSendingRecently = liveMessage?.status === 'sending' &&
+        Date.now() - new Date(liveMessage.created_at).getTime() < 10 * 60 * 1000;
+      if (liveMessage?.status !== 'sent' && !liveSendingRecently) {
+        const ledger = (await connection.query(
+          `INSERT INTO admin_flyer_request_messages
+             (flyer_request_id,message_kind,revision,recipient,status,initiated_by_admin_operator_id)
+           VALUES ($1,'live',$2,$3,'sending',$4)
+           ON CONFLICT (flyer_request_id,message_kind,revision)
+           DO UPDATE SET recipient=EXCLUDED.recipient,status='sending',provider_id=NULL,
+                         error=NULL,initiated_by_admin_operator_id=EXCLUDED.initiated_by_admin_operator_id,
+                         created_at=NOW(),sent_at=NULL
+           RETURNING id`,
+          [id, request.preview_revision, request.phone_e164, req.adminOperator.id]
+        )).rows[0];
+        liveMessageId = Number(ledger.id);
+        shouldSendLiveText = true;
+      }
+
+      const claimSendingRecently = request.claim_invitation_status === 'sending' &&
+        request.claim_invitation_attempted_at &&
+        Date.now() - new Date(request.claim_invitation_attempted_at).getTime() < 10 * 60 * 1000;
+      if (!['sent', 'not_needed'].includes(request.claim_invitation_status) && !claimSendingRecently) {
+        await connection.query(
+          `UPDATE admin_flyer_requests
+              SET claim_invitation_status='sending',claim_invitation_attempted_at=NOW(),
+                  claim_invitation_error=NULL,updated_at=NOW()
+            WHERE id=$1`,
+          [id]
+        );
+        request.claim_invitation_status = 'sending';
+        shouldSendClaimEmail = true;
+      }
+      await connection.query('COMMIT');
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => {});
+      if (error instanceof EventEditorError) {
+        return res.status(error.status).json({ error: error.code, message: error.message });
+      }
+      return next(error);
+    } finally {
+      connection.release();
+    }
+
+    const eventUrl = `${appUrl}/e/${request.event_slug}`;
+    const hostPageUrl = request.event_public_host_slug
+      ? `${appUrl}/h/${request.event_public_host_slug}`
+      : null;
+    let liveSmsStatus = request.live_sms_status || null;
+    let claimInvitationStatus = request.claim_invitation_status || null;
+    let retryNeeded = false;
+
+    if (shouldSendLiveText) {
+      try {
+        const delivered = await sms.sendSms({
+          to: request.phone_e164,
+          body: `Your show is live! 🎸\nShare your event: ${eventUrl}`
+        });
+        await pool.query(
+          `UPDATE admin_flyer_request_messages
+              SET status='sent',provider_id=$2,sent_at=NOW(),error=NULL
+            WHERE id=$1 AND status='sending'`,
+          [liveMessageId, delivered.sid]
+        );
+        liveSmsStatus = 'sent';
+      } catch (error) {
+        await pool.query(
+          `UPDATE admin_flyer_request_messages
+              SET status='failed',error=$2
+            WHERE id=$1 AND status='sending'`,
+          [liveMessageId, cleanText(error.message, 500) || 'SMS delivery failed']
+        ).catch(() => {});
+        liveSmsStatus = 'failed';
+        retryNeeded = true;
+      }
+    } else if (liveSmsStatus !== 'sent') {
+      liveSmsStatus = 'sending';
+      retryNeeded = true;
+    }
+
+    if (shouldSendClaimEmail) {
+      try {
+        const invitation = await sendDoneForYouClaimInvitation({
+          pool,
+          markerId: Number(request.done_for_you_client_id),
+          actorAdminOperatorId: req.adminOperator.id,
+          requestedEmail: request.email,
+          ...requestContext(req),
+          metadata: { flyerRequestId: id },
+          deliver: message => deliverFlyerWelcome({
+            ...message,
+            eventLink: eventUrl,
+            hostPageLink: hostPageUrl,
+            eventTitle: request.event_title
+          })
+        });
+        await pool.query(
+          `UPDATE admin_flyer_requests
+              SET claim_invitation_id=$2,claim_invitation_status='sent',
+                  claim_invitation_sent_at=NOW(),claim_invitation_error=NULL,updated_at=NOW()
+            WHERE id=$1`,
+          [id, invitation.id]
+        );
+        claimInvitationStatus = 'sent';
+      } catch (error) {
+        if (error instanceof DoneForYouProvisioningError && error.code === 'account_already_claimed') {
+          await pool.query(
+            `UPDATE admin_flyer_requests
+                SET claim_invitation_status='not_needed',claimed_at=COALESCE(claimed_at,NOW()),
+                    claim_invitation_error=NULL,updated_at=NOW()
+              WHERE id=$1`,
+            [id]
+          );
+          claimInvitationStatus = 'not_needed';
+        } else {
+          await pool.query(
+            `UPDATE admin_flyer_requests
+                SET claim_invitation_status='failed',claim_invitation_error=$2,updated_at=NOW()
+              WHERE id=$1`,
+            [id, cleanText(error.message, 500) || 'Email delivery failed']
+          ).catch(() => {});
+          claimInvitationStatus = 'failed';
+          retryNeeded = true;
+        }
+      }
+    } else if (!['sent', 'not_needed'].includes(claimInvitationStatus)) {
+      claimInvitationStatus = 'sending';
+      retryNeeded = true;
+    }
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({
+      published: true,
+      event: {
+        id: Number(event.id),
+        slug: event.slug,
+        title: event.title,
+        url: eventUrl
+      },
+      liveSms: { status: liveSmsStatus },
+      claimInvitation: { status: claimInvitationStatus },
+      retryNeeded
+    });
+  }
+);
+
+router.setClaimSenderForTests = sender => {
+  deliverFlyerWelcome = typeof sender === 'function' ? sender : sendDoneForYouWelcome;
+};
 
 module.exports = router;
 module.exports.resetRateLimitsForTests = () => {

@@ -579,6 +579,57 @@ async function sendAccountClaimInvitation({ to, link, name }) {
   });
 }
 
+// The Done For You publish handoff is still the same secure, target-bound
+// account invitation. This presentation simply gives the promoter useful live
+// links around that one-time Home Base claim link.
+async function sendDoneForYouWelcome({
+  to,
+  link,
+  name,
+  eventLink,
+  hostPageLink,
+  eventTitle
+}) {
+  const firstName = String(name || '').trim().split(/\s+/)[0];
+  if (!resend) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Done For You welcome email delivery is unavailable');
+    }
+    console.log(`[mailer:dev] DONE FOR YOU WELCOME for ${to}: ${link}`);
+    recordDevEmail({
+      to,
+      kind: 'done_for_you_welcome',
+      link,
+      eventLink: eventLink || null,
+      hostPageLink: hostPageLink || null
+    });
+    return { dev: true };
+  }
+  const usefulLinks = [
+    eventLink
+      ? `<p style="margin:0 0 12px"><strong>Your event</strong><br><a href="${esc(eventLink)}" style="color:#1CC5BE;text-decoration:underline">Share your event page</a></p>`
+      : '',
+    hostPageLink
+      ? `<p style="margin:0"><strong>Your public page</strong><br><a href="${esc(hostPageLink)}" style="color:#1CC5BE;text-decoration:underline">See your events in one place</a></p>`
+      : ''
+  ].filter(Boolean).join('');
+  return send({
+    to,
+    subject: 'Your show is live! 🎸',
+    html: layout({
+      kicker: 'Welcome to Silver Glider',
+      headline: firstName ? `${esc(firstName)}, your show is live!` : 'Your show is live!',
+      sub: eventTitle
+        ? `${esc(eventTitle)} is ready to share.`
+        : 'Your event page is ready to share.',
+      bodyHtml: `<div style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 14px;color:#f0f0f0;font-size:15px;line-height:1.6">${usefulLinks}</div>`,
+      cta: 'Open your Home Base',
+      ctaUrl: link,
+      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0;line-height:1.7">Your Home Base is where you manage your shows, see who’s coming, and grow your following. This secure link confirms your email, signs you in, and works once within 7 days.</p>'
+    })
+  });
+}
+
 // Code-only email for confirming an RSVP identity on the event page.
 async function sendVerificationCode({ to, code }) {
   if (!resend) {
@@ -1116,7 +1167,7 @@ async function sendCommerceLaunch({ to, isTest = false, unsubscribeUrl, manageUr
 module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendAdminIdentityChangeVerification,
-  sendMagicLink, sendAccountClaimInvitation, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
+  sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome, sendHostRecap,
   sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,

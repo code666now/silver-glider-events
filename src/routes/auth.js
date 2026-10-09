@@ -1085,6 +1085,12 @@ async function completeChallenge(client, req, pending, {
         WHERE id=$1 AND (target_user_id IS NULL OR target_user_id=$2)`,
       [invitation.id, organizer.id]
     );
+    await client.query(
+      `UPDATE admin_flyer_requests
+          SET claimed_at=COALESCE(claimed_at,NOW()),updated_at=NOW()
+        WHERE claim_invitation_id=$1`,
+      [invitation.id]
+    );
     const otherInvitations = await client.query(
       `UPDATE admin_account_invitations
           SET revoked_at=COALESCE(revoked_at,NOW())

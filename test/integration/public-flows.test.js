@@ -103,6 +103,7 @@ function resetRateLimits() {
   adminDoneForYouRoutes.resetRateLimitsForTests();
   adminDoneForYouRoutes.setClaimSenderForTests();
   flyerIntakeRoutes.resetRateLimitsForTests();
+  flyerIntakeRoutes.setClaimSenderForTests();
   adminEditorRoutes.setEventUploadsForTests({
     configured: false,
     cover: require('../../src/lib/cloudinary').uploadCover,
@@ -9063,6 +9064,8 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   const originalStartVerification = phoneVerification.startVerification;
   const originalCheckVerification = phoneVerification.checkVerification;
   const sentTexts = [];
+  const welcomeEmails = [];
+  let welcomeAttempts = 0;
   const verificationSid = `VE${'a'.repeat(32)}`;
   sms.sendSms = async message => {
     sentTexts.push(message);
@@ -9076,10 +9079,16 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
     });
     return { approved: true, verificationSid: sid, phone: '+14155550181', status: 'approved' };
   };
+  flyerIntakeRoutes.setClaimSenderForTests(async message => {
+    welcomeAttempts += 1;
+    if (welcomeAttempts === 1) throw new Error('temporary welcome delivery failure');
+    welcomeEmails.push(message);
+  });
   t.after(() => {
     sms.sendSms = originalSendSms;
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
+    flyerIntakeRoutes.setClaimSenderForTests();
   });
   const flyerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/flyers/handoff.jpg';
   const request = (await pool.query(
@@ -9155,6 +9164,12 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   )).rows[0];
   assert.equal(Number(linked.event_id), Number(createdBody.event.id));
   assert.equal(linked.status, 'building');
+
+  const bypassPublish = await fetch(`${baseUrl}/admin-editor/api/events/${createdBody.event.id}/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: editorSession }, body: '{}'
+  });
+  assert.equal(bypassPublish.status, 409);
+  assert.equal((await bypassPublish.json()).error, 'flyer_request_publish_requires_approval');
 
   const ready = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/ready`, {
     method: 'POST',
@@ -9270,6 +9285,65 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
     'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE phone_e164=$1',
     ['+14155550181']
   )).rows[0].count, 0, 'request-scoped approval never becomes an account credential');
+
+  const published = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  });
+  assert.equal(published.status, 200);
+  const publishedBody = await published.json();
+  assert.equal(publishedBody.published, true);
+  assert.equal(publishedBody.liveSms.status, 'sent');
+  assert.equal(publishedBody.claimInvitation.status, 'failed');
+  assert.equal(publishedBody.retryNeeded, true);
+  assert.equal(sentTexts.length, 3);
+  assert.match(sentTexts[2].body, /Your show is live!/);
+  assert.match(sentTexts[2].body, /\/e\//);
+  assert.equal(welcomeAttempts, 1);
+  assert.equal(welcomeEmails.length, 0);
+
+  const publishedState = (await pool.query(
+    `SELECT request.status,request.published_at,request.claim_invitation_id,
+            request.claim_invitation_status,event.status AS event_status
+       FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
+      WHERE request.id=$1`, [request.id]
+  )).rows[0];
+  assert.equal(publishedState.status, 'published');
+  assert.ok(publishedState.published_at);
+  assert.equal(publishedState.claim_invitation_id, null);
+  assert.equal(publishedState.claim_invitation_status, 'failed');
+  assert.equal(publishedState.event_status, 'published');
+  assert.equal((await fetch(`${baseUrl}/api/flyer-preview`, {
+    headers: { cookie: secondPreviewCookie }
+  })).status, 404, 'publishing expires preview access');
+
+  const retried = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  });
+  assert.equal(retried.status, 200);
+  assert.equal((await retried.json()).retryNeeded, false);
+  assert.equal(sentTexts.length, 3, 'retry does not send the live text twice');
+  assert.equal(welcomeAttempts, 2);
+  assert.equal(welcomeEmails.length, 1, 'retry does not send the claim email twice');
+  assert.equal(welcomeEmails[0].to, 'maya-flyer@example.test');
+  assert.equal(welcomeEmails[0].eventTitle, 'Moonlight Night');
+  assert.match(welcomeEmails[0].eventLink, /\/e\//);
+  assert.match(welcomeEmails[0].hostPageLink, /\/h\//);
+
+  const idempotentRetry = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  });
+  assert.equal(idempotentRetry.status, 200);
+  assert.equal((await idempotentRetry.json()).retryNeeded, false);
+  assert.equal(sentTexts.length, 3);
+  assert.equal(welcomeAttempts, 2);
+  assert.equal(welcomeEmails.length, 1);
+
+  const claimed = await followSignInLink(welcomeEmails[0].link);
+  assert.equal(claimed.status, 303);
+  assert.equal(claimed.headers.get('location'), '/dashboard');
+  assert.ok((await pool.query(
+    'SELECT claimed_at FROM admin_flyer_requests WHERE id=$1', [request.id]
+  )).rows[0].claimed_at, 'the real Home Base claim updates the request metric');
 });
 
 test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {

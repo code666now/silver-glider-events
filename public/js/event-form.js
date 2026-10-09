@@ -2,6 +2,13 @@ renderNav('events');
 
 const editId = new URLSearchParams(location.search).get('id');
 const adminEditorMode = sgIsAdminEditorPath();
+let adminEditorFlyerFlow = false;
+const adminEditorContextReady = adminEditorMode
+  ? api('/api/workspace').then(context => {
+      adminEditorFlyerFlow = Boolean(context.flyerRequest);
+      return context;
+    })
+  : Promise.resolve(null);
 let visibility = 'public';
 let admissionType = 'free_rsvp';
 let commerceEnabled = false;
@@ -1651,6 +1658,11 @@ if (editId) {
     ? 'Review the event, then publish it for this client.'
     : 'Fine-tune the optional parts of your event.';
   $('publish-btn').textContent = adminEditorMode ? 'Publish event' : 'Save Changes';
+  adminEditorContextReady.then(() => {
+    if (!adminEditorFlyerFlow) return;
+    document.querySelector('.sg-page-sub').textContent = 'Prepare the private draft, then return to the flyer request for approval.';
+    $('publish-btn').textContent = 'Save draft';
+  }).catch(() => {});
   $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {
     savedEventDetails = event;
@@ -1728,6 +1740,7 @@ $('event-form').addEventListener('submit', async e => {
   try {
     await organizerProfileReady;
     await commerceConfigReady;
+    await adminEditorContextReady;
     if (presentationMode === 'flyer' && !$('flyer_image_url').value) {
       throw new Error('Upload a flyer before publishing this event');
     }
@@ -1751,6 +1764,11 @@ $('event-form').addEventListener('submit', async e => {
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })
       : await api('/api/events', { method: 'POST', body });
     if (adminEditorMode) {
+      if (adminEditorFlyerFlow) {
+        resetMobileFlowBaseline();
+        await sgExitAdminEditorWorkspace();
+        return;
+      }
       btn.textContent = 'Publishing…';
       const published = await api(`/api/events/${data.event.id}/publish`, { method: 'POST' });
       window.location.href = published.redirect || '/admin/done-for-you';
@@ -1765,7 +1783,9 @@ $('event-form').addEventListener('submit', async e => {
   } catch (err) {
     showError(err.message);
     btn.disabled = false;
-    btn.textContent = adminEditorMode ? 'Publish event' : (editId ? 'Save Changes' : 'Publish Event');
+    btn.textContent = adminEditorMode
+      ? (adminEditorFlyerFlow ? 'Save draft' : 'Publish event')
+      : (editId ? 'Save Changes' : 'Publish Event');
   }
 });
 
