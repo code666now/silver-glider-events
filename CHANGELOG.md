@@ -2,6 +2,24 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.163
+
+Released October 8, 2026. Built and deployed by Codex.
+
+### Done For You flyer onboarding
+
+* Promoters can submit a flyer, name, public organizer identity, phone, and email through one mobile-first page; the Super Admin can pause or reopen submissions without quotas.
+* Every submission enters a human-reviewed queue and can be handed into the existing event builder without duplicating events or accounts.
+* Staff can send a secure real-event preview only after manual review, while the promoter can try the existing approved looks, request one correction, and approve with a phone code.
+* Publishing remains a separate Super Admin action and sends a retry-safe live text with the public event link plus a secure Home Base claim email.
+* Existing promoters are reconnected to their account and public page; new promoters claim the same prepared identity without creating a duplicate.
+* Submission volume, build time, preview delivery, approvals, claims, and published events are recorded for the initial pilot without automatic or AI-generated event creation.
+
+### Verification
+
+* Static validation and all 527 automated tests pass.
+* Real browser checks cover the public intake at desktop and 390×844 mobile widths, including mobile tap targets, horizontal overflow, and console errors.
+
 ## 1.0.162
 
 Released October 8, 2026. Built and deployed by Codex.
