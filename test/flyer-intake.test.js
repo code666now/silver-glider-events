@@ -114,11 +114,24 @@ test('public flyer page asks for private identity, public host identity, and exp
   assert.match(html, /id="flyer-phone"[^>]*required/);
   assert.match(html, /id="flyer-email"[^>]*required/);
   assert.match(html, /id="flyer-consent"[^>]*required/);
-  assert.match(html, /class="flyer-intake-preview-empty" id="flyer-preview-empty"/);
+  assert.match(html, /class="flyer-intake-preview-empty" id="flyer-preview-empty"[^>]*type="button"/);
+  assert.match(html, /<legend>About you<\/legend>/);
+  assert.match(html, /<legend>About the show<\/legend>/);
+  assert.match(html, /This stays private and becomes your account name if you’re new\./);
+  assert.match(html, /The promoter, venue, collective, artist, or public name guests should see\./);
+  assert.match(html, /We’ll text you when the page is ready\./);
+  assert.match(html, /Used later to securely claim your Home Base\./);
+  assert.match(html, /images\/flyer-intake\/boombox\.png/);
+  assert.match(html, /images\/flyer-intake\/music-notes\.png/);
+  assert.match(html, /images\/flyer-intake\/disco-ball\.png/);
   assert.match(html, /text you a preview within 24 hours/);
   assert.match(script, /new FormData\(form\)/);
+  assert.match(script, /previewEmpty\.addEventListener\('click'/);
+  assert.match(script, /previewCard\.classList\.add\('has-file'\)/);
   assert.match(script, /5 \* 1024 \* 1024/);
   assert.match(css, /@media\(max-width:780px\)/);
+  assert.match(css, /\.flyer-intake-benefits \{ display:grid; grid-template-columns:repeat\(3/);
+  assert.match(css, /\.flyer-benefit \{[^}]*background:#f7f2e8/);
   assert.match(css, /min-height:60px/);
 });
 

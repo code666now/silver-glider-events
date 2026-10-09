@@ -25,15 +25,26 @@
     </nav>
 
     <header class="flyer-intake-hero">
-      <p class="flyer-intake-kicker">Silver Glider Events</p>
       <h1>Your flyer deserves its own event page.</h1>
       <p>Send us your flyer. We’ll build your event page for free and text you a preview within 24 hours.</p>
     </header>
 
     <section class="flyer-intake-benefits" aria-label="What your event page includes">
-      <article><span aria-hidden="true">↗</span><div><h2>Share your own event page</h2><p>Your flyer, lineup, venue, and details, all in one beautiful page.</p></div></article>
-      <article><span aria-hidden="true">✓</span><div><h2>Collect RSVPs</h2><p>See who’s coming and keep your guest list organized.</p></div></article>
-      <article><span aria-hidden="true">＋</span><div><h2>Grow your following</h2><p>Let people follow you and hear about your future shows.</p></div></article>
+      <article class="flyer-benefit flyer-benefit-share">
+        <span class="flyer-benefit-number" aria-hidden="true">1</span>
+        <div class="flyer-benefit-copy"><h2>Share your own event page</h2><p>Your flyer, lineup, venue, and details, all in one beautiful page.</p></div>
+        <img class="flyer-benefit-art" src="/images/flyer-intake/boombox.png" alt="" aria-hidden="true" decoding="async">
+      </article>
+      <article class="flyer-benefit flyer-benefit-rsvps">
+        <span class="flyer-benefit-number" aria-hidden="true">2</span>
+        <div class="flyer-benefit-copy"><h2>Collect RSVPs</h2><p>See who’s coming and keep your guest list organized.</p></div>
+        <img class="flyer-benefit-art" src="/images/flyer-intake/music-notes.png" alt="" aria-hidden="true" decoding="async">
+      </article>
+      <article class="flyer-benefit flyer-benefit-following">
+        <span class="flyer-benefit-number" aria-hidden="true">3</span>
+        <div class="flyer-benefit-copy"><h2>Grow your following</h2><p>Let people follow you and hear about your future shows.</p></div>
+        <img class="flyer-benefit-art" src="/images/flyer-intake/disco-ball.png" alt="" aria-hidden="true" decoding="async">
+      </article>
     </section>
 
     <div class="flyer-intake-loading" id="flyer-intake-loading" aria-live="polite">
@@ -51,52 +62,59 @@
       <div class="flyer-intake-preview-card">
         <div class="flyer-intake-preview" id="flyer-preview">
           <img id="flyer-preview-image" alt="Your selected flyer preview" hidden>
-          <div class="flyer-intake-preview-empty" id="flyer-preview-empty">
-            <span aria-hidden="true">＋</span>
+          <button class="flyer-intake-preview-empty" id="flyer-preview-empty" type="button" aria-label="Choose your flyer">
+            <svg aria-hidden="true" viewBox="0 0 48 48" focusable="false"><path d="M24 31V8m0 0-8 8m8-8 8 8M9 28v9a3 3 0 0 0 3 3h24a3 3 0 0 0 3-3v-9"/></svg>
             <strong>Upload your flyer</strong>
             <small>JPG, PNG, WebP, or GIF · up to 5 MB</small>
-          </div>
+          </button>
         </div>
         <button class="sg-btn sg-btn-ghost flyer-file-button" id="choose-flyer" type="button">Choose flyer</button>
       </div>
 
       <form class="flyer-intake-form" id="flyer-intake-form" novalidate>
         <div class="flyer-intake-form-head">
-          <p class="flyer-intake-kicker">Upload your flyer</p>
           <h2 id="flyer-intake-form-title">We’ll take care of the setup.</h2>
+          <p>A few details now, then we’ll build the page for you.</p>
         </div>
 
         <input id="flyer-file" name="flyer" type="file" accept="image/jpeg,image/png,image/webp,image/gif" required hidden>
 
-        <label class="flyer-field" for="flyer-name">
-          <span>What should we call you?</span>
-          <input id="flyer-name" name="submitterName" type="text" maxlength="160" autocomplete="name" placeholder="Adrian Martinez" required>
-          <small>This stays private and becomes your account name if you’re new.</small>
-        </label>
-
-        <label class="flyer-field" for="flyer-host-name">
-          <span>Who’s putting on the show?</span>
-          <input id="flyer-host-name" name="hostName" type="text" maxlength="100" autocomplete="organization" placeholder="Heat Wave Booking" required>
-          <small>The promoter, venue, collective, artist, or public name guests should see.</small>
-        </label>
-
-        <div class="flyer-intake-field-grid">
-          <label class="flyer-field" for="flyer-phone">
-            <span>Your phone number</span>
-            <input id="flyer-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" inputmode="tel" placeholder="(415) 555-0123" required>
-            <small>We’ll text you when the page is ready.</small>
+        <fieldset class="flyer-form-section">
+          <legend>About you</legend>
+          <label class="flyer-field" for="flyer-name">
+            <span>What should we call you?</span>
+            <input id="flyer-name" name="submitterName" type="text" maxlength="160" autocomplete="name" placeholder="Ziggy Stardust" required>
+            <small>This stays private and becomes your account name if you’re new.</small>
           </label>
-          <label class="flyer-field" for="flyer-email">
-            <span>Your email</span>
-            <input id="flyer-email" name="email" type="email" maxlength="320" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
-            <small>Used later to securely claim your Home Base.</small>
-          </label>
-        </div>
 
-        <label class="flyer-field" for="flyer-credit">
-          <span>Flyer artwork by <em>Optional</em></span>
-          <input id="flyer-credit" name="artworkCredit" type="text" maxlength="160" autocomplete="off" placeholder="Artist name or @handle">
-        </label>
+          <div class="flyer-intake-field-grid">
+            <label class="flyer-field" for="flyer-phone">
+              <span>Your phone number</span>
+              <input id="flyer-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" inputmode="tel" placeholder="(415) 555-0123" required>
+              <small>We’ll text you when the page is ready.</small>
+            </label>
+            <label class="flyer-field" for="flyer-email">
+              <span>Your email</span>
+              <input id="flyer-email" name="email" type="email" maxlength="320" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
+              <small>Used later to securely claim your Home Base.</small>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="flyer-form-section">
+          <legend>About the show</legend>
+          <label class="flyer-field" for="flyer-host-name">
+            <span>Who’s putting on the show?</span>
+            <input id="flyer-host-name" name="hostName" type="text" maxlength="100" autocomplete="organization" placeholder="Heat Wave Booking" required>
+            <small>The promoter, venue, collective, artist, or public name guests should see.</small>
+          </label>
+
+          <label class="flyer-field" for="flyer-credit">
+            <span>Flyer artwork by <em>Optional</em></span>
+            <input id="flyer-credit" name="artworkCredit" type="text" maxlength="160" autocomplete="off" placeholder="Artist name or @handle">
+            <small>We’ll credit the artist on the event page.</small>
+          </label>
+        </fieldset>
 
         <label class="flyer-consent" for="flyer-consent">
           <input id="flyer-consent" name="smsConsent" type="checkbox" value="yes" required>

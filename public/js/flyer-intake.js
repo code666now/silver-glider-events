@@ -5,6 +5,7 @@
   const success = document.getElementById('flyer-intake-success');
   const form = document.getElementById('flyer-intake-form');
   const fileInput = document.getElementById('flyer-file');
+  const previewCard = document.querySelector('.flyer-intake-preview-card');
   const chooseButton = document.getElementById('choose-flyer');
   const previewImage = document.getElementById('flyer-preview-image');
   const previewEmpty = document.getElementById('flyer-preview-empty');
@@ -16,7 +17,6 @@
     loading.hidden = true;
     closed.hidden = isOpen;
     workspace.hidden = !isOpen;
-    if (isOpen) requestAnimationFrame(() => document.getElementById('choose-flyer').focus({ preventScroll: true }));
   }
 
   function setError(message, focus = false) {
@@ -30,6 +30,7 @@
     previewImage.removeAttribute('src');
     previewImage.hidden = true;
     previewEmpty.hidden = false;
+    previewCard.classList.remove('has-file');
     chooseButton.textContent = 'Choose flyer';
   }
 
@@ -50,6 +51,7 @@
     previewImage.src = previewUrl;
     previewImage.hidden = false;
     previewEmpty.hidden = true;
+    previewCard.classList.add('has-file');
     chooseButton.textContent = 'Replace flyer';
     setError('');
   }
@@ -69,6 +71,7 @@
     }
   }
 
+  previewEmpty.addEventListener('click', () => fileInput.click());
   chooseButton.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => showPreview(fileInput.files[0]));
 
@@ -77,7 +80,7 @@
     setError('');
     if (!fileInput.files[0]) {
       setError('Choose your flyer before sending.', true);
-      chooseButton.focus();
+      previewEmpty.focus();
       return;
     }
     if (!form.reportValidity()) return;
