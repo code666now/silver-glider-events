@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.166
+
+Released October 8, 2026. Built and deployed by Codex.
+
+### A safe Done For You preview handoff
+
+* Existing promoters' in-progress flyer drafts stay out of normal My Events and cannot be published around the recipient-approval flow.
+* Super Admin can safely return an accidentally published Building request to a private draft when it has no live guest, messaging, ticketing, or other activity; every recovery is audited.
+* The private editor now says **Save draft & return**, and the request page makes **Ready for Super Admin review** the primary next step while explaining that the preview arrives by text.
+
+### Verification
+
+* Static validation and all 529 automated tests pass.
+* Real browser checks cover the repaired handoff at desktop and mobile widths.
+
 ## 1.0.165
 
 Released October 8, 2026. Built and deployed by Codex.

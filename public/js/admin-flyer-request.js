@@ -52,12 +52,19 @@ function renderWorkflow(request, capabilities = {}) {
     steps.push('<p>The client is ready. Add the event basics; the submitted flyer will already be selected.</p>');
     steps.push(actionButton('open-flyer-editor', 'Start event draft', true));
   } else if (['building', 'changes_requested'].includes(request.status)) {
-    steps.push(`<p><strong>${esc(request.event_title || 'Event draft')}</strong> is private and still being prepared.</p>`);
     if (request.status === 'changes_requested' && request.latest_fix_request) {
       steps.push(`<blockquote class="dfy-fix-request"><strong>Promoter’s request</strong><span>${esc(request.latest_fix_request)}</span></blockquote>`);
     }
-    steps.push(actionButton('open-flyer-editor', 'Continue editing', true));
-    steps.push(actionButton('mark-flyer-ready', request.status === 'changes_requested' ? 'Fix complete — ready again' : 'Ready for Super Admin review'));
+    if (request.event_status === 'published') {
+      steps.push('<div class="dfy-preflight blocked"><strong>This event was published too early</strong><p>Return it to a private draft before review. Recovery stops if the event has any guest, messaging, or ticketing activity.</p></div>');
+      if (capabilities.recoverAccidentalPublish) {
+        steps.push(actionButton('recover-flyer-draft', 'Return to private draft', true));
+      }
+    } else {
+      steps.push(`<p><strong>${esc(request.event_title || 'Event draft')}</strong> is private and still being prepared. The preview text is sent only after Super Admin review.</p>`);
+      steps.push(actionButton('mark-flyer-ready', request.status === 'changes_requested' ? 'Fix complete — ready again' : 'Ready for Super Admin review', true));
+      steps.push(actionButton('open-flyer-editor', 'Continue editing'));
+    }
   } else if (request.status === 'ready_for_review') {
     steps.push('<p><strong>Ready for review.</strong> A Super Admin must inspect the real event page before any preview text can be sent.</p>');
     steps.push(actionButton('open-flyer-editor', 'Inspect draft'));
@@ -83,6 +90,7 @@ function renderWorkflow(request, capabilities = {}) {
   document.getElementById('prepare-flyer-request')?.addEventListener('click', prepare);
   document.getElementById('open-flyer-editor')?.addEventListener('click', openEditor);
   document.getElementById('mark-flyer-ready')?.addEventListener('click', markReady);
+  document.getElementById('recover-flyer-draft')?.addEventListener('click', recoverDraft);
   document.getElementById('send-flyer-preview')?.addEventListener('click', sendPreview);
   document.getElementById('publish-flyer-event')?.addEventListener('click', publishEvent);
 }
@@ -159,6 +167,17 @@ async function markReady(event) {
     await runAction(event.currentTarget, 'Sending for review…', () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/ready`, { method: 'POST', body: {} }));
     await load();
     actionStatus.textContent = 'Ready for Super Admin review.';
+  } catch (_) {}
+}
+
+async function recoverDraft(event) {
+  if (!confirm('Return this accidentally published event to a private draft? This works only when it has no live activity.')) return;
+  try {
+    await runAction(event.currentTarget, 'Checking event…', () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/recover-draft`, {
+      method: 'POST', body: {}
+    }));
+    await load();
+    actionStatus.textContent = 'The event is private again. It can now be sent for review.';
   } catch (_) {}
 }
 

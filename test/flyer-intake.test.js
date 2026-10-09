@@ -43,12 +43,17 @@ test('reviewed flyer requests enter the existing isolated editor without publish
   assert.match(route, /provisionDoneForYouClient/);
   assert.match(route, /flyer-intake\/:id\/editor-workspace/);
   assert.match(route, /flyer-intake\/:id\/ready/);
+  assert.match(route, /flyer-intake\/:id\/recover-draft/);
+  assert.match(route, /flyer_request_recovery_has_live_activity/);
   assert.match(workspace, /flyer_request_id/);
+  assert.match(workspace, /\/admin\/done-for-you\/flyer-requests\/\$\{Number\(workspace\.flyer_request_id\)\}/);
   assert.match(editor, /flyerRequest/);
   assert.match(quickCreate, /presentation_mode: flyerRequestDefaults \? 'flyer' : 'standard'/);
   assert.match(quickCreate, /background_theme: flyerRequestDefaults \? 'adaptive' : 'midnight'/);
   assert.match(detail, /existing private Done For You editor/i);
   assert.match(route, /publishEventInTransaction/);
+  assert.match(read('public/js/admin-flyer-request.js'), /Return to private draft/);
+  assert.match(read('public/js/admin-flyer-request.js'), /preview text is sent only after Super Admin review/i);
 });
 
 test('secure flyer previews expose only look, fix, and recipient approval controls', () => {
@@ -96,9 +101,10 @@ test('approved flyer publishing is Super Admin controlled, retry-safe, and recor
   assert.match(route, /message_kind='live'/);
   assert.match(route, /Your show is live!/);
   assert.match(route, /sendDoneForYouClaimInvitation/);
+  assert.match(route, /approvedFlyerRequestId: id/);
   assert.match(auth, /WHERE claim_invitation_id=\$1/);
   assert.match(editor, /flyer_request_publish_requires_approval/);
-  assert.match(editorUi, /Save draft/);
+  assert.match(editorUi, /Save draft & return/);
   assert.match(adminUi, /Publish and notify/);
   assert.match(mailer, /sendDoneForYouWelcome/);
 });

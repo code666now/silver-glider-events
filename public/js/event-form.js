@@ -1661,7 +1661,7 @@ if (editId) {
   adminEditorContextReady.then(() => {
     if (!adminEditorFlyerFlow) return;
     document.querySelector('.sg-page-sub').textContent = 'Prepare the private draft, then return to the flyer request for approval.';
-    $('publish-btn').textContent = 'Save draft';
+    $('publish-btn').textContent = 'Save draft & return';
   }).catch(() => {});
   $('secret-shortcut').hidden = true;
   api(`/api/events/${editId}`).then(({ event }) => {
@@ -1784,7 +1784,7 @@ $('event-form').addEventListener('submit', async e => {
     showError(err.message);
     btn.disabled = false;
     btn.textContent = adminEditorMode
-      ? (adminEditorFlyerFlow ? 'Save draft' : 'Publish event')
+      ? (adminEditorFlyerFlow ? 'Save draft & return' : 'Publish event')
       : (editId ? 'Save Changes' : 'Publish Event');
   }
 });

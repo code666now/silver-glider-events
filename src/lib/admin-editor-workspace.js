@@ -662,7 +662,9 @@ async function exitAdminEditorWorkspace(db, {
     });
     await client.query('COMMIT');
     return {
-      redirect: `/admin/done-for-you/${Number(workspace.done_for_you_client_id)}`
+      redirect: workspace.flyer_request_id == null
+        ? `/admin/done-for-you/${Number(workspace.done_for_you_client_id)}`
+        : `/admin/done-for-you/flyer-requests/${Number(workspace.flyer_request_id)}`
     };
   } catch (error) {
     // An expired workspace is deliberately committed before returning 401.

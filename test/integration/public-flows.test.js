@@ -9057,6 +9057,173 @@ test('flyer intake is off by default, Super Admin controlled, and visible in the
   assert.equal(audit.after_state.acceptingSubmissions, true);
 });
 
+test('Super Admin can safely return an accidentally published flyer build to draft', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('flyer-recovery@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const support = await createAdminOperator('flyer-recovery-support@example.test', 'support');
+  const supportSession = await signInAdminOperator(support.email);
+  const targetUserId = Number((await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].user_id);
+  const marker = (await pool.query(
+    `INSERT INTO admin_done_for_you_clients (target_user_id,created_by_admin_operator_id)
+     VALUES ($1,$2) RETURNING id`,
+    [targetUserId, operator.id]
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'accidentally-published-flyer',
+    title: 'Accidentally Published Flyer',
+    status: 'published'
+  });
+  const request = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,done_for_you_client_id,event_id,
+        assigned_admin_operator_id,started_at)
+     VALUES ('Recovery Person','Recovery Presents','recovery@example.test','+14155550191',
+             'https://images.example.test/recovery-flyer.jpg','flyers/recovery',NOW(),
+             'dfy-transactional-v1','building',$1,$2,$3,NOW())
+     RETURNING id`,
+    [marker.id, event.id, operator.id]
+  )).rows[0];
+
+  const detail = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}`, {
+    headers: { cookie: adminSession }
+  });
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json()).capabilities.recoverAccidentalPublish, true);
+
+  const supportBlocked = await fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/recover-draft`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: supportSession }, body: '{}' }
+  );
+  assert.equal(supportBlocked.status, 403);
+  assert.equal((await supportBlocked.json()).error, 'super_admin_required');
+
+  const recovered = await fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/recover-draft`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
+  );
+  assert.equal(recovered.status, 200);
+  assert.deepEqual(await recovered.json(), {
+    ok: true,
+    requestStatus: 'building',
+    eventStatus: 'draft'
+  });
+  assert.equal((await pool.query('SELECT status FROM events WHERE id=$1', [event.id])).rows[0].status, 'draft');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_account_audit_log
+      WHERE action_type='flyer_request_event_returned_to_draft'`
+  )).rows[0].count, 1);
+
+  await pool.query(`UPDATE events SET status='published' WHERE id=$1`, [event.id]);
+  await createRsvp(event.id, { email: 'recovery-guest@example.test' });
+  const activityBlocked = await fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/recover-draft`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
+  );
+  assert.equal(activityBlocked.status, 409);
+  assert.equal((await activityBlocked.json()).error, 'flyer_request_recovery_has_live_activity');
+  assert.equal((await pool.query('SELECT status FROM events WHERE id=$1', [event.id])).rows[0].status, 'published');
+});
+
+test('flyer recovery sees an RSVP committed while it waits for the event lock', async () => {
+  resetRateLimits();
+  const operator = await createAdminOperator('flyer-recovery-race@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const targetUserId = Number((await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].user_id);
+  const marker = (await pool.query(
+    `INSERT INTO admin_done_for_you_clients (target_user_id,created_by_admin_operator_id)
+     VALUES ($1,$2) RETURNING id`,
+    [targetUserId, operator.id]
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'accidental-publish-rsvp-race',
+    title: 'Accidental Publish RSVP Race',
+    status: 'published'
+  });
+  const request = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,done_for_you_client_id,event_id,
+        assigned_admin_operator_id,started_at)
+     VALUES ('Recovery Race','Recovery Race Presents','recovery-race@example.test','+14155550192',
+             'https://images.example.test/recovery-race.jpg','flyers/recovery-race',NOW(),
+             'dfy-transactional-v1','building',$1,$2,$3,NOW())
+     RETURNING id`,
+    [marker.id, event.id, operator.id]
+  )).rows[0];
+
+  // Mirror the public RSVP transaction: it locks the published event before
+  // inserting the RSVP. Recovery must wait, then count again with a fresh
+  // statement snapshot after this transaction commits.
+  const rsvpTransaction = await pool.connect();
+  let recovery;
+  try {
+    await rsvpTransaction.query('BEGIN');
+    const blockerPid = Number((await rsvpTransaction.query(
+      'SELECT pg_backend_pid() AS pid'
+    )).rows[0].pid);
+    await rsvpTransaction.query(
+      'SELECT id FROM events WHERE id=$1 AND status=\'published\' FOR UPDATE',
+      [event.id]
+    );
+
+    recovery = fetch(
+      `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/recover-draft`,
+      { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
+    );
+
+    let recoveryIsWaiting = false;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      recoveryIsWaiting = (await pool.query(
+        `SELECT EXISTS (
+           SELECT 1 FROM pg_stat_activity activity
+            WHERE activity.pid<>pg_backend_pid()
+              AND $1::int=ANY(pg_blocking_pids(activity.pid))
+         ) AS waiting`,
+        [blockerPid]
+      )).rows[0].waiting;
+      if (recoveryIsWaiting) break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(recoveryIsWaiting, true, 'recovery waits behind the RSVP event lock');
+    await assert.rejects(
+      pool.query(
+        'SELECT id FROM admin_flyer_requests WHERE id=$1 FOR UPDATE NOWAIT',
+        [request.id]
+      ),
+      error => error?.code === '55P03',
+      'recovery retains request -> event lock order while it waits'
+    );
+
+    await rsvpTransaction.query(
+      `INSERT INTO rsvps
+         (event_id,first_name,last_name,email,status,manage_token)
+       VALUES ($1,'Concurrent','Guest','concurrent-recovery@example.test','confirmed','concurrent-recovery-token')`,
+      [event.id]
+    );
+    await rsvpTransaction.query('COMMIT');
+
+    const response = await recovery;
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, 'flyer_request_recovery_has_live_activity');
+    assert.equal((await pool.query(
+      'SELECT status FROM events WHERE id=$1', [event.id]
+    )).rows[0].status, 'published');
+    assert.equal((await pool.query(
+      'SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [event.id]
+    )).rows[0].count, 1);
+  } finally {
+    await rsvpTransaction.query('ROLLBACK').catch(() => {});
+    rsvpTransaction.release();
+    if (recovery) await recovery.catch(() => {});
+  }
+});
+
 test('a reviewed flyer request safely provisions, previews, revises, and receives phone-scoped approval', async t => {
   resetRateLimits();
   const operator = await createAdminOperator('flyer-builder@example.test', 'super_admin');
@@ -9166,11 +9333,49 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   assert.equal(Number(linked.event_id), Number(createdBody.event.id));
   assert.equal(linked.status, 'building');
 
+  // The prepared account owns this event, but that must not let it skip the
+  // Done For You preview and recipient-approval lifecycle. This is the exact
+  // path an existing promoter can reach while testing their own submission.
+  const ownerPublish = await fetch(`${baseUrl}/api/events/${createdBody.event.id}/publish`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      cookie: `sge_session=${signSession(preparedBody.client.userId)}`
+    },
+    body: '{}'
+  });
+  assert.equal(ownerPublish.status, 409);
+  assert.match((await ownerPublish.json()).error, /approved by its recipient/i);
+  assert.equal((await pool.query(
+    'SELECT status FROM events WHERE id=$1', [createdBody.event.id]
+  )).rows[0].status, 'draft');
+  assert.equal((await pool.query(
+    'SELECT status FROM admin_flyer_requests WHERE id=$1', [request.id]
+  )).rows[0].status, 'building');
+  const ownerEvents = await fetch(`${baseUrl}/api/events`, {
+    headers: { cookie: `sge_session=${signSession(preparedBody.client.userId)}` }
+  });
+  assert.equal(ownerEvents.status, 200);
+  assert.equal(
+    (await ownerEvents.json()).events.some(event => Number(event.id) === Number(createdBody.event.id)),
+    false,
+    'a flyer draft stays out of the promoter’s normal event list until the reviewed handoff publishes it'
+  );
+
   const bypassPublish = await fetch(`${baseUrl}/admin-editor/api/events/${createdBody.event.id}/publish`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: editorSession }, body: '{}'
   });
   assert.equal(bypassPublish.status, 409);
   assert.equal((await bypassPublish.json()).error, 'flyer_request_publish_requires_approval');
+
+  const exitedEditor = await fetch(`${baseUrl}/admin-editor/api/workspace/exit`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: editorSession }, body: '{}'
+  });
+  assert.equal(exitedEditor.status, 200);
+  assert.deepEqual(await exitedEditor.json(), {
+    ok: true,
+    redirect: `/admin/done-for-you/flyer-requests/${request.id}`
+  }, 'saving a flyer draft returns directly to the request review action');
 
   const ready = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/ready`, {
     method: 'POST',
@@ -9313,6 +9518,15 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   assert.equal(publishedState.claim_invitation_id, null);
   assert.equal(publishedState.claim_invitation_status, 'failed');
   assert.equal(publishedState.event_status, 'published');
+  const publishedOwnerEvents = await fetch(`${baseUrl}/api/events`, {
+    headers: { cookie: `sge_session=${signSession(preparedBody.client.userId)}` }
+  });
+  assert.equal(publishedOwnerEvents.status, 200);
+  assert.equal(
+    (await publishedOwnerEvents.json()).events.some(event => Number(event.id) === Number(createdBody.event.id)),
+    true,
+    'the event enters the promoter’s normal list after the reviewed handoff publishes it'
+  );
   assert.equal((await fetch(`${baseUrl}/api/flyer-preview`, {
     headers: { cookie: secondPreviewCookie }
   })).status, 404, 'publishing expires preview access');

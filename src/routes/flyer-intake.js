@@ -197,6 +197,61 @@ async function writeFlyerAudit(db, req, request, actionType, beforeState, afterS
   );
 }
 
+async function readAccidentalPublishRecovery(db, eventId, { forUpdate = false } = {}) {
+  // Lock the event in its own statement. Under PostgreSQL READ COMMITTED, the
+  // activity query below then receives a fresh snapshot after any transaction
+  // that was already changing this event (for example, an RSVP) commits. If
+  // counts share the locking statement, its older snapshot can miss activity
+  // that committed while this transaction waited for the event row.
+  const eventResult = await db.query(
+    `SELECT event.id,event.organizer_id,organizer.user_id AS owner_user_id,
+            event.status,event.commerce_event_id,event.announced_at,
+            event.announced_count,event.announced_text_count,
+            event.photo_request_sent_at,event.photo_request_sent_count,
+            event.host_recap_sent_at
+       FROM events event
+       JOIN organizers organizer ON organizer.id=event.organizer_id
+      WHERE event.id=$1
+      ${forUpdate ? 'FOR UPDATE OF event' : ''}`,
+    [eventId]
+  );
+  const event = eventResult.rows[0] || null;
+  if (!event) return null;
+
+  const activity = (await db.query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM rsvps WHERE event_id=$1) AS rsvp_count,
+       (SELECT COUNT(*)::int FROM message_log WHERE event_id=$1) AS message_count,
+       (SELECT COUNT(*)::int FROM event_comments WHERE event_id=$1) AS comment_count,
+       (SELECT COUNT(*)::int FROM event_photos WHERE event_id=$1) AS photo_count,
+       (SELECT COUNT(*)::int FROM line_submissions WHERE event_id=$1) AS line_submission_count,
+       (SELECT COUNT(*)::int FROM event_notification_batches WHERE event_id=$1) AS notification_batch_count,
+       (SELECT COUNT(*)::int FROM previous_guest_invitation_batches WHERE target_event_id=$1) AS invitation_batch_count,
+       (SELECT COUNT(*)::int FROM sms_notification_batches WHERE event_id=$1) AS sms_batch_count,
+       (SELECT COUNT(*)::int FROM guest_invitation_tokens WHERE target_event_id=$1) AS invitation_token_count,
+       (SELECT COUNT(*)::int FROM host_follows WHERE source_event_id=$1) AS sourced_follow_count,
+       (SELECT COUNT(*)::int FROM feedback_submissions WHERE event_id=$1) AS feedback_count`,
+    [eventId]
+  )).rows[0];
+  Object.assign(event, activity);
+  const countFields = [
+    'rsvp_count', 'message_count', 'comment_count', 'photo_count',
+    'line_submission_count', 'notification_batch_count', 'invitation_batch_count',
+    'sms_batch_count', 'invitation_token_count', 'sourced_follow_count', 'feedback_count'
+  ];
+  const hasLiveActivity = Boolean(
+    event.commerce_event_id ||
+    event.announced_at ||
+    Number(event.announced_count) > 0 ||
+    Number(event.announced_text_count) > 0 ||
+    event.photo_request_sent_at ||
+    Number(event.photo_request_sent_count) > 0 ||
+    event.host_recap_sent_at ||
+    countFields.some(field => Number(event[field]) > 0)
+  );
+  return { event, hasLiveActivity };
+}
+
 function normalizeSubmission(body) {
   const submitterName = cleanText(body?.submitterName, 160);
   const hostName = cleanText(body?.hostName, 100);
@@ -701,7 +756,10 @@ router.get('/api/admin/done-for-you/flyer-intake/:id', async (req, res, next) =>
       capabilities: {
         manageIntake: req.adminOperator.role === 'super_admin',
         sendPreview: req.adminOperator.role === 'super_admin',
-        publish: req.adminOperator.role === 'super_admin'
+        publish: req.adminOperator.role === 'super_admin',
+        recoverAccidentalPublish: req.adminOperator.role === 'super_admin' &&
+          ['building', 'changes_requested'].includes(request.status) &&
+          request.event_status === 'published'
       }
     });
   } catch (error) { provisioningError(error, res, next); }
@@ -834,6 +892,80 @@ router.post('/api/admin/done-for-you/flyer-intake/:id/editor-workspace', async (
     res.status(error.status).json({ error: error.code, message: error.message });
   }
 });
+
+router.post(
+  '/api/admin/done-for-you/flyer-intake/:id/recover-draft',
+  requireSuperAdmin,
+  async (req, res, next) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
+    const connection = await pool.connect();
+    try {
+      await connection.query('BEGIN');
+      const request = await readFlyerRequest(connection, id, { forUpdate: true });
+      if (!request || request.event_id == null || request.done_for_you_client_id == null ||
+          !['building', 'changes_requested'].includes(request.status)) {
+        await connection.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_request_not_recoverable',
+          message: 'Only a flyer still being prepared can be returned to a private draft.'
+        });
+      }
+
+      const recovery = await readAccidentalPublishRecovery(
+        connection,
+        Number(request.event_id),
+        { forUpdate: true }
+      );
+      const event = recovery?.event;
+      const exactOwner = event &&
+        Number(event.organizer_id) === Number(request.event_organizer_id) &&
+        Number(event.owner_user_id) === Number(request.target_user_id);
+      if (!exactOwner || event.status !== 'published') {
+        await connection.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_request_not_recoverable',
+          message: event?.status === 'draft'
+            ? 'This event is already a private draft.'
+            : 'The linked event cannot be safely returned to a draft.'
+        });
+      }
+      if (recovery.hasLiveActivity) {
+        await connection.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'flyer_request_recovery_has_live_activity',
+          message: 'This event has guest, messaging, ticketing, or other live activity and cannot safely be returned to a draft.'
+        });
+      }
+
+      await connection.query(
+        `UPDATE events
+            SET status='draft',updated_at=NOW()
+          WHERE id=$1 AND organizer_id=$2 AND status='published'`,
+        [request.event_id, request.event_organizer_id]
+      );
+      await writeFlyerAudit(connection, req, request, 'flyer_request_event_returned_to_draft', {
+        status: request.status,
+        eventId: Number(request.event_id),
+        eventStatus: 'published'
+      }, {
+        status: request.status,
+        eventId: Number(request.event_id),
+        eventStatus: 'draft'
+      });
+      await connection.query('COMMIT');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({
+        ok: true,
+        requestStatus: request.status,
+        eventStatus: 'draft'
+      });
+    } catch (error) {
+      await connection.query('ROLLBACK').catch(() => {});
+      next(error);
+    } finally { connection.release(); }
+  }
+);
 
 router.post('/api/admin/done-for-you/flyer-intake/:id/ready', async (req, res, next) => {
   const id = positiveId(req.params.id);
@@ -1040,7 +1172,8 @@ router.post(
         }
         const published = await publishEventInTransaction(connection, {
           organizerId: Number(request.event_organizer_id),
-          eventId: Number(request.event_id)
+          eventId: Number(request.event_id),
+          approvedFlyerRequestId: id
         });
         event = published.event;
         await connection.query(

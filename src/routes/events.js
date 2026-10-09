@@ -140,6 +140,12 @@ router.get('/api/events', async (req, res, next) => {
          ) c ON c.event_id = e.id
         WHERE e.organizer_id=$1
           AND e.archived_at IS ${archivedOnly ? 'NOT NULL' : 'NULL'}
+          AND NOT EXISTS (
+            SELECT 1
+              FROM admin_flyer_requests flyer_request
+             WHERE flyer_request.event_id=e.id
+               AND flyer_request.status NOT IN ('published','rejected')
+          )
         ORDER BY e.event_date DESC, e.id DESC`,
       [req.organizer.id]
     );

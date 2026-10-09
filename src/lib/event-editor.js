@@ -720,7 +720,43 @@ async function updateEventInTransaction(db, { organizerId, eventId, body }) {
   };
 }
 
-async function publishEventInTransaction(db, { organizerId, eventId }) {
+async function publishEventInTransaction(db, {
+  organizerId,
+  eventId,
+  approvedFlyerRequestId = null
+}) {
+  // A Done For You draft belongs to the recipient-approval workflow until the
+  // exact request is approved. Lock the request before the event so every
+  // publisher follows the same request -> event lock order as the final Super
+  // Admin handoff. The request id is deliberately an exact, narrow capability;
+  // a normal owner session can never bypass this by owning the event row.
+  const { rows: activeFlyerRequests } = await db.query(
+    `SELECT request.id,request.status,request.phone_verified_at
+       FROM admin_flyer_requests request
+       JOIN events event ON event.id=request.event_id
+      WHERE request.event_id=$1 AND event.organizer_id=$2
+        AND request.status NOT IN ('published','rejected')
+      ORDER BY request.id
+      FOR UPDATE OF request`,
+    [eventId, organizerId]
+  );
+  if (activeFlyerRequests.length) {
+    const approvedRequest = activeFlyerRequests.length === 1
+      ? activeFlyerRequests[0]
+      : null;
+    const exactApprovedHandoff = approvedRequest &&
+      Number(approvedRequest.id) === Number(approvedFlyerRequestId) &&
+      approvedRequest.status === 'promoter_approved' &&
+      approvedRequest.phone_verified_at != null;
+    if (!exactApprovedHandoff) {
+      throw editorError(
+        'flyer_request_publish_requires_approval',
+        'This Done For You event must be approved by its recipient and published by a Super Admin from the flyer request.',
+        409
+      );
+    }
+  }
+
   const { rows } = await db.query(
     `SELECT e.*,
             EXISTS(SELECT 1 FROM event_secret_codes c WHERE c.event_id=e.id) AS has_secret_code
