@@ -118,8 +118,12 @@ async function inTransaction(db, callback) {
   }
 }
 
-async function lockRoster(client, actorId) {
+async function lockAdminOperatorRosterInTransaction(client) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [ROSTER_LOCK]);
+}
+
+async function lockRoster(client, actorId) {
+  await lockAdminOperatorRosterInTransaction(client);
   const { rows } = await client.query(
     `SELECT id,email,role,status
        FROM admin_operators
@@ -446,6 +450,7 @@ module.exports = {
   canonicalOperatorTargetKey,
   createAdminOperator,
   listAdminOperatorRoster,
+  lockAdminOperatorRosterInTransaction,
   newOperatorTargetKey,
   normalizeOperatorEmail,
   operatorTargetKey,

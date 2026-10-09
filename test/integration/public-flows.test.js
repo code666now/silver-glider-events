@@ -44,6 +44,13 @@ const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
 const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
 const { settlePreviousGuestInvitationWork } = require('../../src/jobs/previous-guest-invitations');
+const {
+  enqueueFlyerAdminNotifications,
+  queueFlyerAdminNotifications,
+  runFlyerAdminNotificationPass,
+  setFlyerAdminNotificationSenderForTests,
+  settleFlyerAdminNotificationWork
+} = require('../../src/jobs/flyer-admin-notifications');
 const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
@@ -104,6 +111,7 @@ function resetRateLimits() {
   adminDoneForYouRoutes.setClaimSenderForTests();
   flyerIntakeRoutes.resetRateLimitsForTests();
   flyerIntakeRoutes.setClaimSenderForTests();
+  setFlyerAdminNotificationSenderForTests();
   adminEditorRoutes.setEventUploadsForTests({
     configured: false,
     cover: require('../../src/lib/cloudinary').uploadCover,
@@ -433,6 +441,7 @@ test.beforeEach(async () => {
   await publicRoutes.settleBackgroundWork();
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
+  await settleFlyerAdminNotificationWork();
   await resetDatabase();
 });
 
@@ -440,6 +449,7 @@ test.after(async () => {
   await publicRoutes.settleBackgroundWork();
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
+  await settleFlyerAdminNotificationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
 });
@@ -9057,6 +9067,143 @@ test('flyer intake is off by default, Super Admin controlled, and visible in the
   assert.equal(audit.after_state.acceptingSubmissions, true);
 });
 
+test('flyer admin notification outbox retries separately, stays idempotent, and skips revoked recipients', async t => {
+  resetRateLimits();
+  const firstAdmin = await createAdminOperator('flyer-alert-first@example.test', 'super_admin');
+  const retryAdmin = await createAdminOperator('flyer-alert-retry@example.test', 'super_admin');
+  await createAdminOperator('flyer-alert-support@example.test', 'support');
+  await createAdminOperator('flyer-alert-disabled@example.test', 'super_admin', 'disabled');
+
+  const connection = await pool.connect();
+  let request;
+  let notificationIds;
+  try {
+    await connection.query('BEGIN');
+    request = (await connection.query(
+      `INSERT INTO admin_flyer_requests
+         (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+          sms_consent_at,sms_consent_version)
+       VALUES ('Alert Person','Alert Presents','flyer-alert@example.test','+14155550231',
+               'https://images.example.test/flyer-alert.jpg','flyers/admin-alert',NOW(),
+               'dfy-transactional-v1')
+       RETURNING id`
+    )).rows[0];
+    notificationIds = await enqueueFlyerAdminNotifications(connection, {
+      requestId: Number(request.id),
+      kind: 'submitted'
+    });
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  assert.equal(notificationIds.length, 2);
+  const queued = (await pool.query(
+    `SELECT recipient,status,attempt_count,idempotency_key
+       FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 ORDER BY recipient`,
+    [request.id]
+  )).rows;
+  assert.deepEqual(queued.map(row => row.recipient), [
+    firstAdmin.email,
+    retryAdmin.email
+  ]);
+  assert.ok(queued.every(row => row.status === 'pending' && Number(row.attempt_count) === 0));
+
+  const deliveries = [];
+  let retryFailures = 0;
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  setFlyerAdminNotificationSenderForTests(async message => {
+    deliveries.push(message);
+    if (message.to === retryAdmin.email && retryFailures++ < 4) {
+      throw new Error('temporary flyer admin email failure');
+    }
+    return { id: `provider-${deliveries.length}` };
+  });
+  t.after(() => {
+    console.error = originalConsoleError;
+    setFlyerAdminNotificationSenderForTests();
+  });
+
+  queueFlyerAdminNotifications(notificationIds);
+  await settleFlyerAdminNotificationWork();
+  let states = (await pool.query(
+    `SELECT recipient,status,attempt_count,error,provider_id,idempotency_key
+       FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 ORDER BY recipient`,
+    [request.id]
+  )).rows;
+  assert.equal(states[0].status, 'sent');
+  assert.equal(Number(states[0].attempt_count), 1);
+  assert.equal(states[1].status, 'failed');
+  assert.equal(Number(states[1].attempt_count), 1);
+  assert.match(states[1].error, /temporary flyer admin email failure/);
+  const retryKey = states[1].idempotency_key;
+
+  for (let retry = 0; retry < 4; retry += 1) {
+    await pool.query(
+      `UPDATE admin_flyer_request_notifications
+          SET next_attempt_at=NOW() - INTERVAL '1 second'
+        WHERE flyer_request_id=$1 AND recipient=$2`,
+      [request.id, retryAdmin.email]
+    );
+    await runFlyerAdminNotificationPass();
+  }
+  states = (await pool.query(
+    `SELECT recipient,status,attempt_count,error,provider_id,idempotency_key
+       FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 ORDER BY recipient`,
+    [request.id]
+  )).rows;
+  assert.ok(states.every(row => row.status === 'sent'));
+  assert.equal(Number(states[1].attempt_count), 5);
+  assert.equal(states[1].error, null);
+  const retryDeliveries = deliveries.filter(message => message.to === retryAdmin.email);
+  assert.equal(retryDeliveries.length, 5, 'a fourth provider failure does not exhaust the alert');
+  assert.ok(retryDeliveries.every(message => message.idempotencyKey === retryKey));
+  assert.ok(deliveries.every(message => (
+    message.adminUrl === `http://127.0.0.1/admin/done-for-you/flyer-requests/${request.id}`
+  )));
+  const deliveredCount = deliveries.length;
+  await runFlyerAdminNotificationPass();
+  assert.equal(deliveries.length, deliveredCount, 'sent rows are never delivered twice');
+
+  const approvedRequest = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,promoter_approved_at,phone_verified_at)
+     VALUES ('Approved Person','Approved Presents','approved-alert@example.test','+14155550232',
+             'https://images.example.test/approved-alert.jpg','flyers/approved-alert',NOW(),
+             'dfy-transactional-v1','promoter_approved',NOW(),NOW())
+     RETURNING id`
+  )).rows[0];
+  const approvedIds = await enqueueFlyerAdminNotifications(pool, {
+    requestId: Number(approvedRequest.id),
+    kind: 'approved'
+  });
+  await pool.query("UPDATE admin_operators SET status='disabled' WHERE id=$1", [retryAdmin.id]);
+  queueFlyerAdminNotifications(approvedIds);
+  await settleFlyerAdminNotificationWork();
+  const revoked = (await pool.query(
+    `SELECT recipient,status,error
+       FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 ORDER BY recipient`,
+    [approvedRequest.id]
+  )).rows;
+  assert.equal(revoked.find(row => row.recipient === firstAdmin.email).status, 'sent');
+  const skipped = revoked.find(row => row.recipient === retryAdmin.email);
+  assert.equal(skipped.status, 'skipped');
+  assert.match(skipped.error, /no longer active/);
+  assert.equal(
+    deliveries.filter(message => message.to === retryAdmin.email && message.kind === 'approved').length,
+    0
+  );
+});
+
 test('Super Admin can safely return an accidentally published flyer build to draft', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('flyer-recovery@example.test', 'super_admin');
@@ -9257,6 +9404,7 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
     flyerIntakeRoutes.setClaimSenderForTests();
+    setFlyerAdminNotificationSenderForTests();
   });
   const flyerUrl = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sg-events-dev/flyers/handoff.jpg';
   const request = (await pool.query(
@@ -9472,12 +9620,42 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
     body: JSON.stringify({ code: '000000' })
   });
   assert.equal(wrongApproval.status, 400);
+  const failedApprovalAlerts = [];
+  setFlyerAdminNotificationSenderForTests(async message => {
+    failedApprovalAlerts.push(message);
+    throw new Error('temporary approval alert failure');
+  });
   const approved = await fetch(`${baseUrl}/api/flyer-preview/approve/verify`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie },
     body: JSON.stringify({ code: '246810' })
   });
   assert.equal(approved.status, 200);
   assert.equal((await approved.json()).status, 'promoter_approved');
+  await settleFlyerAdminNotificationWork();
+  assert.equal(failedApprovalAlerts.length, 1);
+  const failedApprovalAlert = (await pool.query(
+    `SELECT status,attempt_count,error,idempotency_key
+       FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 AND notification_kind='approved'`,
+    [request.id]
+  )).rows[0];
+  assert.equal(failedApprovalAlert.status, 'failed');
+  assert.equal(Number(failedApprovalAlert.attempt_count), 1);
+  assert.match(failedApprovalAlert.error, /temporary approval alert failure/);
+  assert.equal(failedApprovalAlerts[0].idempotencyKey, failedApprovalAlert.idempotency_key);
+  setFlyerAdminNotificationSenderForTests();
+  await pool.query(
+    `UPDATE admin_flyer_request_notifications
+        SET next_attempt_at=NOW() - INTERVAL '1 second'
+      WHERE flyer_request_id=$1 AND notification_kind='approved'`,
+    [request.id]
+  );
+  await runFlyerAdminNotificationPass();
+  assert.equal((await pool.query(
+    `SELECT status FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 AND notification_kind='approved'`,
+    [request.id]
+  )).rows[0].status, 'sent');
   const approvedState = (await pool.query(
     `SELECT request.status,request.phone_verified_at,request.promoter_approved_at,event.status AS event_status
        FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
@@ -9559,6 +9737,284 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   assert.ok((await pool.query(
     'SELECT claimed_at FROM admin_flyer_requests WHERE id=$1', [request.id]
   )).rows[0].claimed_at, 'the real Home Base claim updates the request metric');
+});
+
+test('published flyers welcome an existing claimed account without creating or duplicating a claim invitation', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('claimed-flyer-admin@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const existingEmail = 'claimed-flyer-owner@example.test';
+  const targetUserId = Number((await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].user_id);
+  await addVerifiedEmailIdentity(targetUserId, existingEmail, { primary: false });
+  const marker = (await pool.query(
+    `INSERT INTO admin_done_for_you_clients (target_user_id,created_by_admin_operator_id)
+     VALUES ($1,$2) RETURNING id`,
+    [targetUserId, operator.id]
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'claimed-owner-flyer',
+    title: 'Claimed Owner Flyer',
+    status: 'draft',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://images.example.test/claimed-owner-flyer.jpg'
+  });
+  const request = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,done_for_you_client_id,event_id,
+        assigned_admin_operator_id,started_at,ready_for_review_at,preview_sent_at,
+        promoter_approved_at,phone_verified_at)
+     VALUES ('Existing Owner','Existing Host',$1,'+14155550221',
+             'https://images.example.test/claimed-owner-flyer.jpg','flyers/claimed-owner',
+             NOW(),'dfy-transactional-v1','promoter_approved',$2,$3,$4,NOW(),NOW(),NOW(),NOW(),NOW())
+     RETURNING id`,
+    [existingEmail, marker.id, event.id, operator.id]
+  )).rows[0];
+
+  const originalSendSms = sms.sendSms;
+  const sentTexts = [];
+  const welcomeAttempts = [];
+  const deliveredWelcomes = [];
+  const welcomeAccountLocks = [];
+  sms.sendSms = async message => {
+    sentTexts.push(message);
+    return { sid: `SM${'c'.repeat(32)}`, status: 'accepted', recipient: message.to };
+  };
+  flyerIntakeRoutes.setClaimSenderForTests(async message => {
+    const lockProbe = await pool.connect();
+    try {
+      const acquired = (await lockProbe.query(
+        'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+        [outboundDeliveryLockKey(targetUserId)]
+      )).rows[0].acquired;
+      welcomeAccountLocks.push(!acquired);
+      if (acquired) {
+        await lockProbe.query(
+          'SELECT pg_advisory_unlock(hashtext($1))',
+          [outboundDeliveryLockKey(targetUserId)]
+        );
+      }
+    } finally {
+      lockProbe.release();
+    }
+    welcomeAttempts.push(message);
+    if (welcomeAttempts.length === 1) throw new Error('temporary existing-account welcome failure');
+    deliveredWelcomes.push(message);
+  });
+  t.after(() => {
+    sms.sendSms = originalSendSms;
+    flyerIntakeRoutes.setClaimSenderForTests();
+  });
+
+  const publish = () => fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
+  );
+  const first = await publish();
+  assert.equal(first.status, 200);
+  const firstBody = await first.json();
+  assert.equal(firstBody.published, true);
+  assert.equal(firstBody.liveSms.status, 'sent');
+  assert.equal(firstBody.claimInvitation.status, 'failed');
+  assert.equal(firstBody.retryNeeded, true);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(welcomeAttempts.length, 1);
+  assert.deepEqual(welcomeAccountLocks, [true], 'welcome delivery holds the target account lock');
+  assert.equal(welcomeAttempts[0].existingAccount, true);
+  assert.equal(welcomeAttempts[0].link, 'http://127.0.0.1/login?next=%2Fdashboard');
+  assert.equal(welcomeAttempts[0].idempotencyKey, `dfy-flyer-${request.id}-existing-welcome-v1`);
+  assert.equal(welcomeAttempts[0].eventTitle, 'Claimed Owner Flyer');
+  assert.match(welcomeAttempts[0].eventLink, /\/e\/claimed-owner-flyer$/);
+  assert.match(welcomeAttempts[0].hostPageLink, /\/h\/test-host$/);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [targetUserId]
+  )).rows[0].count, 0);
+  const failedState = (await pool.query(
+    `SELECT claim_invitation_id,claim_invitation_status,claim_invitation_sent_at,
+            claim_invitation_error,claimed_at
+       FROM admin_flyer_requests WHERE id=$1`,
+    [request.id]
+  )).rows[0];
+  assert.equal(failedState.claim_invitation_id, null);
+  assert.equal(failedState.claim_invitation_status, 'failed');
+  assert.equal(failedState.claim_invitation_sent_at, null);
+  assert.match(failedState.claim_invitation_error, /temporary existing-account welcome failure/);
+  assert.ok(failedState.claimed_at, 'the request records that this account was already claimed');
+
+  const retried = await publish();
+  assert.equal(retried.status, 200);
+  const retriedBody = await retried.json();
+  assert.equal(retriedBody.liveSms.status, 'sent');
+  assert.equal(retriedBody.claimInvitation.status, 'sent');
+  assert.equal(retriedBody.retryNeeded, false);
+  assert.equal(sentTexts.length, 1, 'retry does not duplicate the live text');
+  assert.equal(welcomeAttempts.length, 2);
+  assert.deepEqual(welcomeAccountLocks, [true, true]);
+  assert.equal(welcomeAttempts[1].idempotencyKey, welcomeAttempts[0].idempotencyKey);
+  assert.equal(deliveredWelcomes.length, 1);
+  const sentState = (await pool.query(
+    `SELECT claim_invitation_id,claim_invitation_status,claim_invitation_sent_at,
+            claim_invitation_error,claimed_at
+       FROM admin_flyer_requests WHERE id=$1`,
+    [request.id]
+  )).rows[0];
+  assert.equal(sentState.claim_invitation_id, null);
+  assert.equal(sentState.claim_invitation_status, 'sent');
+  assert.ok(sentState.claim_invitation_sent_at);
+  assert.equal(sentState.claim_invitation_error, null);
+  assert.ok(sentState.claimed_at);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [targetUserId]
+  )).rows[0].count, 0);
+
+  const idempotent = await publish();
+  assert.equal(idempotent.status, 200);
+  assert.equal((await idempotent.json()).retryNeeded, false);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(welcomeAttempts.length, 2, 'a successful existing-account welcome is terminal');
+  assert.equal(deliveredWelcomes.length, 1);
+});
+
+test('claimed flyers never welcome an unverified submitted email and retry to the verified primary email', async t => {
+  resetRateLimits();
+  const operator = await createAdminOperator('verified-welcome-admin@example.test', 'super_admin');
+  const adminSession = await signInAdminOperator(operator.email);
+  const submittedEmail = 'phone-match-unverified@example.test';
+  const safeEmail = 'phone-match-owner@example.test';
+  const phone = '+14155550224';
+  const ownerOrganizer = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('phone-match-compat@example.test','Phone Match Owner','Phone Match Host','phone-match-host')
+     RETURNING id`
+  )).rows[0];
+  const targetUserId = Number((await pool.query(
+    'SELECT user_id FROM organizers WHERE id=$1', [ownerOrganizer.id]
+  )).rows[0].user_id);
+  await attachVerifiedPhoneIdentity(pool, {
+    userId: targetUserId,
+    phone,
+    verifiedAt: new Date(),
+    verificationSource: 'integration_test'
+  });
+
+  const lookup = await doneForYouLookup(adminSession, { email: submittedEmail, phone });
+  assert.equal(lookup.status, 200);
+  const lookupBody = await lookup.json();
+  assert.equal(lookupBody.expectedUserId, targetUserId);
+  assert.ok(lookupBody.matchedBy.some(value => value.includes('verified_phone')));
+  const prepared = await provisionDoneForYou(adminSession, {
+    hostName: 'Phone Match Host',
+    contactName: 'Phone Match Owner',
+    email: submittedEmail,
+    phone,
+    expectedUserId: targetUserId
+  });
+  assert.ok([200, 201].includes(prepared.status));
+  const marker = (await prepared.json()).client;
+  assert.equal(marker.userId, targetUserId);
+  const submittedIdentity = (await pool.query(
+    `SELECT verification_scope,verified_at
+       FROM user_identities
+      WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2`,
+    [targetUserId, submittedEmail]
+  )).rows[0];
+  assert.equal(submittedIdentity.verification_scope, 'unverified');
+  assert.equal(submittedIdentity.verified_at, null);
+
+  const event = await createEvent({
+    slug: 'verified-recipient-flyer',
+    title: 'Verified Recipient Flyer',
+    status: 'draft',
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://images.example.test/verified-recipient-flyer.jpg'
+  });
+  await pool.query('UPDATE events SET organizer_id=$2 WHERE id=$1', [event.id, ownerOrganizer.id]);
+  const request = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,done_for_you_client_id,event_id,
+        assigned_admin_operator_id,started_at,ready_for_review_at,preview_sent_at,
+        promoter_approved_at,phone_verified_at)
+     VALUES ('Phone Match Owner','Phone Match Host',$1,$2,
+             'https://images.example.test/verified-recipient-flyer.jpg','flyers/verified-recipient',
+             NOW(),'dfy-transactional-v1','promoter_approved',$3,$4,$5,NOW(),NOW(),NOW(),NOW(),NOW())
+     RETURNING id`,
+    [submittedEmail, phone, marker.id, event.id, operator.id]
+  )).rows[0];
+
+  const originalSendSms = sms.sendSms;
+  const sentTexts = [];
+  const welcomeAttempts = [];
+  sms.sendSms = async message => {
+    sentTexts.push(message);
+    return { sid: `SM${'v'.repeat(32)}`, status: 'accepted', recipient: message.to };
+  };
+  flyerIntakeRoutes.setClaimSenderForTests(async message => {
+    welcomeAttempts.push(message);
+  });
+  t.after(() => {
+    sms.sendSms = originalSendSms;
+    flyerIntakeRoutes.setClaimSenderForTests();
+  });
+
+  const publish = () => fetch(
+    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`,
+    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
+  );
+  const first = await publish();
+  assert.equal(first.status, 200);
+  const firstBody = await first.json();
+  assert.equal(firstBody.published, true);
+  assert.equal(firstBody.liveSms.status, 'sent');
+  assert.equal(firstBody.claimInvitation.status, 'failed');
+  assert.equal(firstBody.retryNeeded, true);
+  assert.equal(sentTexts.length, 1);
+  assert.equal(welcomeAttempts.length, 0, 'the unverified submitted inbox receives no welcome');
+  const failedState = (await pool.query(
+    `SELECT claim_invitation_status,claim_invitation_sent_at,claim_invitation_error,claimed_at
+       FROM admin_flyer_requests WHERE id=$1`,
+    [request.id]
+  )).rows[0];
+  assert.equal(failedState.claim_invitation_status, 'failed');
+  assert.equal(failedState.claim_invitation_sent_at, null);
+  assert.match(failedState.claim_invitation_error, /verify an email/i);
+  assert.ok(failedState.claimed_at, 'the verified-phone owner is still recorded as claimed');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM magic_link_tokens
+      WHERE LOWER(email)=$1`,
+    [submittedEmail]
+  )).rows[0].count, 0, 'no account credential is minted for the unverified submitted inbox');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [targetUserId]
+  )).rows[0].count, 0);
+
+  await addVerifiedEmailIdentity(targetUserId, safeEmail, { primary: true });
+  const retried = await publish();
+  assert.equal(retried.status, 200);
+  const retriedBody = await retried.json();
+  assert.equal(retriedBody.claimInvitation.status, 'sent');
+  assert.equal(retriedBody.retryNeeded, false);
+  assert.equal(sentTexts.length, 1, 'retry does not duplicate the live text');
+  assert.equal(welcomeAttempts.length, 1);
+  assert.equal(welcomeAttempts[0].to, safeEmail);
+  assert.notEqual(welcomeAttempts[0].to, submittedEmail);
+  assert.equal(welcomeAttempts[0].existingAccount, true);
+  assert.equal(welcomeAttempts[0].link, 'http://127.0.0.1/login?next=%2Fdashboard');
+  assert.equal(welcomeAttempts[0].idempotencyKey, `dfy-flyer-${request.id}-existing-welcome-v1`);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_account_invitations WHERE target_user_id=$1',
+    [targetUserId]
+  )).rows[0].count, 0);
+
+  const idempotent = await publish();
+  assert.equal(idempotent.status, 200);
+  assert.equal((await idempotent.json()).retryNeeded, false);
+  assert.equal(welcomeAttempts.length, 1, 'successful verified welcome is terminal');
 });
 
 test('Done For You concurrent provisioning creates one owner and forces a fresh preview for the loser', async () => {

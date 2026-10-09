@@ -494,18 +494,87 @@ function recordDevEmail(entry) {
   if (devOutbox.length > 100) devOutbox.shift();
 }
 
-async function send({ to, subject, html, attachments, replyTo, from = platformFrom(), headers }) {
+async function send({
+  to,
+  subject,
+  html,
+  attachments,
+  replyTo,
+  from = platformFrom(),
+  headers,
+  idempotencyKey = null
+}) {
   if (!resend) {
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
-    recordDevEmail({ to, subject, html, from, replyTo: replyTo || null, headers: headers || null });
+    recordDevEmail({
+      to,
+      subject,
+      html,
+      from,
+      replyTo: replyTo || null,
+      headers: headers || null,
+      idempotencyKey: idempotencyKey || null
+    });
     return { dev: true };
   }
   const payload = { from, to, subject, html, attachments };
   if (replyTo) payload.replyTo = replyTo;
   if (headers) payload.headers = headers;
-  const result = await resend.emails.send(payload);
+  const result = idempotencyKey
+    ? await resend.emails.send(payload, { idempotencyKey })
+    : await resend.emails.send(payload);
   if (result.error) throw new Error(result.error.message || 'Resend send failed');
   return result.data;
+}
+
+// Internal workflow notices share one renderer so adding another flyer-state
+// email does not create a second source of truth for staff copy and styling.
+async function sendAdminFlyerNotification({
+  to,
+  kind,
+  adminUrl,
+  requestId,
+  submitterName,
+  hostName,
+  eventTitle,
+  idempotencyKey = null
+}) {
+  if (!resend && process.env.NODE_ENV === 'production') {
+    throw new Error('Flyer admin notification email delivery is unavailable');
+  }
+  const url = safeHttpUrl(adminUrl);
+  if (!url) throw new Error('A valid flyer-request admin URL is required');
+  const cleanLabel = (value, fallback = '') => (
+    String(value || '').trim().replace(/\s+/g, ' ').slice(0, 180) || fallback
+  );
+  const fallback = Number.isSafeInteger(Number(requestId)) && Number(requestId) > 0
+    ? `Flyer request #${Number(requestId)}`
+    : 'The flyer request';
+  const approved = kind === 'approved';
+  if (!approved && kind !== 'submitted') {
+    throw new Error('Unknown flyer admin notification kind');
+  }
+  const subject = approved
+    ? 'Done For You flyer approved'
+    : 'New Done For You flyer submission';
+  const sub = approved
+    ? `${cleanLabel(eventTitle, cleanLabel(hostName, fallback))} is ready for final review and publishing.`
+    : `${cleanLabel(submitterName, 'A promoter')} submitted a flyer${hostName ? ` for ${cleanLabel(hostName)}` : ''}.`;
+  return send({
+    to,
+    subject,
+    html: layout({
+      kicker: 'Done For You',
+      headline: approved
+        ? 'The promoter approved the preview.'
+        : 'A new flyer is waiting.',
+      sub,
+      cta: approved ? 'Review and publish' : 'Open flyer request',
+      ctaUrl: url,
+      footerHtml: '<p style="color:#555;font-size:12px;line-height:1.7;margin:0">This operational notice was sent to an active Silver Glider Super Admin.</p>'
+    }),
+    idempotencyKey
+  });
 }
 
 function signInCodeBlock(code) {
@@ -579,16 +648,18 @@ async function sendAccountClaimInvitation({ to, link, name }) {
   });
 }
 
-// The Done For You publish handoff is still the same secure, target-bound
-// account invitation. This presentation simply gives the promoter useful live
-// links around that one-time Home Base claim link.
+// A new Done For You account receives the secure target-bound claim link.
+// Existing owners receive the same live-event welcome around an ordinary Home
+// Base sign-in destination, without minting another claim credential.
 async function sendDoneForYouWelcome({
   to,
   link,
   name,
   eventLink,
   hostPageLink,
-  eventTitle
+  eventTitle,
+  existingAccount = false,
+  idempotencyKey = null
 }) {
   const firstName = String(name || '').trim().split(/\s+/)[0];
   if (!resend) {
@@ -601,7 +672,9 @@ async function sendDoneForYouWelcome({
       kind: 'done_for_you_welcome',
       link,
       eventLink: eventLink || null,
-      hostPageLink: hostPageLink || null
+      hostPageLink: hostPageLink || null,
+      existingAccount: Boolean(existingAccount),
+      idempotencyKey: idempotencyKey || null
     });
     return { dev: true };
   }
@@ -625,8 +698,11 @@ async function sendDoneForYouWelcome({
       bodyHtml: `<div style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 14px;color:#f0f0f0;font-size:15px;line-height:1.6">${usefulLinks}</div>`,
       cta: 'Open your Home Base',
       ctaUrl: link,
-      footerHtml: '<p style="color:#555;font-size:12px;margin:14px 0 0;line-height:1.7">Your Home Base is where you manage your shows, see who’s coming, and grow your following. This secure link confirms your email, signs you in, and works once within 7 days.</p>'
-    })
+      footerHtml: existingAccount
+        ? '<p style="color:#555;font-size:12px;margin:14px 0 0;line-height:1.7">Your Home Base is where you manage your shows, see who’s coming, and grow your following. Sign in with this email if asked.</p>'
+        : '<p style="color:#555;font-size:12px;margin:14px 0 0;line-height:1.7">Your Home Base is where you manage your shows, see who’s coming, and grow your following. This secure link confirms your email, signs you in, and works once within 7 days.</p>'
+    }),
+    idempotencyKey
   });
 }
 
@@ -1166,7 +1242,7 @@ async function sendCommerceLaunch({ to, isTest = false, unsubscribeUrl, manageUr
 
 module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
-  sendAdminIdentityChangeVerification,
+  sendAdminIdentityChangeVerification, sendAdminFlyerNotification,
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome, sendHostRecap,
   sendPhotoRequest, sendCommerceLaunch,

@@ -10,6 +10,18 @@ const {
 
 const CLAIM_TTL_MINUTES = 7 * 24 * 60;
 
+function selectClaimedAccountWelcomeIdentity(emailIdentities, requestedEmail) {
+  // A verified phone can select an existing owner while the newly submitted
+  // email is attached only as unverified contact data. Never turn that contact
+  // into an outbound account surface; use the owner's verified primary instead.
+  const verified = (emailIdentities || []).filter(identity =>
+    identity.verification_scope === 'account' && Boolean(identity.verified_at)
+  );
+  return verified.find(identity => identity.normalized_value === requestedEmail)
+    || verified.find(identity => identity.is_primary)
+    || null;
+}
+
 async function writeClaimAudit(db, {
   actorAdminOperatorId,
   targetUserId,
@@ -63,6 +75,7 @@ async function sendDoneForYouClaimInvitation({
   requestIp = null,
   userAgent = null,
   deliver = sendAccountClaimInvitation,
+  welcomeClaimedAccount = false,
   metadata = {}
 }) {
   const connection = await pool.connect();
@@ -99,20 +112,66 @@ async function sendDoneForYouClaimInvitation({
     lockHeld = true;
 
     await connection.query('BEGIN');
-    const emailIdentity = (await connection.query(
-      `SELECT id,verification_scope,verified_at
+    const emailIdentities = (await connection.query(
+      `SELECT id,normalized_value,verification_scope,verified_at,is_primary
          FROM user_identities
-        WHERE user_id=$1 AND identity_type='email' AND normalized_value=$2
-          AND revoked_at IS NULL
+        WHERE user_id=$1 AND identity_type='email' AND revoked_at IS NULL
+        ORDER BY id
         FOR UPDATE`,
-      [targetUserId, normalizedEmail]
-    )).rows[0];
+      [targetUserId]
+    )).rows;
+    const emailIdentity = emailIdentities.find(
+      identity => identity.normalized_value === normalizedEmail
+    );
     const locked = await readDoneForYouClient(connection, markerId, { forUpdate: true });
     if (!locked || locked.owner.status !== 'active') {
       throw new DoneForYouProvisioningError('account_not_active', 'This client account is not active.', 409);
     }
-    if (locked.owner.claimed) {
+    if (locked.owner.claimed && !welcomeClaimedAccount) {
       throw new DoneForYouProvisioningError('account_already_claimed', 'This client already controls the account.', 409);
+    }
+    if (locked.owner.claimed) {
+      const welcomeIdentity = selectClaimedAccountWelcomeIdentity(
+        emailIdentities,
+        normalizedEmail
+      );
+      if (!welcomeIdentity) {
+        const error = new DoneForYouProvisioningError(
+          'claimed_account_verified_email_required',
+          'Verify an email on this account before sending the live-event welcome.',
+          409
+        );
+        error.doneForYouClaimedAccount = true;
+        throw error;
+      }
+      normalizedEmail = welcomeIdentity.normalized_value;
+      const appUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
+      if (!appUrl) {
+        const error = new Error('Done For You Home Base links are unavailable');
+        error.doneForYouClaimedAccount = true;
+        throw error;
+      }
+      await connection.query('COMMIT');
+      try {
+        await deliver({
+          to: normalizedEmail,
+          link: `${appUrl}/login?next=%2Fdashboard`,
+          name: locked.owner.name || 'there',
+          existingAccount: true
+        });
+      } catch (error) {
+        error.doneForYouClaimedAccount = true;
+        throw error;
+      }
+      return {
+        id: null,
+        email: normalizedEmail,
+        status: 'sent',
+        sentAt: new Date(),
+        expiresAt: null,
+        targetUserId,
+        existingAccount: true
+      };
     }
     if (!emailIdentity) {
       throw new DoneForYouProvisioningError(
@@ -281,5 +340,6 @@ async function sendDoneForYouClaimInvitation({
 
 module.exports = {
   CLAIM_TTL_MINUTES,
-  sendDoneForYouClaimInvitation
+  sendDoneForYouClaimInvitation,
+  _test: { selectClaimedAccountWelcomeIdentity }
 };

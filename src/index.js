@@ -255,6 +255,7 @@ async function start() {
   require('./jobs/host-recap').startHostRecapCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
+  require('./jobs/flyer-admin-notifications').startFlyerAdminNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
   require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();
   return server;

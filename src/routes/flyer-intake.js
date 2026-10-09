@@ -32,6 +32,10 @@ const {
   openAdminEditorWorkspace,
   setAdminEditorCookie
 } = require('../lib/admin-editor-workspace');
+const {
+  enqueueFlyerAdminNotifications,
+  queueFlyerAdminNotifications
+} = require('../jobs/flyer-admin-notifications');
 
 const router = express.Router();
 const SMS_CONSENT_VERSION = 'dfy-transactional-v1';
@@ -338,6 +342,7 @@ router.post('/api/flyer-intake', async (req, res, next) => {
     }
 
     let uploaded = null;
+    let requestCommitted = false;
     try {
       // Re-check after upload parsing so a Super Admin pause wins before the
       // external upload and database write.
@@ -350,27 +355,45 @@ router.post('/api/flyer-intake', async (req, res, next) => {
       }
       uploaded = await uploadFlyer(req.file.buffer);
       const accentColor = selectAccentColor(uploaded.colors, { fallback: null });
-      const { rows } = await pool.query(
-        `INSERT INTO admin_flyer_requests
-           (submitter_name,host_name,email,phone_e164,artwork_credit,
-            flyer_url,flyer_public_id,flyer_accent_color,sms_consent_at,sms_consent_version)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),$9)
-         RETURNING created_at`,
-        [
-          submission.submitterName,
-          submission.hostName,
-          submission.email,
-          submission.phone,
-          submission.artworkCredit,
-          uploaded.secure_url,
-          uploaded.public_id,
-          accentColor,
-          SMS_CONSENT_VERSION
-        ]
-      );
-      res.status(201).json({ ok: true, receivedAt: rows[0].created_at });
+      const connection = await pool.connect();
+      let request;
+      let notificationIds = [];
+      try {
+        await connection.query('BEGIN');
+        request = (await connection.query(
+          `INSERT INTO admin_flyer_requests
+             (submitter_name,host_name,email,phone_e164,artwork_credit,
+              flyer_url,flyer_public_id,flyer_accent_color,sms_consent_at,sms_consent_version)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),$9)
+           RETURNING id,created_at`,
+          [
+            submission.submitterName,
+            submission.hostName,
+            submission.email,
+            submission.phone,
+            submission.artworkCredit,
+            uploaded.secure_url,
+            uploaded.public_id,
+            accentColor,
+            SMS_CONSENT_VERSION
+          ]
+        )).rows[0];
+        notificationIds = await enqueueFlyerAdminNotifications(connection, {
+          kind: 'submitted',
+          requestId: Number(request.id)
+        });
+        await connection.query('COMMIT');
+        requestCommitted = true;
+      } catch (error) {
+        await connection.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally {
+        connection.release();
+      }
+      queueFlyerAdminNotifications(notificationIds);
+      res.status(201).json({ ok: true, receivedAt: request.created_at });
     } catch (error) {
-      if (uploaded?.public_id) {
+      if (uploaded?.public_id && !requestCommitted) {
         await deleteManagedPublicId(uploaded.public_id).catch(() => {});
       }
       console.error('[flyer-intake]', error.name, error.http_code || '', error.message);
@@ -574,6 +597,7 @@ router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
     }
 
     const client = await pool.connect();
+    let notificationIds = [];
     try {
       await client.query('BEGIN');
       const lockedPreview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
@@ -602,11 +626,16 @@ router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
           WHERE id=$1`,
         [lockedPreview.id]
       );
+      notificationIds = await enqueueFlyerAdminNotifications(client, {
+        kind: 'approved',
+        requestId: Number(lockedPreview.id)
+      });
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
     } finally { client.release(); }
+    queueFlyerAdminNotifications(notificationIds);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, status: 'promoter_approved' });
   } catch (error) {
@@ -1236,7 +1265,7 @@ router.post(
       const claimSendingRecently = request.claim_invitation_status === 'sending' &&
         request.claim_invitation_attempted_at &&
         Date.now() - new Date(request.claim_invitation_attempted_at).getTime() < 10 * 60 * 1000;
-      if (!['sent', 'not_needed'].includes(request.claim_invitation_status) && !claimSendingRecently) {
+      if (request.claim_invitation_status !== 'sent' && !claimSendingRecently) {
         await connection.query(
           `UPDATE admin_flyer_requests
               SET claim_invitation_status='sending',claim_invitation_attempted_at=NOW(),
@@ -1303,43 +1332,44 @@ router.post(
           requestedEmail: request.email,
           ...requestContext(req),
           metadata: { flyerRequestId: id },
+          welcomeClaimedAccount: true,
           deliver: message => deliverFlyerWelcome({
             ...message,
             eventLink: eventUrl,
             hostPageLink: hostPageUrl,
-            eventTitle: request.event_title
+            eventTitle: request.event_title,
+            idempotencyKey: message.existingAccount
+              ? `dfy-flyer-${id}-existing-welcome-v1`
+              : null
           })
         });
         await pool.query(
           `UPDATE admin_flyer_requests
               SET claim_invitation_id=$2,claim_invitation_status='sent',
-                  claim_invitation_sent_at=NOW(),claim_invitation_error=NULL,updated_at=NOW()
+                  claim_invitation_sent_at=NOW(),claim_invitation_error=NULL,
+                  claimed_at=CASE WHEN $3 THEN COALESCE(claimed_at,NOW()) ELSE claimed_at END,
+                  updated_at=NOW()
             WHERE id=$1`,
-          [id, invitation.id]
+          [id, invitation.id, Boolean(invitation.existingAccount)]
         );
         claimInvitationStatus = 'sent';
       } catch (error) {
-        if (error instanceof DoneForYouProvisioningError && error.code === 'account_already_claimed') {
-          await pool.query(
-            `UPDATE admin_flyer_requests
-                SET claim_invitation_status='not_needed',claimed_at=COALESCE(claimed_at,NOW()),
-                    claim_invitation_error=NULL,updated_at=NOW()
-              WHERE id=$1`,
-            [id]
-          );
-          claimInvitationStatus = 'not_needed';
-        } else {
-          await pool.query(
-            `UPDATE admin_flyer_requests
-                SET claim_invitation_status='failed',claim_invitation_error=$2,updated_at=NOW()
-              WHERE id=$1`,
-            [id, cleanText(error.message, 500) || 'Email delivery failed']
-          ).catch(() => {});
-          claimInvitationStatus = 'failed';
-          retryNeeded = true;
-        }
+        await pool.query(
+          `UPDATE admin_flyer_requests
+              SET claim_invitation_status='failed',claim_invitation_error=$2,
+                  claimed_at=CASE WHEN $3 THEN COALESCE(claimed_at,NOW()) ELSE claimed_at END,
+                  updated_at=NOW()
+            WHERE id=$1`,
+          [
+            id,
+            cleanText(error.message, 500) || 'Email delivery failed',
+            Boolean(error.doneForYouClaimedAccount)
+          ]
+        ).catch(() => {});
+        claimInvitationStatus = 'failed';
+        retryNeeded = true;
       }
-    } else if (!['sent', 'not_needed'].includes(claimInvitationStatus)) {
+    } else if (claimInvitationStatus !== 'sent') {
       claimInvitationStatus = 'sending';
       retryNeeded = true;
     }

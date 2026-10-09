@@ -77,10 +77,10 @@ function renderWorkflow(request, capabilities = {}) {
   } else if (request.status === 'published') {
     const liveSms = request.live_sms_status || 'not sent';
     const claimEmail = request.claim_invitation_status === 'not_needed'
-      ? 'not needed — this promoter already controls their account'
+      ? 'not sent — this promoter already controls their account'
       : (request.claim_invitation_status || 'not sent');
     steps.push(`<div class="dfy-preflight success"><strong>Event live</strong><p>The public event is published.</p><dl><dt>Live text</dt><dd>${esc(liveSms)}</dd><dt>Home Base email</dt><dd>${esc(claimEmail)}</dd></dl>${request.event_slug ? `<div class="dfy-preflight-links"><a href="/e/${encodeURIComponent(request.event_slug)}" target="_blank" rel="noopener">Open live event</a></div>` : ''}</div>`);
-    if (capabilities.publish && (liveSms !== 'sent' || !['sent', 'not_needed'].includes(request.claim_invitation_status))) {
+    if (capabilities.publish && (liveSms !== 'sent' || request.claim_invitation_status !== 'sent')) {
       steps.push(actionButton('publish-flyer-event', 'Retry notifications', true));
     }
   } else if (request.event_id) {

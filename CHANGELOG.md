@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.167
+
+Released October 9, 2026. Built and deployed by Codex.
+
+### Reliable Done For You handoff emails
+
+* Every active Super Admin receives an operational email when a new flyer arrives and another when the promoter approves the preview, each linked directly to the exact request.
+* Alerts are committed with the workflow transition and retry with capped exponential backoff, delivery leases, and stable provider idempotency instead of disappearing during a temporary email outage.
+* Promoters with an existing claimed account now receive the live-event welcome and Home Base email after final publishing without creating a duplicate account or claim credential.
+* Existing-account welcomes go only to an account-verified email, with a safe verified-primary fallback when the submitted address is not verified.
+
+### Verification
+
+* Static validation and all 539 automated tests pass.
+* End-to-end coverage includes new submissions, promoter approval, provider failure and recovery, revoked Super Admin recipients, new-account claims, existing-account welcomes, and unverified-email protection.
+
 ## 1.0.166
 
 Released October 8, 2026. Built and deployed by Codex.
