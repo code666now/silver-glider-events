@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.165
+
+Released October 8, 2026. Built and deployed by Codex.
+
+### A more playful flyer intake
+
+* Three warm paper cards now explain the value of an event page with restrained black-and-white character artwork that matches the Silver Glider reference style.
+* The same visual language adapts across mobile and desktop instead of stretching one layout between them.
+* The empty upload state is now one large, aligned tap target and switches cleanly to the existing flyer preview and replace flow after selection.
+* The form is grouped into **About you** and **About the show** while preserving its identity, notification, artwork-credit, and consent guidance.
+
+### Verification
+
+* Static validation and all 527 automated tests pass.
+* Real browser checks cover empty and selected-flyer states at 390×844 and 1280×900, including responsive artwork, field guidance, and upload behavior.
+
 ## 1.0.164
 
 Released October 8, 2026. Built and deployed by Codex.
