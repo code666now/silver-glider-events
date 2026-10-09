@@ -2,6 +2,18 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.164
+
+Released October 8, 2026. Built and deployed by Codex.
+
+### Centered flyer upload prompt
+
+* The empty flyer upload card now keeps its plus icon, title, and file guidance centered as one clear stack on both mobile and desktop.
+
+### Verification
+
+* Static validation and all 527 automated tests pass, including a regression check that binds the upload prompt to its responsive styling.
+
 ## 1.0.163
 
 Released October 8, 2026. Built and deployed by Codex.
