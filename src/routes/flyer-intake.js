@@ -333,7 +333,7 @@ router.post('/api/flyer-intake', async (req, res, next) => {
 // The raw high-entropy token is removed from the address bar immediately. The
 // browser keeps it in an HttpOnly, same-site cookie so page scripts cannot read
 // or leak it while the recipient reviews the real unpublished event.
-router.get('/p/:token', async (req, res, next) => {
+router.get('/preview/:token', async (req, res, next) => {
   try {
     const preview = await readPreviewByToken(pool, req.params.token);
     if (!preview) return res.status(404).send('Preview not found or expired.');
@@ -944,7 +944,7 @@ router.post(
     }
     client.release();
 
-    const link = `${appUrl}/p/${rawToken}`;
+    const link = `${appUrl}/preview/${rawToken}`;
     const body = `Your Silver Glider event page is ready! 🎸\nPreview and approve it here: ${link}`;
     try {
       const delivered = await sms.sendSms({ to: request.phone_e164, body });

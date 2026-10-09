@@ -6303,6 +6303,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
       manageDoneForYou: true,
       suspendAccounts: true,
       deleteAccounts: true,
+      manageFlyerIntake: true,
       manageOperators: true
     }
   });

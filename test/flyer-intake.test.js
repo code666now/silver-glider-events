@@ -65,6 +65,8 @@ test('secure flyer previews expose only look, fix, and recipient approval contro
   assert.match(access, /preview_token_hash=\$1/);
   assert.match(route, /flyer-intake\/:id\/send-preview/);
   assert.match(route, /Your Silver Glider event page is ready!/);
+  assert.match(route, /router\.get\('\/preview\/:token'/);
+  assert.doesNotMatch(route, /router\.get\('\/p\/:token'/);
   assert.match(route, /\/api\/flyer-preview\/look/);
   assert.match(route, /\/api\/flyer-preview\/fix/);
   assert.match(route, /\/api\/flyer-preview\/approve\/start/);
