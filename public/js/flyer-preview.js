@@ -103,31 +103,15 @@
     return `<div class="flyer-publish-confetti" aria-hidden="true">${'<i></i>'.repeat(24)}</div>`;
   }
 
-  function showCelebration(data) {
-    const state = previewState(data);
-    if (!state.published || !state.eventUrl) {
-      showPublishRetry('Your approval is saved, but we could not confirm the public event link yet.');
-      return;
-    }
-    payload = data;
-    markPublished();
-    open(`<section class="flyer-publish-step flyer-publish-celebration" aria-labelledby="flyer-preview-dialog-title">
-      ${confettiHtml()}
-      <div class="flyer-publish-mark" aria-hidden="true">✓</div>
-      <p class="flyer-publish-kicker">It’s official</p>
-      <h2 id="flyer-preview-dialog-title" tabindex="-1">Your event is published!</h2>
-      <p>You’re live on Silver Glider Events.</p>
-      <button class="flyer-preview-submit flyer-publish-continue" type="button" id="flyer-publish-continue">Continue</button>
-    </section>`, { completion: true, dismissible: false });
-    const confetti = body.querySelector('.flyer-publish-confetti');
-    if (confetti) confettiTimer = window.setTimeout(() => confetti.remove(), 1800);
-    document.getElementById('flyer-publish-continue').addEventListener('click', () => showShare(data));
-  }
-
   async function copyText(value) {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(value);
-      return;
+      try {
+        await navigator.clipboard.writeText(value);
+        return;
+      } catch (_) {
+        // Some embedded browsers expose the Clipboard API but reject it.
+        // Fall through to the legacy copy path before showing an error.
+      }
     }
     const textarea = document.createElement('textarea');
     textarea.value = value;
@@ -140,7 +124,7 @@
     if (!copied) throw new Error('Copy did not work. Press and hold the link to copy it.');
   }
 
-  function showShare(data) {
+  function showShare(data, { celebrate = false } = {}) {
     const state = previewState(data);
     if (!state.published || !state.eventUrl) {
       showPublishRetry('Your event is live, but we could not load its share link yet.');
@@ -149,29 +133,44 @@
     payload = data;
     markPublished();
     const safeUrl = escapeHtml(state.eventUrl);
+    const displayUrl = escapeHtml(state.eventUrl.replace(/^https?:\/\//i, ''));
     open(`<section class="flyer-publish-step flyer-publish-share" aria-labelledby="flyer-preview-dialog-title">
-      <div class="flyer-publish-share-mark" aria-hidden="true">↗</div>
+      ${celebrate ? confettiHtml() : ''}
+      <div class="flyer-publish-share-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="m4 22 4.4-12.7 6.3 6.3L4 22Z"/><path d="m8.4 9.3 6.3 6.3M14 4l.7-2M18.2 7.2l2-.8M17 2.5l1.5-1.5M20.5 12l2 .7M11.5 5.5 10 4"/></svg>
+      </div>
       <h2 id="flyer-preview-dialog-title" tabindex="-1">Share your event</h2>
       <p>Your event is live. Here’s your link!</p>
       <div class="flyer-publish-url">
         <span>Your event link</span>
-        <a href="${safeUrl}" target="_blank" rel="noopener">${safeUrl}</a>
+        <a href="${safeUrl}" target="_blank" rel="noopener">${displayUrl}</a>
       </div>
       <div class="flyer-publish-share-actions">
-        <button class="flyer-preview-submit is-secondary" type="button" id="flyer-copy-event-link">Copy link</button>
-        <button class="flyer-preview-submit" type="button" id="flyer-share-event">Share event</button>
+        <button class="flyer-preview-submit is-secondary" type="button" id="flyer-copy-event-link">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+          <span>Copy link</span>
+        </button>
+        <button class="flyer-preview-submit" type="button" id="flyer-share-event">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
+          <span>Share event</span>
+        </button>
       </div>
       <p class="flyer-preview-message" id="flyer-preview-message" role="status" aria-live="polite"></p>
+      <p class="flyer-publish-confirmation">Your event is published and ready to share.</p>
     </section>`, { completion: true, dismissible: false });
 
+    const confetti = body.querySelector('.flyer-publish-confetti');
+    if (confetti) confettiTimer = window.setTimeout(() => confetti.remove(), 1800);
+
     const copyButton = document.getElementById('flyer-copy-event-link');
+    const copyLabel = copyButton.querySelector('span');
     const shareButton = document.getElementById('flyer-share-event');
     copyButton.addEventListener('click', async () => {
       try {
         await copyText(state.eventUrl);
-        copyButton.textContent = 'Copied!';
+        copyLabel.textContent = 'Copied!';
         message('Event link copied.');
-        window.setTimeout(() => { if (copyButton.isConnected) copyButton.textContent = 'Copy link'; }, 2200);
+        window.setTimeout(() => { if (copyButton.isConnected) copyLabel.textContent = 'Copy link'; }, 2200);
       } catch (error) { message(error.message, true); }
     });
     shareButton.addEventListener('click', async () => {
@@ -211,7 +210,7 @@
       const result = await request('/api/flyer-preview/publish', { method: 'POST' });
       const state = previewState(result);
       if (!state.published || !state.eventUrl) throw new Error('Publication is still processing. Please try again.');
-      showCelebration(result);
+      showShare(result, { celebrate: true });
     } catch (error) {
       button.disabled = false;
       setLocked(false);
@@ -284,7 +283,7 @@
     try {
       const current = await load(true);
       const state = previewState(current);
-      if (state.published) return showCelebration(current);
+      if (state.published) return showShare(current, { celebrate: true });
       if (state.status === 'promoter_approved') return showPublishRetry(error.message);
     } catch (_) {}
     button.disabled = false;
@@ -304,7 +303,7 @@
     try {
       const result = await request('/api/flyer-preview/approve/verify', { method: 'POST', body: { code } });
       const state = previewState(result);
-      if (state.published && state.eventUrl) showCelebration(result);
+      if (state.published && state.eventUrl) showShare(result, { celebrate: true });
       else if (state.status === 'promoter_approved') showPublishRetry('Your approval is saved. Finish publishing your event.');
       else throw new Error('We could not confirm publication. Please try again.');
     } catch (error) { await recoverApproval(error, form, button); }

@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.169
+
+Released October 9, 2026. Built and deployed by Codex.
+
+### One-step publication finish
+
+* The Done For You publication celebration and sharing handoff are now one persistent final screen, with the supplied “Share your event” copy, real public event link, Copy link, and Share event actions.
+* Confetti runs only when publication first succeeds; reopening or refreshing the secure published preview restores the same sharing screen without replaying the animation.
+* The redundant Continue step is removed, clipboard rejection now falls back to the legacy copy path, and the layout preserves accessible feedback, reduced motion, and phone-safe scrolling.
+* Preview-ready, verification-code, and live-link texts remain unchanged.
+
+### Verification
+
+* Static validation and all 541 automated tests pass: 412 unit and 129 HTTP/PostgreSQL integration tests.
+* Real-browser checks cover the live publication transition, refresh recovery, exact copy, action persistence, overflow, and touch-target sizing at 320×568, 390×844, 667×375, and 1440×900.
+
 ## 1.0.168
 
 Released October 9, 2026. Built and deployed by Codex.
