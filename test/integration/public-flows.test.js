@@ -1841,6 +1841,50 @@ test('important edits and cancellations can notify every confirmed RSVP exactly 
   assert.deepEqual(cancellationRecipients, ['critical-optin@example.test', 'critical-optout@example.test']);
 });
 
+test('hosts can delete Done For You events while preserving flyer submission history', async () => {
+  const event = await createEvent({ slug: 'deletable-done-for-you-night' });
+  const rsvp = await createRsvp(event.id, { email: 'deletable-dfy-guest@example.test' });
+  const flyerRequest = (await pool.query(
+    `INSERT INTO admin_flyer_requests
+       (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
+        sms_consent_at,sms_consent_version,status,event_id,published_at)
+     VALUES
+       ('Flyer Host','Flyer Host','flyer-delete@example.test','+14155550199',
+        'https://images.example.test/deletable-flyer.jpg','deletable-flyer',
+        NOW(),'flyer_transactional_v1','published',$1,NOW())
+     RETURNING id,status,event_id`,
+    [event.id]
+  )).rows[0];
+  const otherOrganizerId = (await pool.query(
+    `INSERT INTO organizers (email,name,org_name,public_slug)
+     VALUES ('other-delete-host@example.test','Other Host','Other Host','other-delete-host')
+     RETURNING id`
+  )).rows[0].id;
+
+  const notOwner = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'DELETE',
+    headers: { cookie: `sge_session=${signSession(otherOrganizerId)}` }
+  });
+  assert.equal(notOwner.status, 404);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM events WHERE id=$1', [event.id])).rows[0].count, 1);
+  assert.equal(Number((await pool.query(
+    'SELECT event_id FROM admin_flyer_requests WHERE id=$1', [flyerRequest.id]
+  )).rows[0].event_id), Number(event.id));
+
+  const deleted = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'DELETE',
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(await deleted.json(), { ok: true });
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM events WHERE id=$1', [event.id])).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM rsvps WHERE id=$1', [rsvp.id])).rows[0].count, 0);
+  const preservedRequest = (await pool.query(
+    'SELECT status,event_id FROM admin_flyer_requests WHERE id=$1', [flyerRequest.id]
+  )).rows[0];
+  assert.deepEqual(preservedRequest, { status: 'published', event_id: null });
+});
+
 test('address-only locations render once and keep Maps and calendar destinations intact', async () => {
   const event = await createEvent({
     slug: 'address-only-night',

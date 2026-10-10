@@ -56,6 +56,16 @@ test('reviewed flyer requests enter the existing isolated editor without publish
   assert.match(read('public/js/admin-flyer-request.js'), /preview text is sent only after Super Admin review/i);
 });
 
+test('a preserved published flyer request shows its deleted event as terminal history', () => {
+  const adminUi = read('public/js/admin-flyer-request.js');
+  const removedStateStart = adminUi.indexOf("request.status === 'published' && !request.event_id");
+  const newDraftStateStart = adminUi.indexOf('else if (!request.event_id)', removedStateStart);
+  assert.ok(removedStateStart >= 0 && newDraftStateStart > removedStateStart);
+  const removedState = adminUi.slice(removedStateStart, newDraftStateStart);
+  assert.match(removedState, /Event removed by host/);
+  assert.doesNotMatch(removedState, /Start event draft|open-flyer-editor/);
+});
+
 test('secure flyer previews expose look, fix, and verified auto-publish controls', () => {
   const migration = read('src/db/migrations/063_flyer_preview_approval.sql');
   const route = read('src/routes/flyer-intake.js');

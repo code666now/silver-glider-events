@@ -48,6 +48,8 @@ function renderWorkflow(request, capabilities = {}) {
   if (!request.done_for_you_client_id) {
     steps.push('<p>First, connect the exact account and prepare its public page.</p>');
     steps.push(actionButton('prepare-flyer-request', 'Prepare client and public page', true));
+  } else if (request.status === 'published' && !request.event_id) {
+    steps.push('<div class="dfy-preflight"><strong>Event removed by host</strong><p>The promoter permanently deleted this event from Home Base. The flyer request remains here as a record.</p></div>');
   } else if (!request.event_id) {
     steps.push('<p>The client is ready. Add the event basics; the submitted flyer will already be selected.</p>');
     steps.push(actionButton('open-flyer-editor', 'Start event draft', true));

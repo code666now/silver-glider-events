@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.170
+
+Released October 9, 2026. Built and deployed by Codex.
+
+### Done For You event deletion
+
+* Hosts can permanently delete events created through the Done For You flyer flow without a foreign-key failure.
+* The original flyer submission remains as durable pilot and audit history, while its deleted event reference is safely cleared.
+* Super Admin shows the preserved submission as “Event removed by host” instead of offering to create another draft from it.
+
+### Verification
+
+* Static validation and all 544 automated tests pass.
+* The deletion regression verifies owner access, non-owner protection, RSVP cleanup, and preserved flyer-request history.
+
 ## 1.0.169
 
 Released October 9, 2026. Built and deployed by Codex.
