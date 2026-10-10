@@ -37,6 +37,7 @@ const { signPhotoAccess } = require('../../src/lib/photo-access');
 const { createGuestInvitation } = require('../../src/lib/guest-invitations');
 const { signOptout } = require('../../src/lib/followers');
 const { signEmailPreference } = require('../../src/lib/email-preferences');
+const { createPreviewToken, tokenHash } = require('../../src/lib/flyer-preview-access');
 const { attachVerifiedPhoneIdentity } = require('../../src/lib/canonical-identity');
 const sms = require('../../src/lib/sms');
 const phoneVerification = require('../../src/lib/phone-verification');
@@ -51,6 +52,9 @@ const {
   setFlyerAdminNotificationSenderForTests,
   settleFlyerAdminNotificationWork
 } = require('../../src/jobs/flyer-admin-notifications');
+const {
+  settleFlyerPublicationNotificationWork
+} = require('../../src/jobs/flyer-publication-notifications');
 const mailer = require('../../src/lib/mailer');
 const authRoutes = require('../../src/routes/auth');
 const publicRoutes = require('../../src/routes/public');
@@ -218,6 +222,25 @@ function responseCookie(response, name) {
   const header = response.headers.get('set-cookie') || '';
   const match = header.match(new RegExp(`(?:^|[,;]\\s*)${name}=([^;,]+)`));
   return match ? `${name}=${match[1]}` : '';
+}
+
+async function openFlyerPreviewSession(requestId) {
+  const token = createPreviewToken();
+  const updated = await pool.query(
+    `UPDATE admin_flyer_requests
+        SET preview_token_hash=$2,
+            preview_token_expires_at=NOW() + INTERVAL '7 days'
+      WHERE id=$1`,
+    [requestId, tokenHash(token)]
+  );
+  assert.equal(updated.rowCount, 1);
+  const exchange = await fetch(`${baseUrl}/preview/${token}`, { redirect: 'manual' });
+  assert.equal(exchange.status, 303);
+  assert.match(exchange.headers.get('set-cookie') || '', /HttpOnly/i);
+  assert.match(exchange.headers.get('set-cookie') || '', /SameSite=Lax/i);
+  const cookie = responseCookie(exchange, 'sge_flyer_preview');
+  assert.ok(cookie, 'opening the secure preview creates recipient access');
+  return cookie;
 }
 
 function cookieHeader(...cookies) {
@@ -442,6 +465,7 @@ test.beforeEach(async () => {
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   await settleFlyerAdminNotificationWork();
+  await settleFlyerPublicationNotificationWork();
   await resetDatabase();
 });
 
@@ -450,6 +474,7 @@ test.after(async () => {
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
   await settleFlyerAdminNotificationWork();
+  await settleFlyerPublicationNotificationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
 });
@@ -9067,7 +9092,7 @@ test('flyer intake is off by default, Super Admin controlled, and visible in the
   assert.equal(audit.after_state.acceptingSubmissions, true);
 });
 
-test('flyer admin notification outbox retries separately, stays idempotent, and skips revoked recipients', async t => {
+test('flyer submission and fix-request notifications retry separately, stay idempotent, and skip revoked recipients', async t => {
   resetRateLimits();
   const firstAdmin = await createAdminOperator('flyer-alert-first@example.test', 'super_admin');
   const retryAdmin = await createAdminOperator('flyer-alert-retry@example.test', 'super_admin');
@@ -9172,34 +9197,34 @@ test('flyer admin notification outbox retries separately, stays idempotent, and 
   await runFlyerAdminNotificationPass();
   assert.equal(deliveries.length, deliveredCount, 'sent rows are never delivered twice');
 
-  const approvedRequest = (await pool.query(
+  const fixRequest = (await pool.query(
     `INSERT INTO admin_flyer_requests
        (submitter_name,host_name,email,phone_e164,flyer_url,flyer_public_id,
-        sms_consent_at,sms_consent_version,status,promoter_approved_at,phone_verified_at)
-     VALUES ('Approved Person','Approved Presents','approved-alert@example.test','+14155550232',
-             'https://images.example.test/approved-alert.jpg','flyers/approved-alert',NOW(),
-             'dfy-transactional-v1','promoter_approved',NOW(),NOW())
+        sms_consent_at,sms_consent_version,status,latest_fix_request,changes_requested_at)
+     VALUES ('Fix Person','Fix Presents','fix-alert@example.test','+14155550232',
+             'https://images.example.test/fix-alert.jpg','flyers/fix-alert',NOW(),
+             'dfy-transactional-v1','changes_requested','Please correct the start time.',NOW())
      RETURNING id`
   )).rows[0];
-  const approvedIds = await enqueueFlyerAdminNotifications(pool, {
-    requestId: Number(approvedRequest.id),
-    kind: 'approved'
+  const fixIds = await enqueueFlyerAdminNotifications(pool, {
+    requestId: Number(fixRequest.id),
+    kind: 'fix_requested'
   });
   await pool.query("UPDATE admin_operators SET status='disabled' WHERE id=$1", [retryAdmin.id]);
-  queueFlyerAdminNotifications(approvedIds);
+  queueFlyerAdminNotifications(fixIds);
   await settleFlyerAdminNotificationWork();
   const revoked = (await pool.query(
     `SELECT recipient,status,error
        FROM admin_flyer_request_notifications
       WHERE flyer_request_id=$1 ORDER BY recipient`,
-    [approvedRequest.id]
+    [fixRequest.id]
   )).rows;
   assert.equal(revoked.find(row => row.recipient === firstAdmin.email).status, 'sent');
   const skipped = revoked.find(row => row.recipient === retryAdmin.email);
   assert.equal(skipped.status, 'skipped');
   assert.match(skipped.error, /no longer active/);
   assert.equal(
-    deliveries.filter(message => message.to === retryAdmin.email && message.kind === 'approved').length,
+    deliveries.filter(message => message.to === retryAdmin.email && message.kind === 'fix_requested').length,
     0
   );
 });
@@ -9371,7 +9396,7 @@ test('flyer recovery sees an RSVP committed while it waits for the event lock', 
   }
 });
 
-test('a reviewed flyer request safely provisions, previews, revises, and receives phone-scoped approval', async t => {
+test('a reviewed flyer request auto-publishes after phone approval and retries delivery without another OTP', async t => {
   resetRateLimits();
   const operator = await createAdminOperator('flyer-builder@example.test', 'super_admin');
   const adminSession = await signInAdminOperator(operator.email);
@@ -9380,14 +9405,22 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   const originalCheckVerification = phoneVerification.checkVerification;
   const sentTexts = [];
   const welcomeEmails = [];
+  const welcomeAttemptMessages = [];
+  const adminAlerts = [];
   let welcomeAttempts = 0;
+  let verificationStarts = 0;
+  let verificationChecks = 0;
   const verificationSid = `VE${'a'.repeat(32)}`;
   sms.sendSms = async message => {
     sentTexts.push(message);
     return { sid: `SM${String(sentTexts.length).repeat(32)}`, status: 'accepted', recipient: message.to };
   };
-  phoneVerification.startVerification = async phone => ({ verificationSid, phone, status: 'pending' });
+  phoneVerification.startVerification = async phone => {
+    verificationStarts += 1;
+    return { verificationSid, phone, status: 'pending' };
+  };
   phoneVerification.checkVerification = async ({ verificationSid: sid, code }) => {
+    verificationChecks += 1;
     assert.equal(sid, verificationSid);
     if (code !== '246810') throw new phoneVerification.PhoneVerificationError('That code is invalid', {
       code: 'invalid_phone_verification_code', status: 400
@@ -9396,10 +9429,17 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   };
   flyerIntakeRoutes.setClaimSenderForTests(async message => {
     welcomeAttempts += 1;
+    welcomeAttemptMessages.push(message);
     if (welcomeAttempts === 1) throw new Error('temporary welcome delivery failure');
     welcomeEmails.push(message);
   });
-  t.after(() => {
+  setFlyerAdminNotificationSenderForTests(async message => {
+    adminAlerts.push(message);
+    return { id: `admin-alert-${adminAlerts.length}` };
+  });
+  t.after(async () => {
+    await settleFlyerPublicationNotificationWork();
+    await settleFlyerAdminNotificationWork();
     sms.sendSms = originalSendSms;
     phoneVerification.startVerification = originalStartVerification;
     phoneVerification.checkVerification = originalCheckVerification;
@@ -9593,6 +9633,16 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   assert.equal((await pool.query(
     'SELECT status,latest_fix_request FROM admin_flyer_requests WHERE id=$1', [request.id]
   )).rows[0].status, 'changes_requested');
+  await settleFlyerAdminNotificationWork();
+  assert.equal(adminAlerts.length, 1, 'requesting a fix sends one operational email');
+  assert.equal(adminAlerts[0].kind, 'fix_requested');
+  assert.equal(adminAlerts[0].fixRequest, 'Please change the door time to 7:30.');
+  assert.equal(sentTexts.length, 1, 'requesting a fix does not send another SMS');
+  assert.equal((await pool.query(
+    `SELECT status FROM admin_flyer_request_notifications
+      WHERE flyer_request_id=$1 AND notification_kind='fix_requested'`,
+    [request.id]
+  )).rows[0].status, 'sent');
 
   const revisedReady = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/ready`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
@@ -9620,82 +9670,137 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
     body: JSON.stringify({ code: '000000' })
   });
   assert.equal(wrongApproval.status, 400);
-  const failedApprovalAlerts = [];
-  setFlyerAdminNotificationSenderForTests(async message => {
-    failedApprovalAlerts.push(message);
-    throw new Error('temporary approval alert failure');
-  });
+  const originalVenueName = (await pool.query(
+    'SELECT venue_name FROM events WHERE id=$1', [createdBody.event.id]
+  )).rows[0].venue_name;
+  await pool.query(
+    "UPDATE events SET venue_name='' WHERE id=$1",
+    [createdBody.event.id]
+  );
   const approved = await fetch(`${baseUrl}/api/flyer-preview/approve/verify`, {
     method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie },
     body: JSON.stringify({ code: '246810' })
   });
-  assert.equal(approved.status, 200);
-  assert.equal((await approved.json()).status, 'promoter_approved');
-  await settleFlyerAdminNotificationWork();
-  assert.equal(failedApprovalAlerts.length, 1);
-  const failedApprovalAlert = (await pool.query(
-    `SELECT status,attempt_count,error,idempotency_key
-       FROM admin_flyer_request_notifications
-      WHERE flyer_request_id=$1 AND notification_kind='approved'`,
+  assert.equal(approved.status, 409);
+  const failedPublicationBody = await approved.json();
+  assert.equal(failedPublicationBody.error, 'flyer_publication_failed');
+  assert.equal(failedPublicationBody.reason, 'event_incomplete');
+  assert.equal(failedPublicationBody.status, 'promoter_approved');
+  assert.equal(failedPublicationBody.published, false);
+  assert.equal(failedPublicationBody.retryable, true);
+  const failedPublicationState = (await pool.query(
+    `SELECT request.status,request.phone_verified_at,event.status AS event_status
+       FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
+      WHERE request.id=$1`,
     [request.id]
   )).rows[0];
-  assert.equal(failedApprovalAlert.status, 'failed');
-  assert.equal(Number(failedApprovalAlert.attempt_count), 1);
-  assert.match(failedApprovalAlert.error, /temporary approval alert failure/);
-  assert.equal(failedApprovalAlerts[0].idempotencyKey, failedApprovalAlert.idempotency_key);
-  setFlyerAdminNotificationSenderForTests();
-  await pool.query(
-    `UPDATE admin_flyer_request_notifications
-        SET next_attempt_at=NOW() - INTERVAL '1 second'
-      WHERE flyer_request_id=$1 AND notification_kind='approved'`,
-    [request.id]
-  );
-  await runFlyerAdminNotificationPass();
+  assert.equal(failedPublicationState.status, 'promoter_approved');
+  assert.ok(failedPublicationState.phone_verified_at, 'the successful OTP remains recorded');
+  assert.equal(failedPublicationState.event_status, 'draft');
+  assert.equal(sentTexts.length, 2, 'failed publication sends no live or pilot text');
   assert.equal((await pool.query(
-    `SELECT status FROM admin_flyer_request_notifications
+    `SELECT COUNT(*)::int AS count FROM admin_flyer_request_messages
+      WHERE flyer_request_id=$1 AND message_kind IN ('live','pilot_publish')`,
+    [request.id]
+  )).rows[0].count, 0, 'failed publication does not enqueue publication texts');
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM admin_done_for_you_welcome_deliveries WHERE flyer_request_id=$1',
+    [request.id]
+  )).rows[0].count, 0, 'failed publication does not enqueue a welcome');
+
+  const retryPreviewPage = await fetch(`${baseUrl}${secondExchange.headers.get('location')}`, {
+    headers: { cookie: secondPreviewCookie }
+  });
+  assert.equal(retryPreviewPage.status, 200);
+  assert.match(
+    await retryPreviewPage.text(),
+    /data-preview-action="retry"[^>]*>Try publishing again</i,
+    'the retry remains available after the dismissible failure dialog is closed'
+  );
+
+  await pool.query(
+    'UPDATE events SET venue_name=$2 WHERE id=$1',
+    [createdBody.event.id, originalVenueName]
+  );
+  const recoveredPublication = await fetch(`${baseUrl}/api/flyer-preview/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie }, body: '{}'
+  });
+  assert.equal(recoveredPublication.status, 200);
+  const publishedBody = await recoveredPublication.json();
+  assert.equal(publishedBody.ok, true);
+  assert.equal(publishedBody.status, 'published');
+  assert.equal(publishedBody.published, true);
+  assert.match(publishedBody.event.url, /\/e\//);
+  assert.ok(['pending', 'sending', 'sent'].includes(publishedBody.liveSms.status));
+  assert.ok(['pending', 'sending', 'failed'].includes(publishedBody.claimInvitation.status));
+  assert.equal(publishedBody.retryNeeded, true);
+  assert.equal(verificationStarts, 1);
+  assert.equal(verificationChecks, 2, 'publication retry does not verify another OTP');
+  await settleFlyerPublicationNotificationWork();
+  await settleFlyerAdminNotificationWork();
+  assert.equal(adminAlerts.length, 1, 'approval does not send an admin email');
+  assert.equal((await pool.query(
+    `SELECT COUNT(*)::int AS count FROM admin_flyer_request_notifications
       WHERE flyer_request_id=$1 AND notification_kind='approved'`,
     [request.id]
-  )).rows[0].status, 'sent');
+  )).rows[0].count, 0);
   const approvedState = (await pool.query(
-    `SELECT request.status,request.phone_verified_at,request.promoter_approved_at,event.status AS event_status
+    `SELECT request.status,request.phone_verified_at,request.promoter_approved_at,
+            request.published_at,request.claim_invitation_id,request.claim_invitation_status,
+            event.status AS event_status
        FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
       WHERE request.id=$1`, [request.id]
   )).rows[0];
-  assert.equal(approvedState.status, 'promoter_approved');
+  assert.equal(approvedState.status, 'published');
   assert.ok(approvedState.phone_verified_at);
   assert.ok(approvedState.promoter_approved_at);
-  assert.equal(approvedState.event_status, 'draft', 'recipient approval never publishes');
+  assert.ok(approvedState.published_at);
+  const durableInvitationId = Number(approvedState.claim_invitation_id);
+  assert.ok(durableInvitationId > 0, 'the failed welcome retains its exact claim invitation');
+  assert.equal(approvedState.claim_invitation_status, 'failed');
+  assert.equal(approvedState.event_status, 'published', 'verified recipient approval publishes immediately');
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM account_phone_credentials WHERE phone_e164=$1',
     ['+14155550181']
   )).rows[0].count, 0, 'request-scoped approval never becomes an account credential');
-
-  const published = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
-  });
-  assert.equal(published.status, 200);
-  const publishedBody = await published.json();
-  assert.equal(publishedBody.published, true);
-  assert.equal(publishedBody.liveSms.status, 'sent');
-  assert.equal(publishedBody.claimInvitation.status, 'failed');
-  assert.equal(publishedBody.retryNeeded, true);
-  assert.equal(sentTexts.length, 3);
-  assert.match(sentTexts[2].body, /Your show is live!/);
-  assert.match(sentTexts[2].body, /\/e\//);
+  const liveTexts = sentTexts.filter(message => (
+    message.to === '+14155550181' && /Your show is live!/.test(message.body)
+  ));
+  const pilotTexts = sentTexts.filter(message => message.to === '+14152053302');
+  assert.equal(liveTexts.length, 1, 'the recipient receives the live SMS once');
+  assert.match(liveTexts[0].body, /\/e\//);
+  assert.equal(pilotTexts.length, 1, 'the pilot number receives one publish SMS');
+  assert.equal(sentTexts.length, 4);
   assert.equal(welcomeAttempts, 1);
+  assert.equal(welcomeAttemptMessages.length, 1);
+  assert.equal(
+    welcomeAttemptMessages[0].idempotencyKey,
+    `dfy-flyer-${request.id}-new-welcome-v1`,
+    'new-account welcome attempts use a stable provider idempotency key'
+  );
   assert.equal(welcomeEmails.length, 0);
-
-  const publishedState = (await pool.query(
-    `SELECT request.status,request.published_at,request.claim_invitation_id,
-            request.claim_invitation_status,event.status AS event_status
-       FROM admin_flyer_requests request JOIN events event ON event.id=request.event_id
-      WHERE request.id=$1`, [request.id]
+  const retainedCredential = (await pool.query(
+    `SELECT delivery.status,delivery.invitation_id,delivery.claim_token_encrypted,
+            delivery.delivery_payload,invitation.sent_at,invitation.revoked_at,
+            invitation.delivery_failed_at,token.id AS token_id,token.used_at
+       FROM admin_done_for_you_welcome_deliveries delivery
+       JOIN admin_account_invitations invitation ON invitation.id=delivery.invitation_id
+       JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+      WHERE delivery.flyer_request_id=$1`,
+    [request.id]
   )).rows[0];
-  assert.equal(publishedState.status, 'published');
-  assert.ok(publishedState.published_at);
-  assert.equal(publishedState.claim_invitation_id, null);
-  assert.equal(publishedState.claim_invitation_status, 'failed');
-  assert.equal(publishedState.event_status, 'published');
+  assert.equal(retainedCredential.status, 'failed');
+  assert.equal(Number(retainedCredential.invitation_id), durableInvitationId);
+  assert.ok(retainedCredential.claim_token_encrypted, 'the retry credential is encrypted at rest');
+  assert.equal(retainedCredential.delivery_payload.idempotencyKey,
+    welcomeAttemptMessages[0].idempotencyKey);
+  assert.equal(retainedCredential.delivery_payload.link, undefined,
+    'the one-time Home Base link is never stored in the plaintext payload');
+  assert.equal(retainedCredential.sent_at, null);
+  assert.equal(retainedCredential.revoked_at, null);
+  assert.equal(retainedCredential.delivery_failed_at, null);
+  assert.equal(retainedCredential.used_at, null);
+  const durableTokenId = Number(retainedCredential.token_id);
   const publishedOwnerEvents = await fetch(`${baseUrl}/api/events`, {
     headers: { cookie: `sge_session=${signSession(preparedBody.client.userId)}` }
   });
@@ -9703,33 +9808,101 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
   assert.equal(
     (await publishedOwnerEvents.json()).events.some(event => Number(event.id) === Number(createdBody.event.id)),
     true,
-    'the event enters the promoter’s normal list after the reviewed handoff publishes it'
+    'the event enters the promoter’s normal list after verified auto-publish'
   );
-  assert.equal((await fetch(`${baseUrl}/api/flyer-preview`, {
+  const publishedPreview = await fetch(`${baseUrl}/api/flyer-preview`, {
     headers: { cookie: secondPreviewCookie }
-  })).status, 404, 'publishing expires preview access');
+  });
+  assert.equal(publishedPreview.status, 200, 'the recipient can reopen the live/share state');
+  const publishedPreviewBody = await publishedPreview.json();
+  assert.equal(publishedPreviewBody.preview.status, 'published');
+  assert.equal(publishedPreviewBody.preview.published, true);
+  assert.equal(publishedPreviewBody.preview.eventUrl, publishedBody.event.url);
 
-  const retried = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  const retried = await fetch(`${baseUrl}/api/flyer-preview/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie }, body: '{}'
   });
   assert.equal(retried.status, 200);
-  assert.equal((await retried.json()).retryNeeded, false);
-  assert.equal(sentTexts.length, 3, 'retry does not send the live text twice');
+  const retriedBody = await retried.json();
+  assert.equal(retriedBody.ok, true);
+  assert.equal(retriedBody.status, 'published');
+  assert.equal(retriedBody.published, true);
+  assert.equal(retriedBody.event.url, publishedBody.event.url);
+  assert.ok(['failed', 'pending', 'sending', 'sent'].includes(retriedBody.claimInvitation.status));
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 4, 'retry does not send either publish SMS twice');
   assert.equal(welcomeAttempts, 2);
+  assert.equal(welcomeAttemptMessages.length, 2);
   assert.equal(welcomeEmails.length, 1, 'retry does not send the claim email twice');
+  assert.equal(verificationStarts, 1, 'delivery retry does not request a new OTP');
+  assert.equal(verificationChecks, 2, 'delivery retry does not verify another OTP');
   assert.equal(welcomeEmails[0].to, 'maya-flyer@example.test');
+  assert.equal(welcomeAttemptMessages[1].idempotencyKey,
+    welcomeAttemptMessages[0].idempotencyKey);
+  assert.equal(welcomeAttemptMessages[1].link, welcomeAttemptMessages[0].link,
+    'an ambiguous email failure retries the same valid Home Base link');
+  assert.deepEqual(
+    {
+      to: welcomeAttemptMessages[1].to,
+      name: welcomeAttemptMessages[1].name,
+      eventLink: welcomeAttemptMessages[1].eventLink,
+      hostPageLink: welcomeAttemptMessages[1].hostPageLink,
+      eventTitle: welcomeAttemptMessages[1].eventTitle,
+      existingAccount: welcomeAttemptMessages[1].existingAccount
+    },
+    {
+      to: welcomeAttemptMessages[0].to,
+      name: welcomeAttemptMessages[0].name,
+      eventLink: welcomeAttemptMessages[0].eventLink,
+      hostPageLink: welcomeAttemptMessages[0].hostPageLink,
+      eventTitle: welcomeAttemptMessages[0].eventTitle,
+      existingAccount: welcomeAttemptMessages[0].existingAccount
+    },
+    'the exact welcome payload is reused across provider retries'
+  );
   assert.equal(welcomeEmails[0].eventTitle, 'Moonlight Night');
   assert.match(welcomeEmails[0].eventLink, /\/e\//);
   assert.match(welcomeEmails[0].hostPageLink, /\/h\//);
+  const deliveredCredential = (await pool.query(
+    `SELECT delivery.status,delivery.invitation_id,delivery.claim_token_encrypted,
+            delivery.delivery_payload,invitation.sent_at,invitation.revoked_at,
+            invitation.delivery_failed_at,token.id AS token_id,token.used_at,
+            (SELECT COUNT(*)::int FROM admin_account_invitations all_invites
+              WHERE all_invites.target_user_id=delivery.target_user_id) AS invitation_count
+       FROM admin_done_for_you_welcome_deliveries delivery
+       JOIN admin_account_invitations invitation ON invitation.id=delivery.invitation_id
+       JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+      WHERE delivery.flyer_request_id=$1`,
+    [request.id]
+  )).rows[0];
+  assert.equal(deliveredCredential.status, 'sent');
+  assert.equal(Number(deliveredCredential.invitation_id), durableInvitationId);
+  assert.equal(Number(deliveredCredential.token_id), durableTokenId);
+  assert.equal(Number(deliveredCredential.invitation_count), 1,
+    'retry does not revoke and replace the invitation');
+  assert.ok(deliveredCredential.sent_at);
+  assert.equal(deliveredCredential.revoked_at, null);
+  assert.equal(deliveredCredential.delivery_failed_at, null);
+  assert.equal(deliveredCredential.used_at, null);
+  assert.equal(deliveredCredential.claim_token_encrypted, null,
+    'retry secrets are removed after durable success');
+  assert.equal(deliveredCredential.delivery_payload, null);
 
-  const idempotentRetry = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`, {
-    method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}'
+  const idempotentRetry = await fetch(`${baseUrl}/api/flyer-preview/publish`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie: secondPreviewCookie }, body: '{}'
   });
   assert.equal(idempotentRetry.status, 200);
-  assert.equal((await idempotentRetry.json()).retryNeeded, false);
-  assert.equal(sentTexts.length, 3);
+  const idempotentRetryBody = await idempotentRetry.json();
+  assert.equal(idempotentRetryBody.status, 'published');
+  assert.equal(idempotentRetryBody.retryNeeded, false);
+  assert.equal(idempotentRetryBody.liveSms.status, 'sent');
+  assert.equal(idempotentRetryBody.claimInvitation.status, 'sent');
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 4);
   assert.equal(welcomeAttempts, 2);
   assert.equal(welcomeEmails.length, 1);
+  assert.equal(verificationStarts, 1);
+  assert.equal(verificationChecks, 2);
 
   const claimed = await followSignInLink(welcomeEmails[0].link);
   assert.equal(claimed.status, 303);
@@ -9742,7 +9915,6 @@ test('a reviewed flyer request safely provisions, previews, revises, and receive
 test('published flyers welcome an existing claimed account without creating or duplicating a claim invitation', async t => {
   resetRateLimits();
   const operator = await createAdminOperator('claimed-flyer-admin@example.test', 'super_admin');
-  const adminSession = await signInAdminOperator(operator.email);
   const existingEmail = 'claimed-flyer-owner@example.test';
   const targetUserId = Number((await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [organizerId]
@@ -9803,23 +9975,29 @@ test('published flyers welcome an existing claimed account without creating or d
     if (welcomeAttempts.length === 1) throw new Error('temporary existing-account welcome failure');
     deliveredWelcomes.push(message);
   });
-  t.after(() => {
+  t.after(async () => {
+    await settleFlyerPublicationNotificationWork();
     sms.sendSms = originalSendSms;
     flyerIntakeRoutes.setClaimSenderForTests();
   });
 
-  const publish = () => fetch(
-    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`,
-    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
-  );
+  const previewCookie = await openFlyerPreviewSession(request.id);
+  const publish = () => fetch(`${baseUrl}/api/flyer-preview/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: previewCookie },
+    body: '{}'
+  });
   const first = await publish();
   assert.equal(first.status, 200);
   const firstBody = await first.json();
   assert.equal(firstBody.published, true);
-  assert.equal(firstBody.liveSms.status, 'sent');
-  assert.equal(firstBody.claimInvitation.status, 'failed');
+  assert.ok(['pending', 'sending', 'sent'].includes(firstBody.liveSms.status));
+  assert.ok(['pending', 'sending', 'failed'].includes(firstBody.claimInvitation.status));
   assert.equal(firstBody.retryNeeded, true);
-  assert.equal(sentTexts.length, 1);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.filter(message => message.to === '+14155550221').length, 1);
+  assert.equal(sentTexts.filter(message => message.to === '+14152053302').length, 1);
+  assert.equal(sentTexts.length, 2);
   assert.equal(welcomeAttempts.length, 1);
   assert.deepEqual(welcomeAccountLocks, [true], 'welcome delivery holds the target account lock');
   assert.equal(welcomeAttempts[0].existingAccount, true);
@@ -9847,10 +10025,9 @@ test('published flyers welcome an existing claimed account without creating or d
   const retried = await publish();
   assert.equal(retried.status, 200);
   const retriedBody = await retried.json();
-  assert.equal(retriedBody.liveSms.status, 'sent');
-  assert.equal(retriedBody.claimInvitation.status, 'sent');
-  assert.equal(retriedBody.retryNeeded, false);
-  assert.equal(sentTexts.length, 1, 'retry does not duplicate the live text');
+  assert.equal(retriedBody.published, true);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 2, 'retry does not duplicate either publish text');
   assert.equal(welcomeAttempts.length, 2);
   assert.deepEqual(welcomeAccountLocks, [true, true]);
   assert.equal(welcomeAttempts[1].idempotencyKey, welcomeAttempts[0].idempotencyKey);
@@ -9873,8 +10050,12 @@ test('published flyers welcome an existing claimed account without creating or d
 
   const idempotent = await publish();
   assert.equal(idempotent.status, 200);
-  assert.equal((await idempotent.json()).retryNeeded, false);
-  assert.equal(sentTexts.length, 1);
+  const idempotentBody = await idempotent.json();
+  assert.equal(idempotentBody.liveSms.status, 'sent');
+  assert.equal(idempotentBody.claimInvitation.status, 'sent');
+  assert.equal(idempotentBody.retryNeeded, false);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 2);
   assert.equal(welcomeAttempts.length, 2, 'a successful existing-account welcome is terminal');
   assert.equal(deliveredWelcomes.length, 1);
 });
@@ -9956,23 +10137,29 @@ test('claimed flyers never welcome an unverified submitted email and retry to th
   flyerIntakeRoutes.setClaimSenderForTests(async message => {
     welcomeAttempts.push(message);
   });
-  t.after(() => {
+  t.after(async () => {
+    await settleFlyerPublicationNotificationWork();
     sms.sendSms = originalSendSms;
     flyerIntakeRoutes.setClaimSenderForTests();
   });
 
-  const publish = () => fetch(
-    `${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/publish`,
-    { method: 'POST', headers: { 'content-type': 'application/json', cookie: adminSession }, body: '{}' }
-  );
+  const previewCookie = await openFlyerPreviewSession(request.id);
+  const publish = () => fetch(`${baseUrl}/api/flyer-preview/publish`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: previewCookie },
+    body: '{}'
+  });
   const first = await publish();
   assert.equal(first.status, 200);
   const firstBody = await first.json();
   assert.equal(firstBody.published, true);
-  assert.equal(firstBody.liveSms.status, 'sent');
-  assert.equal(firstBody.claimInvitation.status, 'failed');
+  assert.ok(['pending', 'sending', 'sent'].includes(firstBody.liveSms.status));
+  assert.ok(['pending', 'sending', 'failed'].includes(firstBody.claimInvitation.status));
   assert.equal(firstBody.retryNeeded, true);
-  assert.equal(sentTexts.length, 1);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.filter(message => message.to === phone).length, 1);
+  assert.equal(sentTexts.filter(message => message.to === '+14152053302').length, 1);
+  assert.equal(sentTexts.length, 2);
   assert.equal(welcomeAttempts.length, 0, 'the unverified submitted inbox receives no welcome');
   const failedState = (await pool.query(
     `SELECT claim_invitation_status,claim_invitation_sent_at,claim_invitation_error,claimed_at
@@ -9997,9 +10184,9 @@ test('claimed flyers never welcome an unverified submitted email and retry to th
   const retried = await publish();
   assert.equal(retried.status, 200);
   const retriedBody = await retried.json();
-  assert.equal(retriedBody.claimInvitation.status, 'sent');
-  assert.equal(retriedBody.retryNeeded, false);
-  assert.equal(sentTexts.length, 1, 'retry does not duplicate the live text');
+  assert.equal(retriedBody.published, true);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 2, 'retry does not duplicate either publish text');
   assert.equal(welcomeAttempts.length, 1);
   assert.equal(welcomeAttempts[0].to, safeEmail);
   assert.notEqual(welcomeAttempts[0].to, submittedEmail);
@@ -10013,7 +10200,12 @@ test('claimed flyers never welcome an unverified submitted email and retry to th
 
   const idempotent = await publish();
   assert.equal(idempotent.status, 200);
-  assert.equal((await idempotent.json()).retryNeeded, false);
+  const idempotentBody = await idempotent.json();
+  assert.equal(idempotentBody.liveSms.status, 'sent');
+  assert.equal(idempotentBody.claimInvitation.status, 'sent');
+  assert.equal(idempotentBody.retryNeeded, false);
+  await settleFlyerPublicationNotificationWork();
+  assert.equal(sentTexts.length, 2);
   assert.equal(welcomeAttempts.length, 1, 'successful verified welcome is terminal');
 });
 

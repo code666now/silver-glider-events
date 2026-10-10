@@ -537,6 +537,7 @@ async function sendAdminFlyerNotification({
   submitterName,
   hostName,
   eventTitle,
+  fixRequest,
   idempotencyKey = null
 }) {
   if (!resend && process.env.NODE_ENV === 'production') {
@@ -550,26 +551,26 @@ async function sendAdminFlyerNotification({
   const fallback = Number.isSafeInteger(Number(requestId)) && Number(requestId) > 0
     ? `Flyer request #${Number(requestId)}`
     : 'The flyer request';
-  const approved = kind === 'approved';
-  if (!approved && kind !== 'submitted') {
+  const fixRequested = kind === 'fix_requested';
+  if (!fixRequested && kind !== 'submitted') {
     throw new Error('Unknown flyer admin notification kind');
   }
-  const subject = approved
-    ? 'Done For You flyer approved'
+  const subject = fixRequested
+    ? 'Done For You fix requested'
     : 'New Done For You flyer submission';
-  const sub = approved
-    ? `${cleanLabel(eventTitle, cleanLabel(hostName, fallback))} is ready for final review and publishing.`
+  const sub = fixRequested
+    ? `${cleanLabel(eventTitle, cleanLabel(hostName, fallback))}: “${cleanLabel(fixRequest, 'The promoter requested a change.')}”`
     : `${cleanLabel(submitterName, 'A promoter')} submitted a flyer${hostName ? ` for ${cleanLabel(hostName)}` : ''}.`;
   return send({
     to,
     subject,
     html: layout({
       kicker: 'Done For You',
-      headline: approved
-        ? 'The promoter approved the preview.'
+      headline: fixRequested
+        ? 'The promoter requested a change.'
         : 'A new flyer is waiting.',
       sub,
-      cta: approved ? 'Review and publish' : 'Open flyer request',
+      cta: fixRequested ? 'Review requested change' : 'Open flyer request',
       ctaUrl: url,
       footerHtml: '<p style="color:#555;font-size:12px;line-height:1.7;margin:0">This operational notice was sent to an active Silver Glider Super Admin.</p>'
     }),

@@ -13,10 +13,13 @@ test('public event pages provide an owner-only progressive live editing shell', 
   const client = read('public/js/event-owner-editor.js');
 
   assert.match(route, /const ownerPreview = organizerViewer\(req, event\)/);
-  assert.match(route, /const ownerEditorHtml = ownerPreview\s*\? renderOwnerEditor\(event\)/);
+  assert.match(route, /const flyerCompletion = flyerPreview\?\.status === 'published'/);
+  assert.match(route, /:\s*ownerPreview\s*\?\s*renderOwnerEditor\(event\)/);
   assert.match(route, /flyerPreview \? renderFlyerPreviewTools\(flyerPreview\) : ''/);
-  assert.match(route, /const ownerEditorStyles = ownerPreview/);
-  assert.match(route, /const ownerEditorScripts = ownerPreview/);
+  assert.match(route, /const ownerEditorStyles = flyerCompletion/);
+  assert.match(route, /:\s*ownerPreview\s*\?\s*'<link rel="stylesheet" href="\/css\/event-owner-editor\.css">/);
+  assert.match(route, /const ownerEditorScripts = flyerCompletion/);
+  assert.match(route, /:\s*ownerPreview\s*\?\s*'<script src="\/js\/event-change-dialog\.js"><\/script>/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_STYLES\}\}\/g, ownerEditorStyles\)/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_HTML\}\}\/g, ownerEditorHtml\)/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_SCRIPTS\}\}\/g, ownerEditorScripts\)/);

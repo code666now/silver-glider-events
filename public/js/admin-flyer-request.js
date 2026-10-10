@@ -72,17 +72,13 @@ function renderWorkflow(request, capabilities = {}) {
   } else if (request.status === 'preview_sent') {
     steps.push(`<p><strong>Preview sent.</strong> The promoter can try approved looks, request one fix, or approve from the secure page sent to ${esc(request.phone_e164)}.</p>`);
   } else if (request.status === 'promoter_approved') {
-    steps.push('<p><strong>Approved by the verified flyer recipient.</strong> The draft stays private until a Super Admin publishes it.</p>');
-    if (capabilities.publish) steps.push(actionButton('publish-flyer-event', 'Publish and notify', true));
+    steps.push('<p><strong>Approved by the verified flyer recipient.</strong> Automatic publication is waiting to finish. The promoter can safely retry from their secure preview without another code.</p>');
   } else if (request.status === 'published') {
     const liveSms = request.live_sms_status || 'not sent';
     const claimEmail = request.claim_invitation_status === 'not_needed'
       ? 'not sent — this promoter already controls their account'
       : (request.claim_invitation_status || 'not sent');
     steps.push(`<div class="dfy-preflight success"><strong>Event live</strong><p>The public event is published.</p><dl><dt>Live text</dt><dd>${esc(liveSms)}</dd><dt>Home Base email</dt><dd>${esc(claimEmail)}</dd></dl>${request.event_slug ? `<div class="dfy-preflight-links"><a href="/e/${encodeURIComponent(request.event_slug)}" target="_blank" rel="noopener">Open live event</a></div>` : ''}</div>`);
-    if (capabilities.publish && (liveSms !== 'sent' || request.claim_invitation_status !== 'sent')) {
-      steps.push(actionButton('publish-flyer-event', 'Retry notifications', true));
-    }
   } else if (request.event_id) {
     steps.push(`<p>The linked event is ${esc(label(request.status).toLowerCase())}. Later lifecycle actions appear here as they become available.</p>`);
   }
@@ -92,7 +88,6 @@ function renderWorkflow(request, capabilities = {}) {
   document.getElementById('mark-flyer-ready')?.addEventListener('click', markReady);
   document.getElementById('recover-flyer-draft')?.addEventListener('click', recoverDraft);
   document.getElementById('send-flyer-preview')?.addEventListener('click', sendPreview);
-  document.getElementById('publish-flyer-event')?.addEventListener('click', publishEvent);
 }
 
 function render(payload) {
@@ -187,25 +182,6 @@ async function sendPreview(event) {
     await runAction(event.currentTarget, 'Sending preview…', () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/send-preview`, { method: 'POST', body: {} }));
     await load();
     actionStatus.textContent = 'Preview text sent.';
-  } catch (_) {}
-}
-
-async function publishEvent(event) {
-  const isRetry = state?.request?.status === 'published';
-  if (!isRetry && !confirm('Publish this approved event and send the live text and Home Base email?')) return;
-  try {
-    const result = await runAction(
-      event.currentTarget,
-      isRetry ? 'Retrying…' : 'Publishing…',
-      () => api(`/api/admin/done-for-you/flyer-intake/${encodeURIComponent(requestId)}/publish`, {
-        method: 'POST', body: {}
-      })
-    );
-    await load();
-    actionStatus.className = result.retryNeeded ? 'dfy-action-status error' : 'dfy-action-status';
-    actionStatus.textContent = result.retryNeeded
-      ? 'The event is live, but one notification needs another try.'
-      : 'The event is live and the promoter has been notified.';
   } catch (_) {}
 }
 

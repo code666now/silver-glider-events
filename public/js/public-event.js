@@ -182,7 +182,13 @@ function mountVideoEffect() {
     video.removeAttribute('autoplay');
     return;
   }
-  const seamlessLoop = ['liquid-stardust', 'color-static'].includes(EVENT.bgEffect)
+  // The seamless loop uses two simultaneous video decoders during its short
+  // crossfade. Keep that polish on capable desktop devices, but prefer the
+  // browser's native single-video loop on phones and constrained hardware.
+  const constrainedPlayback = matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
+    (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4);
+  if (constrainedPlayback) video.loop = true;
+  const seamlessLoop = !constrainedPlayback && ['liquid-stardust', 'color-static'].includes(EVENT.bgEffect)
     ? window.SGSeamlessVideoLoop?.attach(video)
     : null;
   const reveal = () => video.classList.add('is-playing');

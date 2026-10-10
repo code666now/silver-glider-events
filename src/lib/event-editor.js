@@ -751,7 +751,7 @@ async function publishEventInTransaction(db, {
     if (!exactApprovedHandoff) {
       throw editorError(
         'flyer_request_publish_requires_approval',
-        'This Done For You event must be approved by its recipient and published by a Super Admin from the flyer request.',
+        'This Done For You event must be approved by its recipient and published from the secure flyer preview.',
         409
       );
     }

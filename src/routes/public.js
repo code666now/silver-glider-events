@@ -406,19 +406,24 @@ function organizerViewer(req, event) {
 }
 
 function renderFlyerPreviewTools(preview) {
+  const published = preview.status === 'published';
   const approved = preview.status === 'promoter_approved';
   const changesRequested = preview.status === 'changes_requested';
-  const statusCopy = approved
-    ? '<strong>Approved</strong><span>Silver Glider will publish it next.</span>'
+  const statusCopy = published
+    ? '<strong>Published</strong><span>Your event is live and ready to share.</span>'
+    : approved
+    ? '<strong>Approval saved</strong><span>Try publishing again to finish.</span>'
     : changesRequested
       ? '<strong>Fix requested</strong><span>We’ll text you when the update is ready.</span>'
       : '<strong>Your event is ready</strong><span>Take a look before it goes live.</span>';
-  const actions = approved || changesRequested
+  const actions = published || changesRequested
     ? ''
-    : `<button type="button" data-preview-action="look">Change the look</button>
-       <button type="button" data-preview-action="fix">Request a fix</button>
-       <button class="is-primary" type="button" data-preview-action="approve">Looks good</button>`;
-  return `<aside class="flyer-preview-bar" id="flyer-preview-tools" aria-label="Unpublished preview controls">
+    : approved
+      ? '<button class="is-primary" type="button" data-preview-action="retry">Try publishing again</button>'
+      : `<button type="button" data-preview-action="look">Change the look</button>
+         <button type="button" data-preview-action="fix">Request a fix</button>
+         <button class="is-primary" type="button" data-preview-action="approve">Approve and publish</button>`;
+  return `<aside class="flyer-preview-bar" id="flyer-preview-tools" data-preview-status="${esc(preview.status)}" aria-label="${published ? 'Published event controls' : 'Unpublished preview controls'}">
     <div class="flyer-preview-status"><span class="flyer-preview-mark" aria-hidden="true">SG</span><p>${statusCopy}</p></div>
     <div class="flyer-preview-actions">${actions}</div>
   </aside>
@@ -687,13 +692,22 @@ router.get('/e/:slug', async (req, res, next) => {
     if (!accessEvent) return res.status(404).send(render404());
     const ownerDraft = accessEvent.status === 'draft';
     const organizerDraftViewer = ownerDraft && organizerViewer(req, accessEvent);
-    const flyerPreview = ownerDraft && !organizerDraftViewer
+    // Keep a valid Done For You preview session available after publication so
+    // a lost response or refresh can recover the final share screen. Draft
+    // owners still receive the regular owner editor instead of client tools.
+    const completingFlyerPreview = !ownerDraft && req.query.preview === '1';
+    const flyerPreview = !organizerDraftViewer && (ownerDraft || completingFlyerPreview)
       ? await readFlyerPreviewAccess(pool, req, { eventId: Number(accessEvent.id) })
       : null;
     if (ownerDraft && !organizerDraftViewer && !flyerPreview) return res.status(404).send(render404());
     if (ownerDraft) {
       res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
       res.setHeader('Cache-Control', 'private, no-store');
+    }
+    if (flyerPreview) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
     }
 
     if (accessEvent.secret_show_enabled) {
@@ -864,7 +878,7 @@ router.get('/e/:slug', async (req, res, next) => {
     const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
     const videoPublicId = VIDEO_EFFECTS[theme];
     const fxMedia = videoPublicId
-      ? `<video class="fx-video-media" data-effect-theme="${theme}" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"></video>`
+      ? `<video class="fx-video-media" data-effect-theme="${theme}" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source media="(max-width: 900px)" src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_800,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"></video>`
       : '';
     // Effects sit behind everything and need a darkening veil for legibility
     const fxVeil = `<div id="event-fx-veil" class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"${isEffect ? '' : ' hidden'}></div>`;
@@ -920,15 +934,25 @@ router.get('/e/:slug', async (req, res, next) => {
       returningGuest: returningGuestJson,
       bgEffect: isEffect ? theme : null
     };
-    const ownerEditorHtml = ownerPreview
-      ? renderOwnerEditor(event)
-      : flyerPreview ? renderFlyerPreviewTools(flyerPreview) : '';
-    const ownerEditorStyles = ownerPreview
-      ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
-      : flyerPreview ? '<link rel="stylesheet" href="/css/flyer-preview.css">' : '';
-    const ownerEditorScripts = ownerPreview
-      ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
-      : flyerPreview ? '<script src="/js/flyer-preview.js"></script>' : '';
+    // A published Done For You completion takes precedence while its secure
+    // preview cookie is active, including for an organizer already signed in.
+    // This lets refreshes land on the share step rather than losing the result.
+    const flyerCompletion = flyerPreview?.status === 'published';
+    const ownerEditorHtml = flyerCompletion
+      ? renderFlyerPreviewTools(flyerPreview)
+      : ownerPreview
+        ? renderOwnerEditor(event)
+        : flyerPreview ? renderFlyerPreviewTools(flyerPreview) : '';
+    const ownerEditorStyles = flyerCompletion
+      ? '<link rel="stylesheet" href="/css/flyer-preview.css">'
+      : ownerPreview
+        ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
+        : flyerPreview ? '<link rel="stylesheet" href="/css/flyer-preview.css">' : '';
+    const ownerEditorScripts = flyerCompletion
+      ? '<script src="/js/flyer-preview.js"></script>'
+      : ownerPreview
+        ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
+        : flyerPreview ? '<script src="/js/flyer-preview.js"></script>' : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
     const html = activePublicTemplate

@@ -6,7 +6,7 @@ const { lockAdminOperatorRosterInTransaction } = require('../lib/admin-operators
 const RETRY_BASE_SECONDS = 60;
 const RETRY_MAX_SECONDS = 6 * 60 * 60;
 const SENDING_LEASE_MINUTES = 5;
-const KINDS = new Set(['submitted', 'approved']);
+const KINDS = new Set(['submitted', 'fix_requested']);
 let running = false;
 let deliverFlyerAdminNotification = sendAdminFlyerNotification;
 const backgroundWork = new Set();
@@ -31,7 +31,7 @@ function retryDelaySeconds(attemptCount) {
 }
 
 // Call inside the transaction that creates the request or records recipient
-// approval. The recipient address is intentionally snapshotted: later team
+// request-a-fix action. The recipient address is intentionally snapshotted: later team
 // changes do not make an already-committed operational alert disappear.
 async function enqueueFlyerAdminNotifications(db, { requestId, kind }) {
   const id = positiveId(requestId);
@@ -44,12 +44,14 @@ async function enqueueFlyerAdminNotifications(db, { requestId, kind }) {
   const { rows } = await db.query(
     `INSERT INTO admin_flyer_request_notifications
        (flyer_request_id,notification_kind,recipient_admin_operator_id,
-        recipient,idempotency_key)
-     SELECT $1::bigint,$2::text,operator.id,operator.email,
-            'dfy-flyer-admin-' || ($1::bigint)::text || '-' || $2::text || '-' || operator.id::text || '-v1'
+        notification_revision,recipient,idempotency_key)
+     SELECT $1::bigint,$2::text,operator.id,request.preview_revision,operator.email,
+            'dfy-flyer-admin-' || ($1::bigint)::text || '-' || $2::text || '-' ||
+            request.preview_revision::text || '-' || operator.id::text || '-v1'
        FROM admin_operators operator
+       JOIN admin_flyer_requests request ON request.id=$1::bigint
       WHERE operator.role='super_admin' AND operator.status='active'
-     ON CONFLICT (flyer_request_id,notification_kind,recipient) DO NOTHING
+     ON CONFLICT (flyer_request_id,notification_kind,notification_revision,recipient) DO NOTHING
      RETURNING id`,
     [id, kind]
   );
@@ -73,6 +75,7 @@ async function claimNotification(db, notificationId) {
         RETURNING *
      )
      SELECT claimed.*,request.submitter_name,request.host_name,
+            request.latest_fix_request,
             event.title AS event_title,
             EXISTS (
               SELECT 1 FROM admin_operators operator
@@ -95,6 +98,19 @@ async function processFlyerAdminNotification(notificationId, { db = pool } = {})
   if (!notification) return null;
 
   const attempt = Number(notification.attempt_count);
+  // Approval notices existed before verified recipient approval became the
+  // publication action. Never send a stale "Review and publish" message after
+  // this release; retain the historical row as a skipped audit record.
+  if (notification.notification_kind === 'approved') {
+    const error = 'Obsolete approval notification skipped after recipient auto-publish';
+    await db.query(
+      `UPDATE admin_flyer_request_notifications
+          SET status='skipped',next_attempt_at=NULL,error=$3
+        WHERE id=$1 AND status='sending' AND attempt_count=$2`,
+      [id, attempt, error]
+    );
+    return { id, status: 'skipped', attemptCount: attempt, error };
+  }
   if (!notification.recipient_active) {
     const error = 'Super Admin recipient is no longer active';
     await db.query(
@@ -117,6 +133,7 @@ async function processFlyerAdminNotification(notificationId, { db = pool } = {})
       submitterName: notification.submitter_name,
       hostName: notification.host_name,
       eventTitle: notification.event_title,
+      fixRequest: notification.latest_fix_request,
       idempotencyKey: notification.idempotency_key
     });
     await db.query(

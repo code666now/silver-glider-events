@@ -147,7 +147,8 @@ test('returning RSVP state and owner preview preserve their distinct action cont
   const candidateLine = eventPage.match(/const recognizedGuestCandidate =[\s\S]*?: null;/)?.[0] || '';
   assert.ok(candidateLine, 'event page should resolve a returning-guest candidate');
   assert.doesNotMatch(candidateLine, /!ownerPreview/);
-  assert.match(eventPage, /const ownerEditorHtml = ownerPreview\s*\? renderOwnerEditor\(event\)/);
+  assert.match(eventPage, /const flyerCompletion = flyerPreview\?\.status === 'published'/);
+  assert.match(eventPage, /:\s*ownerPreview\s*\?\s*renderOwnerEditor\(event\)/);
   assert.match(eventPage, /returningGuest: returningGuestJson/);
 });
 

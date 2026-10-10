@@ -76,6 +76,9 @@ async function sendDoneForYouClaimInvitation({
   userAgent = null,
   deliver = sendAccountClaimInvitation,
   welcomeClaimedAccount = false,
+  preparedInvitation = null,
+  persistPreparedInvitation = null,
+  preserveInvitationOnDeliveryFailure = false,
   metadata = {}
 }) {
   const connection = await pool.connect();
@@ -126,6 +129,57 @@ async function sendDoneForYouClaimInvitation({
     const locked = await readDoneForYouClient(connection, markerId, { forUpdate: true });
     if (!locked || locked.owner.status !== 'active') {
       throw new DoneForYouProvisioningError('account_not_active', 'This client account is not active.', 409);
+    }
+    const preparedInvitationId = Number(preparedInvitation?.id);
+    const preparedToken = String(preparedInvitation?.token || '');
+    const hasPreparedInvitation = Number.isSafeInteger(preparedInvitationId) &&
+      preparedInvitationId > 0 && preparedToken.length > 0 && preparedToken.length <= 200;
+    if (preparedInvitation && !hasPreparedInvitation) {
+      throw new Error('The prepared claim invitation is incomplete');
+    }
+    if (hasPreparedInvitation) {
+      const prepared = (await connection.query(
+        `SELECT invitation.id,invitation.email,invitation.name,invitation.target_user_id,
+                invitation.created_at,invitation.expires_at,invitation.sent_at,
+                invitation.claimed_at,invitation.revoked_at,invitation.delivery_failed_at,
+                invitation.magic_link_token_id,token.token AS token_hash,
+                token.used_at AS token_used_at
+           FROM admin_account_invitations invitation
+           JOIN magic_link_tokens token ON token.id=invitation.magic_link_token_id
+          WHERE invitation.id=$1 AND invitation.target_user_id=$2
+            AND LOWER(BTRIM(invitation.email))=$3
+          FOR UPDATE OF invitation,token`,
+        [preparedInvitationId, targetUserId, normalizedEmail]
+      )).rows[0];
+      if (!prepared || prepared.token_hash !== tokenHash(preparedToken)) {
+        throw new DoneForYouProvisioningError(
+          'claim_invitation_not_deliverable',
+          'The prepared account link is no longer available.',
+          409
+        );
+      }
+      invitation = prepared;
+      challenge = { token: preparedToken };
+      if (prepared.claimed_at || locked.owner.claimed) {
+        await connection.query('COMMIT');
+        return {
+          id: Number(prepared.id),
+          email: normalizedEmail,
+          status: 'sent',
+          sentAt: prepared.sent_at || new Date(),
+          expiresAt: prepared.expires_at,
+          targetUserId,
+          existingAccount: true
+        };
+      }
+      if (prepared.revoked_at || prepared.delivery_failed_at || prepared.token_used_at ||
+          new Date(prepared.expires_at).getTime() <= Date.now()) {
+        throw new DoneForYouProvisioningError(
+          'claim_invitation_not_deliverable',
+          'The prepared account link is no longer available.',
+          409
+        );
+      }
     }
     if (locked.owner.claimed && !welcomeClaimedAccount) {
       throw new DoneForYouProvisioningError('account_already_claimed', 'This client already controls the account.', 409);
@@ -181,98 +235,141 @@ async function sendDoneForYouClaimInvitation({
       );
     }
 
-    const prior = await connection.query(
-      `SELECT id,magic_link_token_id,email,sent_at,expires_at
-         FROM admin_account_invitations
-        WHERE target_user_id=$1 AND claimed_at IS NULL
-          AND revoked_at IS NULL AND delivery_failed_at IS NULL
-        ORDER BY id FOR UPDATE`,
-      [targetUserId]
-    );
-    if (prior.rows.length) {
-      const ids = prior.rows.map(row => Number(row.id));
-      const tokenIds = prior.rows.map(row => Number(row.magic_link_token_id));
-      await connection.query(
-        'UPDATE admin_account_invitations SET revoked_at=NOW() WHERE id=ANY($1::bigint[])',
-        [ids]
+    if (!hasPreparedInvitation) {
+      const prior = await connection.query(
+        `SELECT id,magic_link_token_id,email,sent_at,expires_at
+           FROM admin_account_invitations
+          WHERE target_user_id=$1 AND claimed_at IS NULL
+            AND revoked_at IS NULL AND delivery_failed_at IS NULL
+          ORDER BY id FOR UPDATE`,
+        [targetUserId]
       );
-      await connection.query(
-        'UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW()) WHERE id=ANY($1::int[])',
-        [tokenIds]
-      );
-      await writeClaimAudit(connection, {
-        actorAdminOperatorId,
-        targetUserId,
-        actionType: 'done_for_you_claim_invitations_revoked',
-        reason: 'Replace client claim invitation',
-        beforeState: { activeInvitationIds: ids },
-        afterState: { activeInvitationIds: [] },
-        metadata: { markerId, ...metadata },
-        requestIp,
-        userAgent
-      });
-    }
-
-    challenge = await createSignInChallenge(connection, {
-      email: normalizedEmail,
-      intent: 'claim_account',
-      returnPath: '/dashboard',
-      ttlMinutes: CLAIM_TTL_MINUTES,
-      withCode: false
-    });
-    const tokenId = challenge.id || (await connection.query(
-      'SELECT id FROM magic_link_tokens WHERE token=$1',
-      [tokenHash(challenge.token)]
-    )).rows[0]?.id;
-    invitation = (await connection.query(
-      `INSERT INTO admin_account_invitations
-         (email,name,prepare_host_page,magic_link_token_id,
-          created_by_admin_operator_id,target_user_id,expires_at)
-       VALUES ($1,$2,TRUE,$3,$4,$5,NOW() + INTERVAL '7 days')
-       RETURNING id,email,name,target_user_id,created_at,expires_at`,
-      [normalizedEmail, locked.owner.name || 'Client', tokenId, actorAdminOperatorId, targetUserId]
-    )).rows[0];
-    await writeClaimAudit(connection, {
-      actorAdminOperatorId,
-      targetUserId,
-      actionType: 'done_for_you_claim_invitation_created',
-      reason: 'Send prepared account claim invitation',
-      beforeState: { invitationStatus: null },
-      afterState: { invitationStatus: 'creating' },
-      metadata: { markerId, invitationId: Number(invitation.id), ...metadata },
-      requestIp,
-      userAgent
-    });
-    await connection.query('COMMIT');
-
-    const link = `${String(process.env.APP_URL || '').replace(/\/$/, '')}/auth/verify?token=${challenge.token}`;
-    try {
-      await deliver({ to: normalizedEmail, link, name: locked.owner.name || 'there' });
-    } catch (error) {
-      await connection.query('BEGIN');
-      const failed = await connection.query(
-        `UPDATE admin_account_invitations
-            SET delivery_failed_at=NOW()
-          WHERE id=$1 AND sent_at IS NULL AND claimed_at IS NULL AND revoked_at IS NULL
-          RETURNING magic_link_token_id,delivery_failed_at`,
-        [invitation.id]
-      );
-      if (failed.rows[0]) {
+      if (prior.rows.length) {
+        const ids = prior.rows.map(row => Number(row.id));
+        const tokenIds = prior.rows.map(row => Number(row.magic_link_token_id));
         await connection.query(
-          'UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW()) WHERE id=$1',
-          [failed.rows[0].magic_link_token_id]
+          'UPDATE admin_account_invitations SET revoked_at=NOW() WHERE id=ANY($1::bigint[])',
+          [ids]
+        );
+        await connection.query(
+          'UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW()) WHERE id=ANY($1::int[])',
+          [tokenIds]
         );
         await writeClaimAudit(connection, {
           actorAdminOperatorId,
           targetUserId,
-          actionType: 'done_for_you_claim_invitation_delivery_failed',
-          reason: 'Prepared account claim delivery failed',
+          actionType: 'done_for_you_claim_invitations_revoked',
+          reason: 'Replace client claim invitation',
+          beforeState: { activeInvitationIds: ids },
+          afterState: { activeInvitationIds: [] },
+          metadata: { markerId, ...metadata },
+          requestIp,
+          userAgent
+        });
+      }
+
+      challenge = await createSignInChallenge(connection, {
+        email: normalizedEmail,
+        intent: 'claim_account',
+        returnPath: '/dashboard',
+        ttlMinutes: CLAIM_TTL_MINUTES,
+        withCode: false
+      });
+      const tokenId = challenge.id || (await connection.query(
+        'SELECT id FROM magic_link_tokens WHERE token=$1',
+        [tokenHash(challenge.token)]
+      )).rows[0]?.id;
+      invitation = (await connection.query(
+        `INSERT INTO admin_account_invitations
+           (email,name,prepare_host_page,magic_link_token_id,
+            created_by_admin_operator_id,target_user_id,expires_at)
+         VALUES ($1,$2,TRUE,$3,$4,$5,NOW() + INTERVAL '7 days')
+         RETURNING id,email,name,target_user_id,created_at,expires_at,sent_at`,
+        [normalizedEmail, locked.owner.name || 'Client', tokenId, actorAdminOperatorId, targetUserId]
+      )).rows[0];
+      await writeClaimAudit(connection, {
+        actorAdminOperatorId,
+        targetUserId,
+        actionType: 'done_for_you_claim_invitation_created',
+        reason: 'Send prepared account claim invitation',
+        beforeState: { invitationStatus: null },
+        afterState: { invitationStatus: 'creating' },
+        metadata: { markerId, invitationId: Number(invitation.id), ...metadata },
+        requestIp,
+        userAgent
+      });
+      if (typeof persistPreparedInvitation === 'function') {
+        const appUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
+        await persistPreparedInvitation({
+          db: connection,
+          invitation,
+          token: challenge.token,
+          link: `${appUrl}/auth/verify?token=${challenge.token}`,
+          to: normalizedEmail,
+          name: locked.owner.name || 'there',
+          targetUserId
+        });
+      }
+    }
+    await connection.query('COMMIT');
+
+    const link = `${String(process.env.APP_URL || '').replace(/\/$/, '')}/auth/verify?token=${challenge.token}`;
+    if (invitation.sent_at) {
+      return {
+        id: Number(invitation.id),
+        email: normalizedEmail,
+        status: 'sent',
+        sentAt: invitation.sent_at,
+        expiresAt: invitation.expires_at,
+        targetUserId
+      };
+    }
+    try {
+      await deliver({
+        to: normalizedEmail,
+        link,
+        name: locked.owner.name || 'there',
+        existingAccount: false
+      });
+    } catch (error) {
+      await connection.query('BEGIN');
+      if (preserveInvitationOnDeliveryFailure) {
+        await writeClaimAudit(connection, {
+          actorAdminOperatorId,
+          targetUserId,
+          actionType: 'done_for_you_claim_invitation_delivery_retryable',
+          reason: 'Prepared account claim delivery will retry with the same credential',
           beforeState: { invitationStatus: 'creating' },
-          afterState: { invitationStatus: 'delivery_failed' },
+          afterState: { invitationStatus: 'retryable' },
           metadata: { markerId, invitationId: Number(invitation.id), ...metadata },
           requestIp,
           userAgent
         });
+      } else {
+        const failed = await connection.query(
+          `UPDATE admin_account_invitations
+              SET delivery_failed_at=NOW()
+            WHERE id=$1 AND sent_at IS NULL AND claimed_at IS NULL AND revoked_at IS NULL
+            RETURNING magic_link_token_id,delivery_failed_at`,
+          [invitation.id]
+        );
+        if (failed.rows[0]) {
+          await connection.query(
+            'UPDATE magic_link_tokens SET used_at=COALESCE(used_at,NOW()) WHERE id=$1',
+            [failed.rows[0].magic_link_token_id]
+          );
+          await writeClaimAudit(connection, {
+            actorAdminOperatorId,
+            targetUserId,
+            actionType: 'done_for_you_claim_invitation_delivery_failed',
+            reason: 'Prepared account claim delivery failed',
+            beforeState: { invitationStatus: 'creating' },
+            afterState: { invitationStatus: 'delivery_failed' },
+            metadata: { markerId, invitationId: Number(invitation.id), ...metadata },
+            requestIp,
+            userAgent
+          });
+        }
       }
       await logClaimDelivery(connection, normalizedEmail, targetUserId, 'failed', error);
       await connection.query('COMMIT');
@@ -282,12 +379,12 @@ async function sendDoneForYouClaimInvitation({
     await connection.query('BEGIN');
     const sent = await connection.query(
       `UPDATE admin_account_invitations invitation
-          SET sent_at=NOW()
+          SET sent_at=COALESCE(invitation.sent_at,NOW())
          FROM users canonical_user
         WHERE invitation.id=$1
           AND canonical_user.id=invitation.target_user_id
           AND canonical_user.account_status='active'
-          AND invitation.claimed_at IS NULL AND invitation.revoked_at IS NULL
+          AND invitation.revoked_at IS NULL
           AND invitation.delivery_failed_at IS NULL AND invitation.expires_at>NOW()
         RETURNING invitation.sent_at`,
       [invitation.id]

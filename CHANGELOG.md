@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.168
+
+Released October 9, 2026. Built and deployed by Codex.
+
+### Promoter-controlled Done For You publishing
+
+* **Approve and publish** now verifies the flyer recipient's phone and publishes the exact reviewed event immediately, removing the second Super Admin publish step without changing ordinary self-serve publishing.
+* Publication is transaction-safe and idempotent: a failed attempt preserves the verified approval and can be retried from the secure preview without another code.
+* Confirmed publication opens a branded celebration followed by a focused share screen with the real public URL, clipboard confirmation, and native sharing where available.
+* New-submission and requested-fix emails remain durable Super Admin alerts; approval itself sends no admin email.
+* The promoter's live-link text, once-per-owner welcome email, and temporary pilot publication text to the operator number use durable retry records and cannot duplicate on refresh or double-click; ambiguous email-provider failures reuse the same encrypted claim link and provider idempotency key.
+* Choosing a new background or effect now returns directly to the unobstructed preview, while phone video effects use a lighter single-decoder path.
+
+### Verification
+
+* Static validation and all 541 automated tests pass: 412 unit and 129 HTTP/PostgreSQL integration tests.
+* End-to-end coverage includes OTP publication, failed-publication recovery, idempotent retries, one-time welcome and SMS delivery, requested-fix alerts, and unchanged self-serve publishing.
+* Real browser checks cover the review and post-publication experience at desktop and phone widths, including tap targets, overflow, reduced-motion behavior, and console errors.
+
 ## 1.0.167
 
 Released October 9, 2026. Built and deployed by Codex.

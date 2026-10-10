@@ -9,7 +9,6 @@ const { selectAccentColor } = require('../../public/js/artwork-color');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
-const { sendDoneForYouWelcome } = require('../lib/mailer');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
 const {
   TOKEN_TTL_SECONDS,
@@ -25,7 +24,6 @@ const {
   lookupDoneForYouClient,
   provisionDoneForYouClient
 } = require('../lib/admin-done-for-you');
-const { sendDoneForYouClaimInvitation } = require('../lib/done-for-you-claim-invitation');
 const { EventEditorError, publishEventInTransaction } = require('../lib/event-editor');
 const {
   AdminEditorWorkspaceError,
@@ -36,10 +34,15 @@ const {
   enqueueFlyerAdminNotifications,
   queueFlyerAdminNotifications
 } = require('../jobs/flyer-admin-notifications');
+const {
+  enqueueFlyerPublicationNotifications,
+  publicationDeliveryState,
+  queueFlyerPublicationNotifications,
+  setFlyerPublicationWelcomeSenderForTests
+} = require('../jobs/flyer-publication-notifications');
 
 const router = express.Router();
 const SMS_CONSENT_VERSION = 'dfy-transactional-v1';
-let deliverFlyerWelcome = sendDoneForYouWelcome;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -199,6 +202,167 @@ async function writeFlyerAudit(db, req, request, actionType, beforeState, afterS
       requestContext(req).userAgent
     ]
   );
+}
+
+async function writeFlyerRecipientAudit(db, req, request, beforeState, afterState) {
+  await db.query(
+    `INSERT INTO admin_account_audit_log
+       (actor_user_id,actor_admin_operator_id,actor_system,target_user_id,
+        action_type,reason,before_state,after_state,metadata,request_ip,user_agent)
+     VALUES (NULL,NULL,'verified_flyer_recipient',$1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7,$8)`,
+    [
+      request.target_user_id || null,
+      'flyer_request_published_by_recipient',
+      'Verified flyer recipient approved and published the reviewed event',
+      JSON.stringify(beforeState || {}),
+      JSON.stringify(afterState || {}),
+      JSON.stringify({
+        flyerRequestId: Number(request.id),
+        verification: 'request_scoped_phone_otp'
+      }),
+      requestContext(req).requestIp,
+      requestContext(req).userAgent
+    ]
+  );
+}
+
+function flyerEventUrl(request) {
+  const baseUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
+  return baseUrl && request?.event_slug
+    ? `${baseUrl}/e/${request.event_slug}`
+    : null;
+}
+
+function flyerPublicationPayload(request, event, delivery = {}) {
+  return {
+    ok: true,
+    status: 'published',
+    published: true,
+    event: {
+      id: Number(event.id),
+      slug: event.slug,
+      title: event.title,
+      url: flyerEventUrl(request)
+    },
+    liveSms: delivery.liveSms || { status: 'pending' },
+    pilotSms: delivery.pilotSms || { status: 'pending' },
+    claimInvitation: delivery.claimInvitation || { status: 'pending' },
+    retryNeeded: delivery.retryNeeded !== false
+  };
+}
+
+function flyerPublicationFailure(res, error) {
+  const expected = error instanceof EventEditorError;
+  if (!expected) {
+    console.error(
+      '[flyer-publication] recipient publication failed:',
+      cleanText(error?.message, 500) || 'Unknown publication error'
+    );
+  }
+  return res.status(expected && error.status < 500 ? 409 : 503).json({
+    error: 'flyer_publication_failed',
+    reason: expected ? error.code : 'publication_error',
+    message: expected
+      ? error.message
+      : 'We couldn’t publish your event yet. Try again.',
+    status: 'promoter_approved',
+    published: false,
+    retryable: true
+  });
+}
+
+async function publishApprovedFlyerInTransaction(db, req, requestId) {
+  const request = await readFlyerRequest(db, requestId, { forUpdate: true });
+  if (!request || request.event_id == null || request.done_for_you_client_id == null) {
+    throw new EventEditorError(
+      'flyer_request_not_publishable',
+      'Connect the reviewed flyer request to its exact client and event first.',
+      409
+    );
+  }
+  if (!['promoter_approved', 'published'].includes(request.status) || !request.phone_verified_at) {
+    throw new EventEditorError(
+      'flyer_request_not_approved',
+      'Verify the flyer recipient’s phone before publishing this event.',
+      409
+    );
+  }
+
+  let event;
+  if (request.status === 'promoter_approved') {
+    if (request.event_status !== 'draft') {
+      throw new EventEditorError(
+        'flyer_request_event_not_draft',
+        'The approved event is no longer an unpublished draft.',
+        409
+      );
+    }
+    const published = await publishEventInTransaction(db, {
+      organizerId: Number(request.event_organizer_id),
+      eventId: Number(request.event_id),
+      approvedFlyerRequestId: Number(request.id)
+    });
+    event = published.event;
+    await db.query(
+      `UPDATE admin_flyer_requests
+          SET status='published',published_at=COALESCE(published_at,NOW()),
+              updated_at=NOW()
+        WHERE id=$1`,
+      [request.id]
+    );
+    const beforeState = { status: request.status, eventStatus: request.event_status };
+    const afterState = { status: 'published', eventStatus: 'published' };
+    await writeFlyerRecipientAudit(db, req, request, beforeState, afterState);
+    request.status = 'published';
+    request.event_status = 'published';
+    request.published_at = new Date();
+  } else {
+    if (request.event_status !== 'published') {
+      throw new EventEditorError(
+        'flyer_request_publish_state_mismatch',
+        'This request and its event are out of sync. Ask Silver Glider to review it.',
+        409
+      );
+    }
+    event = {
+      id: Number(request.event_id),
+      slug: request.event_slug,
+      title: request.event_title,
+      status: request.event_status
+    };
+  }
+
+  await enqueueFlyerPublicationNotifications(db, { requestId: Number(request.id) });
+  return { request, event };
+}
+
+async function completeApprovedFlyer(req, requestId) {
+  if (!String(process.env.APP_URL || '').trim()) {
+    throw new EventEditorError(
+      'app_url_not_configured',
+      'Live event links are temporarily unavailable.',
+      503
+    );
+  }
+  const connection = await pool.connect();
+  let published;
+  try {
+    await connection.query('BEGIN');
+    published = await publishApprovedFlyerInTransaction(connection, req, requestId);
+    await connection.query('COMMIT');
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  // A successful publication can immediately advance to celebration/share.
+  // Provider latency and outages stay in the durable outbox; the background
+  // pass and cron retry without holding this response open.
+  queueFlyerPublicationNotifications(requestId, { force: true });
+  const delivery = await publicationDeliveryState(requestId).catch(() => null);
+  return flyerPublicationPayload(published.request, published.event, delivery || {});
 }
 
 async function readAccidentalPublishRecovery(db, eventId, { forUpdate = false } = {}) {
@@ -442,7 +606,8 @@ router.get('/api/flyer-preview', async (req, res, next) => {
         backgroundTheme: preview.background_theme,
         phone: maskedPhone(preview.phone_e164),
         approved: preview.status === 'promoter_approved' || preview.status === 'published',
-        published: preview.status === 'published'
+        published: preview.status === 'published',
+        ...(preview.status === 'published' ? { eventUrl: flyerEventUrl(preview) } : {})
       },
       looks: EventBackgrounds.options.map(option => ({
         key: option.key,
@@ -495,6 +660,7 @@ router.post('/api/flyer-preview/fix', async (req, res, next) => {
   const message = cleanText(req.body?.message, 1000);
   if (!message) return previewError(res, 400, 'missing_fix_request', 'Tell us what you would like changed.');
   const client = await pool.connect();
+  let notificationIds = [];
   try {
     await client.query('BEGIN');
     const preview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
@@ -515,7 +681,12 @@ router.post('/api/flyer-preview/fix', async (req, res, next) => {
         WHERE flyer_request_id=$1 AND verified_at IS NULL AND superseded_at IS NULL`,
       [preview.id]
     );
+    notificationIds = await enqueueFlyerAdminNotifications(client, {
+      kind: 'fix_requested',
+      requestId: Number(preview.id)
+    });
     await client.query('COMMIT');
+    queueFlyerAdminNotifications(notificationIds);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true, status: 'changes_requested' });
   } catch (error) {
@@ -576,6 +747,16 @@ router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
   let challenge;
   try {
     preview = await readFlyerPreviewAccess(pool, req);
+    if (preview && ['promoter_approved', 'published'].includes(preview.status) &&
+        preview.phone_verified_at) {
+      try {
+        const result = await completeApprovedFlyer(req, Number(preview.id));
+        res.setHeader('Cache-Control', 'private, no-store');
+        return res.json(result);
+      } catch (error) {
+        return flyerPublicationFailure(res, error);
+      }
+    }
     if (!preview || preview.status !== 'preview_sent' || preview.event_status !== 'draft') {
       return previewError(res, 409, 'approval_unavailable', 'This preview is not ready for approval.');
     }
@@ -597,47 +778,53 @@ router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
     }
 
     const client = await pool.connect();
-    let notificationIds = [];
     try {
       await client.query('BEGIN');
       const lockedPreview = await readFlyerPreviewAccess(client, req, { forUpdate: true });
-      const lockedChallenge = (await client.query(
-        `SELECT * FROM admin_flyer_request_phone_challenges
-          WHERE id=$1 FOR UPDATE`,
-        [challenge.id]
-      )).rows[0];
-      if (!lockedPreview || lockedPreview.status !== 'preview_sent' ||
-          !lockedChallenge || lockedChallenge.verified_at || lockedChallenge.superseded_at ||
-          lockedChallenge.provider_sid !== verification.verificationSid ||
-          Number(lockedChallenge.preview_revision) !== Number(lockedPreview.preview_revision) ||
-          lockedChallenge.phone_e164 !== verification.phone ||
-          new Date(lockedChallenge.expires_at).getTime() <= Date.now()) {
+      if (lockedPreview && ['promoter_approved', 'published'].includes(lockedPreview.status) &&
+          lockedPreview.phone_verified_at) {
         await client.query('ROLLBACK');
-        return previewError(res, 409, 'verification_expired', 'This verification is no longer active.');
+      } else {
+        const lockedChallenge = (await client.query(
+          `SELECT * FROM admin_flyer_request_phone_challenges
+            WHERE id=$1 FOR UPDATE`,
+          [challenge.id]
+        )).rows[0];
+        if (!lockedPreview || lockedPreview.status !== 'preview_sent' ||
+            !lockedChallenge || lockedChallenge.verified_at || lockedChallenge.superseded_at ||
+            lockedChallenge.provider_sid !== verification.verificationSid ||
+            Number(lockedChallenge.preview_revision) !== Number(lockedPreview.preview_revision) ||
+            lockedChallenge.phone_e164 !== verification.phone ||
+            new Date(lockedChallenge.expires_at).getTime() <= Date.now()) {
+          await client.query('ROLLBACK');
+          return previewError(res, 409, 'verification_expired', 'This verification is no longer active.');
+        }
+        await client.query(
+          'UPDATE admin_flyer_request_phone_challenges SET verified_at=NOW() WHERE id=$1',
+          [lockedChallenge.id]
+        );
+        await client.query(
+          `UPDATE admin_flyer_requests
+              SET status='promoter_approved',phone_verified_at=NOW(),
+                  promoter_approved_at=NOW(),updated_at=NOW()
+            WHERE id=$1`,
+          [lockedPreview.id]
+        );
+        await client.query('COMMIT');
       }
-      await client.query(
-        'UPDATE admin_flyer_request_phone_challenges SET verified_at=NOW() WHERE id=$1',
-        [lockedChallenge.id]
-      );
-      await client.query(
-        `UPDATE admin_flyer_requests
-            SET status='promoter_approved',phone_verified_at=NOW(),
-                promoter_approved_at=NOW(),updated_at=NOW()
-          WHERE id=$1`,
-        [lockedPreview.id]
-      );
-      notificationIds = await enqueueFlyerAdminNotifications(client, {
-        kind: 'approved',
-        requestId: Number(lockedPreview.id)
-      });
-      await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
       throw error;
     } finally { client.release(); }
-    queueFlyerAdminNotifications(notificationIds);
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, status: 'promoter_approved' });
+    try {
+      const result = await completeApprovedFlyer(req, Number(preview.id));
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.json(result);
+    } catch (error) {
+      // Phone ownership and approval are already committed. A retry uses the
+      // same secure preview session and never asks for another OTP.
+      return flyerPublicationFailure(res, error);
+    }
   } catch (error) {
     if (challenge && error instanceof phoneVerification.PhoneVerificationError && error.status === 400) {
       await pool.query(
@@ -651,6 +838,28 @@ router.post('/api/flyer-preview/approve/verify', async (req, res, next) => {
       return previewError(res, error.status, error.code, error.message);
     }
     next(error);
+  }
+});
+
+router.post('/api/flyer-preview/publish', async (req, res) => {
+  if (!sameOriginMutation(req)) return res.status(403).json({ error: 'forbidden' });
+  if (!previewRate(req, res)) return;
+  try {
+    const preview = await readFlyerPreviewAccess(pool, req);
+    if (!preview || !['promoter_approved', 'published'].includes(preview.status) ||
+        !preview.phone_verified_at) {
+      return previewError(
+        res,
+        409,
+        'publication_unavailable',
+        'Approve this event with the verification code before publishing it.'
+      );
+    }
+    const result = await completeApprovedFlyer(req, Number(preview.id));
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json(result);
+  } catch (error) {
+    return flyerPublicationFailure(res, error);
   }
 });
 
@@ -1153,245 +1362,8 @@ router.post(
   }
 );
 
-router.post(
-  '/api/admin/done-for-you/flyer-intake/:id/publish',
-  requireSuperAdmin,
-  async (req, res, next) => {
-    const id = positiveId(req.params.id);
-    if (!id) return res.status(404).json({ error: 'flyer_request_not_found' });
-    const appUrl = String(process.env.APP_URL || '').replace(/\/$/, '');
-    if (!appUrl) {
-      return res.status(503).json({
-        error: 'app_url_not_configured',
-        message: 'Live event links are not configured.'
-      });
-    }
-
-    const connection = await pool.connect();
-    let request;
-    let event;
-    let liveMessageId = null;
-    let shouldSendLiveText = false;
-    let shouldSendClaimEmail = false;
-    try {
-      await connection.query('BEGIN');
-      request = await readFlyerRequest(connection, id, { forUpdate: true });
-      if (!request || request.event_id == null || request.done_for_you_client_id == null) {
-        await connection.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'flyer_request_not_publishable',
-          message: 'Connect the reviewed flyer request to its exact client and event first.'
-        });
-      }
-      if (!['promoter_approved', 'published'].includes(request.status) || !request.phone_verified_at) {
-        await connection.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'flyer_request_not_approved',
-          message: 'The flyer recipient must approve this preview by phone before it can be published.'
-        });
-      }
-
-      if (request.status === 'promoter_approved') {
-        if (request.event_status !== 'draft') {
-          await connection.query('ROLLBACK');
-          return res.status(409).json({
-            error: 'flyer_request_event_not_draft',
-            message: 'The approved event is no longer an unpublished draft.'
-          });
-        }
-        const published = await publishEventInTransaction(connection, {
-          organizerId: Number(request.event_organizer_id),
-          eventId: Number(request.event_id),
-          approvedFlyerRequestId: id
-        });
-        event = published.event;
-        await connection.query(
-          `UPDATE admin_flyer_requests
-              SET status='published',published_at=COALESCE(published_at,NOW()),
-                  preview_token_hash=NULL,preview_token_expires_at=NULL,updated_at=NOW()
-            WHERE id=$1`,
-          [id]
-        );
-        await writeFlyerAudit(connection, req, request, 'flyer_request_published', {
-          status: request.status,
-          eventStatus: request.event_status
-        }, {
-          status: 'published',
-          eventStatus: 'published'
-        });
-        request.status = 'published';
-        request.event_status = 'published';
-        request.published_at = new Date();
-      } else {
-        if (request.event_status !== 'published') {
-          await connection.query('ROLLBACK');
-          return res.status(409).json({
-            error: 'flyer_request_publish_state_mismatch',
-            message: 'This request and its event are out of sync. Review them before retrying.'
-          });
-        }
-        event = {
-          id: Number(request.event_id),
-          slug: request.event_slug,
-          title: request.event_title,
-          status: request.event_status
-        };
-      }
-
-      const liveMessage = (await connection.query(
-        `SELECT * FROM admin_flyer_request_messages
-          WHERE flyer_request_id=$1 AND message_kind='live' AND revision=$2
-          FOR UPDATE`,
-        [id, request.preview_revision]
-      )).rows[0];
-      const liveSendingRecently = liveMessage?.status === 'sending' &&
-        Date.now() - new Date(liveMessage.created_at).getTime() < 10 * 60 * 1000;
-      if (liveMessage?.status !== 'sent' && !liveSendingRecently) {
-        const ledger = (await connection.query(
-          `INSERT INTO admin_flyer_request_messages
-             (flyer_request_id,message_kind,revision,recipient,status,initiated_by_admin_operator_id)
-           VALUES ($1,'live',$2,$3,'sending',$4)
-           ON CONFLICT (flyer_request_id,message_kind,revision)
-           DO UPDATE SET recipient=EXCLUDED.recipient,status='sending',provider_id=NULL,
-                         error=NULL,initiated_by_admin_operator_id=EXCLUDED.initiated_by_admin_operator_id,
-                         created_at=NOW(),sent_at=NULL
-           RETURNING id`,
-          [id, request.preview_revision, request.phone_e164, req.adminOperator.id]
-        )).rows[0];
-        liveMessageId = Number(ledger.id);
-        shouldSendLiveText = true;
-      }
-
-      const claimSendingRecently = request.claim_invitation_status === 'sending' &&
-        request.claim_invitation_attempted_at &&
-        Date.now() - new Date(request.claim_invitation_attempted_at).getTime() < 10 * 60 * 1000;
-      if (request.claim_invitation_status !== 'sent' && !claimSendingRecently) {
-        await connection.query(
-          `UPDATE admin_flyer_requests
-              SET claim_invitation_status='sending',claim_invitation_attempted_at=NOW(),
-                  claim_invitation_error=NULL,updated_at=NOW()
-            WHERE id=$1`,
-          [id]
-        );
-        request.claim_invitation_status = 'sending';
-        shouldSendClaimEmail = true;
-      }
-      await connection.query('COMMIT');
-    } catch (error) {
-      await connection.query('ROLLBACK').catch(() => {});
-      if (error instanceof EventEditorError) {
-        return res.status(error.status).json({ error: error.code, message: error.message });
-      }
-      return next(error);
-    } finally {
-      connection.release();
-    }
-
-    const eventUrl = `${appUrl}/e/${request.event_slug}`;
-    const hostPageUrl = request.event_public_host_slug
-      ? `${appUrl}/h/${request.event_public_host_slug}`
-      : null;
-    let liveSmsStatus = request.live_sms_status || null;
-    let claimInvitationStatus = request.claim_invitation_status || null;
-    let retryNeeded = false;
-
-    if (shouldSendLiveText) {
-      try {
-        const delivered = await sms.sendSms({
-          to: request.phone_e164,
-          body: `Your show is live! 🎸\nShare your event: ${eventUrl}`
-        });
-        await pool.query(
-          `UPDATE admin_flyer_request_messages
-              SET status='sent',provider_id=$2,sent_at=NOW(),error=NULL
-            WHERE id=$1 AND status='sending'`,
-          [liveMessageId, delivered.sid]
-        );
-        liveSmsStatus = 'sent';
-      } catch (error) {
-        await pool.query(
-          `UPDATE admin_flyer_request_messages
-              SET status='failed',error=$2
-            WHERE id=$1 AND status='sending'`,
-          [liveMessageId, cleanText(error.message, 500) || 'SMS delivery failed']
-        ).catch(() => {});
-        liveSmsStatus = 'failed';
-        retryNeeded = true;
-      }
-    } else if (liveSmsStatus !== 'sent') {
-      liveSmsStatus = 'sending';
-      retryNeeded = true;
-    }
-
-    if (shouldSendClaimEmail) {
-      try {
-        const invitation = await sendDoneForYouClaimInvitation({
-          pool,
-          markerId: Number(request.done_for_you_client_id),
-          actorAdminOperatorId: req.adminOperator.id,
-          requestedEmail: request.email,
-          ...requestContext(req),
-          metadata: { flyerRequestId: id },
-          welcomeClaimedAccount: true,
-          deliver: message => deliverFlyerWelcome({
-            ...message,
-            eventLink: eventUrl,
-            hostPageLink: hostPageUrl,
-            eventTitle: request.event_title,
-            idempotencyKey: message.existingAccount
-              ? `dfy-flyer-${id}-existing-welcome-v1`
-              : null
-          })
-        });
-        await pool.query(
-          `UPDATE admin_flyer_requests
-              SET claim_invitation_id=$2,claim_invitation_status='sent',
-                  claim_invitation_sent_at=NOW(),claim_invitation_error=NULL,
-                  claimed_at=CASE WHEN $3 THEN COALESCE(claimed_at,NOW()) ELSE claimed_at END,
-                  updated_at=NOW()
-            WHERE id=$1`,
-          [id, invitation.id, Boolean(invitation.existingAccount)]
-        );
-        claimInvitationStatus = 'sent';
-      } catch (error) {
-        await pool.query(
-          `UPDATE admin_flyer_requests
-              SET claim_invitation_status='failed',claim_invitation_error=$2,
-                  claimed_at=CASE WHEN $3 THEN COALESCE(claimed_at,NOW()) ELSE claimed_at END,
-                  updated_at=NOW()
-            WHERE id=$1`,
-          [
-            id,
-            cleanText(error.message, 500) || 'Email delivery failed',
-            Boolean(error.doneForYouClaimedAccount)
-          ]
-        ).catch(() => {});
-        claimInvitationStatus = 'failed';
-        retryNeeded = true;
-      }
-    } else if (claimInvitationStatus !== 'sent') {
-      claimInvitationStatus = 'sending';
-      retryNeeded = true;
-    }
-
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.json({
-      published: true,
-      event: {
-        id: Number(event.id),
-        slug: event.slug,
-        title: event.title,
-        url: eventUrl
-      },
-      liveSms: { status: liveSmsStatus },
-      claimInvitation: { status: claimInvitationStatus },
-      retryNeeded
-    });
-  }
-);
-
 router.setClaimSenderForTests = sender => {
-  deliverFlyerWelcome = typeof sender === 'function' ? sender : sendDoneForYouWelcome;
+  setFlyerPublicationWelcomeSenderForTests(sender);
 };
 
 module.exports = router;

@@ -56,13 +56,18 @@ test('reviewed flyer requests enter the existing isolated editor without publish
   assert.match(read('public/js/admin-flyer-request.js'), /preview text is sent only after Super Admin review/i);
 });
 
-test('secure flyer previews expose only look, fix, and recipient approval controls', () => {
+test('secure flyer previews expose look, fix, and verified auto-publish controls', () => {
   const migration = read('src/db/migrations/063_flyer_preview_approval.sql');
   const route = read('src/routes/flyer-intake.js');
   const access = read('src/lib/flyer-preview-access.js');
   const publicRoute = read('src/routes/public.js');
+  const selfServe = read('src/routes/events.js');
   const script = read('public/js/flyer-preview.js');
   const css = read('public/css/flyer-preview.css');
+  const getPreviewRoute = route.slice(
+    route.indexOf("router.get('/api/flyer-preview'"),
+    route.indexOf("router.post('/api/flyer-preview/look'")
+  );
 
   assert.match(migration, /admin_flyer_request_phone_challenges/);
   assert.match(migration, /never an account authentication credential/i);
@@ -76,16 +81,33 @@ test('secure flyer previews expose only look, fix, and recipient approval contro
   assert.match(route, /\/api\/flyer-preview\/fix/);
   assert.match(route, /\/api\/flyer-preview\/approve\/start/);
   assert.match(route, /\/api\/flyer-preview\/approve\/verify/);
+  assert.match(route, /router\.post\('\/api\/flyer-preview\/publish'/);
+  assert.match(getPreviewRoute, /status:\s*preview\.status/);
+  assert.match(getPreviewRoute, /published:\s*preview\.status\s*===\s*'published'/);
+  assert.match(getPreviewRoute, /eventUrl/);
   assert.match(route, /presentation_mode='flyer'/);
   assert.match(publicRoute, /readFlyerPreviewAccess/);
   assert.match(script, /Change the look/);
   assert.match(script, /Request a fix/);
-  assert.match(script, /Looks good/);
-  assert.match(css, /@media\(max-width:720px\)/);
+  assert.match(publicRoute, /data-preview-action="approve"[^>]*>[^<]*publish/i);
+  assert.doesNotMatch(publicRoute, /data-preview-action="approve"[^>]*>Looks good</i);
+  assert.match(publicRoute, /data-preview-action="retry"[^>]*>Try publishing again</i);
+  assert.match(script, /action === 'retry'[\s\S]*?showPublishRetry\(''\)[\s\S]*?retryPublication\(document\.getElementById\('flyer-publish-retry'\)\)/);
+  assert.match(script, /\/api\/flyer-preview\/publish/);
+  assert.match(script, /Your (?:event is published|show is live)/i);
+  assert.match(script, /navigator\.share/);
+  assert.match(script, /navigator\.clipboard|execCommand\(['"]copy['"]\)/);
+  assert.doesNotMatch(script, /Home Base/i);
+  assert.match(script, /flyer-publish-(?:celebration|success)/);
+  assert.match(css, /\.flyer-publish-step/);
+  assert.match(css, /\.flyer-publish-confetti/);
+  assert.match(css, /@media\s*\(max-width:\s*720px\)/);
+  assert.match(`${script}\n${css}`, /prefers-reduced-motion/);
+  assert.match(selfServe, /router\.post\('\/api\/events\/:id\/publish'/);
   assert.doesNotMatch(route, /setSessionCookie|attachIdentity|account_phone_credentials/);
 });
 
-test('approved flyer publishing is Super Admin controlled, retry-safe, and records the real account claim', () => {
+test('verified flyer approval auto-publishes once and exposes a public retry without another OTP', () => {
   const migration = read('src/db/migrations/064_flyer_publish_handoff.sql');
   const route = read('src/routes/flyer-intake.js');
   const auth = read('src/routes/auth.js');
@@ -93,19 +115,36 @@ test('approved flyer publishing is Super Admin controlled, retry-safe, and recor
   const adminUi = read('public/js/admin-flyer-request.js');
   const editorUi = read('public/js/event-form.js');
   const mailer = read('src/lib/mailer.js');
+  const publicationJob = read('src/jobs/flyer-publication-notifications.js');
+  const verifyRoute = route.slice(
+    route.indexOf("router.post('/api/flyer-preview/approve/verify'"),
+    route.indexOf("router.use('/api/admin/done-for-you/flyer-intake'")
+  );
+  const publicPublishRoute = route.slice(
+    route.indexOf("router.post('/api/flyer-preview/publish'"),
+    route.indexOf("router.use('/api/admin/done-for-you/flyer-intake'")
+  );
 
   assert.match(migration, /claim_invitation_id/);
   assert.match(migration, /claim_invitation_status/);
-  assert.match(route, /flyer-intake\/:id\/publish/);
-  assert.match(route, /requireSuperAdmin/);
-  assert.match(route, /message_kind='live'/);
-  assert.match(route, /Your show is live!/);
-  assert.match(route, /sendDoneForYouClaimInvitation/);
-  assert.match(route, /approvedFlyerRequestId: id/);
+  assert.match(verifyRoute, /completeApprovedFlyer/);
+  assert.match(route, /approvedFlyerRequestId/);
+  assert.match(route, /router\.post\('\/api\/flyer-preview\/publish'/);
+  assert.match(publicPublishRoute, /promoter_approved/);
+  assert.match(publicPublishRoute, /published/);
+  assert.doesNotMatch(route, /\/api\/admin\/done-for-you\/flyer-intake\/:id\/publish/);
+  assert.match(route, /status:\s*'published'/);
+  assert.match(route, /published:\s*true/);
+  assert.match(route, /event:\s*\{[\s\S]*?url:/);
+  assert.match(`${route}\n${publicationJob}`, /['"]live['"]/);
+  assert.match(publicationJob, /['"]pilot_publish['"]/);
+  assert.match(publicationJob, /\+14152053302/);
+  assert.match(publicationJob, /Your show is live!/);
+  assert.match(publicationJob, /sendDoneForYouClaimInvitation/);
   assert.match(auth, /WHERE claim_invitation_id=\$1/);
   assert.match(editor, /flyer_request_publish_requires_approval/);
   assert.match(editorUi, /Save draft & return/);
-  assert.match(adminUi, /Publish and notify/);
+  assert.doesNotMatch(adminUi, /Publish and notify/);
   assert.match(mailer, /sendDoneForYouWelcome/);
 });
 
