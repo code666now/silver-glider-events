@@ -16,6 +16,8 @@ test('homepage gives returning users a real account entry without changing the c
   assert.match(home, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
   assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);
   assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event/);
+  assert.match(home, /class="sg-btn sg-btn-primary home-primary-cta"/);
+  assert.match(home, /\.home-primary-cta \{[\s\S]*?border-radius: 12px;/);
   assert.match(home, /src="\/js\/api\.js" defer/);
   assert.match(home, /src="\/js\/home-account-nav\.js" defer/);
 
@@ -40,6 +42,7 @@ test('homepage presents its value as a numbered editorial list', () => {
   for (const number of ['01', '02', '03', '04']) {
     assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
   }
+  assert.match(home, /<strong>See who came back\.<\/strong> Your regulars, remembered\. Invite them to the next one in a tap\./);
   assert.doesNotMatch(home, /class="tick"/);
   assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
 });

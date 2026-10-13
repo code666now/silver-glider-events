@@ -123,6 +123,16 @@
     h1 { font-size: clamp(40px, 10vw, 58px); margin-bottom: 18px; letter-spacing: -0.02em; }
     h1 span { color: var(--sg-accent); }
     .tagline { color: var(--sg-text-dim); font-size: 17px; line-height: 1.7; margin-bottom: 44px; }
+    .home-primary-cta {
+      border-radius: 12px;
+      font-size: 16px;
+      padding: 16px 44px;
+    }
+    @media (hover: hover) {
+      .home-primary-cta:hover {
+        box-shadow: 0 8px 26px rgba(28,197,190,.16);
+      }
+    }
     .offer-note { color: var(--sg-text-dim); font-size: 13px; margin-top: 14px; }
     .feature-list { margin: 62px 0 0; text-align: left; }
     .feature-list-header {
@@ -183,7 +193,7 @@
     <p class="sg-label" style="margin-bottom:22px">Silver Glider Events</p>
     <h1>You have a personality. <span>Your events should too.</span></h1>
     <p class="tagline">Create a beautiful event page, collect RSVPs or connect ticket sales, send confirmations and reminders, and keep your guest list organized in one place.</p>
-    <a class="sg-btn sg-btn-primary" href="/login?next=%2Fevents%2Fnew" style="font-size:16px;padding:16px 44px">Create your event</a>
+    <a class="sg-btn sg-btn-primary home-primary-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
     <p class="offer-note">Free to create and publish.</p>
 
     <section class="feature-list" aria-labelledby="feature-list-title">
@@ -195,7 +205,7 @@
         <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
         <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
         <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
-        <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>Everything organized.</strong> Manage confirmations, reminders, attendance, and your guest list in one place.</p></li>
+        <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>See who came back.</strong> Your regulars, remembered. Invite them to the next one in a tap.</p></li>
       </ol>
     </section>
     <footer class="sg-social-footer" data-sg-legal-footer>

@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.172
+
+Released October 13, 2026. Built and deployed by Codex.
+
+### A more grounded homepage action
+
+* The homepage **Create your event** action now uses a softly rounded rectangular shape that matches the editorial 01–04 value list.
+* Item 04 now highlights Silver Glider's returning-guest loop: remember regulars and invite them to the next event in a tap.
+* The teal brand color, clear action hierarchy, generous touch target, and existing destination remain unchanged.
+* The refinement is scoped to the homepage; buttons throughout the rest of the platform retain their established styling.
+
+### Verification
+
+* Static validation and all 545 automated tests pass.
+* Real-browser checks cover the homepage at desktop and mobile widths with no horizontal overflow or broken layout.
+
 ## 1.0.171
 
 Released October 13, 2026. Built and deployed by Codex.
