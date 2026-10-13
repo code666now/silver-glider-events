@@ -30,6 +30,20 @@ test('homepage gives returning users a real account entry without changing the c
   assert.match(client, /signOutDestination: '\/'/);
 });
 
+test('homepage presents its value as a numbered editorial list', () => {
+  const home = read('src/views/index.html');
+
+  assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
+  assert.match(home, /id="feature-list-title">The good stuff<\/h2>/);
+  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
+  assert.match(home, /<ol class="features">/);
+  for (const number of ['01', '02', '03', '04']) {
+    assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
+  }
+  assert.doesNotMatch(home, /class="tick"/);
+  assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
+});
+
 test('homepage desktop menu retains primary links while shared account actions match the phone menu', () => {
   const shell = read('public/js/api.js');
   const styles = read('public/css/main.css');

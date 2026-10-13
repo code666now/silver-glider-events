@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.171
+
+Released October 13, 2026. Built and deployed by Codex.
+
+### A more editorial homepage
+
+* The homepage replaces its rounded feature panel with a lighter **The good stuff** list numbered 01–04.
+* Thin dividers, compact teal numbering, and stronger heading hierarchy keep the product value readable without competing with the primary event-creation action.
+* The existing homepage hero, copy, call to action, animated background, account entry, and mobile flow remain unchanged.
+
+### Verification
+
+* Static validation and all 545 automated tests pass.
+* Real-browser checks cover the homepage at 1440px desktop and 390px mobile widths with no horizontal overflow, broken images, or console errors.
+
 ## 1.0.170
 
 Released October 9, 2026. Built and deployed by Codex.
