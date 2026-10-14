@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.173
+
+Released October 14, 2026. Built and deployed by Codex.
+
+### Weekly recommendations on the homepage
+
+* A dedicated **Silver Glider Recs** signup now appears after **The good stuff** and immediately before the Instagram and legal footer.
+* Visitors can choose the San Francisco Bay Area or Los Angeles and join with an email address through the existing Silver Glider Marketing service.
+* The integration keeps subscriber data in the Marketing service, uses confirmed double opt-in, includes explicit consent and an unsubscribe promise, and does not expose service credentials.
+* Loading, rate-limit, timeout, success, and error states stay within the form, with an accessible live region, keyboard focus treatment, mobile sizing, and reduced-motion support.
+
+### Verification
+
+* Static validation and all 416 unit tests pass, including the homepage integration contract.
+* Browser checks cover desktop and mobile layout, placement above the footer, accessible controls, and horizontal overflow without creating a real subscription.
+
 ## 1.0.172
 
 Released October 13, 2026. Built and deployed by Codex.

@@ -47,6 +47,35 @@ test('homepage presents its value as a numbered editorial list', () => {
   assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
 });
 
+test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
+  const home = read('src/views/index.html');
+  const client = read('public/js/home-email-signup.js');
+  const signupIndex = home.indexOf('data-sg-email-signup');
+  const footerIndex = home.indexOf('<footer class="sg-social-footer"');
+
+  assert.ok(signupIndex > home.indexOf('<section class="feature-list"'));
+  assert.ok(footerIndex > signupIndex);
+  assert.match(home, /data-endpoint="https:\/\/line\.silvergliderevents\.com\/api\/email\/subscribe"/);
+  assert.match(home, /<h2>Join our weekly recs\.<\/h2>/);
+  assert.match(home, /name="email"[\s\S]*type="email"[\s\S]*maxlength="254"[\s\S]*required/);
+  assert.match(home, /<select name="audience" required>[\s\S]*value="sf"[\s\S]*value="la"/);
+  assert.match(home, /name="website" type="text" tabindex="-1" autocomplete="off"/);
+  assert.match(home, /Confirm by email\. Unsubscribe anytime\./);
+  assert.match(home, /data-sg-status role="status" aria-live="polite" aria-atomic="true"/);
+  assert.match(home, /href="\/css\/home-email-signup\.css"/);
+  assert.match(home, /src="\/js\/home-email-signup\.js" defer/);
+
+  assert.match(client, /method: 'POST'/);
+  assert.match(client, /mode: 'cors'/);
+  assert.match(client, /credentials: 'omit'/);
+  assert.match(client, /consent: true/);
+  assert.match(client, /website: String\(fields\.get\('website'\)/);
+  assert.match(client, /new AbortController\(\)/);
+  assert.match(client, /controller\.abort\(\), 12000/);
+  assert.match(client, /response\.status === 429/);
+  assert.match(client, /form\.reset\(\)/);
+});
+
 test('homepage desktop menu retains primary links while shared account actions match the phone menu', () => {
   const shell = read('public/js/api.js');
   const styles = read('public/css/main.css');
