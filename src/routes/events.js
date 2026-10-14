@@ -4,7 +4,7 @@ const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { makeEventSlug } = require('../lib/slug');
 const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
-const { rsvpsToCsv } = require('../lib/csv');
+const { familiarFacesToCsv } = require('../lib/csv');
 const { sendEventAnnouncement, sendLineupClaimOutcome } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
 const { attendeeAvatar, canAppearInPublicListings, safeAvatarUrl } = require('../lib/private-events');
@@ -670,6 +670,106 @@ function eligibleTargetRecipients(recipients, state) {
   );
 }
 
+// The people connected to one event, as three lists: confirmed RSVPs,
+// invitations nobody has answered, and RSVPs that were cancelled. The
+// Familiar Faces grid and the CSV export both read from here, so the file
+// always lists the same people as the screen.
+async function familiarFaceRows(eventId, organizerId) {
+  const { rows: rsvps } = await pool.query(
+    `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
+            r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
+            r.phone, r.wants_reminders, r.organizer_optin,
+            (r.sms_optin AND r.sms_opted_out_at IS NULL) AS texts_ok,
+            r.created_at, o.avatar_url,
+            (SELECT COUNT(DISTINCT seen.event_id) FROM rsvps seen
+               JOIN events seen_event ON seen_event.id=seen.event_id
+               JOIN events target_event ON target_event.id=$1
+              WHERE seen_event.organizer_id=$2 AND seen.status='confirmed'
+                AND (seen.event_id=$1
+                     OR seen_event.event_date < target_event.event_date
+                     OR (seen_event.event_date=target_event.event_date
+                         AND seen_event.start_time < target_event.start_time)
+                     OR (seen_event.event_date=target_event.event_date
+                         AND seen_event.start_time=target_event.start_time
+                         AND seen_event.id < target_event.id))
+                AND ((r.user_id IS NOT NULL AND seen.user_id=r.user_id)
+                     OR ((r.user_id IS NULL OR seen.user_id IS NULL)
+                         AND LOWER(TRIM(seen.email))=LOWER(TRIM(r.email)))))::int AS visit_count,
+            NOT EXISTS (
+              SELECT 1 FROM follower_optouts fo
+               WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
+            ) AS host_email_allowed
+      FROM rsvps r
+       LEFT JOIN organizers o ON o.id=r.account_id
+      WHERE r.event_id=$1 AND r.status='confirmed'
+      ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
+               r.created_at DESC, r.id DESC`,
+    [eventId, organizerId]
+  );
+  const { rows: invitations } = await pool.query(
+    `SELECT DISTINCT ON (
+              COALESCE('user:' || ml.recipient_user_id::text, 'email:' || LOWER(TRIM(ml.recipient)))
+            ) ml.id, ml.recipient_user_id AS user_id,
+            ml.recipient, ml.recipient_name,
+            ml.created_at, identity.avatar_url,
+            NOT EXISTS (
+              SELECT 1 FROM follower_optouts fo
+               WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(ml.recipient)
+            ) AS host_email_allowed
+       FROM message_log ml
+       LEFT JOIN LATERAL (
+         SELECT o.avatar_url
+           FROM rsvps linked
+           JOIN events linked_event ON linked_event.id=linked.event_id AND linked_event.organizer_id=$2
+           JOIN organizers o ON o.id=linked.account_id
+          WHERE ((ml.recipient_user_id IS NOT NULL AND linked.user_id=ml.recipient_user_id)
+                 OR ((ml.recipient_user_id IS NULL OR linked.user_id IS NULL)
+                     AND LOWER(linked.email)=LOWER(ml.recipient)))
+          ORDER BY linked.id DESC LIMIT 1
+       ) identity ON TRUE
+      WHERE ml.event_id=$1 AND ml.message_type='previous_guest_invite'
+        AND ml.status IN ('pending','sent')
+        AND NOT EXISTS (
+          -- Once someone answers, their invite card goes away. Match on the
+          -- account or the email, either one: a person invited at one email
+          -- who RSVPs signed in (or at the same email under another account)
+          -- is still the same person, not a second card.
+          SELECT 1 FROM rsvps current_rsvp
+           WHERE current_rsvp.event_id=$1 AND current_rsvp.status IN ('confirmed','cancelled')
+             AND ((ml.recipient_user_id IS NOT NULL
+                   AND current_rsvp.user_id=ml.recipient_user_id)
+                  OR LOWER(TRIM(current_rsvp.email))=LOWER(TRIM(ml.recipient)))
+        )
+      ORDER BY COALESCE('user:' || ml.recipient_user_id::text,
+                        'email:' || LOWER(TRIM(ml.recipient))),
+               ml.id DESC`,
+    [eventId, organizerId]
+  );
+  // "I'm not going" (and a cancelled RSVP) is an answer the host should see,
+  // not a silent disappearance. These people are not invitation targets.
+  const { rows: declined } = await pool.query(
+    `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
+            r.id, r.user_id, r.first_name, r.last_name, r.email, r.created_at, o.avatar_url,
+            r.phone, r.wants_reminders, r.organizer_optin,
+            (r.sms_optin AND r.sms_opted_out_at IS NULL) AS texts_ok
+       FROM rsvps r
+       LEFT JOIN organizers o ON o.id=r.account_id
+      WHERE r.event_id=$1 AND r.status='cancelled'
+        -- Cancelled and then RSVP'd again: they're going, so show them once.
+        AND NOT EXISTS (
+          SELECT 1 FROM rsvps going
+           WHERE going.event_id=$1 AND going.status='confirmed'
+             AND ((r.user_id IS NOT NULL AND going.user_id=r.user_id)
+                  OR LOWER(TRIM(going.email))=LOWER(TRIM(r.email)))
+        )
+      ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
+               r.created_at DESC, r.id DESC`,
+    [eventId]
+  );
+
+  return { rsvps, invitations, declined };
+}
+
 // GET /api/events/:id/familiar-faces — visual, event-specific people view.
 router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
   try {
@@ -681,91 +781,20 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     );
     if (!eventRows.length) return res.status(404).json({ error: 'Event not found' });
 
-    const { rows: rsvps } = await pool.query(
-      `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
-              r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
-              r.created_at, o.avatar_url,
-              (SELECT COUNT(DISTINCT seen.event_id) FROM rsvps seen
-                 JOIN events seen_event ON seen_event.id=seen.event_id
-                 JOIN events target_event ON target_event.id=$1
-                WHERE seen_event.organizer_id=$2 AND seen.status='confirmed'
-                  AND (seen.event_id=$1
-                       OR seen_event.event_date < target_event.event_date
-                       OR (seen_event.event_date=target_event.event_date
-                           AND seen_event.start_time < target_event.start_time)
-                       OR (seen_event.event_date=target_event.event_date
-                           AND seen_event.start_time=target_event.start_time
-                           AND seen_event.id < target_event.id))
-                  AND ((r.user_id IS NOT NULL AND seen.user_id=r.user_id)
-                       OR ((r.user_id IS NULL OR seen.user_id IS NULL)
-                           AND LOWER(TRIM(seen.email))=LOWER(TRIM(r.email)))))::int AS visit_count,
-              NOT EXISTS (
-                SELECT 1 FROM follower_optouts fo
-                 WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
-              ) AS host_email_allowed
-        FROM rsvps r
-         LEFT JOIN organizers o ON o.id=r.account_id
-        WHERE r.event_id=$1 AND r.status='confirmed'
-        ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
-                 r.created_at DESC, r.id DESC`,
-      [req.params.id, req.organizer.id]
-    );
-    const { rows: invitations } = await pool.query(
-      `SELECT DISTINCT ON (
-                COALESCE('user:' || ml.recipient_user_id::text, 'email:' || LOWER(TRIM(ml.recipient)))
-              ) ml.id, ml.recipient_user_id AS user_id,
-              ml.recipient, ml.recipient_name,
-              ml.created_at, identity.avatar_url,
-              NOT EXISTS (
-                SELECT 1 FROM follower_optouts fo
-                 WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(ml.recipient)
-              ) AS host_email_allowed
-         FROM message_log ml
-         LEFT JOIN LATERAL (
-           SELECT o.avatar_url
-             FROM rsvps linked
-             JOIN events linked_event ON linked_event.id=linked.event_id AND linked_event.organizer_id=$2
-             JOIN organizers o ON o.id=linked.account_id
-            WHERE ((ml.recipient_user_id IS NOT NULL AND linked.user_id=ml.recipient_user_id)
-                   OR ((ml.recipient_user_id IS NULL OR linked.user_id IS NULL)
-                       AND LOWER(linked.email)=LOWER(ml.recipient)))
-            ORDER BY linked.id DESC LIMIT 1
-         ) identity ON TRUE
-        WHERE ml.event_id=$1 AND ml.message_type='previous_guest_invite'
-          AND ml.status IN ('pending','sent')
-          AND NOT EXISTS (
-            SELECT 1 FROM rsvps current_rsvp
-             WHERE current_rsvp.event_id=$1 AND current_rsvp.status IN ('confirmed','cancelled')
-               AND ((ml.recipient_user_id IS NOT NULL
-                     AND current_rsvp.user_id=ml.recipient_user_id)
-                    OR ((ml.recipient_user_id IS NULL OR current_rsvp.user_id IS NULL)
-                        AND LOWER(current_rsvp.email)=LOWER(ml.recipient)))
-          )
-        ORDER BY COALESCE('user:' || ml.recipient_user_id::text,
-                          'email:' || LOWER(TRIM(ml.recipient))),
-                 ml.id DESC`,
-      [req.params.id, req.organizer.id]
-    );
-    // "I'm not going" (and a cancelled RSVP) is an answer the host should see,
-    // not a silent disappearance. These people are not invitation targets.
-    const { rows: declined } = await pool.query(
-      `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
-              r.id, r.user_id, r.first_name, r.last_name, r.email, r.created_at, o.avatar_url
-         FROM rsvps r
-         LEFT JOIN organizers o ON o.id=r.account_id
-        WHERE r.event_id=$1 AND r.status='cancelled'
-        ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
-                 r.created_at DESC, r.id DESC`,
-      [req.params.id]
-    );
+    const { rsvps, invitations, declined } = await familiarFaceRows(req.params.id, req.organizer.id);
 
+    // Three groups, in this order: going (each +1 right after the person who
+    // brought them), invited with no answer yet, and can't make it. Newest
+    // first inside each group.
+    const newestFirst = (a, b) => new Date(b.created_at) - new Date(a.created_at);
     const faces = [];
-    for (const rsvp of rsvps) {
+    for (const rsvp of [...rsvps].sort(newestFirst)) {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
       const hasEmail = Boolean(String(rsvp.email || '').trim());
       const visits = Number(rsvp.visit_count) || 1;
       faces.push({
         id: familiarFaceKey('rsvp', rsvp.id),
+        group: 'going',
         name,
         status: 'RSVP’d',
         // "First time" or "4th time with you" — the host's own memory, in a label.
@@ -783,6 +812,8 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
       const guestName = `${rsvp.guest_first_name || ''} ${rsvp.guest_last_name || ''}`.trim();
       if (guestName) faces.push({
         id: familiarFaceKey('guest', rsvp.id),
+        group: 'going',
+        plusOne: true,
         name: guestName,
         status: plusOneLabel(rsvp.first_name),
         avatarUrl: null,
@@ -792,10 +823,11 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         sortTime: rsvp.created_at
       });
     }
-    for (const invitation of invitations) {
+    for (const invitation of [...invitations].sort(newestFirst)) {
       const name = String(invitation.recipient_name || '').trim() || 'Invited guest';
       faces.push({
         id: familiarFaceKey('invite', invitation.id),
+        group: 'invited',
         name,
         status: 'Invited',
         avatarUrl: safeAvatarUrl(invitation.avatar_url),
@@ -805,10 +837,11 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         sortTime: invitation.created_at
       });
     }
-    for (const rsvp of declined) {
+    for (const rsvp of [...declined].sort(newestFirst)) {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
       faces.push({
         id: familiarFaceKey('declined', rsvp.id),
+        group: 'declined',
         name,
         status: 'Can’t make it',
         declined: true,
@@ -821,10 +854,14 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
     }
     const search = String(req.query.search || '').trim().toLowerCase();
     const filtered = search ? faces.filter(face => face.searchText.includes(search)) : faces;
-    filtered.sort((a, b) => new Date(b.sortTime) - new Date(a.sortTime));
+    const countOf = group => faces.filter(face => face.group === group).length;
     res.json({
       faces: filtered.map(({ searchText, sortTime, ...face }) => face),
       totalCount: faces.length,
+      // Going counts +1s: it's the headcount the host is planning for.
+      goingCount: countOf('going'),
+      invitedCount: countOf('invited'),
+      declinedCount: countOf('declined'),
       rsvpCount: rsvps.length,
       selectableCount: faces.filter(face => face.canInvite).length,
       canStartInvitation: Boolean(eventRows[0].is_past && eventRows[0].status === 'published')
@@ -1328,21 +1365,28 @@ router.post('/api/events/:id/familiar-faces/people/invite', async (req, res, nex
   }
 });
 
-// GET /api/events/:id/rsvps.csv
+// GET /api/events/:id/rsvps.csv — the Familiar Faces list as a spreadsheet,
+// one row per person.
 router.get('/api/events/:id/rsvps.csv', async (req, res, next) => {
   try {
-    const { rows: ev } = await pool.query('SELECT slug FROM events WHERE id=$1 AND organizer_id=$2', [req.params.id, req.organizer.id]);
+    const { rows: ev } = await pool.query(
+      'SELECT slug, timezone FROM events WHERE id=$1 AND organizer_id=$2',
+      [req.params.id, req.organizer.id]
+    );
     if (!ev.length) return res.status(404).json({ error: 'Event not found' });
 
-    const { rows } = await pool.query(
-      `SELECT first_name, last_name, email, phone, guest_first_name, guest_last_name, guest_email,
-              wants_reminders, organizer_optin, status, created_at
-         FROM rsvps WHERE event_id=$1 ORDER BY created_at ASC`,
-      [req.params.id]
-    );
+    const { rsvps, invitations, declined } = await familiarFaceRows(req.params.id, req.organizer.id);
+    const newestFirst = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+    const csv = familiarFacesToCsv({
+      going: [...rsvps].sort(newestFirst),
+      invited: [...invitations].sort(newestFirst),
+      declined: [...declined].sort(newestFirst),
+      timeZone: ev[0].timezone || 'America/Los_Angeles'
+    });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${ev[0].slug}-guests.csv"`);
-    res.send(rsvpsToCsv(rows));
+    // A byte-order mark so Excel reads names with accents correctly.
+    res.send('\uFEFF' + csv);
   } catch (err) { next(err); }
 });
 
