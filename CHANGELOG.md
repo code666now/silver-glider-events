@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.174
+
+Released October 14, 2026. Built and deployed by Codex.
+
+### A lighter weekly recommendations section
+
+* The homepage recommendations signup now sits directly on the page background instead of inside a dark card.
+* The section uses a wider editorial layout with compact, aligned desktop controls and a clear single-column mobile flow.
+* Subtle separators and generous spacing preserve the form's grouping without interrupting the homepage artwork.
+
+### Verification
+
+* Static validation and all 416 unit tests pass.
+* Browser checks cover the transparent desktop layout, mobile stacking, control sizing, and horizontal overflow.
+
 ## 1.0.173
 
 Released October 14, 2026. Built and deployed by Codex.

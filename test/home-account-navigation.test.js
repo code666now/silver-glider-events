@@ -50,6 +50,7 @@ test('homepage presents its value as a numbered editorial list', () => {
 test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
   const home = read('src/views/index.html');
   const client = read('public/js/home-email-signup.js');
+  const styles = read('public/css/home-email-signup.css');
   const signupIndex = home.indexOf('data-sg-email-signup');
   const footerIndex = home.indexOf('<footer class="sg-social-footer"');
 
@@ -74,6 +75,10 @@ test('homepage connects the weekly recs signup to the marketing service above th
   assert.match(client, /controller\.abort\(\), 12000/);
   assert.match(client, /response\.status === 429/);
   assert.match(client, /form\.reset\(\)/);
+
+  assert.match(styles, /width:\s*min\(720px, calc\(100vw - 48px\)\)/);
+  assert.match(styles, /background:\s*transparent/);
+  assert.match(styles, /grid-template-columns:\s*minmax\(0, 1\.25fr\)/);
 });
 
 test('homepage desktop menu retains primary links while shared account actions match the phone menu', () => {
