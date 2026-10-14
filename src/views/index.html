@@ -214,48 +214,44 @@
       class="sg-recs-signup"
       data-sg-email-signup
       data-endpoint="https://line.silvergliderevents.com/api/email/subscribe"
-      aria-label="Join Silver Glider weekly recommendations"
+      aria-labelledby="sg-recs-title"
     >
-      <p class="sg-recs-kicker">SILVER GLIDER RECS</p>
-      <h2>Join our weekly recs.</h2>
-      <p class="sg-recs-intro">Good shows and events, handpicked for your city. In your good ol&rsquo; email every week.</p>
+      <p class="sg-label sg-display sg-recs-kicker">Silver Glider Recs</p>
+      <h2 id="sg-recs-title">Going out instead?</h2>
+      <p class="sg-recs-intro">Good shows and events, handpicked for your city, every week.</p>
 
       <form class="sg-recs-form">
-        <label class="sg-recs-field">
-          <span class="sg-recs-sr-only">Email address</span>
-          <input
-            name="email"
-            type="email"
-            inputmode="email"
-            autocomplete="email"
-            autocapitalize="none"
-            spellcheck="false"
-            maxlength="254"
-            placeholder="Your good ol' email"
-            required
-          >
-        </label>
+        <fieldset class="sg-recs-cities">
+          <legend class="sg-recs-sr-only">Your city</legend>
+          <label class="sg-recs-city"><input type="radio" name="audience" value="sf" required><span>SF Bay Area</span></label>
+          <label class="sg-recs-city"><input type="radio" name="audience" value="la"><span>Los Angeles</span></label>
+        </fieldset>
 
-        <label class="sg-recs-field sg-recs-select">
-          <span class="sg-recs-sr-only">City</span>
-          <select name="audience" required>
-            <option value="" selected disabled>Choose city</option>
-            <option value="sf">San Francisco Bay Area</option>
-            <option value="la">Los Angeles</option>
-          </select>
-        </label>
+        <div class="sg-recs-row">
+          <label class="sg-recs-field">
+            <span class="sg-recs-sr-only">Email address</span>
+            <input
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="254"
+              placeholder="Your email"
+              required
+            >
+          </label>
+          <button class="sg-recs-submit" type="submit"><span data-sg-button-label>Count me in</span></button>
+        </div>
 
         <div class="sg-recs-trap" aria-hidden="true">
           <label>Leave this field empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label>
         </div>
 
-        <button class="sg-recs-submit" type="submit">
-          <span data-sg-button-label>COUNT ME IN</span><span aria-hidden="true">&#8599;</span>
-        </button>
-
-        <p class="sg-recs-consent">By selecting &ldquo;Count me in,&rdquo; you agree to receive Silver Glider&rsquo;s weekly event recommendations for your city. Confirm by email. Unsubscribe anytime.</p>
-        <p class="sg-recs-status" data-sg-status role="status" aria-live="polite" aria-atomic="true"></p>
+        <p class="sg-recs-consent">By selecting Count me in, you agree to receive Silver Glider&rsquo;s weekly picks for your city. Confirm by email. Unsubscribe anytime.</p>
       </form>
+      <p class="sg-recs-status" data-sg-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
     </section>
     <footer class="sg-social-footer" data-sg-legal-footer>
       <a class="sg-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">

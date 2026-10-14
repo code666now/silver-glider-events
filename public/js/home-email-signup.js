@@ -29,7 +29,7 @@
 
         const fields = new FormData(form);
         button.disabled = true;
-        buttonLabel.textContent = 'JOINING\u2026';
+        buttonLabel.textContent = 'Joining\u2026';
         root.setAttribute('aria-busy', 'true');
         showStatus('');
 
@@ -57,7 +57,11 @@
               : result.error || 'We couldn\u2019t add you right now. Please try again.');
           }
           form.reset();
-          showStatus(result.message || "Check your good ol' email to confirm!");
+          // The form has done its job: replace it with the next step, and
+          // move focus there since the button just pressed is gone.
+          root.dataset.state = 'done';
+          showStatus(result.message || 'Check your inbox to confirm.');
+          status.focus({ preventScroll: true });
         } catch (error) {
           showStatus(error.name === 'AbortError'
             ? 'Signup took too long. Please try again.'
