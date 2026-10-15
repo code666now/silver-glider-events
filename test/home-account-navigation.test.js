@@ -37,12 +37,12 @@ test('homepage presents its value as a numbered editorial list', () => {
 
   assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
   assert.match(home, /id="feature-list-title">The good stuff<\/h2>/);
-  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 03<\/span>/);
+  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
   assert.match(home, /<ol class="features">/);
-  for (const number of ['01', '02', '03']) {
+  for (const number of ['01', '02', '03', '04']) {
     assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
   }
-  assert.doesNotMatch(home, /aria-hidden="true">04<\/span>/);
+  assert.match(home, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
   // Familiar Faces has its own spotlight after the list, before the recs signup.
   const regulars = home.indexOf('<section class="home-regulars"');
   assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('data-sg-email-signup'));
@@ -62,6 +62,29 @@ test('homepage hero shows a real event page on a phone, after the copy and befor
   assert.match(home, /src="\/img\/home\/event-phone-party\.jpg" width="390" height="844" alt="A Silver Glider event page on a phone/);
   assert.ok(fs.existsSync(path.join(root, 'public/img/home/event-phone-party.jpg')));
   assert.match(home, /@media \(min-width: 960px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\) 300px/);
+});
+
+test('homepage phone turns toward the pointer, floats on touch screens, and respects reduced motion', () => {
+  const home = read('src/views/index.html');
+  const tilt = read('public/js/home-hero-tilt.js');
+  assert.match(home, /src="\/js\/home-hero-tilt\.js" defer/);
+  assert.match(home, /rotateX\(var\(--rx\)\) rotateY\(var\(--ry\)\) rotate\(var\(--lean\)\)/);
+  assert.match(home, /@media \(hover: none\)[\s\S]*home-phone-float/);
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home-hero-phone \{ animation: none; \}/);
+  assert.match(tilt, /const MAX_TILT = 8;/);
+  assert.match(tilt, /prefers-reduced-motion: reduce/);
+  assert.match(tilt, /\(hover: hover\) and \(pointer: fine\)/);
+  assert.match(tilt, /event\.pointerType !== 'mouse'/);
+  assert.match(tilt, /requestAnimationFrame/);
+  // Hidden delight: one click spins it to show the logo on the back.
+  assert.match(home, /class="home-phone-back" aria-hidden="true"><img src="\/logo\.png" alt="" draggable="false">/);
+  assert.match(home, /touch-action: manipulation/);
+  assert.match(tilt, /setTimeout\(settle, SPIN_MS \+ SPIN_GRACE_MS\)/);
+  assert.match(tilt, /list\.addListener\(onChange\)/);
+  assert.match(home, /rotate\(var\(--lean\)\) rotateY\(var\(--spin\)\)/);
+  assert.match(home, /\.home-phone-back \{[\s\S]*backface-visibility: hidden/);
+  assert.match(tilt, /if \(spinning \|\| reducedMotion\.matches\) return;/);
+  assert.match(tilt, /setProperty\('--spin', '360deg'\)/);
 });
 
 test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
