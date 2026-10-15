@@ -64,6 +64,29 @@ test('homepage hero shows a real event page on a phone, after the copy and befor
   assert.match(home, /@media \(min-width: 960px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\) 300px/);
 });
 
+test('homepage phone turns toward the pointer, floats on touch screens, and respects reduced motion', () => {
+  const home = read('src/views/index.html');
+  const tilt = read('public/js/home-hero-tilt.js');
+  assert.match(home, /src="\/js\/home-hero-tilt\.js" defer/);
+  assert.match(home, /rotateX\(var\(--rx\)\) rotateY\(var\(--ry\)\) rotate\(var\(--lean\)\)/);
+  assert.match(home, /@media \(hover: none\)[\s\S]*home-phone-float/);
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home-hero-phone \{ animation: none; \}/);
+  assert.match(tilt, /const MAX_TILT = 8;/);
+  assert.match(tilt, /prefers-reduced-motion: reduce/);
+  assert.match(tilt, /\(hover: hover\) and \(pointer: fine\)/);
+  assert.match(tilt, /event\.pointerType !== 'mouse'/);
+  assert.match(tilt, /requestAnimationFrame/);
+  // Hidden delight: one click spins it to show the logo on the back.
+  assert.match(home, /class="home-phone-back" aria-hidden="true"><img src="\/logo\.png" alt="" draggable="false">/);
+  assert.match(home, /touch-action: manipulation/);
+  assert.match(tilt, /setTimeout\(settle, SPIN_MS \+ SPIN_GRACE_MS\)/);
+  assert.match(tilt, /list\.addListener\(onChange\)/);
+  assert.match(home, /rotate\(var\(--lean\)\) rotateY\(var\(--spin\)\)/);
+  assert.match(home, /\.home-phone-back \{[\s\S]*backface-visibility: hidden/);
+  assert.match(tilt, /if \(spinning \|\| reducedMotion\.matches\) return;/);
+  assert.match(tilt, /setProperty\('--spin', '360deg'\)/);
+});
+
 test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
   const home = read('src/views/index.html');
   const client = read('public/js/home-email-signup.js');

@@ -17,6 +17,7 @@
   <script src="/js/api.js" defer></script>
   <script src="/js/home-account-nav.js" defer></script>
   <script src="/js/home-email-signup.js" defer></script>
+  <script src="/js/home-hero-tilt.js" defer></script>
   <style>
     /* Aurora — moving gradient background (Partiful-style) */
     .aurora {
@@ -147,10 +148,46 @@
     .home-phone-frame {
       padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 44px; background: #050505;
       box-shadow: 0 40px 90px rgba(0,0,0,.55);
-      /* A slight lean toward the headline, like a phone set down on a table. */
-      transform: rotate(-3deg);
+      /* A slight lean toward the headline, like a phone set down on a table.
+         On desktop it also turns toward the pointer (--rx/--ry, set by
+         home-hero-tilt.js); a sheen follows the same angle. */
+      --lean: -3deg; --rx: 0deg; --ry: 0deg; --sheen: 50%; --spin: 0deg;
+      position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; cursor: pointer;
+      /* A tap spins it: no double-tap zoom, tap flash or text selection. */
+      touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+      transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(var(--lean)) rotateY(var(--spin));
+      transition: transform .6s cubic-bezier(.2, .8, .2, 1);
     }
-    .home-phone-frame img { display: block; width: 100%; height: auto; border-radius: 35px; }
+    /* Hidden delight: a click or tap spins the phone once (home-hero-tilt.js)
+       and shows its back, dark glass with the logo. */
+    .home-hero .home-phone-frame.is-spinning { transition: transform 1.2s cubic-bezier(.45, .05, .2, 1); }
+    .home-hero .home-phone-frame.is-settling { transition: none; }
+    .home-phone-screen { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+    .home-phone-back {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      border-radius: 44px; transform: rotateY(180deg); -webkit-backface-visibility: hidden; backface-visibility: hidden;
+      background: radial-gradient(circle at 50% 38%, rgba(28,197,190,.22), transparent 55%), linear-gradient(160deg, #161818, #050505 70%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+    }
+    .home-phone-back img { width: 72px; height: 72px; opacity: .92; border-radius: 0; }
+    .home-phone-back span { color: var(--sg-text-dim); font: 800 10px var(--sg-font-body); letter-spacing: .3em; text-transform: uppercase; }
+    .home-phone-frame.is-tracking { transition: transform .12s ease-out; }
+    .home-phone-frame::after {
+      content: ''; position: absolute; inset: 9px; border-radius: 35px; pointer-events: none; opacity: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden;
+      background: linear-gradient(115deg, transparent calc(var(--sheen) - 22%), rgba(255,255,255,.14) var(--sheen), transparent calc(var(--sheen) + 22%));
+      transition: opacity .4s ease;
+    }
+    .home-phone-frame.is-tracking::after { opacity: 1; }
+    /* Phones: no pointer to follow, so the phone floats gently instead. */
+    @media (hover: none) {
+      .home-hero-phone { animation: home-phone-float 6s ease-in-out infinite alternate; }
+    }
+    @keyframes home-phone-float { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+    @media (prefers-reduced-motion: reduce) {
+      .home-hero-phone { animation: none; }
+      .home-phone-frame { transition: none; }
+    }
+    .home-phone-screen { display: block; width: 100%; height: auto; border-radius: 35px; }
     @media (min-width: 960px) {
       .home-hero {
         width: min(1000px, calc(100vw - 64px)); margin-left: 50%; transform: translateX(-50%);
@@ -158,7 +195,7 @@
       }
       .home-hero .logo { display: block; }
       .home-hero-phone { width: 300px; margin: 0; }
-      .home-phone-frame { transform: rotate(-4deg); }
+      .home-phone-frame { --lean: -4deg; }
       .home-hero-phone::before { inset: 12% -28% 4%; }
       .home-hero .tagline { max-width: 34em; }
     }
@@ -252,7 +289,8 @@
       </div>
       <figure class="home-hero-phone">
         <div class="home-phone-frame">
-          <img src="/img/home/event-phone-party.jpg" width="390" height="844" alt="A Silver Glider event page on a phone: Halloween Party, Friday, October 30, with its flyer and an RSVP button" fetchpriority="high">
+          <div class="home-phone-back" aria-hidden="true"><img src="/logo.png" alt="" draggable="false"><span>Silver Glider</span></div>
+          <img class="home-phone-screen" draggable="false" src="/img/home/event-phone-party.jpg" width="390" height="844" alt="A Silver Glider event page on a phone: Halloween Party, Friday, October 30, with its flyer and an RSVP button" fetchpriority="high">
         </div>
       </figure>
     </div>
