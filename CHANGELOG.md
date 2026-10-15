@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.176
+
+Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.
+
+### Show the product in action
+
+* The homepage hero now pairs the primary message with a real Silver Glider event page on a phone.
+* The phone appears beside the headline on desktop and beneath the primary action on smaller screens without adding another call to action.
+
+### Familiar Faces in the spotlight
+
+* **The good stuff** is now a focused 01–03 list.
+* **Familiar Faces, remembered.** has its own section between the product list and weekly recommendations, making Silver Glider's returning-guest advantage easier to understand.
+
+### Verification
+
+* Static validation and all 550 automated tests pass.
+* Production browser checks cover desktop and phone placement, section order, image loading, horizontal overflow, and console errors.
+
 ## 1.0.175
 
 Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.
