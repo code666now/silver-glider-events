@@ -528,23 +528,55 @@ function familiarAvatar(face) {
     : `<span class="familiar-face-emoji" aria-hidden="true">${escapeHtml(face.avatarEmoji || familiarInitials(face.name))}</span>`;
 }
 
+function familiarFaceCard(face) {
+  const selected = familiarFaceSelection.has(face.id);
+  const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.status ? `, ${face.status}` : ''} ${selected ? 'from' : 'for'} an invitation`;
+  const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
+    <span class="familiar-face-name">${escapeHtml(face.name)}</span>
+    <span class="familiar-face-status">${escapeHtml(face.status)}</span>
+    ${face.visitLabel ? `<span class="familiar-face-visits${face.visitCount > 1 ? ' is-returning' : ''}">${escapeHtml(face.visitLabel)}</span>` : ''}
+    ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}
+    ${familiarSelectionMode && !face.canInvite && face.note ? `<span class="familiar-face-note">${escapeHtml(face.note)}</span>` : ''}`;
+  const classes = ['familiar-face-card', `is-${face.group || 'going'}`];
+  if (face.plusOne) classes.push('is-plus-one');
+  if (face.declined) classes.push('is-declined');
+  if (selected) classes.push('is-selected');
+  if (face.canInvite && familiarFaceState.canStartInvitation) {
+    return `<button class="${classes.join(' ')}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">${content}</button>`;
+  }
+  return `<article class="${classes.join(' ')}">${content}</article>`;
+}
+
+// Going gets the big faces; invited is a quieter row under its own title;
+// can't make it folds away at the bottom.
+const FAMILIAR_GROUPS = [
+  { key: 'going', title: 'Going' },
+  { key: 'invited', title: 'Invited, no answer yet' },
+  { key: 'declined', title: 'Can’t make it', collapsed: true }
+];
+
 function renderFamiliarFaces() {
   const grid = $('familiar-faces-grid');
-  grid.innerHTML = familiarFaceState.faces.map(face => {
-    const selected = familiarFaceSelection.has(face.id);
-    const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.status ? `, ${face.status}` : ''} ${selected ? 'from' : 'for'} an invitation`;
-    const content = `<span class="familiar-face-avatar">${familiarAvatar(face)}</span>
-      <span class="familiar-face-name">${escapeHtml(face.name)}</span>
-      <span class="familiar-face-status">${escapeHtml(face.status)}</span>
-      ${face.visitLabel ? `<span class="familiar-face-visits${face.visitCount > 1 ? ' is-returning' : ''}">${escapeHtml(face.visitLabel)}</span>` : ''}
-      ${familiarSelectionMode && face.canInvite ? `<span class="familiar-face-check" aria-hidden="true">✓</span>` : ''}
-      ${familiarSelectionMode && !face.canInvite && face.note ? `<span class="familiar-face-note">${escapeHtml(face.note)}</span>` : ''}`;
-    if (face.canInvite && familiarFaceState.canStartInvitation) {
-      return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-familiar-face="${escapeHtml(face.id)}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">${content}</button>`;
-    }
-    return `<article class="familiar-face-card${face.declined ? ' is-declined' : ''}">${content}</article>`;
+  // Each section brings its own grid, so the outer one stops being a grid.
+  grid.classList.add('is-grouped');
+  grid.innerHTML = FAMILIAR_GROUPS.map(group => {
+    const faces = familiarFaceState.faces.filter(face => (face.group || 'going') === group.key);
+    if (!faces.length) return '';
+    const heading = `${escapeHtml(group.title)} <span class="familiar-faces-group-count">${faces.length}</span>`;
+    const cards = `<div class="familiar-faces-grid familiar-faces-group-grid">${faces.map(familiarFaceCard).join('')}</div>`;
+    return group.collapsed
+      ? `<details class="familiar-faces-group is-${group.key}"><summary class="familiar-faces-group-title">${heading}</summary>${cards}</details>`
+      : `<section class="familiar-faces-group is-${group.key}"><h3 class="familiar-faces-group-title">${heading}</h3>${cards}</section>`;
   }).join('');
   $('no-guests').hidden = familiarFaceState.faces.length > 0;
+}
+
+function familiarFacesSummary(data) {
+  const parts = [];
+  if (data.goingCount) parts.push(`${data.goingCount} going`);
+  if (data.invitedCount) parts.push(`${data.invitedCount} invited`);
+  if (data.declinedCount) parts.push(`${data.declinedCount} can’t make it`);
+  return parts.length ? parts.join(' · ') : 'RSVPs and invitations, together.';
 }
 
 function syncFamiliarMobileChrome() {
@@ -587,9 +619,7 @@ function stopFamiliarSelection() {
 async function loadGuests(search = '') {
   const data = await api(`/api/events/${eventId}/familiar-faces${search ? `?search=${encodeURIComponent(search)}` : ''}`);
   familiarFaceState = data;
-  $('familiar-faces-summary').textContent = data.totalCount
-    ? `${data.totalCount} ${data.totalCount === 1 ? 'person' : 'people'} · RSVP’d and invited`
-    : 'RSVPs and invitations, together.';
+  $('familiar-faces-summary').textContent = familiarFacesSummary(data);
   $('no-guests').textContent = search ? 'No people match that search.' : 'No faces yet. Share the event link to receive RSVPs.';
   $('export-csv').disabled = Number(data.rsvpCount) === 0;
   $('search').disabled = false;

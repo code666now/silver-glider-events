@@ -10,6 +10,26 @@
 .familiar-faces-search .sg-input { width:min(260px,32vw); }
 .familiar-faces-tools .sg-btn { min-height:42px;padding:10px 17px;white-space:nowrap; }
 .familiar-faces-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px; }
+#familiar-faces-grid.is-grouped { display:block; }
+.familiar-faces-group + .familiar-faces-group { margin-top:28px; }
+.familiar-faces-group-title {
+  display:flex;align-items:baseline;gap:8px;margin:0 0 12px;color:var(--sg-text);
+  font:800 13px var(--sg-font-body);letter-spacing:.06em;text-transform:uppercase;
+}
+.familiar-faces-group-count { color:var(--sg-accent);font-weight:800; }
+.familiar-faces-group.is-invited .familiar-faces-group-count,
+.familiar-faces-group.is-declined .familiar-faces-group-count { color:var(--sg-text-faint); }
+details.familiar-faces-group > summary { cursor:pointer;list-style:none; }
+details.familiar-faces-group > summary::-webkit-details-marker { display:none; }
+details.familiar-faces-group > summary::after { content:"Show";margin-left:auto;color:var(--sg-text-faint);font-size:11px;letter-spacing:.04em; }
+details.familiar-faces-group[open] > summary::after { content:"Hide"; }
+details.familiar-faces-group > summary:focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px;border-radius:6px; }
+/* Invited people haven't answered, so they read quieter than the people going. */
+.familiar-face-card.is-invited { min-height:150px;padding:16px 14px;background:transparent;border-style:dashed; }
+.familiar-face-card.is-invited .familiar-face-avatar { width:56px;height:56px;margin-bottom:11px;opacity:.78; }
+.familiar-face-card.is-invited .familiar-face-emoji { font-size:26px; }
+.familiar-face-card.is-invited .familiar-face-name { color:var(--sg-text-dim); }
+.familiar-face-card.is-invited.is-selected { border-style:solid; }
 .familiar-face-card {
   min-width:0;min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;
   padding:20px 16px;border:1px solid var(--sg-border-soft);border-radius:20px;background:rgba(17,17,17,.76);

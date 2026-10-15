@@ -184,3 +184,40 @@ test('the host sees proof the guest list works: returning counts and per-face vi
   assert.match(view, /id="stat-returning"/);
   assert.match(view, /<span>Returning guests<\/span>/);
 });
+
+test('Familiar Faces CSV is one readable row per person in the event time zone', () => {
+  const { familiarFacesToCsv, csvEscape } = require('../src/lib/csv');
+  const csv = familiarFacesToCsv({
+    timeZone: 'America/Los_Angeles',
+    going: [{
+      first_name: 'Maya', last_name: 'Lopez', email: 'maya@example.test', phone: '+14155550134',
+      guest_first_name: 'Sam', guest_last_name: 'Friend', visit_count: 3,
+      wants_reminders: true, texts_ok: false, organizer_optin: true,
+      created_at: '2030-10-11T03:05:00Z'
+    }],
+    invited: [{ recipient_name: 'Ari', recipient: ' ari@example.test ', created_at: '2030-10-01T17:00:00Z' }],
+    declined: [{ first_name: '=HYPERLINK("x")', last_name: '', email: 'd@example.test', organizer_optin: false, created_at: '2030-10-02T17:00:00Z' }]
+  });
+  const lines = csv.replace(/\n$/, '').split('\n');
+  assert.equal(lines[0], 'Name,Email,Phone,Status,Plus one,Times with you,Reminders,Texts OK,Updates from you,Date (America/Los_Angeles)');
+  assert.equal(lines[1], `Maya Lopez,maya@example.test,+14155550134,Going,Sam Friend,3,Yes,No,Yes,2030-10-10 20:05`);
+  assert.equal(lines[2], 'Ari,ari@example.test,,Invited,,,,,,2030-10-01 10:00');
+  assert.match(lines[3], /^"'=HYPERLINK\(""x""\)",d@example\.test,,Can’t make it,/);
+  assert.equal(lines.length, 4);
+  assert.equal(csvEscape('@SUM(1)'), "'@SUM(1)");
+  assert.equal(csvEscape('plain'), 'plain');
+  assert.equal(csvEscape('+1 (415) 555-0134'), '+1 (415) 555-0134');
+  assert.equal(csvEscape('+1+cmd|calc'), "'+1+cmd|calc");
+});
+
+test('Familiar Faces groups the grid into going, invited and can’t make it', () => {
+  const client = read('public/js/manage.js');
+  const routes = read('src/routes/events.js');
+  assert.match(client, /title: 'Going'/);
+  assert.match(client, /title: 'Invited, no answer yet'/);
+  assert.match(client, /title: 'Can’t make it', collapsed: true/);
+  assert.match(client, /\$\{data\.goingCount\} going/);
+  assert.doesNotMatch(client, /RSVP’d and invited/);
+  assert.match(routes, /goingCount: countOf\('going'\)/);
+  assert.match(routes, /familiarFacesToCsv\(/);
+});

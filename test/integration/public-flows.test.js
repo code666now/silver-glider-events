@@ -5762,6 +5762,50 @@ test('hosts see who can’t make it, and the admin Hosts list excludes RSVP-only
   assert.ok(hosts.guestIdentityCount >= 1);
 });
 
+test('Familiar Faces shows each person once, in going, invited and can’t make it', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'one-card-each', title: 'One Card Each' });
+  const [markAccount, otherAccount] = (await pool.query(
+    `INSERT INTO users (name) VALUES ('Mark Old'), ('Mark New') RETURNING id`
+  )).rows.map(row => row.id);
+  // Invited under one account, RSVP'd at the same email under another.
+  await pool.query(
+    `INSERT INTO message_log (event_id,recipient,recipient_name,recipient_user_id,message_type,channel,status)
+     VALUES ($1,'Mark@Example.test ','Mark',$2,'previous_guest_invite','email','sent'),
+            ($1,'nora@example.test','Nora',NULL,'previous_guest_invite','email','sent')`,
+    [event.id, markAccount]
+  );
+  await createRsvp(event.id, { first_name: 'Mark', last_name: 'Mattos', email: 'mark@example.test', user_id: otherAccount });
+  const [rueAccount, deeAccount] = (await pool.query(
+    `INSERT INTO users (name) VALUES ('Rue'), ('Dee') RETURNING id`
+  )).rows.map(row => row.id);
+  // Cancelled, then came back on the same account with another email.
+  await createRsvp(event.id, { first_name: 'Rue', last_name: 'Returns', email: 'rue-work@example.test', status: 'cancelled', user_id: rueAccount });
+  await createRsvp(event.id, { first_name: 'Rue', last_name: 'Returns', email: 'rue@example.test', guest_first_name: 'Pat', user_id: rueAccount });
+  // Cancelled twice from one account, at two emails.
+  await createRsvp(event.id, { first_name: 'Dee', last_name: 'Twice', email: 'dee@example.test', status: 'cancelled', user_id: deeAccount });
+  await createRsvp(event.id, { first_name: 'Dee', last_name: 'Twice', email: 'dee-work@example.test', status: 'cancelled', user_id: deeAccount });
+
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const data = await (await fetch(`${baseUrl}/api/events/${event.id}/familiar-faces`, { headers: { cookie } })).json();
+  const names = group => data.faces.filter(face => face.group === group).map(face => face.name);
+  assert.deepEqual(names('going').sort(), ['Mark Mattos', 'Pat', 'Rue Returns'].sort());
+  assert.deepEqual(names('invited'), ['Nora']);
+  assert.deepEqual(names('declined'), ['Dee Twice']);
+  assert.equal(data.goingCount, 3);
+  assert.equal(data.invitedCount, 1);
+  assert.equal(data.declinedCount, 1);
+  const going = data.faces.filter(face => face.group === 'going').map(face => face.name);
+  assert.equal(going[going.indexOf('Rue Returns') + 1], 'Pat', 'a +1 sits right after who brought them');
+
+  const csv = await (await fetch(`${baseUrl}/api/events/${event.id}/rsvps.csv`, { headers: { cookie } })).text();
+  const rows = csv.replace(/^\uFEFF/, '').trim().split('\n');
+  assert.equal(rows.length, 1 + 2 + 1 + 1, 'header, two going, one invited, one can’t make it');
+  assert.match(csv, /Rue Returns,rue@example\.test,,Going,Pat,1,/);
+  assert.match(csv, /Nora,nora@example\.test,,Invited,/);
+  assert.doesNotMatch(csv, /Mark,mark@example\.test,,Invited/);
+});
+
 test('Admin Events securely searches and filters every host event while reusing only eligible draft workspaces', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('events-support@example.test', 'support');
