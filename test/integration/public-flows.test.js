@@ -5800,8 +5800,9 @@ test('Familiar Faces shows each person once, in going, invited and can’t make 
 
   const csv = await (await fetch(`${baseUrl}/api/events/${event.id}/rsvps.csv`, { headers: { cookie } })).text();
   const rows = csv.replace(/^\uFEFF/, '').trim().split('\n');
-  assert.equal(rows.length, 1 + 2 + 1 + 1, 'header, two going, one invited, one can’t make it');
-  assert.match(csv, /Rue Returns,rue@example\.test,,Going,Pat,1,/);
+  assert.equal(rows.length, 1 + 3 + 1 + 1, 'header, three going, one invited, one can’t make it');
+  assert.match(csv, /Rue Returns,rue@example\.test,,Going,,1,/);
+  assert.match(csv, /Pat,,,Going,Guest of Rue Returns,/);
   assert.match(csv, /Nora,nora@example\.test,,Invited,/);
   assert.doesNotMatch(csv, /Mark,mark@example\.test,,Invited/);
 });

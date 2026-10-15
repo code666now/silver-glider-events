@@ -24,19 +24,28 @@ const yesNo = value => (value ? 'Yes' : 'No');
 const fullName = (first, last) => `${first || ''} ${last || ''}`.trim();
 
 // One row per person, matching the Familiar Faces grid: going, then invited,
-// then can't make it. A +1 sits on the row of the person who brought them.
+// then can't make it. A named +1 gets their own row immediately after the
+// person who brought them.
 function familiarFacesToCsv({ going, invited, declined, timeZone }) {
   const header = [
     'Name', 'Email', 'Phone', 'Status', 'Plus one', 'Times with you',
     'Reminders', 'Texts OK', 'Updates from you', `Date (${timeZone})`
   ];
   const rows = [
-    ...going.map(r => [
-      fullName(r.first_name, r.last_name), r.email, r.phone, 'Going',
-      fullName(r.guest_first_name, r.guest_last_name), Number(r.visit_count) || 1,
-      yesNo(r.wants_reminders), yesNo(r.texts_ok), yesNo(r.organizer_optin),
-      localTime(r.created_at, timeZone)
-    ]),
+    ...going.flatMap(r => {
+      const attendeeName = fullName(r.first_name, r.last_name);
+      const guestName = fullName(r.guest_first_name, r.guest_last_name);
+      const attendee = [
+        attendeeName, r.email, r.phone, 'Going', '', Number(r.visit_count) || 1,
+        yesNo(r.wants_reminders), yesNo(r.texts_ok), yesNo(r.organizer_optin),
+        localTime(r.created_at, timeZone)
+      ];
+      if (!guestName) return [attendee];
+      return [attendee, [
+        guestName, r.guest_email, '', 'Going', `Guest of ${attendeeName || 'RSVP guest'}`,
+        '', '', '', '', localTime(r.created_at, timeZone)
+      ]];
+    }),
     ...invited.map(i => [
       String(i.recipient_name || '').trim(), String(i.recipient || '').trim(), '', 'Invited',
       '', '', '', '', '', localTime(i.created_at, timeZone)

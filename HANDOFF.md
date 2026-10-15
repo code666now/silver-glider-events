@@ -193,7 +193,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - Each face carries `group`: `going` | `invited` | `declined`. The response adds `goingCount` (including named +1s, since that's the headcount), `invitedCount` and `declinedCount`; the header reads "14 going · 9 invited · 2 can't make it". `totalCount` is unchanged for the mobile summary.
 - An invite card disappears once the person answers, matched on **account or email, either one**. A cancelled RSVP is hidden when the same person (account or email) has a confirmed one. Before this, the match used email only when one side had no account, so "Mark" (invited) and "Mark Mattos" (RSVP'd) showed as two cards.
 - Two cards with different emails and no shared account are still two people; that's for the later "Same person?" merge, never name matching. `rsvps_event_email_uq` already rules out duplicates at one email.
-- CSV: one row per person, human headers, times in the event's time zone, a UTF-8 BOM for Excel, and `csvEscape` prefixes cells starting with `= + - @` (tab/return too) with an apostrophe so guest-typed names can't run as formulas. Values that are only a number (a `+1…` phone) are left alone.
+- CSV: one row per person (including a separate row for each named +1, immediately after the person who brought them), human headers, times in the event's time zone, a UTF-8 BOM for Excel, and `csvEscape` prefixes cells starting with `= + - @` (tab/return too) with an apostrophe so guest-typed names can't run as formulas. Values that are only a number (a `+1…` phone) are left alone. Export stays available when any group has people, including invitation-only or declined-only lists.
 
 ### Host recap — rules to keep (Claude)
 

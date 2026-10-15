@@ -2,6 +2,28 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.175
+
+Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.
+
+### Clearer Familiar Faces
+
+* Event management now separates Familiar Faces into **Going**, **Invited, no answer yet**, and a folded **Can’t make it** section with honest header counts.
+* Account-or-email matching removes duplicate invitation and RSVP cards, and a cancelled response disappears when the same person later confirms.
+* The CSV uses the same source as the grid, includes invitations and declines, keeps each named +1 on their own row, uses the event time zone, and protects guest-entered cells from spreadsheet formulas.
+* Export remains available whenever any Familiar Faces group contains people.
+
+### Weekly recommendations that fit the homepage
+
+* The signup now shares the width, typography, brand color, and control shape of **The good stuff** instead of reading like a second page.
+* SF Bay Area and Los Angeles are visible radio choices; the email and action align on desktop and stack on phones.
+* The existing endpoint, CORS request, honeypot, timeout, consent payload, rate-limit handling, and confirmation flow remain intact.
+
+### Verification
+
+* Static validation and all 549 automated tests pass.
+* Production browser checks cover desktop and phone signup layout, city selection, site typography, Familiar Faces groups and counts, CSV download, and console errors.
+
 ## 1.0.174
 
 Released October 14, 2026. Built and deployed by Codex.

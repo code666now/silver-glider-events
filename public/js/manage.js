@@ -621,7 +621,7 @@ async function loadGuests(search = '') {
   familiarFaceState = data;
   $('familiar-faces-summary').textContent = familiarFacesSummary(data);
   $('no-guests').textContent = search ? 'No people match that search.' : 'No faces yet. Share the event link to receive RSVPs.';
-  $('export-csv').disabled = Number(data.rsvpCount) === 0;
+  $('export-csv').disabled = Number(data.totalCount) === 0;
   $('search').disabled = false;
   $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
   renderFamiliarFaces();

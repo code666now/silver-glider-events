@@ -191,7 +191,7 @@ test('Familiar Faces CSV is one readable row per person in the event time zone',
     timeZone: 'America/Los_Angeles',
     going: [{
       first_name: 'Maya', last_name: 'Lopez', email: 'maya@example.test', phone: '+14155550134',
-      guest_first_name: 'Sam', guest_last_name: 'Friend', visit_count: 3,
+      guest_first_name: 'Sam', guest_last_name: 'Friend', guest_email: 'sam@example.test', visit_count: 3,
       wants_reminders: true, texts_ok: false, organizer_optin: true,
       created_at: '2030-10-11T03:05:00Z'
     }],
@@ -200,10 +200,11 @@ test('Familiar Faces CSV is one readable row per person in the event time zone',
   });
   const lines = csv.replace(/\n$/, '').split('\n');
   assert.equal(lines[0], 'Name,Email,Phone,Status,Plus one,Times with you,Reminders,Texts OK,Updates from you,Date (America/Los_Angeles)');
-  assert.equal(lines[1], `Maya Lopez,maya@example.test,+14155550134,Going,Sam Friend,3,Yes,No,Yes,2030-10-10 20:05`);
-  assert.equal(lines[2], 'Ari,ari@example.test,,Invited,,,,,,2030-10-01 10:00');
-  assert.match(lines[3], /^"'=HYPERLINK\(""x""\)",d@example\.test,,Can’t make it,/);
-  assert.equal(lines.length, 4);
+  assert.equal(lines[1], `Maya Lopez,maya@example.test,+14155550134,Going,,3,Yes,No,Yes,2030-10-10 20:05`);
+  assert.equal(lines[2], 'Sam Friend,sam@example.test,,Going,Guest of Maya Lopez,,,,,2030-10-10 20:05');
+  assert.equal(lines[3], 'Ari,ari@example.test,,Invited,,,,,,2030-10-01 10:00');
+  assert.match(lines[4], /^"'=HYPERLINK\(""x""\)",d@example\.test,,Can’t make it,/);
+  assert.equal(lines.length, 5);
   assert.equal(csvEscape('@SUM(1)'), "'@SUM(1)");
   assert.equal(csvEscape('plain'), 'plain');
   assert.equal(csvEscape('+1 (415) 555-0134'), '+1 (415) 555-0134');
@@ -220,4 +221,5 @@ test('Familiar Faces groups the grid into going, invited and can’t make it', (
   assert.doesNotMatch(client, /RSVP’d and invited/);
   assert.match(routes, /goingCount: countOf\('going'\)/);
   assert.match(routes, /familiarFacesToCsv\(/);
+  assert.match(client, /export-csv'\)\.disabled = Number\(data\.totalCount\) === 0/);
 });

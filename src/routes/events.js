@@ -677,7 +677,7 @@ function eligibleTargetRecipients(recipients, state) {
 async function familiarFaceRows(eventId, organizerId) {
   const { rows: rsvps } = await pool.query(
     `SELECT DISTINCT ON (COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))))
-            r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name,
+            r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name, r.guest_email,
             r.phone, r.wants_reminders, r.organizer_optin,
             (r.sms_optin AND r.sms_opted_out_at IS NULL) AS texts_ok,
             r.created_at, o.avatar_url,
