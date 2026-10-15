@@ -136,6 +136,53 @@
       }
     }
     .offer-note { color: var(--sg-text-dim); font-size: 13px; margin-top: 14px; }
+    /* Hero: the copy, then a real event page on a phone. Side by side from
+       960px, where the hero steps out of the 560px column. */
+    .home-hero-phone { position: relative; width: min(270px, 70vw); margin: 56px auto 0; }
+    .home-hero-phone::before {
+      content: ''; position: absolute; inset: 12% -10% 4%; z-index: -1;
+      background: radial-gradient(closest-side, rgba(28,197,190,.22), transparent);
+      filter: blur(20px);
+    }
+    .home-phone-frame {
+      padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 44px; background: #050505;
+      box-shadow: 0 40px 90px rgba(0,0,0,.55);
+    }
+    .home-phone-frame img { display: block; width: 100%; height: auto; border-radius: 35px; }
+    @media (min-width: 960px) {
+      .home-hero {
+        width: min(1000px, calc(100vw - 64px)); margin-left: 50%; transform: translateX(-50%);
+        display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 80px; align-items: center; text-align: left;
+      }
+      .home-hero .logo { display: block; }
+      .home-hero-phone { width: 300px; margin: 0; }
+      .home-hero-phone::before { inset: 12% -28% 4%; }
+      .home-hero .tagline { max-width: 34em; }
+    }
+    /* Familiar Faces gets its own spotlight: it's the one thing only Silver
+       Glider does. The row is staged, floating like the manage page's
+       faces on phones. */
+    .home-regulars { margin: 64px 0 0; text-align: left; }
+    .home-regulars-kicker { margin: 0 0 16px; color: var(--sg-text); }
+    .home-regulars h2 { margin: 0; font-size: clamp(26px, 5vw, 32px); line-height: 1.1; letter-spacing: -.02em; }
+    .home-regulars-intro { margin: 10px 0 22px; color: var(--sg-text-dim); font-size: 15px; line-height: 1.6; }
+    .home-faces { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }
+    .home-face { min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .home-face-avatar {
+      width: 64px; height: 64px; display: grid; place-items: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 50%;
+      background: linear-gradient(145deg, rgba(28,197,190,.13), rgba(255,255,255,.035));
+      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 30px; line-height: 1;
+      box-shadow: 0 14px 30px rgba(0,0,0,.28);
+    }
+    .home-face-name { max-width: 100%; overflow: hidden; color: var(--sg-text); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .home-face-visit { margin-top: 3px; color: var(--sg-text-faint); font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .home-face-visit.is-returning { color: var(--sg-accent); }
+    @media (max-width: 480px) {
+      .home-faces { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .home-face:nth-child(n+5) { display: none; }
+      .home-face-avatar { width: 56px; height: 56px; font-size: 26px; }
+      .home-regulars { margin-top: 56px; }
+    }
     .feature-list { margin: 62px 0 0; text-align: left; }
     .feature-list-header {
       display: flex;
@@ -191,24 +238,45 @@
     </nav>
   </header>
   <main class="landing">
-    <img class="logo" src="/logo.png" alt="Silver Glider">
-    <p class="sg-label" style="margin-bottom:22px">Silver Glider Events</p>
-    <h1>You have a personality. <span>Your events should too.</span></h1>
-    <p class="tagline">Create a beautiful event page, collect RSVPs or connect ticket sales, send confirmations and reminders, and keep your guest list organized in one place.</p>
-    <a class="sg-btn sg-btn-primary home-primary-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
-    <p class="offer-note">Free to create and publish.</p>
+    <div class="home-hero">
+      <div class="home-hero-copy">
+        <img class="logo" src="/logo.png" alt="Silver Glider">
+        <p class="sg-label" style="margin-bottom:22px">Silver Glider Events</p>
+        <h1>You have a personality. <span>Your events should too.</span></h1>
+        <p class="tagline">Create a beautiful event page, collect RSVPs or connect ticket sales, send confirmations and reminders, and keep your guest list organized in one place.</p>
+        <a class="sg-btn sg-btn-primary home-primary-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
+        <p class="offer-note">Free to create and publish.</p>
+      </div>
+      <figure class="home-hero-phone">
+        <div class="home-phone-frame">
+          <img src="/img/home/event-phone-party.jpg" width="390" height="844" alt="A Silver Glider event page on a phone: Halloween Party, Friday, October 30, with its flyer and an RSVP button" fetchpriority="high">
+        </div>
+      </figure>
+    </div>
 
     <section class="feature-list" aria-labelledby="feature-list-title">
       <div class="feature-list-header">
         <h2 class="sg-label feature-list-title" id="feature-list-title">The good stuff</h2>
-        <span class="feature-list-range" aria-hidden="true">01 — 04</span>
+        <span class="feature-list-range" aria-hidden="true">01 — 03</span>
       </div>
       <ol class="features">
         <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
         <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
         <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
-        <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>See who came back.</strong> Your regulars, remembered. Invite them to the next one in a tap.</p></li>
       </ol>
+    </section>
+    <section class="home-regulars" aria-labelledby="home-regulars-title">
+      <p class="sg-label sg-display home-regulars-kicker">Only on Silver Glider</p>
+      <h2 id="home-regulars-title">Familiar Faces, remembered.</h2>
+      <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
+      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. -->
+      <div class="home-faces" aria-hidden="true">
+            <span class="home-face"><span class="home-face-avatar">🎃</span><span class="home-face-name">Maya</span><span class="home-face-visit is-returning">3rd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">👻</span><span class="home-face-name">Theo</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">😎</span><span class="home-face-name">Rosa</span><span class="home-face-visit">First time</span></span>
+            <span class="home-face"><span class="home-face-avatar">🤠</span><span class="home-face-name">Jules</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">👽</span><span class="home-face-name">Nico</span><span class="home-face-visit is-returning">4th time</span></span>
+      </div>
     </section>
     <section
       class="sg-recs-signup"
