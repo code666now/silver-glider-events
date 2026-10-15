@@ -37,14 +37,31 @@ test('homepage presents its value as a numbered editorial list', () => {
 
   assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
   assert.match(home, /id="feature-list-title">The good stuff<\/h2>/);
-  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
+  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 03<\/span>/);
   assert.match(home, /<ol class="features">/);
-  for (const number of ['01', '02', '03', '04']) {
+  for (const number of ['01', '02', '03']) {
     assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
   }
-  assert.match(home, /<strong>See who came back\.<\/strong> Your regulars, remembered\. Invite them to the next one in a tap\./);
+  assert.doesNotMatch(home, /aria-hidden="true">04<\/span>/);
+  // Familiar Faces has its own spotlight after the list, before the recs signup.
+  const regulars = home.indexOf('<section class="home-regulars"');
+  assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('data-sg-email-signup'));
+  assert.match(home, /<h2 id="home-regulars-title">Familiar Faces, remembered\.<\/h2>/);
+  assert.match(home, /See who keeps coming back\. Invite them again in a tap\./);
+  assert.equal((home.match(/class="home-face"/g) || []).length, 5);
   assert.doesNotMatch(home, /class="tick"/);
   assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
+});
+
+test('homepage hero shows a real event page on a phone, after the copy and before The good stuff', () => {
+  const home = read('src/views/index.html');
+  const hero = home.indexOf('<div class="home-hero">');
+  const phone = home.indexOf('<figure class="home-hero-phone">');
+  assert.ok(hero > 0 && phone > home.indexOf('home-primary-cta'));
+  assert.ok(home.indexOf('<section class="feature-list"') > phone);
+  assert.match(home, /src="\/img\/home\/event-phone-party\.jpg" width="390" height="844" alt="A Silver Glider event page on a phone/);
+  assert.ok(fs.existsSync(path.join(root, 'public/img/home/event-phone-party.jpg')));
+  assert.match(home, /@media \(min-width: 960px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\) 300px/);
 });
 
 test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
