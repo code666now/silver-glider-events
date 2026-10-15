@@ -57,9 +57,14 @@ test('homepage connects the weekly recs signup to the marketing service above th
   assert.ok(signupIndex > home.indexOf('<section class="feature-list"'));
   assert.ok(footerIndex > signupIndex);
   assert.match(home, /data-endpoint="https:\/\/line\.silvergliderevents\.com\/api\/email\/subscribe"/);
-  assert.match(home, /<h2>Join our weekly recs\.<\/h2>/);
+  assert.match(home, /<h2 id="sg-recs-title">Going out instead\?<\/h2>/);
+  assert.match(home, /aria-labelledby="sg-recs-title"/);
+  assert.match(home, /class="sg-label sg-display sg-recs-kicker"/);
   assert.match(home, /name="email"[\s\S]*type="email"[\s\S]*maxlength="254"[\s\S]*required/);
-  assert.match(home, /<select name="audience" required>[\s\S]*value="sf"[\s\S]*value="la"/);
+  assert.match(home, /type="radio" name="audience" value="sf" required[\s\S]*type="radio" name="audience" value="la"/);
+  assert.doesNotMatch(home, /<select name="audience"/);
+  assert.match(home, /data-sg-button-label>Count me in</);
+  assert.doesNotMatch(home, /&#8599;/);
   assert.match(home, /name="website" type="text" tabindex="-1" autocomplete="off"/);
   assert.match(home, /Confirm by email\. Unsubscribe anytime\./);
   assert.match(home, /data-sg-status role="status" aria-live="polite" aria-atomic="true"/);
@@ -75,10 +80,13 @@ test('homepage connects the weekly recs signup to the marketing service above th
   assert.match(client, /controller\.abort\(\), 12000/);
   assert.match(client, /response\.status === 429/);
   assert.match(client, /form\.reset\(\)/);
+  assert.match(client, /root\.dataset\.state = 'done'/);
 
-  assert.match(styles, /width:\s*min\(720px, calc\(100vw - 48px\)\)/);
-  assert.match(styles, /background:\s*transparent/);
-  assert.match(styles, /grid-template-columns:\s*minmax\(0, 1\.25fr\)/);
+  // Same column, colour and shape as the rest of the homepage.
+  assert.doesNotMatch(styles, /720px|translateX|#59d5d1/i);
+  assert.match(styles, /background: var\(--sg-accent\)/);
+  assert.match(styles, /font: 700 16px var\(--sg-font-body\)/);
+  assert.match(styles, /border-radius: 12px/);
 });
 
 test('homepage desktop menu retains primary links while shared account actions match the phone menu', () => {
