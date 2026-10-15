@@ -37,12 +37,12 @@ test('homepage presents its value as a numbered editorial list', () => {
 
   assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
   assert.match(home, /id="feature-list-title">The good stuff<\/h2>/);
-  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 03<\/span>/);
+  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
   assert.match(home, /<ol class="features">/);
-  for (const number of ['01', '02', '03']) {
+  for (const number of ['01', '02', '03', '04']) {
     assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
   }
-  assert.doesNotMatch(home, /aria-hidden="true">04<\/span>/);
+  assert.match(home, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
   // Familiar Faces has its own spotlight after the list, before the recs signup.
   const regulars = home.indexOf('<section class="home-regulars"');
   assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('data-sg-email-signup'));
