@@ -2,6 +2,27 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.177
+
+Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.
+
+### More of Silver Glider on the homepage
+
+* **The good stuff** now includes a fourth benefit for each host's follow page and its email or text updates.
+* The Familiar Faces illustration uses the first names Keith, Mick, Stevie, Janis, and desktop-only Jimi while preserving the existing emoji portraits and visit history.
+
+### An interactive event preview
+
+* The hero phone rests with a subtle lean toward the headline, tracks a fine mouse pointer with bounded tilt and sheen, and floats gently on touch screens.
+* Clicking or tapping reveals a branded phone back during one guarded spin, with fallback settling for interrupted transitions and rapid input.
+* Reduced Motion disables the tilt, float, and spin, including when the preference changes during an active animation.
+* Touch handling, image dragging, older Safari media-query listeners, and prefixed 3D rendering are hardened without changing the homepage's primary action.
+
+### Verification
+
+* Static validation and all 551 automated tests pass.
+* Production browser checks cover the new script asset, desktop and phone layout, pointer tracking, spin recovery, rapid clicks, Reduced Motion, content, horizontal overflow, and console errors.
+
 ## 1.0.176
 
 Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.
