@@ -147,6 +147,8 @@
     .home-phone-frame {
       padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 44px; background: #050505;
       box-shadow: 0 40px 90px rgba(0,0,0,.55);
+      /* A slight lean toward the headline, like a phone set down on a table. */
+      transform: rotate(-3deg);
     }
     .home-phone-frame img { display: block; width: 100%; height: auto; border-radius: 35px; }
     @media (min-width: 960px) {
@@ -156,6 +158,7 @@
       }
       .home-hero .logo { display: block; }
       .home-hero-phone { width: 300px; margin: 0; }
+      .home-phone-frame { transform: rotate(-4deg); }
       .home-hero-phone::before { inset: 12% -28% 4%; }
       .home-hero .tagline { max-width: 34em; }
     }
