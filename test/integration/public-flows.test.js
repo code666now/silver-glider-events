@@ -880,6 +880,58 @@ test('a first event requires and saves the public hosting name before publishing
   assert.doesNotMatch(publicHtml, /Silver Glider host/);
 });
 
+test('a signed-in account linked to a confirmed RSVP can comment without an attendee cookie', async () => {
+  resetRateLimits();
+  const email = 'signed-in-commenter@example.test';
+  const { sessionCookie } = await signInAccount(email);
+  const account = (await pool.query(
+    'SELECT id,user_id FROM organizers WHERE email=$1',
+    [email]
+  )).rows[0];
+  const event = await createEvent({
+    slug: 'signed-in-comment-night',
+    title: 'Signed-in Comment Night',
+    comments_enabled: true
+  });
+  await createRsvp(event.id, {
+    first_name: 'Signed-in',
+    email,
+    account_id: account.id,
+    user_id: account.user_id
+  });
+
+  const signedOutWall = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`);
+  assert.equal(signedOutWall.status, 200);
+  assert.equal((await signedOutWall.json()).canComment, false);
+
+  const stranger = await signInAccount('different-commenter@example.test');
+  const strangerWall = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`, {
+    headers: { cookie: stranger.sessionCookie }
+  });
+  assert.equal(strangerWall.status, 200);
+  assert.equal((await strangerWall.json()).canComment, false);
+  const strangerComment = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: stranger.sessionCookie },
+    body: JSON.stringify({ message: 'This should stay blocked.' })
+  });
+  assert.equal(strangerComment.status, 403);
+
+  const signedInWall = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(signedInWall.status, 200);
+  assert.equal((await signedInWall.json()).canComment, true);
+
+  const comment = await fetch(`${baseUrl}/api/public/events/${event.slug}/comments`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: sessionCookie },
+    body: JSON.stringify({ message: 'Signed-in attendees can join in.' })
+  });
+  assert.equal(comment.status, 201);
+  assert.equal((await comment.json()).comment.first_name, 'Signed-in');
+});
+
 test('flyer event guests omit owner assets while its owner keeps the editor', async () => {
   const event = await createEvent({
     slug: 'flyer-owner-assets',
@@ -6252,6 +6304,56 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
   assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event</);
   const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(signedInLogin.headers.get('location'), '/events/new');
+});
+
+test('authenticated host data stays isolated from a different signed-in account', async () => {
+  resetRateLimits();
+  const event = await createEvent({ slug: 'owner-only-night', title: 'Owner Only Night' });
+  await createRsvp(event.id, { first_name: 'Private', email: 'private-guest@example.test' });
+  const intruder = await signInAccount('different-host@example.test');
+  const headers = { cookie: intruder.sessionCookie };
+
+  const list = await fetch(`${baseUrl}/api/events`, { headers });
+  assert.equal(list.status, 200);
+  assert.equal((await list.json()).events.some(candidate => Number(candidate.id) === Number(event.id)), false);
+
+  assert.equal((await fetch(`${baseUrl}/api/events/${event.id}`, { headers })).status, 404);
+  assert.equal((await fetch(`${baseUrl}/api/events/${event.id}/rsvps`, { headers })).status, 404);
+  assert.equal((await fetch(`${baseUrl}/api/events/${event.id}/rsvps.csv`, { headers })).status, 404);
+  assert.equal((await fetch(`${baseUrl}/api/events/${event.id}/archive`, {
+    method: 'POST', headers
+  })).status, 404);
+  assert.equal((await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'DELETE', headers
+  })).status, 404);
+
+  const unchanged = (await pool.query(
+    'SELECT status,archived_at FROM events WHERE id=$1', [event.id]
+  )).rows[0];
+  assert.equal(unchanged.status, 'published');
+  assert.equal(unchanged.archived_at, null);
+  assert.equal((await pool.query(
+    'SELECT COUNT(*)::int AS count FROM rsvps WHERE event_id=$1', [event.id]
+  )).rows[0].count, 1);
+});
+
+test('authenticated organizer mutations reject cross-site browser requests', async () => {
+  const event = await createEvent({ slug: 'csrf-protected-night', title: 'CSRF Protected Night' });
+  const cookie = `sge_session=${signSession(organizerId)}`;
+  const denied = await fetch(`${baseUrl}/api/events/${event.id}/archive`, {
+    method: 'POST',
+    headers: { cookie, origin: 'https://attacker.example', 'sec-fetch-site': 'cross-site' }
+  });
+  assert.equal(denied.status, 403);
+  assert.equal((await pool.query(
+    'SELECT archived_at IS NULL AS unchanged FROM events WHERE id=$1', [event.id]
+  )).rows[0].unchanged, true);
+
+  const allowed = await fetch(`${baseUrl}/api/events/${event.id}/archive`, {
+    method: 'POST',
+    headers: { cookie, origin: baseUrl, 'sec-fetch-site': 'same-origin' }
+  });
+  assert.equal(allowed.status, 200);
 });
 
 test('profile stats count past events attended elsewhere and past events hosted', async () => {

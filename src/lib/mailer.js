@@ -494,6 +494,12 @@ function recordDevEmail(entry) {
   if (devOutbox.length > 100) devOutbox.shift();
 }
 
+function requireDevelopmentMailer(label = 'Email delivery') {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`${label} is unavailable`);
+  }
+}
+
 async function send({
   to,
   subject,
@@ -505,6 +511,7 @@ async function send({
   idempotencyKey = null
 }) {
   if (!resend) {
+    requireDevelopmentMailer();
     console.log(`[mailer:dev] to=${to} subject="${subject}" (RESEND_API_KEY not set — email not sent)`);
     recordDevEmail({
       to,
@@ -596,6 +603,7 @@ async function sendMagicLink({ to, link, code, followHostName }) {
   const hostName = String(followHostName || '').trim();
   const isFollow = Boolean(hostName);
   if (!resend) {
+    requireDevelopmentMailer('Magic-link email delivery');
     console.log(`[mailer:dev] MAGIC LINK for ${to}: ${link}${code ? ` (code ${code})` : ''}`);
     recordDevEmail({ to, kind: 'magic_link', link, code: code || null });
     return { dev: true };
@@ -710,6 +718,7 @@ async function sendDoneForYouWelcome({
 // Code-only email for confirming an RSVP identity on the event page.
 async function sendVerificationCode({ to, code }) {
   if (!resend) {
+    requireDevelopmentMailer('Verification email delivery');
     console.log(`[mailer:dev] VERIFICATION CODE for ${to}: ${code}`);
     recordDevEmail({ to, kind: 'verification_code', code });
     return { dev: true };
@@ -733,6 +742,7 @@ async function sendVerificationCode({ to, code }) {
 // forwarded or cross-device link.
 async function sendAccountVerificationCode({ to, code, purpose = 'creator_setup' }) {
   if (!resend) {
+    requireDevelopmentMailer('Account verification email delivery');
     console.log(`[mailer:dev] ACCOUNT VERIFICATION CODE for ${to}: ${code}`);
     recordDevEmail({ to, kind: 'account_verification_code', code });
     return { dev: true };
@@ -787,6 +797,7 @@ async function sendAdminIdentityChangeVerification({ to, link, accountName }) {
 // caller has already resolved an active admin operator and sends only a code.
 async function sendAdminPasscode({ to, code, purpose = 'login' }) {
   if (!resend) {
+    requireDevelopmentMailer('Admin passcode email delivery');
     console.log(`[mailer:dev] ADMIN PASSCODE for ${to}: ${code}`);
     recordDevEmail({ to, kind: 'admin_passcode', purpose, code });
     return { dev: true };

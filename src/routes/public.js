@@ -389,12 +389,23 @@ function renderSmsReminderOptin(event) {
 
 async function confirmedAttendee(req, event) {
   const token = readCookie(req, attendeeCookieName(event.id));
-  if (!token) return null;
+  const accountId = Number(req.sessionAccount?.id);
+  const userId = Number(req.sessionAccount?.user_id);
+  const verifiedAccountId = Number.isInteger(accountId) && accountId > 0 ? accountId : null;
+  const verifiedUserId = Number.isInteger(userId) && userId > 0 ? userId : null;
+  if (!token && !verifiedAccountId && !verifiedUserId) return null;
   const { rows } = await pool.query(
     `SELECT id, first_name
        FROM rsvps
-      WHERE event_id=$1 AND manage_token=$2 AND status='confirmed'`,
-    [event.id, token]
+      WHERE event_id=$1 AND status='confirmed'
+        AND (
+          ($2::text <> '' AND manage_token=$2)
+          OR ($3::int IS NOT NULL AND user_id=$3)
+          OR ($4::int IS NOT NULL AND user_id IS NULL AND account_id=$4)
+        )
+      ORDER BY CASE WHEN $2::text <> '' AND manage_token=$2 THEN 0 ELSE 1 END,id DESC
+      LIMIT 1`,
+    [event.id, token, verifiedUserId, verifiedAccountId]
   );
   return rows[0] || null;
 }

@@ -2,6 +2,27 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.178
+
+Released October 16, 2026. Built, reviewed, and deployed by Codex.
+
+### Focused security hardening
+
+* Patched the critical `proxy-addr` IP-spoofing advisory used by Express rate-limit identity resolution; the production dependency audit is clean.
+* Authenticated organizer mutations now reject explicit cross-site browser requests while preserving same-origin and non-browser clients.
+* Production startup fails closed without the configured email provider, and authentication links, verification codes, and admin passcodes can no longer fall back to console logging in production.
+* App responses now disable the Express signature and include MIME sniffing, framing, referrer, permissions, and production HSTS protections.
+* Cross-account regressions prove that one signed-in host cannot list, read, export, archive, or delete another host's event and RSVP data.
+
+### Attendee comments
+
+* A signed-in attendee whose confirmed RSVP is linked to the same verified account can comment without reopening the attendee-cookie link; unrelated signed-in accounts remain blocked.
+
+### Verification
+
+* Static validation and all 556 automated tests pass.
+* No database migration, live event presentation, RSVP record, capacity, confirmation/reminder email, Host Page, or discovery behavior changes in this release.
+
 ## 1.0.177
 
 Released October 14, 2026. Built by Claude, reviewed and deployed by Codex.

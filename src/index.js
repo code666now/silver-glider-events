@@ -19,6 +19,7 @@ const {
 
 const app = express();
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3100;
 
 const VIEWS = path.join(__dirname, 'views');
@@ -37,6 +38,11 @@ const safeNext = value => {
     return '';
   }
 };
+
+// Apply browser-safe response headers before every route, including webhooks
+// and static assets. Route-specific policies may intentionally override the
+// global referrer policy for pages carrying bearer credentials.
+app.use(require('./middleware/securityHeaders'));
 
 // Payment signature verification needs the unmodified request bytes. Keep both
 // listeners ahead of the global JSON parser and all authenticated app routes.
@@ -249,6 +255,9 @@ app.get('/health', async (req, res) => {
 app.use(errorHandler);
 
 async function start() {
+  if (process.env.NODE_ENV === 'production' && !process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is required in production');
+  }
   await migrate();
   const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
   require('./jobs/reminders').startReminderCron();
@@ -264,7 +273,7 @@ async function start() {
 
 if (require.main === module) {
   start().catch(err => {
-    console.error('[startup] migration failed:', err.message);
+    console.error('[startup] failed:', err.message);
     process.exit(1);
   });
 }
