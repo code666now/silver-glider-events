@@ -67,6 +67,9 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 app.use(versionHtmlResponses(APP_VERSION));
 // Resolve the signed-in account (with server-side revocation) once per request.
 app.use(require('./lib/session').sessionMiddleware(pool));
+// Emit privacy-safe structured events for security monitoring. This records
+// outcomes and stable hashes only—never emails, names, bearer tokens, or files.
+app.use(require('./middleware/securityTraffic'));
 
 // Routes
 app.use(require('./routes/auth'));

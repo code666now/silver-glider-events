@@ -11,6 +11,7 @@ const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const unsplash = require('../lib/unsplash');
 const cloudinary = require('../lib/cloudinary');
 const { selectAccentColor } = require('../../public/js/artwork-color');
+const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 const {
   EventEditorError,
   createEventInTransaction,
@@ -335,15 +336,23 @@ async function exactBoundEventStillAvailable(req) {
 }
 
 function handleUpload(req, res, next) {
-  upload.single('image')(req, res, error => {
-    if (!error) return next();
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'image_too_large', message: 'Image is too large (max 5 MB).' });
+  upload.single('image')(req, res, async error => {
+    if (error) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'image_too_large', message: 'Image is too large (max 5 MB).' });
+      }
+      return res.status(400).json({
+        error: 'invalid_image',
+        message: 'That file could not be read as an image.'
+      });
     }
-    return res.status(400).json({
-      error: 'invalid_image',
-      message: 'That file could not be read as an image.'
-    });
+    try {
+      await normalizeRequestImages(req, { maxWidth: 2800, maxHeight: 3200 });
+      return next();
+    } catch (imageError) {
+      if (!(imageError instanceof ImageUploadError)) return next(imageError);
+      return res.status(400).json({ error: imageError.code, message: imageError.message });
+    }
   });
 }
 

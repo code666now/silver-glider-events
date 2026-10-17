@@ -10,6 +10,7 @@ const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 const {
   TOKEN_TTL_SECONDS,
   createPreviewToken,
@@ -81,12 +82,20 @@ const previewLimiterTimer = setInterval(() => {
 previewLimiterTimer.unref();
 
 function handleFlyerUpload(req, res, next) {
-  upload.single('flyer')(req, res, error => {
-    if (!error) return next();
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'flyer_too_large', message: 'Choose an image smaller than 5 MB.' });
+  upload.single('flyer')(req, res, async error => {
+    if (error) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'flyer_too_large', message: 'Choose an image smaller than 5 MB.' });
+      }
+      return res.status(400).json({ error: 'invalid_flyer', message: 'Choose a JPG, PNG, WebP, or GIF flyer.' });
     }
-    return res.status(400).json({ error: 'invalid_flyer', message: 'Choose a JPG, PNG, WebP, or GIF flyer.' });
+    try {
+      await normalizeRequestImages(req, { maxWidth: 2800, maxHeight: 3600 });
+      return next();
+    } catch (imageError) {
+      if (!(imageError instanceof ImageUploadError)) return next(imageError);
+      return res.status(400).json({ error: imageError.code, message: imageError.message });
+    }
   });
 }
 

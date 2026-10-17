@@ -85,6 +85,12 @@ function tokenFromLink(link) {
   return new URL(link).searchParams.get('token');
 }
 
+function testImageBlob() {
+  const image = new PNG({ width: 2, height: 2 });
+  image.data.fill(180);
+  return new Blob([PNG.sync.write(image)], { type: 'image/png' });
+}
+
 // Opening a sign-in link renders a Continue page and must not use it up; the
 // Continue button's POST signs in. Returns the POST response.
 async function followSignInLink(link, { cookie = '', next = '' } = {}) {
@@ -10793,7 +10799,7 @@ test('Done For You claim links are revoked by sign-out-all, suspension, reactiva
   });
   t.after(() => uploadRoutes.setAdminHostUploadsForTests());
   const deletedLogo = new FormData();
-  deletedLogo.set('image', new Blob([Buffer.from('not-reached')], { type: 'image/png' }), 'logo.png');
+  deletedLogo.set('image', testImageBlob(), 'logo.png');
   const blockedUpload = await fetch(
     `${baseUrl}/api/admin/uploads/hosts/${deleted.client.organizerId}/logo`,
     { method: 'POST', headers: { cookie: session }, body: deletedLogo }
@@ -11011,7 +11017,7 @@ test('Done For You Host Page support edits and media are dedicated, audited, and
   t.after(() => uploadRoutes.setAdminHostUploadsForTests());
   async function upload(kind) {
     const form = new FormData();
-    form.set('image', new Blob([Buffer.from(kind)], { type: 'image/png' }), `${kind}.png`);
+    form.set('image', testImageBlob(), `${kind}.png`);
     return fetch(
       `${baseUrl}/api/admin/uploads/hosts/${first.client.organizerId}/${kind}`,
       { method: 'POST', headers: { cookie: session }, body: form }
@@ -12003,7 +12009,7 @@ test('Done For You quick-create binds exactly one concurrent draft and event upl
   });
   t.after(() => adminEditorRoutes.setEventUploadsForTests({ configured: false }));
   const coverUpload = new FormData();
-  coverUpload.set('image', new Blob([Buffer.from('after-bind')], { type: 'image/png' }), 'cover.png');
+  coverUpload.set('image', testImageBlob(), 'cover.png');
   const uploaded = await fetch(`${baseUrl}/admin-editor/api/uploads/cover`, {
     method: 'POST', headers: { cookie: editorSession }, body: coverUpload
   });

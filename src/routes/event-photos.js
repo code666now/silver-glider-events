@@ -12,6 +12,7 @@ const { esc, render404 } = require('../lib/public-html');
 const { guestVerifiedFor, readGuestSession } = require('../lib/guest-session');
 const { attendeeCookieName, readCookie } = require('../lib/private-events');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 
 const router = express.Router();
 const uploadTemplate = fs.readFileSync(path.join(__dirname, '..', 'views', 'event-photo-upload.html'), 'utf8');
@@ -41,13 +42,25 @@ const upload = multer({
 });
 
 function handlePhotoUpload(req, res, next) {
-  upload.array('images', 5)(req, res, err => {
-    if (!err) return next();
-    if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Each photo must be 5 MB or smaller' });
-    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res.status(400).json({ error: 'Choose up to five photos' });
+  upload.array('images', 5)(req, res, async err => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Each photo must be 5 MB or smaller' });
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ error: 'Choose up to five photos' });
+      }
+      return res.status(err.status || 400).json({ error: err.message || 'Those photos could not be read' });
     }
-    return res.status(err.status || 400).json({ error: err.message || 'Those photos could not be read' });
+    try {
+      await normalizeRequestImages(req, {
+        allowedFormats: new Set(['jpeg', 'png', 'webp']),
+        maxWidth: 2800,
+        maxHeight: 2800
+      });
+      return next();
+    } catch (error) {
+      if (!(error instanceof ImageUploadError)) return next(error);
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
   });
 }
 

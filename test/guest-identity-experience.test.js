@@ -19,7 +19,7 @@ test('large guest photos are resized without stretching before the bounded avata
   assert.match(addPhoto, /SGImageOptimizer\.optimizeAvatar\(file\)/);
   assert.match(settings, /SGImageOptimizer\.optimizeAvatar\(file\)/);
   assert.match(uploads, /handleAvatarUpload/);
-  assert.match(uploads, /max 20 MB/);
+  assert.match(uploads, /max 8 MB/);
 });
 
 test('photo return context is derived from an RSVP-owned identity, not an arbitrary URL', () => {

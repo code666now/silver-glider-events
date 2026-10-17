@@ -2,6 +2,27 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.179
+
+Released October 16, 2026. Built, reviewed, and deployed by Codex.
+
+### Safer image uploads
+
+* Every new account photo, host image, event artwork, flyer, and collected event photo is decoded and validated instead of trusting its filename or browser-supplied MIME type.
+* Accepted images are bounded by byte, pixel, dimension, and animation limits, then resized and re-encoded as metadata-free WebP before storage.
+* Invalid files, unsupported formats, excessive animation frames, and decompression-sized images now fail with safe client errors.
+
+### Privacy-safe traffic monitoring
+
+* Sign-in, RSVP, and upload mutations emit structured outcome records suitable for Railway monitoring.
+* Monitoring records contain only categories, response outcomes, timing, and keyed short hashes; they exclude names, email addresses, tokens, image contents, paths, and raw IP addresses.
+
+### Verification
+
+* Static validation and all 559 automated tests pass; the production dependency audit reports no known vulnerabilities.
+* No database migration, existing media rewrite, live event presentation, RSVP record, capacity, confirmation/reminder email, Host Page, or discovery behavior changes in this release.
+* Railway currently has one manual database snapshot but no scheduled backups or point-in-time recovery; enabling both requires the Railway Pro backup feature and remains an operational follow-up.
+
 ## 1.0.178
 
 Released October 16, 2026. Built, reviewed, and deployed by Codex.

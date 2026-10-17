@@ -328,6 +328,10 @@ Other completed systems that should not be rebuilt:
 
 ### Immediate next step
 
+`v1.0.179` hardens all new image-upload paths with server-side decoding, dimension/frame/pixel limits, and metadata-free WebP re-encoding. It also adds privacy-safe `[security-traffic]` records for sign-in, RSVP, and upload mutations. Railway was inspected on October 16, 2026: the Postgres volume has one roughly month-old manual snapshot named **Pre-Security-Patch Backup**, but no backup schedule and no point-in-time recovery. Do not claim recovery is verified. Upgrade/enable Railway Pro backups, configure a schedule plus PITR, and run a restore drill only into a disposable environment before treating recovery as proven.
+
+Monitor `[security-traffic]` records for repeated invalid, rejected, rate-limited, or server-error outcomes. Records intentionally contain keyed hashes rather than raw IP addresses or user identity. The prior production release had no request-level traffic telemetry, so baselining begins with `v1.0.179`.
+
 Monitor V1 opt-in, funding, and delivery behavior before adding another lifecycle moment. If a new-event announcement is added later, reuse the paid audience, exact-cost ledger, retry, and delivery-audit layer; do not turn it into a free-form mass-marketing composer. In Twilio, keep the Messaging Service inbound webhook configured to `POST https://silvergliderevents.com/api/webhooks/twilio/inbound` with Advanced Opt-Out so STOP both receives Twilio's compliant confirmation and immediately updates Silver Glider consent.
 
 After that, evaluate graduating Collect Photos Beta, lightweight host conversion insights, the Commerce API handoff, and broader discovery in that order. Do not build payment processing, inventory, orders, tickets, verification, refunds, payouts, or Stripe Connect inside Events.

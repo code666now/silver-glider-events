@@ -19,6 +19,7 @@ const { selectAccentColor } = require('../../public/js/artwork-color');
 const { linkVerifiedRsvps } = require('../lib/account-rsvps');
 const { clientIp } = require('../lib/rate-limit');
 const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
+const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ const upload = multer({
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     cb(null, /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype));
   }
@@ -40,22 +41,41 @@ const avatarUpload = multer({
 
 // Wrap multer so its errors (file too large, etc.) become clean JSON, not 500s
 function handleUpload(req, res, next) {
-  upload.single('image')(req, res, err => {
+  upload.single('image')(req, res, async err => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image is too large (max 5 MB)' });
       return res.status(400).json({ error: 'That file could not be read as an image' });
     }
-    next();
+    try {
+      await normalizeRequestImages(req, { maxWidth: 2800, maxHeight: 3200 });
+      next();
+    } catch (error) {
+      if (!(error instanceof ImageUploadError)) return next(error);
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
   });
 }
 
 function handleAvatarUpload(req, res, next) {
-  avatarUpload.single('image')(req, res, err => {
+  avatarUpload.single('image')(req, res, async err => {
     if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image is too large (max 20 MB)' });
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(400).json({ error: 'Image is too large (max 8 MB)' });
       return res.status(400).json({ error: 'That file could not be read as an image' });
     }
-    next();
+    try {
+      await normalizeRequestImages(req, {
+        maxInputBytes: 8 * 1024 * 1024,
+        maxOutputBytes: 3 * 1024 * 1024,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        maxPixels: 30_000_000,
+        maxTotalPixels: 40_000_000
+      });
+      next();
+    } catch (error) {
+      if (!(error instanceof ImageUploadError)) return next(error);
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
   });
 }
 
@@ -109,7 +129,7 @@ router.post('/api/uploads/vibe-photo', requireOrganizer, handleUpload, async (re
 // confirmation's "Add your photo" link — this is the one write that grant opens.
 router.post('/api/uploads/avatar', requirePhotoAccess, handleAvatarUpload, async (req, res) => {
   if (!configured) return res.status(503).json({ error: 'Image uploads are not set up yet' });
-  if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 20 MB)' });
+  if (!req.file) return res.status(400).json({ error: 'Choose a photo (JPG, PNG, WebP, or GIF, max 8 MB)' });
   try {
     const result = await uploadAccountAvatar(req.file.buffer);
     const { rows } = await pool.query(
