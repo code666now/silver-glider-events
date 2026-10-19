@@ -1,0 +1,2 @@
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS hide_address_until_rsvp BOOLEAN NOT NULL DEFAULT FALSE;

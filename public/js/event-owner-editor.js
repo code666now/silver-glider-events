@@ -113,6 +113,7 @@
     coverCreditLink: source.coverCreditLink || '',
     artworkAccentColor: source.artworkAccentColor || '',
     secretShowEnabled: source.secretShowEnabled === true,
+    hideAddressUntilRsvp: source.hideAddressUntilRsvp === true,
     smsReminderEnabled: source.smsReminderEnabled === true,
     secretCode: String(source.secretCode || '').toUpperCase(),
     secretCodeConfirm: String(source.secretCodeConfirm || '').toUpperCase()
@@ -266,9 +267,12 @@
       silver_glider_tickets: 'Silver Glider tickets'
     };
     $('owner-mobile-summary-admission').textContent = admissionLabels[draft.admissionType] || 'Free RSVP';
-    $('owner-mobile-summary-visibility').textContent = draft.secretShowEnabled
+    const visibilitySummary = draft.secretShowEnabled
       ? 'Secret Show · Code required'
       : (draft.visibility === 'private' ? 'Private link only' : 'Public');
+    $('owner-mobile-summary-visibility').textContent = draft.visibility === 'private' && draft.admissionType === 'free_rsvp' && draft.hideAddressUntilRsvp
+      ? `${visibilitySummary} · Address after RSVP`
+      : visibilitySummary;
     $('owner-mobile-summary-capacity').textContent = draft.capacity ? `${draft.capacity} guests` : 'Unlimited';
 
     const enabledGuestOptions = [draft.showGuestList, draft.allowGuests, draft.commentsEnabled].filter(Boolean).length;
@@ -341,6 +345,7 @@
       $('owner-show-guests').checked !== draft.showGuestList ||
       $('owner-allow-guests').checked !== draft.allowGuests ||
       $('owner-comments').checked !== draft.commentsEnabled ||
+      $('owner-hide-address-until-rsvp').checked !== draft.hideAddressUntilRsvp ||
       (document.querySelector('input[name="owner_presentation_mode"]:checked')?.value || saved.presentationMode) !== draft.presentationMode ||
       (document.querySelector('input[name="owner_admission"]:checked')?.value || saved.admissionType) !== draft.admissionType ||
       ($('owner-ticket-price').value ? Number($('owner-ticket-price').value) : null) !== draft.ticketPrice ||
@@ -712,6 +717,7 @@
     $('owner-secret-help').textContent = saved.secretShowEnabled
       ? 'A code is already set. Leave both fields blank to keep it, or enter a new code twice.'
       : 'Choose a six-character code. Guests will need it to open the event.';
+    $('owner-location-privacy').hidden = !(draft.visibility === 'private' && draft.admissionType === 'free_rsvp');
   }
 
   function setVisibilityMode(value) {
@@ -1028,6 +1034,7 @@
     $('owner-show-guests').checked = draft.showGuestList;
     $('owner-allow-guests').checked = draft.allowGuests;
     $('owner-comments').checked = draft.commentsEnabled;
+    $('owner-hide-address-until-rsvp').checked = draft.hideAddressUntilRsvp;
     $('owner-ticket-price').value = draft.ticketPrice == null ? '' : draft.ticketPrice;
     $('owner-ticket-url').value = draft.ticketUrl;
     $('owner-flyer-designer-name').value = draft.flyerDesignerName;
@@ -1377,6 +1384,7 @@
     draft.showGuestList = $('owner-show-guests').checked;
     draft.allowGuests = $('owner-allow-guests').checked;
     draft.commentsEnabled = $('owner-comments').checked;
+    draft.hideAddressUntilRsvp = $('owner-hide-address-until-rsvp').checked;
     draft.admissionType = document.querySelector('input[name="owner_admission"]:checked')?.value || saved.admissionType;
     draft.ticketPrice = $('owner-ticket-price').value ? Number($('owner-ticket-price').value) : null;
     draft.ticketUrl = $('owner-ticket-url').value.trim();
@@ -1415,6 +1423,7 @@
       show_guest_list: draft.showGuestList,
       allow_guests: draft.allowGuests,
       comments_enabled: draft.commentsEnabled,
+      hide_address_until_rsvp: draft.hideAddressUntilRsvp,
       presentation_mode: draft.presentationMode,
       admission_type: draft.admissionType,
       ticket_price: draft.admissionType === 'external_tickets' ? draft.ticketPrice : null,
@@ -1602,6 +1611,7 @@
   document.querySelectorAll('input[name="owner_admission"]').forEach(input => input.addEventListener('change', () => {
     draft.admissionType = input.value;
     renderAdmissionControls();
+    renderVisibilityControls();
     syncDirtyState();
   }));
   document.querySelectorAll('input[name="owner_visibility"]').forEach(input => input.addEventListener('change', () => {

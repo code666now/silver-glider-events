@@ -533,6 +533,7 @@ function renderVisibilityState() {
   $('vis-secret').setAttribute('aria-pressed', String(mobileSecretChoice));
   $('private-settings').classList.toggle('show', visibility === 'private');
   $('private-settings').classList.toggle('secret-enabled', secret);
+  $('location-privacy-settings').hidden = !(visibility === 'private' && admissionType === 'free_rsvp');
 }
 
 function setVisibility(mode) {
@@ -609,6 +610,7 @@ function setAdmission(v, { force = false } = {}) {
   $('ticket_price').required = admissionType === 'external_tickets';
   $('ticket_url').required = false;
   renderCommerceInterest();
+  renderVisibilityState();
 }
 $('admission-free').addEventListener('click', () => setAdmission('free_rsvp'));
 $('admission-commerce').addEventListener('click', () => setAdmission('silver_glider_tickets'));
@@ -1317,9 +1319,12 @@ function refreshMobileFlowHub() {
     ? 'External tickets'
     : (admissionType === 'silver_glider_tickets' ? 'Silver Glider tickets' : 'Free RSVP');
   $('event-mobile-summary-admission').textContent = admissionLabel;
-  $('event-mobile-summary-visibility').textContent = $('secret_show_enabled').checked
+  const visibilitySummary = $('secret_show_enabled').checked
     ? 'Secret Show'
     : (visibility === 'private' ? 'Private link only' : 'Public');
+  $('event-mobile-summary-visibility').textContent = visibility === 'private' && admissionType === 'free_rsvp' && $('hide_address_until_rsvp').checked
+    ? `${visibilitySummary} · Address after RSVP`
+    : visibilitySummary;
   const capacitySummary = $('capacity').value ? `${$('capacity').value} guests` : 'Unlimited';
   $('event-mobile-summary-capacity').textContent = $('category').value
     ? `${$('category').value} · ${capacitySummary}`
@@ -1634,6 +1639,7 @@ function collect() {
     show_guest_list: $('show_guest_list').checked,
     allow_guests: $('allow_guests').checked,
     comments_enabled: $('comments_enabled').checked,
+    hide_address_until_rsvp: $('hide_address_until_rsvp').checked,
     sms_reminder_enabled: $('sms_reminder_enabled').checked,
     secret_show_enabled: visibility === 'private' && $('secret_show_enabled').checked,
     secret_code: $('secret_show_enabled').checked ? $('secret_code').value : '',
@@ -1700,6 +1706,7 @@ if (editId) {
     $('show_guest_list').checked = event.show_guest_list === true;
     $('allow_guests').checked = event.allow_guests === true;
     $('comments_enabled').checked = event.comments_enabled === true;
+    $('hide_address_until_rsvp').checked = event.hide_address_until_rsvp === true;
     $('sms_reminder_enabled').checked = event.sms_reminder_enabled === true;
     setVisibility(event.visibility);
     hasSavedSecretCode = event.secret_show_enabled === true;

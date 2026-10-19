@@ -40,6 +40,7 @@ function ownerEventData(event) {
     showGuestList: event.show_guest_list === true,
     allowGuests: event.allow_guests === true,
     commentsEnabled: event.comments_enabled === true,
+    hideAddressUntilRsvp: event.hide_address_until_rsvp === true,
     secretShowEnabled: event.secret_show_enabled === true,
     smsReminderEnabled: event.sms_reminder_enabled === true,
     backgroundTheme: event.background_theme || 'midnight',
@@ -302,6 +303,12 @@ function renderOwnerEditor(event) {
                 <label class="owner-field"><span>Secret code</span><input class="owner-input" id="owner-secret-code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="ABC123"></label>
                 <label class="owner-field"><span>Confirm code</span><input class="owner-input" id="owner-secret-code-confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="ABC123"></label>
               </div>
+              <section class="owner-location-privacy" id="owner-location-privacy" aria-labelledby="owner-location-privacy-title" hidden>
+                <h4 id="owner-location-privacy-title">Location privacy</h4>
+                <div class="owner-switch-list">
+                  <label class="owner-switch-row"><span><strong>Reveal exact location after RSVP</strong><small>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</small></span><input id="owner-hide-address-until-rsvp" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
+                </div>
+              </section>
             </div>
             <div class="owner-settings-group" data-owner-mobile-section="capacity">
               <label class="owner-field"><span>Capacity <small>Optional</small></span><input class="owner-input" id="owner-capacity" type="number" min="1" inputmode="numeric" placeholder="Unlimited"></label>

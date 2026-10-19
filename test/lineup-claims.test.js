@@ -27,6 +27,13 @@ test('a lineup invitation is one email to an address the host typed, and never s
   assert.match(routes, /identity\.verified_at IS NOT NULL/);
   assert.match(routes, /identity\.revoked_at IS NULL/);
   assert.match(routes, /This invitation was sent to a different email address/);
+  assert.match(routes, /const \{ locationForViewer \} = require\('\.\.\/lib\/event-location-privacy'\)/);
+  assert.match(routes, /e\.admission_type, e\.hide_address_until_rsvp/,
+    'the claim lookup includes the fields that activate private-event address privacy');
+  assert.match(routes, /locationForViewer\(claim, \{ canViewExact: false \}\)/);
+  assert.match(routes, /venueName: location\.name/);
+  assert.doesNotMatch(routes, /venueName: claim\.venue_name/,
+    'a lineup invitation never bypasses RSVP-gated venue privacy');
   assert.match(routes, /notifyHostOfClaim\(claim, rows\[0\]\.status\)/);
   assert.match(routes, /WHERE id=\$1 AND status <> \$2 RETURNING status/,
     'repeating the same answer is idempotent and does not notify the host again');

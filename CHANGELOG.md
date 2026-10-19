@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.180
+
+Released October 19, 2026. Built, reviewed, and deployed by Codex.
+
+### Private-event location privacy
+
+* Hosts can choose **Reveal exact location after RSVP** for a Private — Link Only or Secret Show event with Free RSVP. Before a guest confirms, the event's location fields show only city and state; confirmed attendees see the venue, street address, Maps link, and personal calendar location. The editor makes clear that artwork and description remain visible, so hosts should leave the exact address out of them.
+* The restriction is enforced by the server across Standard and Flyer location fields, social metadata, embedded event data, public calendar files, lineup-claim pages, and pre-RSVP announcement, lineup, and Familiar Faces invitation emails. Unlocking a Secret Show alone does not reveal its exact address.
+* Fresh RSVP confirmation reveals the location in place and creates event-scoped attendee access for later visits. Changing the answer to **Can’t make it** hides it again. Confirmation, reminder, update, and cancellation emails for confirmed attendees retain the exact location.
+* Public events and external-ticket events preserve their existing location behavior. Existing events default to the current visible-address behavior, and temporarily switching visibility or admission preserves the host’s saved preference without activating it.
+
+### Verification
+
+* All 577 automated checks pass, including focused model, editor, responsive visibility, rendering, messaging, and HTTP/PostgreSQL coverage for anonymous, host, confirmed-attendee, cancellation, public-calendar, and personal-calendar access boundaries.
+* No existing RSVP, guest, comment, capacity, artwork, Host Page, discovery, or ticket data is rewritten. Migration `070_private_event_address_privacy.sql` adds one default-false event preference.
+
 ## 1.0.179
 
 Released October 16, 2026. Built, reviewed, and deployed by Codex.

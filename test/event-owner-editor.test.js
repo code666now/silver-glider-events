@@ -30,7 +30,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /data-owner-tab="settings"/);
   assert.match(renderer, /review and save your changes below\./);
   assert.match(renderer, /role="switch"/);
-  assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 3);
+  assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 4);
   assert.match(renderer, /Music &amp; advanced settings/);
   assert.match(renderer, /name="owner_presentation_mode" value="standard"/);
   assert.match(renderer, /name="owner_presentation_mode" value="flyer"/);

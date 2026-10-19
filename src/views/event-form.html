@@ -339,6 +339,7 @@
     }
     .commerce-admission-note.show { display:block; }
     .guest-experience-settings,
+    .location-privacy-settings,
     .private-settings {
       margin: -4px 0 14px;
       padding: 18px;
@@ -347,6 +348,8 @@
       background: rgba(255,255,255,.025);
     }
     .guest-experience-settings { display:grid;gap:13px; }
+    .location-privacy-settings { display:grid;gap:13px; }
+    .location-privacy-settings[hidden] { display:none !important; }
     .private-settings { display:none;margin-top:0;margin-bottom:24px; }
     .private-settings.show { display: grid; gap: 13px; }
     .settings-group-heading strong {
@@ -1996,6 +1999,11 @@
               </button>
             </div>
           </fieldset>
+
+          <section class="location-privacy-settings" id="location-privacy-settings" aria-labelledby="location-privacy-title" data-mobile-flow-panel="visibility" hidden>
+            <div class="settings-group-heading"><strong id="location-privacy-title">Location privacy</strong></div>
+            <label class="experience-option"><input type="checkbox" id="hide_address_until_rsvp" role="switch"><span class="experience-copy"><strong>Reveal exact location after RSVP</strong>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</span><span class="experience-switch" aria-hidden="true"></span></label>
+          </section>
 
           <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title" data-mobile-flow-panel="guests">
             <div class="settings-group-heading"><strong id="guest-experience-title">Guest experience</strong></div>

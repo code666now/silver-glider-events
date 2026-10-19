@@ -1,6 +1,7 @@
 const { Resend } = require('resend');
 const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
+const { locationForViewer } = require('./event-location-privacy');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -318,7 +319,7 @@ function confirmationListeningHtml(event, baseUrl, theme) {
   </table>`;
 }
 
-function confirmationDetailsCard(event) {
+function confirmationDetailsCard(event, { canViewExactLocation = true } = {}) {
   const rows = [];
   if (event.event_date) {
     const date = new Date(event.event_date);
@@ -328,8 +329,8 @@ function confirmationDetailsCard(event) {
     }
   }
   if (event.start_time && /^\d{1,2}:\d{2}/.test(String(event.start_time))) rows.push(['Time', formatTime(event.start_time)]);
-  const venue = LocationUtils.displayParts(event.venue_name, event.venue_address).name;
-  if (venue) rows.push(['Venue', venue]);
+  const location = locationForViewer(event, { canViewExact: canViewExactLocation });
+  if (location.name) rows.push(['Venue', location.name]);
   if (!rows.length) return '';
 
   const rowHtml = rows.map(([label, value], index) => `${index ? '<tr><td colspan="2" height="1" bgcolor="#242424" style="height:1px;line-height:1px;font-size:1px">&nbsp;</td></tr>' : ''}
@@ -342,11 +343,10 @@ function confirmationDetailsCard(event) {
   </table>`;
 }
 
-function confirmationMapLink(event, theme) {
-  const location = LocationUtils.locationQuery(event.venue_name, event.venue_address);
-  if (!location) return '';
-  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(location)}`;
-  return `<p class="sg-map-link" style="margin:14px 0 0;text-align:right"><a href="${esc(mapsUrl)}" style="color:${theme.secondaryAccentColor};font-size:14px;font-weight:700;text-decoration:none">Open in Maps &rarr;</a></p>`;
+function confirmationMapLink(event, theme, { canViewExactLocation = true } = {}) {
+  const location = locationForViewer(event, { canViewExact: canViewExactLocation });
+  if (!location.mapsUrl) return '';
+  return `<p class="sg-map-link" style="margin:14px 0 0;text-align:right"><a href="${esc(location.mapsUrl)}" style="color:${theme.secondaryAccentColor};font-size:14px;font-weight:700;text-decoration:none">Open in Maps &rarr;</a></p>`;
 }
 
 function confirmationActionLinks(event, rsvp, theme) {
@@ -393,12 +393,14 @@ function confirmationFooterNote(event, rsvp) {
     })}`;
 }
 
-function eventCard(event) {
+function eventCard(event, { canViewExactLocation = true } = {}) {
   const dateStr = new Date(event.event_date).toLocaleDateString('en-US',
     { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const timeStr = formatTime(event.start_time);
-  const location = LocationUtils.displayParts(event.venue_name, event.venue_address);
-  const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(LocationUtils.locationQuery(event.venue_name, event.venue_address))}`;
+  const location = locationForViewer(event, { canViewExact: canViewExactLocation });
+  const mapsLink = location.mapsUrl
+    ? `<p style="margin:0 0 4px;text-align:right"><a href="${esc(location.mapsUrl)}" style="color:#1CC5BE;font-size:13px;text-decoration:none;font-weight:700">Open in Maps →</a></p>`
+    : '';
   return `
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 10px">
         <tr><td style="padding:0 0 14px">
@@ -417,7 +419,7 @@ function eventCard(event) {
           <span style="float:right;font-size:13px;color:#f0f0f0;font-weight:700">${esc(location.name)}</span>
         </td></tr>
       </table>
-      <p style="margin:0 0 4px;text-align:right"><a href="${esc(mapsUrl)}" style="color:#1CC5BE;font-size:13px;text-decoration:none;font-weight:700">Open in Maps →</a></p>`;
+      ${mapsLink}`;
 }
 
 function formatTime(t) {
@@ -1035,7 +1037,7 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
       kicker: 'New event',
       headline: event.title,
       sub: `${organizerLabel} has a new event coming up.`,
-      bodyHtml: eventCard(event),
+      bodyHtml: eventCard(event, { canViewExactLocation: false }),
       cta: 'View & RSVP',
       ctaUrl: `${process.env.APP_URL}/e/${event.slug}`,
       footerHtml: policyFooter({
@@ -1065,7 +1067,7 @@ async function sendLineupClaim({ to, event, artistName, hostLabel, link }) {
       kicker: 'You’re on the lineup',
       headline: event.title,
       sub: `${esc(hostLabel)} listed ${esc(artistName)} on this event.`,
-      bodyHtml: eventCard(event),
+      bodyHtml: eventCard(event, { canViewExactLocation: false }),
       cta: 'That’s me',
       ctaUrl: link,
       footerHtml: `<p style="color:#555;font-size:12px;text-align:center;margin:0;line-height:1.7">Claiming links this lineup credit to your Silver Glider account. It never shares the host’s guest list.<br>Not you? <a href="${esc(link)}" style="color:#777;text-decoration:underline">Take your name off this event</a>.<br><a href="${esc(baseUrl)}" style="color:#777;text-decoration:underline">Silver Glider Events</a></p>`
@@ -1152,7 +1154,7 @@ function renderPreviousGuestInvitationEmail({ event, recipientName, organizerLab
     theme,
     kicker: `An invitation from ${organizerLabel}`,
     sub: `${greeting}${organizerLabel} thought you’d like this next event.`,
-    bodyHtml: `${confirmationDetailsCard(event)}${confirmationMapLink(event, theme)}`,
+    bodyHtml: `${confirmationDetailsCard(event, { canViewExactLocation: false })}${confirmationMapLink(event, theme, { canViewExactLocation: false })}`,
     cta: 'RSVP',
     ctaUrl: invitationUrl || `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
     footerHtml: policyFooter({

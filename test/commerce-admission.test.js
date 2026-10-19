@@ -58,8 +58,8 @@ test('public and organizer routes keep Commerce separate from RSVP and duplicati
   assert.match(publicRoute, /router\.get\('\/e\/:slug\/tickets'/);
   assert.match(publicRoute, /error: 'tickets_required'/);
   assert.match(publicRoute, /Get Tickets/);
-  assert.match(eventRoute, /artwork_accent_color, commerce_event_id\)/);
-  assert.match(eventRoute, /\$44,NULL\)/, 'duplicates must not copy a Commerce event reference');
+  assert.match(eventRoute, /artwork_accent_color,\s*hide_address_until_rsvp, commerce_event_id\)/);
+  assert.match(eventRoute, /\$45,NULL\)/, 'duplicates must not copy a Commerce event reference');
   assert.doesNotMatch(`${publicRoute}\n${eventRoute}`, /stripe|payment_intent|checkout\.sessions/i);
 });
 

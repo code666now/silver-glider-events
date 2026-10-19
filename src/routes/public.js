@@ -26,6 +26,11 @@ const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
+const {
+  addressPrivacyEnabled,
+  calendarEventForViewer,
+  locationForViewer
+} = require('../lib/event-location-privacy');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
@@ -38,7 +43,6 @@ const {
   prepareRsvpSmsConsent,
   smsConsentHeading
 } = require('../lib/sms-consent');
-const LocationUtils = require('../../public/js/location-utils');
 const {
   ensureAttemptSession,
   hasUnlockCookie,
@@ -378,6 +382,16 @@ function setAttendeeCookie(res, eventId, token) {
   res.append('Set-Cookie', `${attendeeCookieName(eventId)}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${180 * 24 * 3600}${secure}`);
 }
 
+function locationResponse(event, { canViewExact = false, manageToken = null } = {}) {
+  const location = locationForViewer(event, { canViewExact });
+  return {
+    ...location,
+    calendarUrl: canViewExact && manageToken
+      ? `/r/${encodeURIComponent(manageToken)}/calendar.ics`
+      : `/e/${encodeURIComponent(event.slug)}/calendar.ics`
+  };
+}
+
 function renderSmsReminderOptin(event) {
   if (!event.sms_reminder_enabled || event.secret_show_enabled) return '';
   return `<section class="sms-reminder-optin" aria-labelledby="sms-reminder-optin-title">
@@ -473,7 +487,7 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location })
         ${hostName ? `<p class="rsvp-confirmation-host">Presented by <strong>${esc(hostName)}</strong></p>` : ''}
         <dl>
           <div><dt>Date &amp; time</dt><dd>${esc(dateLabel)} · ${esc(timeLabel)}</dd></div>
-          <div><dt>Location</dt><dd>${esc(locationName)}${locationAddress ? `<span>${esc(locationAddress)}</span>` : ''}</dd></div>
+          <div><dt>Location</dt><dd><strong id="rsvp-confirmation-location-name">${esc(locationName)}</strong><span id="rsvp-confirmation-location-address"${locationAddress ? '' : ' hidden'}>${esc(locationAddress)}</span></dd></div>
         </dl>
       </section>
 
@@ -736,7 +750,10 @@ router.get('/e/:slug', async (req, res, next) => {
     const rsvpEnabled = event.status === 'published' && !isSilverGliderTickets(event);
     const invitationToken = typeof req.query.invite === 'string' ? req.query.invite.trim() : '';
     const rsvpToken = typeof req.query.rsvp === 'string' ? req.query.rsvp.trim() : '';
-    const recognizedGuestCandidate = rsvpEnabled && !event.is_past && event.status === 'published'
+    // Keep resolving confirmed attendee ownership after the event has ended so
+    // location privacy remains an authorization rule rather than an RSVP-UI
+    // rule. The client still suppresses all past-event RSVP interactions.
+    const recognizedGuestCandidate = rsvpEnabled && event.status === 'published'
       ? await returningGuestContext(pool, req, event.id, { invitationToken, rsvpToken })
       : null;
     // A host who has also RSVP'd should see their attendee answer without
@@ -753,8 +770,12 @@ router.get('/e/:slug', async (req, res, next) => {
       !recognizedGuest.sessionMatchesInvitation
       ? null
       : recognizedGuest;
+    const canViewExactLocation = ownerPreview || returningGuest?.rsvp?.status === 'confirmed';
 
-    if (invitationToken || rsvpToken || returningGuest) {
+    // Exact location is personalized data. Never let an owner or attendee view
+    // at this canonical public URL be reused from a browser or intermediary
+    // cache for the next anonymous visitor.
+    if (invitationToken || rsvpToken || returningGuest || canViewExactLocation) {
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Referrer-Policy', 'no-referrer');
     }
@@ -856,13 +877,14 @@ router.get('/e/:slug', async (req, res, next) => {
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
 
     const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
-    const locationDisplay = LocationUtils.displayParts(event.venue_name, event.venue_address);
-    const locationQuery = LocationUtils.locationQuery(event.venue_name, event.venue_address);
-    const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(locationQuery)}`;
+    const locationDisplay = locationForViewer(event, { canViewExact: canViewExactLocation });
     const dateLabel = fmtDate(event.event_date);
     const timeLabel = formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '');
     const flyerVenueText = locationDisplay.address || (!event.venue_address ? venueSummary : '');
-    const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(locationDisplay.name)}</strong>${flyerVenueText ? `<span>${esc(flyerVenueText)}</span>` : ''}<a href="${esc(mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a></div>`;
+    const mapsLinkHtml = locationDisplay.mapsUrl
+      ? `<a href="${esc(locationDisplay.mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a>`
+      : '';
+    const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(locationDisplay.name)}</strong><span id="event-location-address"${flyerVenueText ? '' : ' hidden'}>${esc(flyerVenueText)}</span><span id="event-location-map"${mapsLinkHtml ? '' : ' hidden'}>${mapsLinkHtml}</span></div>`;
     const detailParts = [];
     if (event.category) detailParts.push(`<p class="detail-category"><span>Category</span><strong>${esc(event.category)}</strong></p>`);
     if (event.description) detailParts.push(`<div class="desc">${esc(event.description).replace(/\n/g, '<br>')}</div>`);
@@ -917,8 +939,11 @@ router.get('/e/:slug', async (req, res, next) => {
         ? `<p class="flyer-design-credit">Design by ${esc(flyerDesignerName)}</p>`
         : '';
 
-    const returningCalendarUrl = returningGuest?.rsvp?.manage_token
+    const returningGuestCalendarUrl = returningGuest?.rsvp?.manage_token
       ? `/r/${encodeURIComponent(returningGuest.rsvp.manage_token)}/calendar.ics`
+      : `/e/${encodeURIComponent(event.slug)}/calendar.ics`;
+    const returningCalendarUrl = returningGuest?.rsvp?.status === 'confirmed'
+      ? returningGuestCalendarUrl
       : `/e/${encodeURIComponent(event.slug)}/calendar.ics`;
     const returningGuestJson = returningGuest ? {
       firstName: returningGuest.displayFirstName,
@@ -926,7 +951,7 @@ router.get('/e/:slug', async (req, res, next) => {
       response: returningGuest.rsvp?.status === 'confirmed'
         ? 'going'
         : returningGuest.rsvp?.status === 'cancelled' ? 'not_going' : null,
-      calendarUrl: returningCalendarUrl
+      calendarUrl: returningGuestCalendarUrl
     } : null;
     const eventJson = {
       slug: event.slug,
@@ -943,6 +968,8 @@ router.get('/e/:slug', async (req, res, next) => {
       hostSlug: event.organizer_public_slug && !ownerPreview ? event.organizer_public_slug : null,
       hostName: event.organizer_public_slug && !ownerPreview ? event.org_name : null,
       returningGuest: returningGuestJson,
+      location: locationDisplay,
+      calendarUrl: returningCalendarUrl,
       bgEffect: isEffect ? theme : null
     };
     // A published Done For You completion takes precedence while its secure
@@ -982,7 +1009,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{TIME_STR}}/g, esc(timeLabel))
       .replace(/{{VENUE_NAME}}/g, esc(locationDisplay.name))
       .replace(/{{VENUE_ADDRESS}}/g, esc(locationDisplay.address))
-      .replace(/{{MAPS_URL}}/g, esc(mapsUrl))
+      .replace(/{{MAPS_LINK_HTML}}/g, mapsLinkHtml)
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
@@ -1276,6 +1303,9 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         );
       }
       await client.query('COMMIT');
+      if (ownsExisting && (event.comments_enabled || addressPrivacyEnabled(event))) {
+        setAttendeeCookie(res, event.id, existing[0].manage_token);
+      }
       const confirmationResent = await claimConfirmation(event, existing[0]).catch(error => {
         console.error('[rsvp-confirmation]', error.message);
         return null;
@@ -1289,7 +1319,11 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         ...(ownsExisting ? {
           response: 'going',
           rsvpToken: existing[0].manage_token,
-          calendarUrl: `/r/${encodeURIComponent(existing[0].manage_token)}/calendar.ics`
+          calendarUrl: `/r/${encodeURIComponent(existing[0].manage_token)}/calendar.ics`,
+          location: locationResponse(event, {
+            canViewExact: true,
+            manageToken: existing[0].manage_token
+          })
         } : {})
       });
     }
@@ -1393,6 +1427,8 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     // never grant comment or deletion access.
     if (event.comments_enabled && (isNewRsvp || ownsExisting)) {
       setAttendeeCookie(res, event.id, rsvp.manage_token);
+    } else if (addressPrivacyEnabled(event) && (isNewRsvp || ownsExisting)) {
+      setAttendeeCookie(res, event.id, rsvp.manage_token);
     }
     if (guestSessionToRemember) setGuestSessionCookie(res, guestSessionToRemember.token);
     runInBackground(() => resendConfirmation(event, rsvp));
@@ -1401,7 +1437,11 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       ok: true,
       response: 'going',
       rsvpToken: rsvp.manage_token,
-      calendarUrl: `/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`
+      calendarUrl: `/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`,
+      location: locationResponse(event, {
+        canViewExact: true,
+        manageToken: rsvp.manage_token
+      })
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -1541,7 +1581,14 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
       if (guest.rsvp?.status !== 'confirmed') runInBackground(() => resendConfirmation(event, rsvp));
     }
     res.setHeader('Cache-Control', 'private, no-store');
-    return res.json({ ok: true, response: answer });
+    return res.json({
+      ok: true,
+      response: answer,
+      location: locationResponse(event, {
+        canViewExact: answer === 'going',
+        manageToken: answer === 'going' ? rsvp.manage_token : null
+      })
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);
@@ -1640,7 +1687,9 @@ router.get('/e/:slug/calendar.ics', async (req, res, next) => {
     if (secretShowLocked(req, event)) return res.status(404).send('Not found');
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${event.slug}.ics"`);
-    res.send(buildIcs(event));
+    // This URL is public and may be shared before anyone RSVPs. Exact private
+    // addresses are available only from the attendee-token calendar URL.
+    res.send(buildIcs(calendarEventForViewer(event, { canViewExact: false })));
   } catch (err) { next(err); }
 });
 
@@ -1753,17 +1802,22 @@ router.get('/r/:token', async (req, res, next) => {
     );
     if (!rows.length) return res.status(404).send(render404());
     const row = rows[0];
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     setAttendeeCookie(res, row.event_id, req.params.token);
+    const manageLocation = locationForViewer(row, {
+      canViewExact: row.rsvp_status === 'confirmed'
+    });
 
     const html = rsvpManageTemplate
       .replace(/{{TITLE}}/g, esc(row.title))
       .replace(/{{FIRST_NAME}}/g, esc(row.first_name))
       .replace(/{{DATE_STR}}/g, esc(fmtDate(row.event_date)))
       .replace(/{{TIME_STR}}/g, esc(formatTime(row.start_time)))
-      .replace(/{{VENUE_NAME}}/g, esc(row.venue_name))
+      .replace(/{{VENUE_NAME}}/g, esc(manageLocation.name))
       .replace(/{{EVENT_URL}}/g, esc(`/e/${row.slug}`))
       .replace(/{{EVENT_LINK_LABEL}}/g, row.comments_enabled ? 'View event & comments' : 'View event')
-      .replace(/{{ICS_URL}}/g, esc(`/e/${row.slug}/calendar.ics`))
+      .replace(/{{ICS_URL}}/g, esc(`/r/${encodeURIComponent(req.params.token)}/calendar.ics`))
       .replace(/{{TOKEN}}/g, esc(req.params.token))
       .replace(/{{RSVP_STATUS}}/g, esc(row.rsvp_status))
       .replace(/{{REMINDERS_CHECKED}}/g, row.wants_reminders ? 'checked' : '')

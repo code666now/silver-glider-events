@@ -1966,6 +1966,164 @@ test('address-only locations render once and keep Maps and calendar destinations
   assert.doesNotMatch(ics, /LOCATION:987 Cedar Lane\\, 987 Cedar Lane/);
 });
 
+test('private address privacy reveals exact location only after a confirmed RSVP', async () => {
+  const event = await createEvent({
+    slug: 'address-after-rsvp-night',
+    title: 'Address After RSVP Night',
+    venue_name: 'Moonlight Loft',
+    venue_address: '789 Secret Street, San Francisco, CA 94110',
+    venue_city: 'San Francisco',
+    venue_state: 'CA',
+    visibility: 'private',
+    admission_type: 'free_rsvp',
+    hide_address_until_rsvp: true
+  });
+
+  const anonymous = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(anonymous.status, 200);
+  const anonymousHtml = await anonymous.text();
+  assert.match(anonymousHtml, /San Francisco, CA/);
+  assert.match(anonymousHtml, /Exact location shared after RSVP/);
+  assert.doesNotMatch(anonymousHtml, /Moonlight Loft|789 Secret Street|Secret%20Street/);
+  assert.doesNotMatch(anonymousHtml, /maps\.google\.com/);
+
+  const publicCalendar = await fetch(`${baseUrl}/e/${event.slug}/calendar.ics`);
+  assert.equal(publicCalendar.status, 200);
+  const publicIcs = await publicCalendar.text();
+  assert.match(publicIcs, /LOCATION:San Francisco\\, CA/);
+  assert.doesNotMatch(publicIcs, /Moonlight Loft|789 Secret Street/);
+
+  const ownerPage = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: `sge_session=${signSession(organizerId)}` }
+  });
+  assert.equal(ownerPage.status, 200);
+  const ownerHtml = await ownerPage.text();
+  assert.match(ownerHtml, /Moonlight Loft/);
+  assert.match(ownerHtml, /789 Secret Street/);
+
+  const rsvpResponse = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Location Guest', email: 'location-guest@example.test' })
+  });
+  assert.equal(rsvpResponse.status, 201);
+  const rsvp = await rsvpResponse.json();
+  assert.equal(rsvp.location.hidden, false);
+  assert.equal(rsvp.location.name, 'Moonlight Loft');
+  assert.match(rsvp.location.address, /789 Secret Street/);
+  assert.match(rsvp.location.mapsUrl, /Secret%20Street/);
+  assert.equal(rsvp.location.calendarUrl, `/r/${rsvp.rsvpToken}/calendar.ics`);
+  const attendeeCookie = responseCookie(rsvpResponse, 'sge_attendee_' + event.id);
+  assert.ok(attendeeCookie, 'a confirmed RSVP receives event-scoped location access');
+
+  const attendeePage = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: attendeeCookie }
+  });
+  assert.equal(attendeePage.status, 200);
+  const attendeeHtml = await attendeePage.text();
+  assert.match(attendeeHtml, /Moonlight Loft/);
+  assert.match(attendeeHtml, /789 Secret Street/);
+  assert.match(attendeeHtml, /maps\.google\.com/);
+
+  const attendeeCalendar = await fetch(`${baseUrl}${rsvp.location.calendarUrl}`);
+  assert.equal(attendeeCalendar.status, 200);
+  const attendeeIcs = await attendeeCalendar.text();
+  assert.match(attendeeIcs, /Moonlight Loft/);
+  assert.match(attendeeIcs, /789 Secret Street/);
+
+  const cancel = await fetch(`${baseUrl}/api/public/events/${event.slug}/returning-rsvp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: attendeeCookie },
+    body: JSON.stringify({ response: 'not_going', rsvpToken: rsvp.rsvpToken })
+  });
+  assert.equal(cancel.status, 200);
+  const cancelled = await cancel.json();
+  assert.equal(cancelled.location.hidden, true);
+  assert.equal(cancelled.location.mapsUrl, null);
+  assert.equal(cancelled.location.calendarUrl, `/e/${event.slug}/calendar.ics`);
+
+  const cancelledPage = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: attendeeCookie }
+  });
+  assert.equal(cancelledPage.status, 200);
+  const cancelledHtml = await cancelledPage.text();
+  assert.match(cancelledHtml, /Exact location shared after RSVP/);
+  assert.doesNotMatch(cancelledHtml, /Moonlight Loft|789 Secret Street|Secret%20Street/);
+
+  const cancelledAttendeeCalendar = await fetch(`${baseUrl}/r/${rsvp.rsvpToken}/calendar.ics`);
+  assert.equal(cancelledAttendeeCalendar.status, 404);
+  assert.doesNotMatch(await cancelledAttendeeCalendar.text(), /Moonlight Loft|789 Secret Street/);
+
+  await publicRoutes.settleBackgroundWork();
+});
+
+test('flyer presentation redacts a private exact address before RSVP', async () => {
+  const event = await createEvent({
+    slug: 'private-address-flyer',
+    title: 'Private Address Flyer',
+    venue_name: 'Lantern Room',
+    venue_address: '246 Hidden Avenue, San Francisco, CA 94110',
+    venue_city: 'San Francisco',
+    venue_state: 'CA',
+    visibility: 'private',
+    admission_type: 'free_rsvp',
+    hide_address_until_rsvp: true,
+    presentation_mode: 'flyer',
+    flyer_image_url: 'https://images.example.test/private-address-flyer.jpg'
+  });
+
+  const response = await fetch(`${baseUrl}/e/${event.slug}`);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<body class="flyer-public-page">/);
+  assert.match(html, /San Francisco, CA/);
+  assert.match(html, /Exact location shared after RSVP/);
+  assert.doesNotMatch(html, /Lantern Room|246 Hidden Avenue|Hidden%20Avenue/);
+  assert.doesNotMatch(html, /maps\.google\.com/);
+});
+
+test('unlocking a Secret Show does not reveal its RSVP-only address', async () => {
+  const event = await createEvent({
+    slug: 'secret-address-after-rsvp',
+    title: 'Secret Address After RSVP',
+    description: 'Unlocked event details stay separate from address access.',
+    venue_name: 'Hidden Basement',
+    venue_address: '321 Quiet Street, Los Angeles, CA 90012',
+    venue_city: 'Los Angeles',
+    venue_state: 'CA',
+    visibility: 'private',
+    admission_type: 'free_rsvp',
+    hide_address_until_rsvp: true,
+    secret_show_enabled: true,
+    secret_show_version: 1
+  });
+  await pool.query(
+    'INSERT INTO event_secret_codes (event_id, code_hash) VALUES ($1, $2)',
+    [event.id, await hashCode('XY12ZZ')]
+  );
+
+  const unlock = await fetch(`${baseUrl}/api/public/events/${event.slug}/unlock`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: 'XY12ZZ' })
+  });
+  assert.equal(unlock.status, 200);
+  const unlockCookie = (unlock.headers.get('set-cookie') || '').match(/sge_secret_\d+=[^;]+/)?.[0];
+  assert.ok(unlockCookie, 'unlocking sets an event-scoped Secret Show cookie');
+
+  const unlocked = await fetch(`${baseUrl}/e/${event.slug}`, {
+    headers: { cookie: unlockCookie }
+  });
+  assert.equal(unlocked.status, 200);
+  const html = await unlocked.text();
+  assert.match(html, /Secret Address After RSVP/);
+  assert.match(html, /Unlocked event details stay separate from address access/);
+  assert.match(html, /Los Angeles, CA/);
+  assert.match(html, /Exact location shared after RSVP/);
+  assert.doesNotMatch(html, /Hidden Basement|321 Quiet Street|Quiet%20Street/);
+  assert.doesNotMatch(html, /maps\.google\.com/);
+});
+
 test('personal RSVP photos require verified identity or attendee ownership and stay separate from Host Page logos', async () => {
   const event = await createEvent({ slug: 'avatar-night', title: 'Avatar Night', show_guest_list: true });
   const historicalEvent = await createEvent({ slug: 'historical-avatar-night', title: 'Historical Avatar Night', show_guest_list: true });

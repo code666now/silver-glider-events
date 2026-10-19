@@ -952,10 +952,10 @@
 
     <div class="when"><span>{{DATE_STR}}</span><span class="dot">·</span><span>{{TIME_STR}}</span></div>
 
-    <div class="venue">
+    <div class="venue" id="event-location">
       <strong>{{VENUE_NAME}}</strong>
-      <span style="color:var(--sg-text-dim);font-size:14px">{{VENUE_ADDRESS}}</span><br>
-      <a href="{{MAPS_URL}}" target="_blank" rel="noopener">Open in Maps →</a>
+      <span id="event-location-address" style="color:var(--sg-text-dim);font-size:14px">{{VENUE_ADDRESS}}</span><br>
+      <span id="event-location-map">{{MAPS_LINK_HTML}}</span>
     </div>
     {{TICKET_HTML}}
 

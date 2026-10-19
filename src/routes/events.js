@@ -25,6 +25,7 @@ const {
 } = require('../lib/follow-announcement');
 const { queueSmsBatch } = require('../jobs/sms-notifications');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { locationForViewer } = require('../lib/event-location-privacy');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -226,8 +227,10 @@ async function loadClaimForViewer(db, { claimId, organizer }) {
   const viewerId = Number(organizer?.id) || 0;
   const { rows } = await db.query(
     `SELECT c.id, c.slot, c.artist_name, c.email, c.status, c.organizer_id,
-            e.id AS event_id, e.title, e.slug, e.event_date, e.start_time, e.venue_name,
+            e.id AS event_id, e.title, e.slug, e.event_date, e.start_time,
+            e.venue_name, e.venue_address, e.venue_city, e.venue_state,
             e.cover_image_url, e.presentation_mode, e.flyer_image_url, e.visibility,
+            e.admission_type, e.hide_address_until_rsvp,
             COALESCE(o.org_name, o.name, 'A host') AS host_label,
             EXISTS (
               SELECT 1
@@ -263,6 +266,7 @@ router.get('/api/lineup/:claimId', async (req, res, next) => {
         maskedEmail: maskClaimEmail(claim.email)
       });
     }
+    const location = locationForViewer(claim, { canViewExact: false });
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       claim: {
@@ -276,7 +280,7 @@ router.get('/api/lineup/:claimId', async (req, res, next) => {
           slug: claim.slug,
           eventDate: claim.event_date,
           startTime: claim.start_time,
-          venueName: claim.venue_name,
+          venueName: location.name,
           url: `/e/${claim.slug}`,
           artworkUrl: safeAvatarUrl(claim.presentation_mode === 'flyer' ? claim.flyer_image_url : claim.cover_image_url)
         }
@@ -441,8 +445,9 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
                                event_vibe_url, event_vibe_label, event_vibe_image_url,
                                event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
                                event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
-                               show_guest_list, allow_guests, comments_enabled, artwork_accent_color, commerce_event_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'draft',$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,NULL)
+                               show_guest_list, allow_guests, comments_enabled, artwork_accent_color,
+                               hide_address_until_rsvp, commerce_event_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'draft',$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,NULL)
            RETURNING *`,
           [req.organizer.id, slug, e.title, e.description, e.cover_image_url,
            e.cover_fit_mode || 'auto', e.presentation_mode || 'standard', e.flyer_image_url || null,
@@ -456,7 +461,7 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
            e.event_vibe_url_2 || null, e.event_vibe_label_2 || null, e.event_vibe_image_url_2 || null,
            e.event_vibe_url_3 || null, e.event_vibe_label_3 || null, e.event_vibe_image_url_3 || null,
            e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true,
-           e.artwork_accent_color || null]
+           e.artwork_accent_color || null, e.hide_address_until_rsvp === true]
         );
         return res.status(201).json({ event: rows[0] });
       } catch (err) {

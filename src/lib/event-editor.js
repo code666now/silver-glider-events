@@ -63,6 +63,7 @@ const EDITOR_EVENT_FIELDS = Object.freeze([
   'show_guest_list',
   'allow_guests',
   'comments_enabled',
+  'hide_address_until_rsvp',
   'secret_show_enabled',
   'secret_show_version',
   'sms_reminder_enabled',
@@ -108,6 +109,7 @@ const BOOLEAN_EVENT_FIELDS = new Set([
   'show_guest_list',
   'allow_guests',
   'comments_enabled',
+  'hide_address_until_rsvp',
   'secret_show_enabled',
   'sms_reminder_enabled'
 ]);
@@ -338,6 +340,7 @@ function validateEventBody(body, { partial = false } = {}) {
     ticket_price:    v => (v === '' || v == null ? null : Math.round((Number(v) || 0) * 100) / 100),
     ticket_url:      cleanTicketUrl,
     commerce_event_id: cleanCommerceEventId,
+    hide_address_until_rsvp: isTrue,
     sms_reminder_enabled: isTrue,
     status:          v => (['draft', 'published', 'cancelled'].includes(v) ? v : undefined)
   };
@@ -460,9 +463,9 @@ async function createEventInTransaction(db, { organizerId, body }) {
                          event_vibe_url, event_vibe_label, event_vibe_image_url,
                          event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
                          event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
-                         show_guest_list, allow_guests, comments_enabled, secret_show_enabled, secret_show_version,
+                         show_guest_list, allow_guests, comments_enabled, hide_address_until_rsvp, secret_show_enabled, secret_show_version,
                          artwork_accent_color, commerce_event_id, sms_reminder_enabled, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48)
      RETURNING *`,
     [organizerId, slug, out.title, out.description || null, out.cover_image_url,
      out.cover_fit_mode, out.presentation_mode, out.flyer_image_url,
@@ -477,6 +480,7 @@ async function createEventInTransaction(db, { organizerId, body }) {
      out.event_vibe_url_2 || null, out.event_vibe_label_2 || null, out.event_vibe_image_url_2 || null,
      out.event_vibe_url_3 || null, out.event_vibe_label_3 || null, out.event_vibe_image_url_3 || null,
      out.show_guest_list, out.allow_guests, out.comments_enabled,
+     out.hide_address_until_rsvp === true,
      secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
      out.commerce_event_id || null, out.sms_reminder_enabled === true,
      out.status === 'draft' ? 'draft' : 'published']

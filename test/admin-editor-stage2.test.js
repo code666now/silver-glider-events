@@ -18,6 +18,7 @@ test('admin editor event DTO is an explicit allowlist with no bearer credentials
   assert.ok(Object.isFrozen(EDITOR_EVENT_FIELDS));
   assert.ok(EDITOR_EVENT_FIELDS.includes('title'));
   assert.ok(EDITOR_EVENT_FIELDS.includes('status'));
+  assert.ok(EDITOR_EVENT_FIELDS.includes('hide_address_until_rsvp'));
   for (const unsafe of [
     'photo_upload_token', 'photo_short_token', 'manage_token',
     'email', 'phone', 'contact_email'

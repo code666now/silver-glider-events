@@ -567,6 +567,10 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-secret-note,
 .owner-rsvp-warning { margin: 12px 0 16px; padding: 11px 12px; border: 1px solid rgba(245,185,66,.25); border-radius: 11px; background: rgba(245,185,66,.07); color: #d9bd82; font-size: 10px; line-height: 1.5; }
 .owner-switch-list { display: grid; margin-top: 8px; border: 1px solid rgba(255,255,255,.1); border-radius: 15px; overflow: hidden; }
+.owner-location-privacy { margin-top: 20px; }
+.owner-location-privacy[hidden] { display: none; }
+.owner-location-privacy h4 { margin: 0 0 9px; color: var(--sg-text-dim); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.owner-location-privacy .owner-switch-list { margin-top: 0; }
 .owner-switch-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 75px; padding: 13px; background: rgba(255,255,255,.022); cursor: pointer; }
 .owner-switch-row + .owner-switch-row { border-top: 1px solid rgba(255,255,255,.08); }
 .owner-switch-row > span { display: grid; gap: 4px; }

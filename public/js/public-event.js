@@ -36,7 +36,49 @@ async function prepareFollowAfterRsvp() {
 }
 
 const icsUrl = `/e/${EVENT.slug}/calendar.ics`;
+const publicIcsUrl = icsUrl;
 $('cal-btn').href = icsUrl;
+
+function applyLocation(location) {
+  if (!location) return;
+  EVENT.location = location;
+  if (location.calendarUrl) EVENT.calendarUrl = location.calendarUrl;
+
+  const name = $('event-location-name') || document.querySelector('.venue > strong, .flyer-venue > strong');
+  const address = $('event-location-address');
+  const map = $('event-location-map');
+  if (name) name.textContent = location.name || '';
+  if (address) {
+    address.textContent = location.address || '';
+    address.hidden = !location.address;
+  }
+  if (map) {
+    map.replaceChildren();
+    map.hidden = !location.mapsUrl;
+    if (location.mapsUrl) {
+      const link = document.createElement('a');
+      link.href = location.mapsUrl;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open in Maps →';
+      map.append(link);
+    }
+  }
+
+  const confirmationName = $('rsvp-confirmation-location-name');
+  const confirmationAddress = $('rsvp-confirmation-location-address');
+  if (confirmationName) confirmationName.textContent = location.name || '';
+  if (confirmationAddress) {
+    confirmationAddress.textContent = location.address || '';
+    confirmationAddress.hidden = !location.address;
+  }
+
+  const calendar = $('cal-btn');
+  if (calendar) calendar.href = location.calendarUrl || EVENT.calendarUrl || publicIcsUrl;
+}
+
+if (EVENT.location) applyLocation(EVENT.location);
+else $('cal-btn').href = publicIcsUrl;
 
 function mountVibeSwitchers() {
   document.querySelectorAll('[data-vibe-switcher]').forEach(section => {
@@ -428,9 +470,13 @@ let confirmationEditing = false;
 let confirmationTrigger = null;
 
 function confirmationCalendarUrl() {
-  if (EVENT.returningGuest?.calendarUrl) return EVENT.returningGuest.calendarUrl;
-  if (personalAccess.rsvpToken) return `/r/${encodeURIComponent(personalAccess.rsvpToken)}/calendar.ics`;
-  return icsUrl;
+  if (EVENT.returningGuest?.response === 'going' && EVENT.returningGuest.calendarUrl) {
+    return EVENT.returningGuest.calendarUrl;
+  }
+  if (EVENT.returningGuest?.response === 'going' && personalAccess.rsvpToken) {
+    return `/r/${encodeURIComponent(personalAccess.rsvpToken)}/calendar.ics`;
+  }
+  return EVENT.calendarUrl || publicIcsUrl;
 }
 
 function renderConfirmationDialog() {
@@ -490,7 +536,7 @@ if (EVENT.status === 'cancelled') show('cancelled-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.returningGuest) show('returning-rsvp-state');
 else if (EVENT.rsvpEnabled !== false && !EVENT.isPast && EVENT.isFull) show('full-state');
 
-if (EVENT.returningGuest?.response && ['invitation', 'rsvp'].includes(EVENT.returningGuest.source)) {
+if (!EVENT.isPast && EVENT.returningGuest?.response && ['invitation', 'rsvp'].includes(EVENT.returningGuest.source)) {
   requestAnimationFrame(() => openRsvpConfirmation());
 }
 
@@ -523,6 +569,10 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     }
     if (!result.ok) throw new Error(data.message || data.error || 'Could not update your RSVP');
     EVENT.returningGuest.response = response;
+    if (data.location) {
+      EVENT.returningGuest.calendarUrl = data.location.calendarUrl || publicIcsUrl;
+      applyLocation(data.location);
+    }
     returningEditing = false;
     confirmationEditing = false;
     confirmationFresh = false;
@@ -791,6 +841,7 @@ async function submitRsvp({ afterVerification = false } = {}) {
       response: data.response || 'going',
       calendarUrl: data.calendarUrl || confirmationCalendarUrl()
     };
+    if (data.location) applyLocation(data.location);
     $('returning-rsvp-name').textContent = firstName;
     $('returning-rsvp-switch-name').textContent = firstName;
     returningEditing = false;
