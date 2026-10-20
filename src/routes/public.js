@@ -880,10 +880,23 @@ router.get('/e/:slug', async (req, res, next) => {
     const locationDisplay = locationForViewer(event, { canViewExact: canViewExactLocation });
     const dateLabel = fmtDate(event.event_date);
     const timeLabel = formatTime(event.start_time) + (event.end_time ? ` – ${formatTime(event.end_time)}` : '');
-    const flyerVenueText = locationDisplay.address || (!event.venue_address ? venueSummary : '');
-    const mapsLinkHtml = locationDisplay.mapsUrl
-      ? `<a href="${esc(locationDisplay.mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a>`
+    const canPromptForLocationRsvp = Boolean(
+      addressPrivacyEnabled(event) &&
+      rsvpEnabled &&
+      !event.is_past &&
+      event.status === 'published' &&
+      !isFull &&
+      !ownerDraft
+    );
+    const showLocationRsvp = canPromptForLocationRsvp && locationDisplay.hidden;
+    const locationRsvpActionHtml = canPromptForLocationRsvp
+      ? `<button class="location-rsvp-trigger" id="event-location-rsvp" data-open-rsvp data-rsvp-context="location" type="button" aria-controls="rsvp-form-box returning-rsvp-state"${showLocationRsvp ? '' : ' hidden'}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>RSVP to reveal the exact address <b aria-hidden="true">→</b></button>`
       : '';
+    const venueAddressText = showLocationRsvp ? '' : locationDisplay.address;
+    const flyerVenueText = venueAddressText || (!event.venue_address ? venueSummary : '');
+    const mapsLinkHtml = `${locationDisplay.mapsUrl
+      ? `<a href="${esc(locationDisplay.mapsUrl)}" target="_blank" rel="noopener">Open in Maps →</a>`
+      : ''}${locationRsvpActionHtml}`;
     const flyerVenueHtml = `<div class="flyer-venue"><strong>${esc(locationDisplay.name)}</strong><span id="event-location-address"${flyerVenueText ? '' : ' hidden'}>${esc(flyerVenueText)}</span><span id="event-location-map"${mapsLinkHtml ? '' : ' hidden'}>${mapsLinkHtml}</span></div>`;
     const detailParts = [];
     if (event.category) detailParts.push(`<p class="detail-category"><span>Category</span><strong>${esc(event.category)}</strong></p>`);
@@ -1008,7 +1021,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{DATE_STR}}/g, esc(dateLabel))
       .replace(/{{TIME_STR}}/g, esc(timeLabel))
       .replace(/{{VENUE_NAME}}/g, esc(locationDisplay.name))
-      .replace(/{{VENUE_ADDRESS}}/g, esc(locationDisplay.address))
+      .replace(/{{VENUE_ADDRESS}}/g, esc(venueAddressText))
       .replace(/{{MAPS_LINK_HTML}}/g, mapsLinkHtml)
       .replace(/{{TICKET_HTML}}/g, ticketHtml)
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))

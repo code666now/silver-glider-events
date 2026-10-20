@@ -1984,6 +1984,10 @@ test('private address privacy reveals exact location only after a confirmed RSVP
   const anonymousHtml = await anonymous.text();
   assert.match(anonymousHtml, /San Francisco, CA/);
   assert.match(anonymousHtml, /Exact location shared after RSVP/);
+  assert.match(anonymousHtml, /id="event-location-rsvp"[^>]*data-rsvp-context="location"[^>]*aria-controls=/);
+  assert.match(anonymousHtml, /RSVP to reveal the exact address/);
+  assert.match(anonymousHtml, /id="rsvp-form-title">RSVP<\/h2>/);
+  assert.match(anonymousHtml, /id="rsvp-form-context" hidden>The exact address will appear immediately after you’re confirmed\.<\/p>/);
   assert.doesNotMatch(anonymousHtml, /Moonlight Loft|789 Secret Street|Secret%20Street/);
   assert.doesNotMatch(anonymousHtml, /maps\.google\.com/);
 
@@ -2024,6 +2028,7 @@ test('private address privacy reveals exact location only after a confirmed RSVP
   assert.match(attendeeHtml, /Moonlight Loft/);
   assert.match(attendeeHtml, /789 Secret Street/);
   assert.match(attendeeHtml, /maps\.google\.com/);
+  assert.match(attendeeHtml, /id="event-location-rsvp"[^>]* hidden/);
 
   const attendeeCalendar = await fetch(`${baseUrl}${rsvp.location.calendarUrl}`);
   assert.equal(attendeeCalendar.status, 200);
@@ -2048,6 +2053,8 @@ test('private address privacy reveals exact location only after a confirmed RSVP
   assert.equal(cancelledPage.status, 200);
   const cancelledHtml = await cancelledPage.text();
   assert.match(cancelledHtml, /Exact location shared after RSVP/);
+  assert.match(cancelledHtml, /id="event-location-rsvp"[^>]*data-rsvp-context="location"/);
+  assert.doesNotMatch(cancelledHtml, /id="event-location-rsvp"[^>]* hidden/);
   assert.doesNotMatch(cancelledHtml, /Moonlight Loft|789 Secret Street|Secret%20Street/);
 
   const cancelledAttendeeCalendar = await fetch(`${baseUrl}/r/${rsvp.rsvpToken}/calendar.ics`);
@@ -2078,6 +2085,8 @@ test('flyer presentation redacts a private exact address before RSVP', async () 
   assert.match(html, /<body class="flyer-public-page">/);
   assert.match(html, /San Francisco, CA/);
   assert.match(html, /Exact location shared after RSVP/);
+  assert.match(html, /id="event-location-rsvp"[^>]*data-rsvp-context="location"/);
+  assert.match(html, /RSVP to reveal the exact address/);
   assert.doesNotMatch(html, /Lantern Room|246 Hidden Avenue|Hidden%20Avenue/);
   assert.doesNotMatch(html, /maps\.google\.com/);
 });

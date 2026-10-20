@@ -47,30 +47,40 @@ function applyLocation(location) {
   const name = $('event-location-name') || document.querySelector('.venue > strong, .flyer-venue > strong');
   const address = $('event-location-address');
   const map = $('event-location-map');
+  const rsvpAction = $('event-location-rsvp');
+  const canPromptForLocation = Boolean(
+    location.hidden &&
+    rsvpAction &&
+    EVENT.rsvpEnabled !== false &&
+    !EVENT.isPast &&
+    !EVENT.isFull &&
+    EVENT.status === 'published'
+  );
   if (name) name.textContent = location.name || '';
   if (address) {
-    address.textContent = location.address || '';
-    address.hidden = !location.address;
+    address.textContent = canPromptForLocation ? '' : (location.address || '');
+    address.hidden = !address.textContent;
   }
   if (map) {
-    map.replaceChildren();
-    map.hidden = !location.mapsUrl;
+    map.querySelectorAll('a').forEach(link => link.remove());
+    if (rsvpAction) rsvpAction.hidden = !canPromptForLocation;
     if (location.mapsUrl) {
       const link = document.createElement('a');
       link.href = location.mapsUrl;
       link.target = '_blank';
       link.rel = 'noopener';
       link.textContent = 'Open in Maps →';
-      map.append(link);
+      map.prepend(link);
     }
+    map.hidden = !location.mapsUrl && !canPromptForLocation;
   }
 
   const confirmationName = $('rsvp-confirmation-location-name');
   const confirmationAddress = $('rsvp-confirmation-location-address');
   if (confirmationName) confirmationName.textContent = location.name || '';
   if (confirmationAddress) {
-    confirmationAddress.textContent = location.address || '';
-    confirmationAddress.hidden = !location.address;
+    confirmationAddress.textContent = location.hidden ? '' : (location.address || '');
+    confirmationAddress.hidden = !confirmationAddress.textContent;
   }
 
   const calendar = $('cal-btn');
@@ -662,9 +672,12 @@ $('returning-rsvp-switch')?.addEventListener('click', async () => {
   }
 });
 
-function openRsvpForm({ scrollToForm = false, trigger = null } = {}) {
+function openRsvpForm({ scrollToForm = false, trigger = null, context = '' } = {}) {
   if (EVENT.rsvpEnabled === false) return;
   lastRsvpTrigger = trigger;
+  const locationContext = context === 'location';
+  $('rsvp-form-title').textContent = locationContext ? 'RSVP to see the full address' : 'RSVP';
+  $('rsvp-form-context').hidden = !locationContext;
   show('rsvp-form-box');
   document.querySelectorAll('[data-open-rsvp]').forEach(button => button.setAttribute('aria-expanded', 'true'));
   $('full_name').focus({ preventScroll: scrollToForm });
@@ -685,7 +698,26 @@ function closeRsvpForm() {
 if (EVENT.rsvpEnabled !== false) {
   document.querySelectorAll('[data-open-rsvp]').forEach(trigger => {
     trigger.setAttribute('aria-expanded', 'false');
-    trigger.addEventListener('click', () => openRsvpForm({ scrollToForm: trigger === mobileRsvpCta, trigger }));
+    trigger.addEventListener('click', () => {
+      const context = trigger.dataset.rsvpContext || '';
+      if (context === 'location' && EVENT.returningGuest) {
+        trigger.setAttribute('aria-expanded', 'true');
+        returningEditing = Boolean(EVENT.returningGuest.response);
+        renderReturningState();
+        show('returning-rsvp-state');
+        $('returning-rsvp-state').scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start'
+        });
+        $('returning-going').focus({ preventScroll: true });
+        return;
+      }
+      openRsvpForm({
+        scrollToForm: trigger === mobileRsvpCta || context === 'location',
+        trigger,
+        context
+      });
+    });
   });
   $('rsvp-close').addEventListener('click', closeRsvpForm);
 }

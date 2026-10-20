@@ -71,7 +71,10 @@
           <p id="rsvp-error"></p>
           <form id="rsvp-form">
             <div class="rsvp-form-head">
-              <h2>RSVP</h2>
+              <div class="rsvp-form-heading">
+                <h2 id="rsvp-form-title">RSVP</h2>
+                <p class="rsvp-form-context" id="rsvp-form-context" hidden>The exact address will appear immediately after you’re confirmed.</p>
+              </div>
               <button type="button" class="rsvp-close" id="rsvp-close" aria-label="Close RSVP form">Close <span aria-hidden="true">×</span></button>
             </div>
             <div class="sg-field"><label for="full_name">Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>

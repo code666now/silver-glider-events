@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.181
+
+Released October 19, 2026. Built, reviewed, and deployed by Codex.
+
+### Clearer RSVP-gated location action
+
+* Eligible Private Link Only and Secret Show Free RSVP pages now show **RSVP to reveal the exact address** beside the city and state instead of leaving the privacy message passive.
+* The location action reuses the existing RSVP flow with the contextual heading **RSVP to see the full address** and explains that the address appears immediately after confirmation. It preserves keyboard focus, a 44px touch target, Standard and Flyer presentation support, and responsive desktop/phone layouts.
+* Server-side location privacy is unchanged: the exact venue, address, Maps URL, and attendee calendar remain unavailable until a confirmed RSVP, and changing to **Can’t make it** hides them again.
+
+### Verification
+
+* Static validation and all 577 automated checks pass, including focused Standard/Flyer rendering and confirmed/cancelled attendee boundaries.
+* Desktop at 1440px and phone at 390px were browser-tested for action visibility, contextual form behavior, focus restoration, touch-target size, and horizontal overflow.
+* No database migration, stored event or RSVP data, emails, Host Pages, discovery, ticketing, or public-event privacy rules changed.
+
 ## 1.0.180
 
 Released October 19, 2026. Built, reviewed, and deployed by Codex.

@@ -219,7 +219,8 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(client, /&& !inlineCtaIsVisible/);
   assert.match(client, /&& !footerIsNear/);
   assert.match(client, /activeRsvpState === 'cta-state'/);
-  assert.match(client, /openRsvpForm\(\{ scrollToForm: trigger === mobileRsvpCta, trigger \}\)/);
+  assert.match(client, /scrollToForm: trigger === mobileRsvpCta \|\| context === 'location'/);
+  assert.match(client, /context: trigger\.dataset\.rsvpContext \|\| ''|const context = trigger\.dataset\.rsvpContext \|\| ''/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
   assert.match(flyerStyles, /body\.flyer-public-page,[\s\S]*padding-bottom: calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(flyerStyles, /\.mobile-rsvp-dock \{[\s\S]*background: rgba\(8,8,8,\.97\);[\s\S]*backdrop-filter: none;[\s\S]*contain: paint/);

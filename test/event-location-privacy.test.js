@@ -83,10 +83,19 @@ test('public rendering and RSVP responses enforce location privacy server-side',
   assert.match(route, /`\/r\/\$\{encodeURIComponent\(req\.params\.token\)\}\/calendar\.ics`/);
   assert.doesNotMatch(standard, /\{\{MAPS_URL\}\}/);
   assert.match(standard, /id="event-location-map">\{\{MAPS_LINK_HTML\}\}/);
+  assert.match(standard, /id="rsvp-form-title">RSVP/);
+  assert.match(standard, /id="rsvp-form-context" hidden>The exact address will appear immediately after you’re confirmed\./);
   assert.match(flyer, /\{\{FLYER_VENUE_HTML\}\}/);
+  assert.match(flyer, /id="rsvp-form-title">RSVP/);
+  assert.match(flyer, /id="rsvp-form-context" hidden>The exact address will appear immediately after you’re confirmed\./);
+  assert.match(route, /class="location-rsvp-trigger"[\s\S]*data-open-rsvp[\s\S]*data-rsvp-context="location"[\s\S]*type="button"[\s\S]*aria-controls=/);
+  assert.match(route, /RSVP to reveal the exact address/);
+  assert.match(route, /addressPrivacyEnabled\(event\)[\s\S]*rsvpEnabled[\s\S]*event\.status === 'published'[\s\S]*!isFull/);
   assert.match(client, /function applyLocation\(location\)/);
   assert.match(client, /if \(data\.location\) applyLocation\(data\.location\)/);
   assert.match(client, /EVENT\.returningGuest\.calendarUrl = data\.location\.calendarUrl/);
+  assert.match(client, /context === 'location'/);
+  assert.match(client, /RSVP to see the full address/);
 });
 
 test('public client replaces location, Maps, confirmation, and calendar details in place', () => {
@@ -99,7 +108,9 @@ test('public client replaces location, Maps, confirmation, and calendar details 
   assert.match(applyLocation, /event-location-name/);
   assert.match(applyLocation, /event-location-address/);
   assert.match(applyLocation, /event-location-map/);
-  assert.match(applyLocation, /map\.replaceChildren\(\)/);
+  assert.match(applyLocation, /event-location-rsvp/);
+  assert.match(applyLocation, /map\.querySelectorAll\('a'\)\.forEach\(link => link\.remove\(\)\)/);
+  assert.match(applyLocation, /rsvpAction\.hidden = !canPromptForLocation/);
   assert.match(applyLocation, /link\.href = location\.mapsUrl/);
   assert.match(applyLocation, /rsvp-confirmation-location-name/);
   assert.match(applyLocation, /rsvp-confirmation-location-address/);
