@@ -1121,6 +1121,85 @@ async function sendHostRecap({ to, event, stats, unsubscribeUrl, manageUrl }) {
   });
 }
 
+async function sendHostProfileNudge({
+  to,
+  hostName,
+  hostPageUrl,
+  unsubscribeUrl,
+  manageUrl,
+  idempotencyKey
+}) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const pageName = String(hostName || '').trim() || 'Your Host Page';
+  const publicPageUrl = safeHttpUrl(hostPageUrl);
+  const settingsPath = '/settings/host-page';
+  const pageLink = publicPageUrl
+    ? `<p style="color:#9a9a9a;font-size:15px;line-height:1.65;margin:0">Your page is already live: <a href="${esc(publicPageUrl)}" style="color:#1CC5BE;text-decoration:underline">${esc(pageName)}</a>.</p>`
+    : '';
+  return send({
+    to,
+    subject: 'Make your Silver Glider page yours',
+    headers: oneClickHeaders(unsubscribeUrl),
+    idempotencyKey,
+    html: layout({
+      kicker: 'Your public page',
+      headline: 'Make it yours.',
+      sub: 'Add a logo, a short introduction, and one link so guests know they’re in the right place.',
+      bodyHtml: pageLink,
+      cta: 'Finish your Host Page',
+      ctaUrl: `${baseUrl}/login?next=${encodeURIComponent(settingsPath)}`,
+      footerHtml: policyFooter({
+        reason: 'You’re receiving this optional setup email because you created a Silver Glider Host Page.',
+        includeAddress: true,
+        links: [
+          { label: 'Turn off Host Page setup tips', url: unsubscribeUrl },
+          { label: 'Manage host emails', url: manageUrl },
+          { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+        ]
+      })
+    })
+  });
+}
+
+async function sendFirstEventNudge({
+  to,
+  draftEvent,
+  unsubscribeUrl,
+  manageUrl,
+  idempotencyKey
+}) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const draftId = Number(draftEvent?.id);
+  const hasDraft = Number.isSafeInteger(draftId) && draftId > 0;
+  const draftTitle = String(draftEvent?.title || '').trim();
+  const destinationPath = hasDraft ? `/events/${draftId}/edit` : '/events/new';
+  return send({
+    to,
+    subject: hasDraft ? 'Your first event is waiting' : 'Ready to put something on the calendar?',
+    headers: oneClickHeaders(unsubscribeUrl),
+    idempotencyKey,
+    html: layout({
+      kicker: 'Your first event',
+      headline: hasDraft ? 'Finish what you started.' : 'Put something on the calendar.',
+      sub: hasDraft
+        ? `${draftTitle || 'Your draft'} is saved. Publish it when the details feel right.`
+        : 'Turn the idea in your head into a page people can join and share.',
+      bodyHtml: '<p style="color:#9a9a9a;font-size:15px;line-height:1.65;margin:0">A title, date, and place are enough to get started. You can polish everything else before you share it.</p>',
+      cta: hasDraft ? 'Continue your event' : 'Create your first event',
+      ctaUrl: `${baseUrl}/login?next=${encodeURIComponent(destinationPath)}`,
+      footerHtml: policyFooter({
+        reason: 'You’re receiving this optional setup email because you created a Silver Glider Host Page.',
+        includeAddress: true,
+        links: [
+          { label: 'Turn off Host Page setup tips', url: unsubscribeUrl },
+          { label: 'Manage host emails', url: manageUrl },
+          { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+        ]
+      })
+    })
+  });
+}
+
 // Tells the host what the artist did with their lineup invitation.
 async function sendLineupClaimOutcome({ to, event, artistName, status }) {
   const claimed = status === 'claimed';
@@ -1259,7 +1338,7 @@ module.exports = {
   sendAdminIdentityChangeVerification, sendAdminFlyerNotification,
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome, sendHostRecap,
-  sendPhotoRequest, sendCommerceLaunch,
+  sendHostProfileNudge, sendFirstEventNudge, sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,

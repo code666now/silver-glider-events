@@ -28,6 +28,41 @@
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
     .toolbar > [hidden] { display:none !important; }
     .toolbar .sg-btn, .more-menu summary { padding: 10px 20px; font-size: 13px; }
+    .host-page-success-dialog {
+      width:min(520px,calc(100% - 32px));max-width:none;margin:auto;padding:0;
+      overflow:hidden;border:1px solid rgba(28,197,190,.3);border-radius:28px;
+      background:linear-gradient(150deg,rgba(22,27,27,.99),rgba(13,13,15,.99));
+      color:var(--sg-text);box-shadow:0 30px 90px rgba(0,0,0,.62);
+    }
+    .host-page-success-dialog::backdrop {
+      background:rgba(0,0,0,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    }
+    .host-page-success-dialog-inner { position:relative;padding:42px; }
+    .host-page-success-close {
+      position:absolute;top:18px;right:18px;width:44px;height:44px;display:grid;place-items:center;
+      padding:0;border:1px solid var(--sg-border);border-radius:50%;background:rgba(255,255,255,.025);
+      color:var(--sg-text-dim);font:400 25px/1 var(--sg-font-body);cursor:pointer;
+    }
+    @media (hover:hover) { .host-page-success-close:hover { border-color:rgba(28,197,190,.42);color:var(--sg-text); } }
+    .host-page-success-close:focus-visible,
+    .host-page-success-dialog .sg-btn:focus-visible,
+    .host-page-success-later:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
+    .host-page-success-mark {
+      width:58px;height:58px;display:grid;place-items:center;margin-bottom:28px;border:1px solid rgba(28,197,190,.34);
+      border-radius:19px;background:rgba(28,197,190,.1);color:var(--sg-accent);
+    }
+    .host-page-success-mark svg { width:29px;height:29px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round; }
+    .host-page-success-eyebrow { margin:0 0 10px;color:var(--sg-accent);font-size:11px;font-weight:800;letter-spacing:.15em;text-transform:uppercase; }
+    .host-page-success-dialog h2 { max-width:390px;margin:0 48px 13px 0;font-size:clamp(30px,5vw,40px);line-height:1.08; }
+    .host-page-success-dialog h2:focus { outline:none; }
+    .host-page-success-copy { max-width:420px;margin:0;color:var(--sg-text-dim);font-size:15px;line-height:1.65; }
+    .host-page-success-actions { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;margin-top:30px; }
+    .host-page-success-actions .sg-btn { min-height:52px; }
+    .host-page-success-later {
+      min-height:44px;display:block;margin:12px auto 0;padding:8px 12px;border:0;background:transparent;
+      color:var(--sg-text-faint);font:700 13px var(--sg-font-body);cursor:pointer;
+    }
+    @media (hover:hover) { .host-page-success-later:hover { color:var(--sg-text); } }
     .more-menu { position: relative; }
     .more-menu summary { list-style: none; }
     .more-menu summary::-webkit-details-marker { display: none; }
@@ -357,6 +392,17 @@
       .guest-tools #search { max-width: none; }
     }
     @media (max-width: 879px) {
+      .host-page-success-dialog {
+        width:100%;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);
+        margin:auto 0 0;border-width:1px 0 0;border-radius:28px 28px 0 0;
+        overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+      }
+      .host-page-success-dialog-inner { padding:36px 22px calc(24px + env(safe-area-inset-bottom)); }
+      .host-page-success-mark { margin-bottom:24px; }
+      .host-page-success-dialog h2 { margin-right:48px;font-size:var(--sg-mobile-page-title-size); }
+      .host-page-success-copy { font-size:var(--sg-mobile-helper-size); }
+      .host-page-success-actions { grid-template-columns:1fr;gap:12px;margin-top:26px; }
+      .host-page-success-actions .sg-btn { min-height:var(--sg-mobile-control-height); }
       .feedback-bubble { display:none !important; }
       .manage-shell {
         max-width:680px;
@@ -853,6 +899,23 @@
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>
   </div>
+
+  <dialog class="host-page-success-dialog" id="host-page-success-dialog" aria-labelledby="host-page-success-title" aria-describedby="host-page-success-copy">
+    <div class="host-page-success-dialog-inner">
+      <button class="host-page-success-close" id="host-page-success-close" type="button" aria-label="Close">×</button>
+      <div class="host-page-success-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 19V8l8-4 8 4v11"/><path d="M8 19v-6h8v6M2.5 19.5h19"/></svg>
+      </div>
+      <p class="host-page-success-eyebrow">Your public home</p>
+      <h2 id="host-page-success-title" tabindex="-1">Your Host Page is live.</h2>
+      <p class="host-page-success-copy" id="host-page-success-copy">Your events now have one place people can visit and follow. Add a logo, a short introduction, and a link so guests know they’re in the right place.</p>
+      <div class="host-page-success-actions">
+        <a class="sg-btn sg-btn-primary" id="host-page-success-personalize" href="/settings/host-page">Personalize my page</a>
+        <a class="sg-btn sg-btn-ghost" id="host-page-success-view" target="_blank" rel="noopener">View page</a>
+      </div>
+      <button class="host-page-success-later" id="host-page-success-later" type="button">Keep managing my event</button>
+    </div>
+  </dialog>
 
   <dialog class="familiar-invite-dialog" id="familiar-invite-dialog" aria-labelledby="familiar-invite-title">
     <form class="familiar-invite-dialog-form" id="familiar-invite-form">

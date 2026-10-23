@@ -159,7 +159,9 @@ async function ensureHostProfile(organizerId, hostName) {
     try {
       const { rows } = await pool.query(
         `UPDATE organizers
-            SET org_name=$2, public_slug=$3, updated_at=NOW()
+            SET org_name=$2, public_slug=$3,
+                host_page_created_at=COALESCE(host_page_created_at,NOW()),
+                updated_at=NOW()
           WHERE id=$1 AND public_slug IS NULL
           RETURNING id, email, name, org_name, public_slug, logo_url, header_image_url,
                     bio, website_url, instagram_handle, instagram_url, contact_email,

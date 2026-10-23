@@ -70,13 +70,68 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-if (new URLSearchParams(location.search).get('created')) {
+const createdFromEventFlow = Boolean(new URLSearchParams(location.search).get('created'));
+let hostPageSuccessMarkedSeen = false;
+
+function safeHostPageUrl(value) {
+  try {
+    const url = new URL(String(value || ''), location.origin);
+    if (url.origin !== location.origin || !/^\/h\/[a-z0-9-]+\/?$/.test(url.pathname)) return '';
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function markHostPageSuccessSeen() {
+  if (hostPageSuccessMarkedSeen) return;
+  hostPageSuccessMarkedSeen = true;
+  fetch('/api/host-onboarding/seen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    keepalive: true,
+    body: '{}'
+  }).catch(() => {});
+}
+
+function closeHostPageSuccess() {
+  const dialog = $('host-page-success-dialog');
+  if (dialog.open) dialog.close();
+}
+
+async function showHostPageSuccessIfNeeded() {
+  try {
+    const state = await api('/api/host-onboarding');
+    const hostPageUrl = safeHostPageUrl(state.hostPageUrl);
+    if (!state.showHostPageSuccess || !hostPageUrl) return;
+
+    $('host-page-success-view').href = hostPageUrl;
+    if (state.profileComplete) {
+      $('host-page-success-copy').textContent = 'Your events now have one place people can visit and follow. Your page is ready to share whenever you want people to see what’s next.';
+      $('host-page-success-personalize').textContent = 'Edit my page';
+    }
+    $('host-page-success-dialog').showModal();
+    $('host-page-success-title').focus();
+  } catch (_) {
+    // Event management remains fully usable if onboarding state cannot load.
+  }
+}
+
+if (createdFromEventFlow) {
   $('created-note').style.display = 'block';
   api('/api/auth/me').then(({ organizer }) => {
     if (!organizer.public_slug) return;
-    $('created-host-note').innerHTML = ` Your public page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings">add a logo</a>.`;
+    $('created-host-note').innerHTML = ` Your public page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings/host-page">personalize it</a>.`;
   }).catch(() => {});
+  showHostPageSuccessIfNeeded();
 }
+
+$('host-page-success-close').addEventListener('click', closeHostPageSuccess);
+$('host-page-success-later').addEventListener('click', closeHostPageSuccess);
+$('host-page-success-dialog').addEventListener('close', markHostPageSuccessSeen);
+$('host-page-success-personalize').addEventListener('click', markHostPageSuccessSeen);
+$('host-page-success-view').addEventListener('click', markHostPageSuccessSeen);
 
 function eventUrl() {
   return `${location.origin}/e/${eventData.slug}`;

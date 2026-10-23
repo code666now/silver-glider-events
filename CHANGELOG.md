@@ -2,6 +2,31 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.182
+
+Released October 23, 2026. Built, reviewed, and deployed by Codex.
+
+### A clearer first win for new hosts
+
+* After a host creates their first event and Silver Glider creates the accompanying Host Page, event management shows one focused success prompt: **Your Host Page is live.** The host can personalize it, view it, or keep managing the event; the existing success note remains as a non-blocking fallback.
+* The prompt is stored as seen for that authenticated host, never trusts an account ID from the browser, and does not appear again. It is a centered dialog on desktop and a scroll-safe bottom sheet on phones.
+
+### Optional, well-timed setup help
+
+* A new Host Page with no logo, bio, Instagram, or website may receive one setup email after 24 hours. A host who still has never published may receive one draft-aware first-event email after 72 hours, with at least 24 hours between messages.
+* Only the account's verified email can receive these messages. Existing Host Pages are not enrolled, inactive accounts are skipped, and hosts can turn off the independent **Host Page setup tips** preference without affecting essential account or event email.
+* Delivery uses the existing per-account advisory lock plus stable provider idempotency keys. Eligibility is rechecked under the lock, delivery is marked only after provider success, and a durable publication milestone prevents a cancelled or deleted first event from restarting the nudge.
+
+### RSVP-gated address polish
+
+* A guest who has already confirmed no longer sees the redundant **RSVP to reveal the exact address** action. Their event page goes directly to the revealed address and Maps action.
+
+### Verification
+
+* Static validation and all 585 automated checks pass, including real PostgreSQL/HTTP coverage for authenticated ownership, no retroactive enrollment, concurrent delivery, draft-aware email, and the permanent publication milestone.
+* The success prompt was browser-tested at 1440px desktop, 390×844 phone, and a short 390×500 phone viewport for focus, reachable actions, internal scrolling, touch targets, persistence, and horizontal overflow.
+* Migration `071_host_onboarding.sql` is additive and does not enroll existing Host Pages or rewrite existing events.
+
 ## 1.0.181
 
 Released October 19, 2026. Built, reviewed, and deployed by Codex.

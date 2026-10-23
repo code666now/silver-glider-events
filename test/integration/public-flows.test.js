@@ -44,6 +44,7 @@ const phoneVerification = require('../../src/lib/phone-verification');
 const paypal = require('../../src/lib/paypal');
 const stripeSms = require('../../src/lib/stripe-sms');
 const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
+const { deliverProfileNudge, runHostOnboardingPass } = require('../../src/jobs/host-onboarding');
 const { settlePreviousGuestInvitationWork } = require('../../src/jobs/previous-guest-invitations');
 const {
   enqueueFlyerAdminNotifications,
@@ -497,6 +498,85 @@ test('background confirmation work is tracked so tests can settle it before rese
     `SELECT status FROM message_log WHERE recipient='settle@example.test' AND message_type='rsvp_confirmation'`
   );
   assert.equal(rows[0]?.status, 'sent', 'settling waits for the confirmation to finish');
+});
+
+test('new hosts receive one secure activation sequence and publication stops the event nudge forever', async () => {
+  mailer.devOutbox.length = 0;
+  await addVerifiedEmailIdentity(organizerId, 'host@example.test', {
+    primary: true,
+    source: 'host_onboarding_integration'
+  });
+  const sessionCookie = `${require('../../src/lib/session').COOKIE_NAME}=${encodeURIComponent(signSession(organizerId))}`;
+
+  const established = await runHostOnboardingPass();
+  assert.deepEqual(established, { profile: 0, event: 0 }, 'existing Host Pages are not enrolled retroactively');
+
+  await pool.query(
+    `UPDATE organizers
+        SET host_page_created_at=NOW() - INTERVAL '25 hours',
+            host_page_success_seen_at=NULL,
+            host_profile_nudge_sent_at=NULL,
+            first_event_nudge_sent_at=NULL,
+            first_event_published_at=NULL,
+            logo_url=NULL,bio=NULL,instagram_handle=NULL,website_url=NULL
+      WHERE id=$1`,
+    [organizerId]
+  );
+
+  const state = await fetch(`${baseUrl}/api/host-onboarding`, {
+    headers: { cookie: sessionCookie }
+  });
+  assert.equal(state.status, 200);
+  assert.equal((await state.json()).showHostPageSuccess, true);
+  const seen = await fetch(`${baseUrl}/api/host-onboarding/seen`, {
+    method: 'POST', headers: { cookie: sessionCookie }
+  });
+  assert.equal(seen.status, 200);
+  assert.equal((await (await fetch(`${baseUrl}/api/host-onboarding`, {
+    headers: { cookie: sessionCookie }
+  })).json()).showHostPageSuccess, false);
+
+  const concurrentProfile = await Promise.all([
+    deliverProfileNudge({ id: organizerId }),
+    deliverProfileNudge({ id: organizerId })
+  ]);
+  assert.equal(concurrentProfile.filter(Boolean).length, 1,
+    'the per-account lock permits one provider delivery across workers');
+  assert.equal(mailer.devOutbox.filter(message => message.subject === 'Make your Silver Glider page yours').length, 1);
+  assert.ok((await pool.query(
+    'SELECT host_profile_nudge_sent_at FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].host_profile_nudge_sent_at);
+  assert.deepEqual(await runHostOnboardingPass(), { profile: 0, event: 0 }, 'successful delivery is one-shot');
+
+  await pool.query(
+    `UPDATE organizers
+        SET host_page_created_at=NOW() - INTERVAL '73 hours',
+            host_profile_nudge_sent_at=NOW() - INTERVAL '25 hours',
+            first_event_nudge_sent_at=NULL
+      WHERE id=$1`,
+    [organizerId]
+  );
+  const draft = await createEvent({ slug: 'onboarding-draft', title: 'Onboarding Draft', status: 'draft' });
+  const firstEvent = await runHostOnboardingPass();
+  assert.deepEqual(firstEvent, { profile: 0, event: 1 });
+  const draftEmail = mailer.devOutbox.find(message => message.subject === 'Your first event is waiting');
+  assert.ok(draftEmail);
+  assert.match(draftEmail.html, new RegExp(`/login\\?next=%2Fevents%2F${draft.id}%2Fedit`));
+
+  await pool.query('UPDATE organizers SET first_event_nudge_sent_at=NULL WHERE id=$1', [organizerId]);
+  const published = await createEvent({
+    slug: 'onboarding-published', title: 'Published Once', status: 'published'
+  });
+  await pool.query("UPDATE events SET status='cancelled' WHERE id=$1", [published.id]);
+  await pool.query('DELETE FROM events WHERE id=$1', [published.id]);
+  const milestone = (await pool.query(
+    'SELECT first_event_published_at FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].first_event_published_at;
+  assert.ok(milestone, 'the first publication milestone survives cancellation and deletion');
+  assert.deepEqual(await runHostOnboardingPass(), { profile: 0, event: 0 });
+  assert.equal((await pool.query(
+    'SELECT first_event_nudge_sent_at FROM organizers WHERE id=$1', [organizerId]
+  )).rows[0].first_event_nudge_sent_at, null);
 });
 
 test('email settings save, resubscribe, and support one-click opt-out without affecting essential mail', async () => {

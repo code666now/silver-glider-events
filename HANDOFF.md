@@ -1,6 +1,6 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** October 19, 2026 (v1.0.181)
+**Last updated:** October 23, 2026 (v1.0.182)
 
 ## 1. What it is
 Silver Glider Events is a lightweight tool for creating beautiful event pages, collecting RSVPs, linking guests to third-party ticket providers, and sending reminders. It is **Version 1** of a bigger platform, built for independent hosts, promoters, artists, venues, and private gatherings.
@@ -234,19 +234,29 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - **Location "Enter manually" / "Search instead"** are accent text links on phones in all three editors (owner editor, quick create, full form) instead of field-sized buttons.
 - **Icons:** `/favicon.png`, `/apple-touch-icon.png`, `/icon-192.png`, `/icon-512.png` and `/site.webmanifest` (`display: browser`), plus `theme-color` on every view. `viewport-fit=cover` was added only to pages built on `.sg-shell`, plus login and create. The public event, flyer, host and RSVP-manage pages keep their viewport tag.
 
+### Host Page activation — rules to keep
+
+- Onboarding applies only when `ensureHostProfile()` creates a new Host Page after migration `071`; existing Host Pages intentionally retain `host_page_created_at=NULL` and must never be enrolled retroactively.
+- The one-time **Your Host Page is live.** prompt is fetched from authenticated `GET /api/host-onboarding` after event creation and acknowledged through authenticated `POST /api/host-onboarding/seen`. The server resolves the host from the session; never accept an organizer ID from the browser. The persistent event-created note remains as a fallback.
+- The 24-hour profile email is eligible only while logo, bio, Instagram, and website are all blank. The 72-hour first-event email is draft-aware and is permanently suppressed once `first_event_published_at` has ever been set, even if that event is later cancelled or deleted.
+- Both messages require an active canonical account and an account-scope verified, non-revoked email. They share the optional `host_onboarding` preference, one-click unsubscribe headers, login-wrapped destinations, and at least 24 hours of spacing.
+- Delivery is serialized by the existing per-account advisory lock. Recheck eligibility and opt-out inside that lock, send with the stable Resend idempotency key, and only then set the `*_sent_at` timestamp. Do not restore a pre-send claim timestamp; a crash after provider acceptance must safely retry the same idempotency key.
+- `first_event_published_at` is a durable organizer milestone maintained by the database trigger in migration `071`, not a query over currently published rows.
+
 ### Exact repository and production state
 
-- Repository: `/Users/adrianmartinez/Documents/New project/silver-glider-events-app`
+- Repository: `/Users/adrianmartinez/Documents/New project`
 - Branch: `main`
-- Current release: `v1.0.181`. Eligible private Free RSVP pages make the protected-location boundary actionable with **RSVP to reveal the exact address**, while keeping structured venue, street, Maps, and public-calendar location data hidden until confirmation. Public and ticketed events retain their existing behavior. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
+- Current release: `v1.0.182`. New hosts receive one authenticated Host Page success prompt and, only when still useful, up to two optional setup emails. Confirmed attendees no longer see a redundant address-reveal RSVP prompt. Use `git rev-parse --short HEAD` for the exact SHA rather than copying an older value from this document.
 - Production: `https://silvergliderevents.com`; the Railway service URL serves the same app.
 - Production `/health` must report the released version, status `ok`, and the current release SHA after deployment. `asset_error` means a critical public image was omitted or corrupted.
 - GitHub CLI authentication is active for `code666now` over HTTPS, and `origin` points at GitHub.
 - `.git-sha` is intentionally left modified after deployment so Railway receives the release SHA. Do not revert or include it blindly in a later commit.
-- Migrations currently run from `001_initial.sql` through `070_private_event_address_privacy.sql`.
+- Migrations currently run from `001_initial.sql` through `071_host_onboarding.sql`.
 
 ### Most recently completed
 
+- `v1.0.182` adds the one-time Host Page success prompt plus carefully gated 24-hour profile and 72-hour first-event emails. Existing hosts are not enrolled; only verified active accounts are eligible; a separate opt-out, per-account advisory lock, provider idempotency, post-send timestamps, and durable publication milestone keep delivery safe. The release also removes the redundant address-reveal RSVP prompt after a guest is already confirmed. Static checks and all 585 tests pass, with desktop, phone, and short-screen browser coverage.
 - `v1.0.181` turns the locked private-event location state into an accessible RSVP action in Standard and Flyer presentations. The action reuses the existing RSVP flow, supplies location-specific context, reveals the exact location in place after confirmation, and returns if that attendee changes to **Can’t make it**. The v1.0.180 server boundary remains unchanged: anonymous and unconfirmed viewers, public calendars, lineup-claim pages, and pre-RSVP emails receive city/state only; confirmed attendees, owners, attendee-token calendars, and confirmed-attendee messages retain the exact venue and address.
 - `v1.0.136` fully separates authentication from authorization. Normal email and returning-phone sign-in no longer branch on `organizers.is_admin`; only dedicated operator sessions enter `/admin`. Customer and administrator resends rotate their exact browser challenge so older codes fail and the latest succeeds, delivery rollback preserves the prior customer code, malformed cookies fail closed, and successful customer verification always issues the canonical customer session. Static checks and all 472 tests pass, including 106 PostgreSQL/HTTP integration scenarios.
 - `v1.0.130` restores a confirmed or cancelled RSVP from the exact event's scoped attendee cookie and lets signed-in hosts who RSVP'd see their personal status without losing the owner editor. Answered RSVP states no longer fall back to the generic inline or mobile-sticky RSVP action; external-ticket events preserve their ticket action while hiding only the redundant RSVP alternative. The release changes no RSVP data, database schema, media, or messaging behavior and passes all 460 tests.

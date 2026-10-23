@@ -11,6 +11,10 @@ const EMAIL_PREFERENCE_SCOPES = Object.freeze({
   product_updates: Object.freeze({
     label: 'Silver Glider product announcements',
     description: 'Receive occasional announcements about new Silver Glider tools and services.'
+  }),
+  host_onboarding: Object.freeze({
+    label: 'Host Page setup tips',
+    description: 'Receive up to two optional emails that help you finish your Host Page and publish your first event.'
   })
 });
 

@@ -91,6 +91,7 @@ app.use(require('./routes/sms-credits'));
 app.use(require('./routes/sms-notifications'));
 app.use(require('./routes/email-icons'));
 app.use(require('./routes/email-preferences'));
+app.use(require('./routes/host-onboarding'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
@@ -265,6 +266,7 @@ async function start() {
   const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
   require('./jobs/reminders').startReminderCron();
   require('./jobs/host-recap').startHostRecapCron();
+  require('./jobs/host-onboarding').startHostOnboardingCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
   require('./jobs/flyer-admin-notifications').startFlyerAdminNotificationCron();
