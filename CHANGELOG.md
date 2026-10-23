@@ -25,6 +25,7 @@ Released October 23, 2026. Built, reviewed, and deployed by Codex.
 
 * Static validation and all 585 automated checks pass, including real PostgreSQL/HTTP coverage for authenticated ownership, no retroactive enrollment, concurrent delivery, draft-aware email, and the permanent publication milestone.
 * The success prompt was browser-tested at 1440px desktop, 390×844 phone, and a short 390×500 phone viewport for focus, reachable actions, internal scrolling, touch targets, persistence, and horizontal overflow.
+* The production dependency lock uses `follow-redirects` 1.16.1, which resolves the newly published cross-origin credential-stripping advisories; the production dependency audit reports zero known vulnerabilities.
 * Migration `071_host_onboarding.sql` is additive and does not enroll existing Host Pages or rewrite existing events.
 
 ## 1.0.181
