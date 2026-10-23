@@ -66,6 +66,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   text-align: left;
   cursor: pointer;
 }
+.location-rsvp-trigger[hidden] { display: none; }
 .location-rsvp-trigger svg {
   width: 17px;
   height: 17px;

@@ -74,6 +74,7 @@ test('public rendering and RSVP responses enforce location privacy server-side',
   const standard = read('src/views/event-public.html');
   const flyer = read('src/views/event-public-flyer.html');
   const client = read('public/js/public-event.js');
+  const brand = read('public/css/brand.css');
 
   assert.match(route, /locationForViewer\(event, \{ canViewExact: canViewExactLocation \}\)/);
   assert.match(route, /calendarEventForViewer\(event, \{ canViewExact: false \}\)/);
@@ -91,6 +92,7 @@ test('public rendering and RSVP responses enforce location privacy server-side',
   assert.match(route, /class="location-rsvp-trigger"[\s\S]*data-open-rsvp[\s\S]*data-rsvp-context="location"[\s\S]*type="button"[\s\S]*aria-controls=/);
   assert.match(route, /RSVP to reveal the exact address/);
   assert.match(route, /addressPrivacyEnabled\(event\)[\s\S]*rsvpEnabled[\s\S]*event\.status === 'published'[\s\S]*!isFull/);
+  assert.match(brand, /\.location-rsvp-trigger\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
   assert.match(client, /function applyLocation\(location\)/);
   assert.match(client, /if \(data\.location\) applyLocation\(data\.location\)/);
   assert.match(client, /EVENT\.returningGuest\.calendarUrl = data\.location\.calendarUrl/);
