@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.183
+
+Released October 29, 2026. Built, reviewed, and deployed by Codex.
+
+### Clearer event date and time controls
+
+* Create Event and Edit Event now use crisp, near-white calendar and clock icons that remain visible against the dark form fields on desktop and mobile.
+* The icons preserve the browser's native date and time pickers, including the original desktop click target, iOS control behavior, 60px phone geometry, and right-side text clearance.
+
+### Verification
+
+* Static validation and all 586 automated checks pass, including focused editor styling and mobile regression coverage.
+* No event data, RSVP behavior, reminder email, Host Page, ticketing, authentication, or database schema changes in this release.
+
 ## 1.0.182
 
 Released October 23, 2026. Built, reviewed, and deployed by Codex.

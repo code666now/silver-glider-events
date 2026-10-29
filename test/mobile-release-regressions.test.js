@@ -22,7 +22,7 @@ test('mobile date and time controls share the 60px control geometry on every eve
 
   assert.match(
     quickCreate,
-    /\.quick-create-card \.owner-input\[type="date"\],[\s\S]*?\.quick-create-card \.owner-input\[type="time"\]\s*\{[^}]*height:\s*var\(--sg-mobile-control-height\);[^}]*min-height:\s*var\(--sg-mobile-control-height\);[^}]*\}/
+    /\.quick-create-card \.owner-input\[type="date"\],[\s\S]*?\.quick-create-card \.owner-input\[type="time"\]\s*\{[^}]*height:\s*var\(--sg-mobile-control-height\);[^}]*min-height:\s*var\(--sg-mobile-control-height\);[^}]*padding-right:\s*48px;[^}]*\}/
   );
   assert.match(
     quickCreate,
@@ -41,6 +41,10 @@ test('mobile date and time controls share the 60px control geometry on every eve
   assert.match(
     ownerEditor,
     /\.owner-input:not\(\.owner-textarea\)\s*\{[^}]*height:\s*60px;[^}]*min-height:\s*60px;[^}]*\}/
+  );
+  assert.match(
+    ownerEditor,
+    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{\s*padding-right:\s*48px;\s*\}/
   );
   assert.match(
     ownerEditor,

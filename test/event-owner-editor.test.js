@@ -267,12 +267,28 @@ test('quick create keeps empty iOS date and time controls as tall as mobile text
   assert.match(mobileStyles[1], /\.quick-create-card \.owner-input \{[\s\S]*?min-height:\s*var\(--sg-mobile-control-height\);/);
   assert.match(
     mobileStyles[1],
-    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{\s*height:\s*var\(--sg-mobile-control-height\);\s*min-height:\s*var\(--sg-mobile-control-height\);\s*\}/
+    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{[^}]*height:\s*var\(--sg-mobile-control-height\);[^}]*min-height:\s*var\(--sg-mobile-control-height\);[^}]*padding-right:\s*48px;[^}]*\}/
   );
   assert.match(
     mobileStyles[1],
     /\.owner-input\[type="date"\]::\-webkit-date-and-time-value,[\s\S]*?\.owner-input\[type="time"\]::\-webkit-date-and-time-value\s*\{\s*height:\s*1\.5em;\s*\}/
   );
+});
+
+test('owner date and time controls use visible light icons without disabling native pickers', () => {
+  const styles = read('public/css/event-owner-editor.css');
+
+  assert.match(
+    styles,
+    /\.owner-input\[type="date"\],[\s\S]*?\.owner-input\[type="time"\]\s*\{[^}]*color-scheme:\s*dark;[^}]*padding-right:\s*48px;[^}]*background-position:\s*right 16px center;[^}]*background-size:\s*21px 21px;[^}]*\}/
+  );
+  assert.match(styles, /\.owner-input\[type="date"\]\s*\{[^}]*stroke='%23e4e4e8'/);
+  assert.match(styles, /\.owner-input\[type="time"\]\s*\{[^}]*stroke='%23e4e4e8'/);
+  assert.match(
+    styles,
+    /\.owner-input\[type="date"\]::\-webkit-calendar-picker-indicator,[\s\S]*?\.owner-input\[type="time"\]::\-webkit-calendar-picker-indicator\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*cursor:\s*pointer;[^}]*opacity:\s*0;[^}]*\}/
+  );
+  assert.doesNotMatch(styles, /\.owner-input\[type="(?:date|time)"\][^{]*\{[^}]*(?:appearance:\s*none|pointer-events:\s*none)/);
 });
 
 test('appearance editing reuses protected uploads and rate-conscious photo search', () => {
