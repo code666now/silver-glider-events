@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { sendHostRecap } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { emailOptedOut, emailPreferenceUrls } = require('../lib/email-preferences');
+const { eventEndAtSql, loadPostEventContext } = require('../lib/post-event');
 
 let _running = false;
 
@@ -14,66 +15,16 @@ const RECAP_HOURS = [10, 11, 12, 13];
 
 // Only events with RSVPs get a recap; nobody needs "nobody came" in their inbox.
 async function pendingRecapEvents(hour) {
+  const eventEnd = eventEndAtSql('e');
   const { rows } = await pool.query(
-    `SELECT e.id, e.title, e.slug, e.event_date, e.start_time, e.venue_name, e.venue_address,
-            e.organizer_id,
-            COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps
-                       WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
-            COALESCE((SELECT COUNT(*) FROM rsvps r
-                       WHERE r.event_id=e.id AND r.status='confirmed'
-                         AND EXISTS (
-                           SELECT 1 FROM rsvps prior
-                            JOIN events prior_event ON prior_event.id=prior.event_id
-                            WHERE prior_event.organizer_id=e.organizer_id
-                              AND prior_event.id<>e.id
-                              AND (
-                                prior_event.event_date < e.event_date
-                                OR (prior_event.event_date=e.event_date
-                                    AND prior_event.start_time < e.start_time)
-                                OR (prior_event.event_date=e.event_date
-                                    AND prior_event.start_time=e.start_time
-                                    AND prior_event.id < e.id)
-                              )
-                              AND prior.status='confirmed'
-                              AND ((r.user_id IS NOT NULL AND prior.user_id=r.user_id)
-                                   OR ((r.user_id IS NULL OR prior.user_id IS NULL)
-                                       AND LOWER(TRIM(prior.email))=LOWER(TRIM(r.email))))
-                         )), 0)::int AS returning_count,
-            COALESCE((SELECT COUNT(*) FROM rsvps r
-                       WHERE r.event_id=e.id AND r.status='confirmed'
-                         AND EXISTS (
-                           SELECT 1 FROM rsvps prior
-                            JOIN events prior_event ON prior_event.id=prior.event_id
-                            WHERE prior_event.organizer_id=e.organizer_id
-                              AND prior_event.id<>e.id
-                              AND (
-                                prior_event.event_date < e.event_date
-                                OR (prior_event.event_date=e.event_date
-                                    AND prior_event.start_time < e.start_time)
-                                OR (prior_event.event_date=e.event_date
-                                    AND prior_event.start_time=e.start_time
-                                    AND prior_event.id < e.id)
-                              )
-                              AND prior.status='confirmed'
-                              AND ((r.user_id IS NOT NULL AND prior.user_id=r.user_id)
-                                   OR ((r.user_id IS NULL OR prior.user_id IS NULL)
-                                       AND LOWER(TRIM(prior.email))=LOWER(TRIM(r.email))))
-                         )
-                         AND EXISTS (
-                           SELECT 1 FROM message_log ml
-                            WHERE ml.event_id=e.id
-                              AND ml.message_type='previous_guest_invite'
-                              AND ml.status IN ('pending','sent')
-                              AND ml.created_at <= r.created_at
-                              AND ((ml.recipient_user_id IS NOT NULL AND ml.recipient_user_id=r.user_id)
-                                   OR ((ml.recipient_user_id IS NULL OR r.user_id IS NULL)
-                                       AND LOWER(TRIM(ml.recipient))=LOWER(TRIM(r.email))))
-                         )), 0)::int AS invited_returning_count
+    `SELECT e.id, e.organizer_id
        FROM events e
        JOIN organizers o ON o.id=e.organizer_id
       WHERE e.status='published'
         AND e.host_recap_sent_at IS NULL
-        AND e.event_date = ((NOW() AT TIME ZONE e.timezone)::date - 1)
+        AND NOW() >= (${eventEnd})
+        AND ((((${eventEnd}) AT TIME ZONE e.timezone) - INTERVAL '10 hours')::date + 1)
+              = (NOW() AT TIME ZONE e.timezone)::date
         AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE e.timezone)) = $1
         AND EXISTS (
           SELECT 1 FROM user_identities identity
@@ -130,6 +81,14 @@ async function sendRecapFor(event) {
     console.log(`[host-recap] skipped event ${event.id}: host recaps disabled`);
     return false;
   }
+  const context = await loadPostEventContext(pool, {
+    eventId: event.id,
+    organizerId: event.organizer_id
+  });
+  if (!context?.ended) {
+    console.log(`[host-recap] skipped event ${event.id}: event has not ended`);
+    return false;
+  }
   if (!await claimRecap(event.id)) return false;
   try {
     const delivery = await withActiveHostAccount(
@@ -139,13 +98,14 @@ async function sendRecapFor(event) {
         const preferences = emailPreferenceUrls(hostEmail, 'host_recaps');
         return sendHostRecap({
           to: hostEmail,
-          event,
+          event: {
+            ...context.event,
+            org_name: context.host?.org_name || context.host?.name || null,
+            organizer_public_slug: context.host?.public_slug || null
+          },
           ...preferences,
-          stats: {
-            totalAttendance: event.total_attendance,
-            returning: event.returning_count,
-            fromInvites: event.invited_returning_count
-          }
+          stats: context.stats,
+          idempotencyKey: `sge-host-recap-v2-${event.id}`
         });
       }
     );

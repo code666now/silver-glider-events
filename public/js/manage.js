@@ -3,6 +3,7 @@ renderNav('events');
 const eventId = location.pathname.split('/')[2];
 const $ = id => document.getElementById(id);
 let eventData = null;
+let postEventExperience = null;
 const LINE_NUMBER = '(844) 261-6758';
 const desktopManageLayout = window.matchMedia('(min-width: 1024px)');
 const mobileManageLayout = window.matchMedia('(max-width: 879px)');
@@ -33,6 +34,7 @@ const mobileManageHistoryContext = `${location.pathname}${location.search}`;
 let activeMobileManageView = 'home';
 let mobilePreviewMarker = null;
 let mobileEditMarker = null;
+let postEventDeepLinkHandled = false;
 
 function mobileManageHistoryEntry() {
   const entry = history.state?.[mobileManageHistoryKey];
@@ -163,9 +165,9 @@ function updateMobileManageSummaries() {
   if (going) {
     const count = document.createElement('strong');
     count.textContent = capacity ? `${going} of ${capacity}` : String(going);
-    headcount.append(count, eventData.is_past ? ' RSVP’d going' : ' going');
+    headcount.append(count, isPostEventEligible() ? ' RSVP’d going' : ' going');
   } else {
-    headcount.textContent = eventData.is_past
+    headcount.textContent = isPostEventEligible()
       ? 'No one RSVP’d going to this event.'
       : 'No RSVPs yet. Share your link to get the first one.';
   }
@@ -175,7 +177,7 @@ function updateMobileManageSummaries() {
   const fromInvites = Number(eventData.invited_returning_count) || 0;
   const returningLine = $('manage-mobile-returning');
   if (returning) {
-    const verb = eventData.is_past ? 'had been' : returning === 1 ? 'has been' : 'have been';
+    const verb = isPostEventEligible() ? 'had been' : returning === 1 ? 'has been' : 'have been';
     returningLine.textContent = fromInvites
       ? `${returning} of them ${verb} to one of your events before. ${fromInvites} came from your invites.`
       : `${returning} of them ${verb} to one of your events before.`;
@@ -196,7 +198,7 @@ function updateMobileManageSummaries() {
     'reminder-needs-credits': ['Promote', 'Text reminders need credits · Email stays free'],
     'follower-outreach': ['Promote', 'Reach guests, followers, and Familiar Faces'],
     tonight: ['Tonight', 'Last call and recorded reminder delivery'],
-    ended: ['Recap', 'See results and plan your next event']
+    ended: ['Recap', 'Remember the night, see your guests, and thank them']
   }[lifecycleVariant] || ['Promote', 'Share, QR code, followers, and The Line'];
   $('manage-mobile-promote-label').textContent = lifecycleCopy[0];
   $('manage-mobile-summary-promote').textContent = lifecycleCopy[1];
@@ -309,6 +311,7 @@ function initializeMobileManage() {
     else window.location.assign('/events?view=hosting');
   });
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && $('post-event-thank-dialog')?.open) return;
     if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
       event.preventDefault();
       const current = mobileManageHistoryEntry();
@@ -355,10 +358,57 @@ function renderNotificationStatus(notification) {
 
 function positionGuestSection() {
   const section = $('manage-guest-section');
-  if (eventData?.is_past && desktopManageLayout.matches) {
+  if (isPostEventEligible() && desktopManageLayout.matches) {
     $('manage-guest-desktop-slot').append(section);
   } else {
     $('manage-guest-home').after(section);
+  }
+}
+
+function openPostEventGuests() {
+  const title = $('familiar-faces-title');
+  title.setAttribute('tabindex', '-1');
+  const reveal = () => {
+    $('manage-guest-section').scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start'
+    });
+    title.focus({ preventScroll: true });
+  };
+  if (mobileManageLayout.matches) {
+    setMobileManageView('guests', { focus: false, historyMode: 'push' });
+    window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
+  } else {
+    reveal();
+  }
+}
+
+function openPostEventDeepLink() {
+  if (postEventDeepLinkHandled || !postEventExperience) return;
+  const destination = new URLSearchParams(location.search).get('postEvent');
+  if (destination !== 'recap' && destination !== 'thank-you') return;
+  postEventDeepLinkHandled = true;
+
+  if (mobileManageLayout.matches) {
+    setMobileManageView('promote', { focus: false, historyMode: 'replace' });
+  } else if (destination === 'recap') {
+    const recap = $('lifecycle-recap');
+    recap.setAttribute('tabindex', '-1');
+    recap.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start'
+    });
+    recap.focus({ preventScroll: true });
+  }
+  if (destination === 'thank-you') postEventExperience.openDialog();
+}
+
+async function loadPostEventExperience() {
+  try {
+    await postEventExperience.load(eventData);
+    openPostEventDeepLink();
+  } catch (_) {
+    postEventExperience.renderUnavailable(eventData);
   }
 }
 
@@ -396,7 +446,7 @@ function showManageLoadError() {
 async function loadEvent() {
   const { event } = await api(`/api/events/${eventId}`);
   eventData = event;
-  $('manage-shell').classList.toggle('is-past-event', event.is_past);
+  $('manage-shell').classList.toggle('is-past-event', isPostEventEligible());
   positionGuestSection();
   document.title = `${event.title} — Silver Glider Events`;
 
@@ -442,6 +492,9 @@ async function loadEvent() {
   $('stat-returning-note').textContent = invitedStat
     ? `${invitedStat} from your invites`
     : 'Guests who came before';
+  if (isPostEventEligible()) {
+    $('familiar-faces-title').textContent = 'Your guests, remembered';
+  }
   const smsEligibleCount = Number(event.sms_eligible_count) || 0;
   $('sms-audience').hidden = !event.sms_reminder_enabled;
   $('sms-audience-count').textContent = smsEligibleCount.toLocaleString('en-US');
@@ -464,7 +517,7 @@ async function loadEvent() {
     $('cancel-event').style.display = 'none';
     $('line-card').style.display = 'none';
     $('collect-photos-card').hidden = true;
-  } else if (event.is_past) {
+  } else if (isPostEventEligible()) {
     $('line-card').style.display = '';
     $('collect-photos-card').hidden = !event.collect_photos_enabled;
   } else if (event.visibility === 'private') {
@@ -610,12 +663,26 @@ const FAMILIAR_GROUPS = [
   { key: 'declined', title: 'Can’t make it', collapsed: true }
 ];
 
+// Past events reveal the same Familiar Faces records through a more useful
+// lens. Nothing is copied into a second list: primary RSVPs use their existing
+// visit history, while +1s remain visibly separate because they have no
+// independent identity or attendance history.
+const PAST_FAMILIAR_GROUPS = [
+  { key: 'returning', title: 'Familiar faces marked going again', matches: face => (face.group || 'going') === 'going' && !face.plusOne && Number(face.visitCount) > 1 },
+  { key: 'new', title: 'New faces marked going', matches: face => (face.group || 'going') === 'going' && !face.plusOne && Number(face.visitCount) === 1 },
+  { key: 'additional', title: 'Additional guests marked going', matches: face => (face.group || 'going') === 'going' && face.plusOne },
+  { key: 'going', title: 'Other RSVPs marked going', matches: face => (face.group || 'going') === 'going' && !face.plusOne && Number(face.visitCount) < 1 },
+  { key: 'invited', title: 'Invited, no answer yet', matches: face => face.group === 'invited' },
+  { key: 'declined', title: 'Can’t make it', collapsed: true, matches: face => face.group === 'declined' }
+];
+
 function renderFamiliarFaces() {
   const grid = $('familiar-faces-grid');
   // Each section brings its own grid, so the outer one stops being a grid.
   grid.classList.add('is-grouped');
-  grid.innerHTML = FAMILIAR_GROUPS.map(group => {
-    const faces = familiarFaceState.faces.filter(face => (face.group || 'going') === group.key);
+  const groups = isPostEventEligible() ? PAST_FAMILIAR_GROUPS : FAMILIAR_GROUPS;
+  grid.innerHTML = groups.map(group => {
+    const faces = familiarFaceState.faces.filter(group.matches || (face => (face.group || 'going') === group.key));
     if (!faces.length) return '';
     const heading = `${escapeHtml(group.title)} <span class="familiar-faces-group-count">${faces.length}</span>`;
     const cards = `<div class="familiar-faces-grid familiar-faces-group-grid">${faces.map(familiarFaceCard).join('')}</div>`;
@@ -627,6 +694,16 @@ function renderFamiliarFaces() {
 }
 
 function familiarFacesSummary(data) {
+  if (isPostEventEligible()) {
+    const returning = data.faces.filter(face => (face.group || 'going') === 'going' && !face.plusOne && Number(face.visitCount) > 1).length;
+    const firstTime = data.faces.filter(face => (face.group || 'going') === 'going' && !face.plusOne && Number(face.visitCount) === 1).length;
+    const additional = data.faces.filter(face => (face.group || 'going') === 'going' && face.plusOne).length;
+    const parts = [];
+    if (returning) parts.push(`${returning} returning`);
+    if (firstTime) parts.push(`${firstTime} first-time`);
+    if (additional) parts.push(`${additional} additional ${additional === 1 ? 'guest' : 'guests'}`);
+    return parts.length ? `${parts.join(' · ')} — all marked going.` : 'RSVPs and invitations, together.';
+  }
   const parts = [];
   if (data.goingCount) parts.push(`${data.goingCount} going`);
   if (data.invitedCount) parts.push(`${data.invitedCount} invited`);
@@ -973,6 +1050,10 @@ function currentLifecycleVariant() {
   });
 }
 
+function isPostEventEligible() {
+  return Boolean(eventData && window.SgeEventLifecycle?.isPostEventEligible(eventData));
+}
+
 function setPromotionActionVisible(id, visible) {
   const node = $(id);
   node.hidden = !visible;
@@ -1021,11 +1102,9 @@ function renderLifecycleCard() {
   $('reach-guests-label').hidden = variant === 'tonight' || variant === 'ended';
 
   if (variant === 'ended') {
-    $('lifecycle-card-title').textContent = 'How it went';
-    $('promotion-copy').textContent = "Thanks for hosting. Here's what the event brought in.";
+    $('lifecycle-card-title').textContent = 'Your night';
+    $('promotion-copy').textContent = 'A private record of the RSVPs, familiar faces, and turnout estimate behind this event.';
     $('line-feature').style.display = 'none';
-    $('lifecycle-recap-rsvps').textContent = (Number(eventData.rsvp_count) || 0).toLocaleString('en-US');
-    $('lifecycle-recap-followers').textContent = (Number(eventData.new_follower_count) || 0).toLocaleString('en-US');
     updateMobileManageSummaries();
     return;
   }
@@ -1571,9 +1650,21 @@ async function initializeManagePage() {
     sessionStorage.removeItem('sge-manage-message');
     await loadEvent();
     setManageReady();
+    const eventEnded = isPostEventEligible();
+    if (eventEnded) {
+      postEventExperience = window.SgePostEvent?.create({
+        eventId,
+        request: api,
+        notify: toast,
+        openGuests: openPostEventGuests
+      });
+    }
     if (savedMessage) toast(savedMessage);
-    const secondaryTasks = eventData.lifecycle_phase === 'ended'
-      ? (eventData.collect_photos_enabled ? [loadPhotoCollection()] : [])
+    const secondaryTasks = eventEnded
+      ? [
+          ...(eventData.collect_photos_enabled ? [loadPhotoCollection()] : []),
+          ...(postEventExperience ? [loadPostEventExperience()] : [])
+        ]
       : eventData.lifecycle_phase === 'tonight'
         ? []
         : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];

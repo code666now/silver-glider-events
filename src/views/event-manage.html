@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
   <link rel="stylesheet" href="/css/familiar-faces.css">
+  <link rel="stylesheet" href="/css/post-event.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
@@ -793,10 +794,49 @@
         </div>
         <button class="line-submit" id="submit-line" type="button" disabled>Submit to The Line</button>
       </section>
-      <section class="lifecycle-recap" id="lifecycle-recap" aria-label="Event results" hidden>
-        <div class="lifecycle-recap-stats">
-          <div class="lifecycle-recap-stat"><strong id="lifecycle-recap-rsvps">0</strong><span>RSVPs</span></div>
-          <div class="lifecycle-recap-stat"><strong id="lifecycle-recap-followers">0</strong><span>New followers</span></div>
+      <section class="lifecycle-recap post-event-recap" id="lifecycle-recap" aria-label="Your night" aria-busy="true" hidden>
+        <p class="post-event-eyebrow">Private event record</p>
+        <p class="post-event-loading" id="post-event-loading" role="status">Gathering the story of your night…</p>
+        <div class="lifecycle-recap-stats post-event-stats" id="post-event-stats" hidden>
+          <div class="lifecycle-recap-stat"><strong id="post-event-rsvp-submissions">0</strong><span>RSVP submissions</span></div>
+          <div class="lifecycle-recap-stat"><strong id="post-event-additional-guests">0</strong><span>Additional guests</span></div>
+          <div class="lifecycle-recap-stat"><strong id="post-event-marked-going">0</strong><span>Marked going</span></div>
+          <div class="lifecycle-recap-stat"><strong id="post-event-returning">0</strong><span>Returning RSVPs</span></div>
+          <div class="lifecycle-recap-stat"><strong id="post-event-new-faces">0</strong><span>First-time RSVPs</span></div>
+          <div class="lifecycle-recap-stat"><strong id="post-event-comments">0</strong><span>Comments</span></div>
+        </div>
+
+        <form class="post-event-draw" id="post-event-draw-form" hidden>
+          <div class="post-event-section-copy">
+            <p class="post-event-eyebrow">Your draw</p>
+            <h3>How many actually came?</h3>
+            <p><span id="post-event-marked-going-copy">Guests marked themselves going.</span> Tell us the final turnout, even if it’s your best estimate.</p>
+          </div>
+          <label class="post-event-draw-field" for="post-event-turnout">
+            <span>Estimated turnout <small>optional</small></span>
+            <input class="sg-input" id="post-event-turnout" name="estimatedTurnout" type="number" min="0" step="1" inputmode="numeric" autocomplete="off" placeholder="e.g. 58">
+          </label>
+          <button class="sg-btn sg-btn-primary" id="post-event-save-draw" type="submit">Save my draw</button>
+          <p class="post-event-private-note">Only you can see this estimate. Your RSVP count stays the same.</p>
+        </form>
+
+        <div class="post-event-draw-status" id="post-event-draw-status" role="status" tabindex="-1" hidden>
+          <span class="post-event-check" aria-hidden="true">✓</span>
+          <div><strong>Your night is on the record.</strong><span id="post-event-draw-status-copy"></span><small>Saved with this event. Keep it handy for the next time a venue asks.</small></div>
+          <button class="post-event-edit-draw" id="post-event-edit-draw" type="button">Edit estimate</button>
+        </div>
+
+        <div class="post-event-actions" id="post-event-actions" hidden>
+          <button class="post-event-action" id="post-event-see-guests" type="button">
+            <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 19a4 4 0 0 0-8 0M12 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M18 9a2.5 2.5 0 0 1 0 5M6 9a2.5 2.5 0 0 0 0 5"/></svg></span>
+            <span class="promotion-action-copy"><strong class="promotion-action-title">See your guests</strong><span class="promotion-action-description" id="post-event-guest-discovery-copy">Discover familiar faces and first-time RSVPs.</span></span>
+            <span class="promotion-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="post-event-action is-primary" id="post-event-thank-guests" type="button">
+            <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg></span>
+            <span class="promotion-action-copy"><strong class="promotion-action-title">Thank your guests</strong><span class="promotion-action-description" id="post-event-thank-copy">Review a personal note before anything is sent.</span></span>
+            <span class="promotion-action-arrow" aria-hidden="true">›</span>
+          </button>
         </div>
         <button class="lifecycle-next-event" id="lifecycle-next-event" type="button">
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 3v4m8-4v4M5 9h14"/><path d="M12 12v5m-2.5-2.5h5"/></svg></span>
@@ -935,9 +975,70 @@
     </form>
   </dialog>
 
+  <dialog class="post-event-dialog" id="post-event-thank-dialog" aria-labelledby="post-event-thank-title" aria-describedby="post-event-thank-intro">
+    <form class="post-event-dialog-form" id="post-event-thank-form">
+      <header class="post-event-dialog-head">
+        <div>
+          <p class="post-event-dialog-kicker">After the event</p>
+          <h2 id="post-event-thank-title">Thank your guests</h2>
+          <p id="post-event-thank-intro">Keep the good times going. Make the note yours before sending.</p>
+        </div>
+        <button class="post-event-dialog-close" id="post-event-thank-close" type="button" aria-label="Close thank-you editor">×</button>
+      </header>
+
+      <div class="post-event-dialog-tabs" id="post-event-dialog-tabs" role="tablist" aria-label="Thank-you message views">
+        <button id="post-event-edit-tab" type="button" role="tab" aria-selected="true" aria-controls="post-event-edit-panel">Edit message</button>
+        <button id="post-event-preview-tab" type="button" role="tab" aria-selected="false" aria-controls="post-event-preview-panel">Guest preview</button>
+      </div>
+
+      <div class="post-event-dialog-body">
+        <section id="post-event-edit-panel" role="tabpanel" aria-labelledby="post-event-edit-tab">
+          <div class="post-event-recipient-summary">
+            <div><span>Event</span><strong id="post-event-thank-event">Your event</strong></div>
+            <div><span>Eligible recipients</span><strong id="post-event-eligible-count">—</strong></div>
+          </div>
+          <label class="post-event-field" for="post-event-thank-subject">
+            <span>Email subject</span>
+            <input class="sg-input" id="post-event-thank-subject" name="subject" type="text" maxlength="160" autocomplete="off" required>
+          </label>
+          <label class="post-event-field" for="post-event-thank-message">
+            <span>Your message</span>
+            <textarea class="sg-input" id="post-event-thank-message" name="message" rows="8" maxlength="4000" required></textarea>
+          </label>
+          <label class="post-event-follow-option" for="post-event-include-follow">
+            <input id="post-event-include-follow" name="includeFollow" type="checkbox">
+            <span><strong>Include my Host Page</strong><small id="post-event-follow-copy">Give guests a choice to follow your future events.</small></span>
+          </label>
+          <p class="post-event-send-note">Only primary RSVPs with existing host-email consent are included. Additional guests are not contacted.</p>
+        </section>
+
+        <section id="post-event-preview-panel" role="tabpanel" aria-labelledby="post-event-preview-tab" tabindex="-1" hidden>
+          <div class="post-event-preview-meta">
+            <div><span>Guest preview</span><strong id="post-event-preview-count">0 eligible recipients</strong></div>
+            <button id="post-event-back-to-edit" type="button">Edit message</button>
+          </div>
+          <iframe class="post-event-preview-frame" id="post-event-preview-frame" title="Guest email preview" sandbox></iframe>
+          <p class="post-event-send-note">Personal unsubscribe links are added when sent. Existing followers won’t see the Follow button. You can send once, and email addresses stay private.</p>
+        </section>
+
+        <section class="post-event-send-status" id="post-event-send-status" role="status" tabindex="-1" hidden>
+          <span class="post-event-check" aria-hidden="true">✓</span>
+          <div><strong id="post-event-send-status-title">Your thank-you is on its way.</strong><span id="post-event-send-status-copy"></span></div>
+        </section>
+        <p class="post-event-dialog-error" id="post-event-dialog-error" role="alert" hidden></p>
+      </div>
+
+      <footer class="post-event-dialog-foot">
+        <button class="sg-btn sg-btn-ghost" id="post-event-dialog-back" type="button">Cancel</button>
+        <button class="sg-btn sg-btn-primary" id="post-event-dialog-next" type="submit">Preview email</button>
+      </footer>
+    </form>
+  </dialog>
+
   <script src="/js/api.js"></script>
   <script src="/js/event-change-dialog.js"></script>
   <script src="/js/event-lifecycle.js"></script>
+  <script src="/js/post-event.js"></script>
   <script src="/js/manage.js"></script>
 </body>
 </html>

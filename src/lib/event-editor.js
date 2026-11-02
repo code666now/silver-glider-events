@@ -8,6 +8,7 @@ const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { SMS_CONSENT_VERSION } = require('./sms-consent');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { eventEndAtSql } = require('./post-event');
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = EventBackgrounds.keys;
@@ -81,6 +82,7 @@ const EDITOR_EVENT_FIELDS = Object.freeze([
   'updated_at',
   'is_past',
   'lifecycle_phase',
+  'post_event_ended',
   'rsvp_count',
   'guest_count',
   'total_attendance',
@@ -498,6 +500,7 @@ async function getEventForEditor(db, { organizerId, eventId }) {
   const { rows } = await db.query(
     `SELECT e.*,
             e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+            (e.status='published' AND NOW() >= ${eventEndAtSql('e')}) AS post_event_ended,
             CASE
               WHEN e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date THEN 'ended'
               WHEN e.event_date = (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date THEN 'tonight'

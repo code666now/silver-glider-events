@@ -8,7 +8,7 @@ const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('event management selects all six lifecycle variants from real state', () => {
-  const base = { lifecycle_phase: 'upcoming', rsvp_count: 0, sms_eligible_count: 0, sms_reminder_enabled: true };
+  const base = { status: 'published', lifecycle_phase: 'upcoming', rsvp_count: 0, sms_eligible_count: 0, sms_reminder_enabled: true };
   assert.equal(lifecycle.variantFor({ event: base, followerPreview: { count: 0 } }), 'new-event');
   assert.equal(lifecycle.variantFor({
     event: { ...base, rsvp_count: 4 }, smsPreview: { recipientCount: 3, needsFunds: false }
@@ -21,6 +21,15 @@ test('event management selects all six lifecycle variants from real state', () =
   }), 'follower-outreach');
   assert.equal(lifecycle.variantFor({ event: { ...base, lifecycle_phase: 'tonight' } }), 'tonight');
   assert.equal(lifecycle.variantFor({ event: { ...base, lifecycle_phase: 'ended', is_past: true } }), 'ended');
+});
+
+test('post-event eligibility uses the actual event end and never exposes draft or cancelled recaps', () => {
+  const fallbackEnded = { status: 'published', lifecycle_phase: 'ended', is_past: true };
+  assert.equal(lifecycle.isPostEventEligible(fallbackEnded), true);
+  assert.equal(lifecycle.isPostEventEligible({ ...fallbackEnded, post_event_ended: false }), false);
+  assert.equal(lifecycle.isPostEventEligible({ ...fallbackEnded, lifecycle_phase: 'tonight', is_past: false, post_event_ended: true }), true);
+  assert.equal(lifecycle.isPostEventEligible({ ...fallbackEnded, status: 'draft', post_event_ended: true }), false);
+  assert.equal(lifecycle.isPostEventEligible({ ...fallbackEnded, status: 'cancelled', post_event_ended: true }), false);
 });
 
 test('reminder schedule and delivery receipt stay grounded in stored records', () => {
@@ -71,6 +80,6 @@ test('mobile and desktop expose the same adaptive lifecycle card', () => {
   assert.match(view, /@media \(max-width: 879px\)/);
   assert.match(view, /data-manage-mobile-open="promote"[^>]*aria-controls="line-card"/);
   assert.match(view, /data-lifecycle-variant="new-event"/);
-  assert.match(client, /\['Recap', 'See results and plan your next event'\]/);
+  assert.match(client, /\['Recap', 'Remember the night, see your guests, and thank them'\]/);
   assert.match(client, /\['Tonight', 'Last call and recorded reminder delivery'\]/);
 });

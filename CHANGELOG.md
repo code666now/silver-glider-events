@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.184
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### Your night, remembered
+
+* The morning-after host recap reuses the original event artwork, shows accurate RSVP and Familiar Faces counts, and opens the private **See your night** recap. Timing respects the event's actual local end, including overnight events; already-sent recaps are not sent again.
+* Hosts can review returning and first-time Familiar Faces and save an optional private turnout estimate without changing RSVP totals or implying verified attendance.
+* **Thank your guests** adds a saved, editable email, optional Host Page follow action, rendered preview, exact eligible recipient count, and explicit one-time send approval. Existing host-email consent is required; reminder consent alone is not enough, and named +1s are not emailed.
+* Recipient eligibility is rechecked before delivery. Immutable previews, one batch per event, stable provider idempotency keys, bounded retries, and existing host-wide opt-outs protect against duplicate or unwanted sends. Delivery status reports provider acceptance rather than inbox delivery.
+
+### Verification
+
+* Static validation and all 613 automated tests pass. Local Chrome checks at 1440px desktop and 390px phone cover turnout editing, email preview, synthetic send, focus restoration, and overflow.
+* Additive migration `072_post_event.sql` stores private turnout, approved thank-you batches, and delivery audit fields. No new photo feature, RSVP consent checkbox, public event changes, or changes to guest reminders are included.
+* No real guest thank-you emails were sent during testing. Real Safari/iOS and inbox rendering remain manual checks.
+
 ## 1.0.183
 
 Released October 29, 2026. Built, reviewed, and deployed by Codex.

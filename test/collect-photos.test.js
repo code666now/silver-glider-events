@@ -86,8 +86,8 @@ test('past-event management keeps the lifecycle recap separate from optional pho
   for (const label of ['Ask RSVPs', 'Copy photo link', 'View photos', 'Photos received']) {
     assert.match(view, new RegExp(label));
   }
-  assert.match(client, /event\.is_past[\s\S]*\$\('line-card'\)\.style\.display = ''/);
-  assert.match(client, /eventData\.lifecycle_phase === 'ended'[\s\S]*eventData\.collect_photos_enabled \? \[loadPhotoCollection\(\)\] : \[\]/);
+  assert.match(client, /else if \(isPostEventEligible\(\)\)[\s\S]*\$\('line-card'\)\.style\.display = ''/);
+  assert.match(client, /const secondaryTasks = eventEnded[\s\S]*eventData\.collect_photos_enabled \? \[loadPhotoCollection\(\)\] : \[\]/);
   assert.match(client, /\$\('lifecycle-recap'\)\.hidden = variant !== 'ended'/);
   assert.match(client, /\/api\/events\/\$\{eventId\}\/photo-request/);
   assert.match(client, /\/photos\/\$\{featureButton\.dataset\.featurePhoto\}\/feature/);

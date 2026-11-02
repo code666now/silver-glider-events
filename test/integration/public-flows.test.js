@@ -46,6 +46,7 @@ const stripeSms = require('../../src/lib/stripe-sms');
 const { runAutomaticReminderPass } = require('../../src/jobs/sms-notifications');
 const { deliverProfileNudge, runHostOnboardingPass } = require('../../src/jobs/host-onboarding');
 const { settlePreviousGuestInvitationWork } = require('../../src/jobs/previous-guest-invitations');
+const { settlePostEventThankYouWork } = require('../../src/jobs/post-event-thank-yous');
 const {
   enqueueFlyerAdminNotifications,
   queueFlyerAdminNotifications,
@@ -66,6 +67,7 @@ const adminDoneForYouRoutes = require('../../src/routes/admin-done-for-you');
 const adminEditorRoutes = require('../../src/routes/admin-editor');
 const flyerIntakeRoutes = require('../../src/routes/flyer-intake');
 const uploadRoutes = require('../../src/routes/uploads');
+const postEventRoutes = require('../../src/routes/post-event');
 const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
 
 let server;
@@ -130,6 +132,7 @@ function resetRateLimits() {
     vibe: require('../../src/lib/cloudinary').uploadVibePhoto
   });
   uploadRoutes.setAdminHostUploadsForTests();
+  postEventRoutes._resetRateLimitsForTests();
 }
 
 async function resetDatabase() {
@@ -471,6 +474,7 @@ test.beforeEach(async () => {
   await publicRoutes.settleBackgroundWork();
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
+  await settlePostEventThankYouWork();
   await settleFlyerAdminNotificationWork();
   await settleFlyerPublicationNotificationWork();
   await resetDatabase();
@@ -480,6 +484,7 @@ test.after(async () => {
   await publicRoutes.settleBackgroundWork();
   await adminAuthRoutes.settleBackgroundWork();
   await settlePreviousGuestInvitationWork();
+  await settlePostEventThankYouWork();
   await settleFlyerAdminNotificationWork();
   await settleFlyerPublicationNotificationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
@@ -12632,7 +12637,7 @@ test('the morning after, the host gets one recap with the returning number', asy
   assert.equal(managed.invited_returning_count, 1);
 
   // devOutbox keeps only the most recent messages, so match on the message itself.
-  const recapCount = () => mailer.devOutbox.filter(message => /^Recap Last Night:/.test(message.subject || '')).length;
+  const recapCount = () => mailer.devOutbox.filter(message => message.subject === 'Your night, revisited: Recap Last Night').length;
   assert.equal(recapCount(), 0);
   const [firstPass, concurrentPass] = await Promise.all([
     freshRecapPass()({ hours: [yesterday.hour] }),
@@ -12641,8 +12646,10 @@ test('the morning after, the host gets one recap with the returning number', asy
   assert.equal(firstPass + concurrentPass, 1, 'concurrent workers claim one recap exactly once');
   assert.equal(recapCount(), 1);
   const recap = lastDevEmail(hostEmail);
-  assert.match(recap.subject, /Recap Last Night: 2 people, 1 returning/);
-  assert.match(recap.html, /1 came from your invites/);
+  assert.equal(recap.subject, 'Your night, revisited: Recap Last Night');
+  assert.match(recap.text, /2 marked going/);
+  assert.match(recap.text, /1 returning faces/);
+  assert.match(recap.html, /See your night/);
   assert.equal(mailer.devOutbox.some(message => message.to === legacyEmail), false,
     'the unverified compatibility email never receives the recap');
 
@@ -12813,4 +12820,307 @@ test('admin traction reports the loop numbers and ignores test accounts', async 
 
   assert.equal((await fetch(`${baseUrl}/api/admin/traction`, { headers: { cookie: hostCookie } })).status, 401,
     'a signed-in host is not an admin');
+});
+
+async function postEventFixture(overrides = {}) {
+  resetRateLimits();
+  const { sessionCookie } = await signInAccount('host@example.test');
+  const event = await createEvent({
+    slug: 'post-event-night', title: 'Our Night', event_date: '2020-10-30',
+    start_time: '20:00', end_time: '01:00', timezone: 'America/Los_Angeles',
+    visibility: 'private', venue_address: '9876 Private Address',
+    ...overrides
+  });
+  return { event, cookie: sessionCookie };
+}
+
+async function postEventGuest(eventId, email, overrides = {}) {
+  const account = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ($1,'Recap Guest') RETURNING id`, [email]
+  )).rows[0];
+  await pool.query('INSERT INTO users (id,name) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING',
+    [account.id, 'Recap Guest']);
+  await pool.query('UPDATE organizers SET user_id=id WHERE id=$1', [account.id]);
+  if (overrides.verified !== false) await addVerifiedEmailIdentity(account.id, email, { primary: true });
+  const { verified, ...rsvpOverrides } = overrides;
+  const rsvp = await createRsvp(eventId, {
+    email, user_id: account.id, account_id: account.id,
+    organizer_optin: true, ...rsvpOverrides
+  });
+  return { accountId: account.id, userId: account.id, rsvp };
+}
+
+function postEventRequest(eventId, cookie, action = '', method = 'GET', body) {
+  return fetch(`${baseUrl}/api/events/${eventId}/post-event${action}`, {
+    method,
+    headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+}
+
+async function previewPostEventDraft(eventId, cookie, draft) {
+  const save = await postEventRequest(eventId, cookie, '/thank-you', 'PUT', draft);
+  assert.equal(save.status, 200);
+  const preview = await postEventRequest(eventId, cookie, '/thank-you/preview', 'POST', draft);
+  assert.equal(preview.status, 200);
+  return preview.json();
+}
+
+test('post-event recap keeps turnout private and distinguishes primary RSVPs, returning people, and plus-ones', async () => {
+  const { event, cookie } = await postEventFixture();
+  const prior = await createEvent({ slug: 'post-event-earlier', event_date: '2020-10-01' });
+  const returning = await postEventGuest(event.id, 'returning-post@example.test', {
+    first_name: 'Returning', guest_first_name: 'Friend', guest_email: 'plus-one@example.test'
+  });
+  await createRsvp(prior.id, { email: returning.rsvp.email, user_id: returning.userId });
+  await postEventGuest(event.id, 'new-post@example.test', { first_name: 'New' });
+  await postEventGuest(event.id, 'declined-post@example.test', { status: 'cancelled' });
+
+  assert.equal((await postEventRequest(event.id)).status, 401);
+  const other = await signInAccount('other-post-host@example.test');
+  assert.equal((await postEventRequest(event.id, other.sessionCookie)).status, 404);
+  assert.equal((await postEventRequest(event.id, other.sessionCookie, '/turnout', 'PATCH', { estimatedTurnout: 900 })).status, 404);
+
+  const response = await postEventRequest(event.id, cookie);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  const recap = await response.json();
+  assert.equal(recap.ended, true);
+  assert.deepEqual(recap.stats, {
+    rsvpSubmissions: 2, additionalGuests: 1, markedGoing: 3,
+    returning: 1, newFaces: 1, comments: 0
+  });
+  assert.equal(recap.draw, null);
+
+  for (const estimatedTurnout of [-1, 2.5, 'not a number', null]) {
+    const invalid = await postEventRequest(event.id, cookie, '/turnout', 'PATCH', { estimatedTurnout });
+    assert.equal(invalid.status, 400, `reject invalid turnout ${estimatedTurnout}`);
+  }
+  for (const estimatedTurnout of [0, 58]) {
+    assert.equal((await postEventRequest(event.id, cookie, '/turnout', 'PATCH', { estimatedTurnout })).status, 200);
+    const saved = await (await postEventRequest(event.id, cookie)).json();
+    assert.equal(saved.draw.estimatedTurnout, estimatedTurnout);
+    assert.ok(saved.draw.updatedAt);
+    assert.equal(saved.stats.markedGoing, 3, 'saving the estimate never changes RSVP totals');
+  }
+  const publicPage = await (await fetch(`${baseUrl}/e/${event.slug}`)).text();
+  assert.doesNotMatch(publicPage, /estimatedTurnout|estimated_turnout|event_draw_estimates/);
+});
+
+test('post-event thank-you eligibility requires existing host consent and verified email; previews do not send', async () => {
+  const { event, cookie } = await postEventFixture({ secret_show_enabled: true, secret_show_version: 1 });
+  await postEventGuest(event.id, 'allowed-post@example.test');
+  await postEventGuest(event.id, 'reminders-only-post@example.test', { organizer_optin: false, wants_reminders: true });
+  await postEventGuest(event.id, 'unverified-post@example.test', { verified: false });
+  await postEventGuest(event.id, 'declined-post@example.test', { status: 'cancelled' });
+  await postEventGuest(event.id, 'opted-out-post@example.test');
+  await pool.query('INSERT INTO follower_optouts (organizer_id,email) VALUES ($1,$2)', [organizerId, 'opted-out-post@example.test']);
+  const following = await postEventGuest(event.id, 'following-post@example.test', { organizer_optin: false });
+  await require('../../src/lib/host-follows').followHost(pool, following.accountId, organizerId, event.id);
+
+  const before = mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith('post-event-thank-you:')).length;
+  const recap = await (await postEventRequest(event.id, cookie)).json();
+  assert.equal(recap.thankYou.eligibleCount, 2);
+  assert.equal(recap.thankYou.canIncludeFollow, true);
+  const draft = { subject: 'Thanks for our night', message: 'So glad you could join. <script>alert(1)</script>', includeFollow: true };
+  assert.equal((await postEventRequest(event.id, cookie, '/thank-you', 'PUT', draft)).status, 200);
+  const saved = await (await postEventRequest(event.id, cookie)).json();
+  assert.equal(saved.thankYou.subject, draft.subject);
+  assert.equal(saved.thankYou.message, draft.message);
+  const previewResponse = await postEventRequest(event.id, cookie, '/thank-you/preview', 'POST', draft);
+  assert.equal(previewResponse.status, 200);
+  assert.match(previewResponse.headers.get('cache-control'), /no-store/);
+  const preview = await previewResponse.json();
+  assert.equal(preview.eligibleCount, 2);
+  assert.ok(preview.previewToken);
+  assert.match(preview.html, /&lt;script&gt;/);
+  assert.doesNotMatch(preview.html, /<script|9876 Private Address|\/e\/post-event-night/);
+  assert.match(preview.html, /\/h\/test-host/);
+  assert.equal(mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith('post-event-thank-you:')).length, before,
+    'saving and previewing never contacts real guests');
+  const noPreview = await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', {});
+  assert.ok([400, 409].includes(noPreview.status), 'sending requires explicit approval of a preview');
+});
+
+test('post-event thank-you approval rejects changed messages and audiences, then concurrent sends queue each person once', async () => {
+  const { event, cookie } = await postEventFixture();
+  const follower = await postEventGuest(event.id, 'followed-thanks@example.test', { organizer_optin: false });
+  await require('../../src/lib/host-follows').followHost(pool, follower.accountId, organizerId, event.id);
+  await postEventGuest(event.id, 'new-thanks@example.test', { guest_first_name: 'Plus One', guest_email: 'plusone-thanks@example.test' });
+  const draft = { subject: 'Thanks for our night', message: 'Thanks for bringing your good energy.', includeFollow: true };
+  const first = await previewPostEventDraft(event.id, cookie, draft);
+  await postEventRequest(event.id, cookie, '/thank-you', 'PUT', { ...draft, message: 'Changed after preview.' });
+  assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: first.previewToken })).status, 409);
+
+  const second = await previewPostEventDraft(event.id, cookie, draft);
+  await pool.query('INSERT INTO follower_optouts (organizer_id,email) VALUES ($1,$2)', [organizerId, 'new-thanks@example.test']);
+  assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: second.previewToken })).status, 409);
+  await pool.query('DELETE FROM follower_optouts WHERE organizer_id=$1 AND email=$2', [organizerId, 'new-thanks@example.test']);
+
+  const finalPreview = await previewPostEventDraft(event.id, cookie, draft);
+  const results = await Promise.all([
+    postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: finalPreview.previewToken }),
+    postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: finalPreview.previewToken })
+  ]);
+  assert.ok(results.some(r => [200, 202].includes(r.status)), 'one approved request queues the send');
+  assert.ok(results.every(r => [200, 202, 409].includes(r.status)));
+  await settlePostEventThankYouWork();
+  const logs = (await pool.query(
+    "SELECT recipient,status FROM message_log WHERE event_id=$1 AND message_type='post_event_thank_you'", [event.id]
+  )).rows;
+  assert.equal(logs.length, 2, 'one primary-recipient row each; +1 emails are not recipients');
+  assert.ok(logs.every(row => row.status === 'sent'));
+  const followMail = lastDevEmail('followed-thanks@example.test');
+  const newMail = lastDevEmail('new-thanks@example.test');
+  assert.doesNotMatch(followMail.html, /Follow our page|Follow .*page|Follow for more/);
+  assert.match(newMail.html, /\/h\/test-host/);
+  assert.doesNotMatch(newMail.html, /9876 Private Address|\/e\/post-event-night/);
+  const status = await (await postEventRequest(event.id, cookie)).json();
+  assert.equal(status.thankYou.sentCount, 2);
+  assert.equal(status.thankYou.recipientCount, 2);
+  await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: finalPreview.previewToken });
+  await settlePostEventThankYouWork();
+  assert.equal((await pool.query(
+    "SELECT COUNT(*)::int AS count FROM message_log WHERE event_id=$1 AND message_type='post_event_thank_you'", [event.id]
+  )).rows[0].count, 2);
+});
+
+test('post-event controls handle empty events and reject upcoming or unpublished events', async () => {
+  const { event, cookie } = await postEventFixture({ cover_image_url: null });
+  const empty = await (await postEventRequest(event.id, cookie)).json();
+  assert.equal(empty.stats.rsvpSubmissions, 0);
+  assert.equal(empty.stats.returning, 0);
+  assert.equal(empty.stats.newFaces, 0);
+  assert.equal(empty.thankYou.eligibleCount, 0);
+  const draft = { subject: 'Thank you', message: 'It was good to see you.', includeFollow: false };
+  const preview = await previewPostEventDraft(event.id, cookie, draft);
+  assert.match(preview.html, /Our Night/);
+  assert.ok([400, 409].includes((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status));
+  for (const overrides of [{ event_date: '2099-01-01' }, { status: 'draft' }, { status: 'cancelled' }]) {
+    const blocked = await createEvent({ ...overrides, slug: `blocked-post-${Object.values(overrides)[0]}` });
+    const estimate = await postEventRequest(blocked.id, cookie, '/turnout', 'PATCH', { estimatedTurnout: 12 });
+    assert.equal(estimate.status, 409);
+    const blockedPreview = await postEventRequest(blocked.id, cookie, '/thank-you/preview', 'POST', draft);
+    assert.equal(blockedPreview.status, 409);
+  }
+});
+
+test('post-event ending uses event-local time, overnight end times, and a two-hour fallback', async () => {
+  const { eventEndAtSql } = require('../../src/lib/post-event');
+  const end = eventEndAtSql('fixture');
+  const { rows } = await pool.query(`
+    WITH fixture(label,event_date,start_time,end_time,timezone) AS (VALUES
+      ('evening',DATE '2030-10-30',TIME '20:00',TIME '23:00','America/Los_Angeles'),
+      ('overnight',DATE '2030-10-30',TIME '20:00',TIME '01:00','America/Los_Angeles'),
+      ('fallback',DATE '2030-10-30',TIME '23:30',NULL::time,'Asia/Tokyo'),
+      ('late-ending',DATE '2030-10-30',TIME '08:00',TIME '12:00','Asia/Tokyo')
+    )
+    SELECT label,(${end} AT TIME ZONE timezone)::text AS local_end,
+           (((${end} AT TIME ZONE timezone) - INTERVAL '10 hours')::date + 1)::text AS recap_day
+      FROM fixture ORDER BY label
+  `);
+  assert.deepEqual(rows, [
+    { label: 'evening', local_end: '2030-10-30 23:00:00', recap_day: '2030-10-31' },
+    { label: 'fallback', local_end: '2030-10-31 01:30:00', recap_day: '2030-10-31' },
+    { label: 'late-ending', local_end: '2030-10-30 12:00:00', recap_day: '2030-10-31' },
+    { label: 'overnight', local_end: '2030-10-31 01:00:00', recap_day: '2030-10-31' }
+  ]);
+});
+
+test('post-event approval tokens fail closed on tampering and cannot authorize another event', async () => {
+  const { event, cookie } = await postEventFixture();
+  await postEventGuest(event.id, 'token-guest@example.test');
+  const draft = { subject: 'Thanks', message: 'A little thank-you.', includeFollow: false };
+  const preview = await previewPostEventDraft(event.id, cookie, draft);
+  const [payload] = preview.previewToken.split('.');
+  for (const previewToken of [`${payload}.${'é'.repeat(64)}`, `${payload}.${'a'.repeat(64)}`]) {
+    const response = await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken });
+    assert.equal(response.status, 409);
+  }
+  const second = await createEvent({ slug: 'token-other-night', event_date: '2020-10-30' });
+  await postEventRequest(second.id, cookie, '/thank-you', 'PUT', draft);
+  const response = await postEventRequest(second.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken });
+  assert.equal(response.status, 409);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS count FROM message_log WHERE message_type='post_event_thank_you'")).rows[0].count, 0);
+});
+
+async function seedApprovedPostEventBatch(event, recipients) {
+  const { loadPostEventContext, emailRenderSnapshot, renderSnapshotDigest } = require('../../src/lib/post-event');
+  const context = await loadPostEventContext(pool, { eventId: event.id, organizerId });
+  const snapshot = emailRenderSnapshot(context.event, context.host);
+  const batch = (await pool.query(`INSERT INTO post_event_thank_you_batches
+    (event_id,organizer_id,subject,message,include_follow,status,recipient_count,
+     approved_by_user_id,approved_at,render_snapshot,render_snapshot_hash)
+    VALUES ($1,$2,'Approved thank you','Thanks for sharing this night.',TRUE,'pending',$3,
+            $2,NOW(),$4::jsonb,$5) RETURNING id`,
+  [event.id, organizerId, recipients.length, JSON.stringify(snapshot), renderSnapshotDigest(snapshot)])).rows[0];
+  const logs = [];
+  for (const person of recipients) {
+    logs.push((await pool.query(`INSERT INTO message_log
+      (rsvp_id,event_id,post_event_thank_you_batch_id,recipient,recipient_user_id,
+       message_type,channel,status,post_event_already_following)
+      VALUES ($1,$2,$3,$4,$5,'post_event_thank_you','email','pending',FALSE) RETURNING id`,
+    [person.rsvp.id, event.id, batch.id, person.rsvp.email, person.userId])).rows[0]);
+  }
+  return { batch, logs };
+}
+
+test('post-event worker rechecks opt-outs after approval and uses immutable approved artwork and title', async () => {
+  const { event } = await postEventFixture();
+  const allowed = await postEventGuest(event.id, 'worker-allowed@example.test');
+  const optedOut = await postEventGuest(event.id, 'worker-optout@example.test');
+  const { batch } = await seedApprovedPostEventBatch(event, [allowed, optedOut]);
+  await pool.query('INSERT INTO follower_optouts(organizer_id,email) VALUES($1,$2)', [organizerId, optedOut.rsvp.email]);
+  await pool.query("UPDATE events SET title='Changed after approval',cover_image_url='https://example.test/changed.jpg' WHERE id=$1", [event.id]);
+  const worker = require('../../src/jobs/post-event-thank-yous');
+  await worker.processPostEventThankYouBatch(batch.id);
+  await worker.processPostEventThankYouBatch(batch.id);
+  const messages = mailer.devOutbox.filter(m =>
+    m.idempotencyKey?.startsWith(`post-event-thank-you:${batch.id}:`) &&
+    [allowed.rsvp.email, optedOut.rsvp.email].includes(m.to));
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, allowed.rsvp.email);
+  assert.match(messages[0].html, /Our Night/);
+  assert.doesNotMatch(messages[0].html, /Changed after approval|example\.test\/changed\.jpg/);
+  const state = (await pool.query('SELECT * FROM post_event_thank_you_batches WHERE id=$1', [batch.id])).rows[0];
+  assert.equal(state.sent_count, 1);
+  assert.equal(state.skipped_count, 1);
+  assert.ok(state.completed_at);
+});
+
+test('post-event retry cron recovers finalization after terminal delivery crash windows', async () => {
+  const { event } = await postEventFixture();
+  const first = await postEventGuest(event.id, 'worker-crash-sent@example.test');
+  const second = await postEventGuest(event.id, 'worker-crash-unknown@example.test');
+  const { batch, logs } = await seedApprovedPostEventBatch(event, [first, second]);
+  await pool.query("UPDATE post_event_thank_you_batches SET status='processing' WHERE id=$1", [batch.id]);
+  await pool.query("UPDATE message_log SET status='sent',attempt_count=1,sent_at=NOW() WHERE id=$1", [logs[0].id]);
+  await pool.query("UPDATE message_log SET status='pending',attempt_count=3,last_attempt_at=NOW()-INTERVAL '3 minutes' WHERE id=$1", [logs[1].id]);
+  await require('../../src/jobs/post-event-thank-yous').runPostEventThankYouPass();
+  const state = (await pool.query('SELECT * FROM post_event_thank_you_batches WHERE id=$1', [batch.id])).rows[0];
+  assert.equal(state.status, 'partial_failed');
+  assert.equal(state.sent_count, 1);
+  assert.equal(state.failed_count, 1);
+  assert.ok(state.completed_at);
+  assert.equal(mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith(`post-event-thank-you:${batch.id}:`) &&
+    [first.rsvp.email, second.rsvp.email].includes(m.to)).length, 0);
+});
+
+test('post-event retries stop before provider idempotency expires even after a more recent retry', async () => {
+  const { event } = await postEventFixture();
+  const guest = await postEventGuest(event.id, 'worker-old-attempt@example.test');
+  const { batch, logs } = await seedApprovedPostEventBatch(event, [guest]);
+  await pool.query(`UPDATE message_log SET status='failed',attempt_count=2,
+    created_at=NOW()-INTERVAL '25 hours',last_attempt_at=NOW()-INTERVAL '3 minutes'
+    WHERE id=$1`, [logs[0].id]);
+  await pool.query("UPDATE post_event_thank_you_batches SET approved_at=NOW()-INTERVAL '25 hours' WHERE id=$1", [batch.id]);
+  await require('../../src/jobs/post-event-thank-yous').runPostEventThankYouPass();
+  const state = (await pool.query('SELECT * FROM post_event_thank_you_batches WHERE id=$1', [batch.id])).rows[0];
+  assert.equal(state.status, 'failed');
+  assert.equal(state.sent_count, 0);
+  assert.equal(state.failed_count, 1);
+  assert.ok(state.completed_at);
+  assert.equal((await pool.query('SELECT error FROM message_log WHERE id=$1', [logs[0].id])).rows[0].error, 'delivery_outcome_unknown');
+  assert.equal(mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith(`post-event-thank-you:${batch.id}:`) &&
+    m.to === guest.rsvp.email).length, 0);
 });

@@ -16,7 +16,9 @@ test('Familiar Faces replaces CRM rows while preserving search and CSV export', 
   assert.match(view, /id="familiar-faces-grid"/);
   assert.match(view, /id="search"[^>]+Search people/);
   assert.match(view, /id="export-csv"[^>]*>Export CSV/);
-  assert.doesNotMatch(view, /<th>Attendee<\/th>|Attendee email|Guest email/);
+  // Contact-column labels must stay gone; an iframe titled "Guest email
+  // preview" is not an exposed contact field.
+  assert.doesNotMatch(view, /<th>Attendee<\/th>|>\s*(?:Attendee|Guest) email\s*</);
   assert.match(client, /face\.avatarUrl/);
   assert.match(client, /face\.avatarEmoji \|\| familiarInitials/);
   assert.match(client, /class="familiar-face-name"/);

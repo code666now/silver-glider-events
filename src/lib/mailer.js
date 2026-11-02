@@ -250,13 +250,13 @@ function rsvpConfirmationLayout({
           ${listeningHtml}
           <p class="sg-email-sub" style="color:#a7a7a7;font-size:17px;line-height:1.55;margin:18px 0 30px">${esc(sub)}</p>
           ${bodyHtml || ''}
-          <div style="height:32px;line-height:32px">&nbsp;</div>
+          ${cta && ctaUrl ? `<div style="height:32px;line-height:32px">&nbsp;</div>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="sg-email-cta" style="width:100%">
             <tr><td align="center" height="52" bgcolor="${theme.accentColor}" style="height:52px;background:${theme.accentColor};border-radius:12px">
               <a href="${esc(ctaUrl)}" style="display:block;color:${theme.accentTextColor};text-align:center;line-height:52px;text-decoration:none;font-weight:800;font-size:17px">${esc(cta)}</a>
             </td></tr>
           </table>
-          <div style="height:26px;line-height:26px">&nbsp;</div>
+          <div style="height:26px;line-height:26px">&nbsp;</div>` : '<div style="height:26px;line-height:26px">&nbsp;</div>'}
           ${secondaryHtml || ''}
           ${footerHtml ? `<div style="margin:0 0 34px">${footerHtml}</div>` : ''}
         </td></tr>
@@ -506,6 +506,7 @@ async function send({
   to,
   subject,
   html,
+  text,
   attachments,
   replyTo,
   from = platformFrom(),
@@ -519,6 +520,7 @@ async function send({
       to,
       subject,
       html,
+      text: text || null,
       from,
       replyTo: replyTo || null,
       headers: headers || null,
@@ -526,7 +528,7 @@ async function send({
     });
     return { dev: true };
   }
-  const payload = { from, to, subject, html, attachments };
+  const payload = { from, to, subject, html, text, attachments };
   if (replyTo) payload.replyTo = replyTo;
   if (headers) payload.headers = headers;
   const result = idempotencyKey
@@ -1075,49 +1077,218 @@ async function sendLineupClaim({ to, event, artistName, hostLabel, link }) {
   });
 }
 
-// The morning after: how the night went, and one way into the next one.
-async function sendHostRecap({ to, event, stats, unsubscribeUrl, manageUrl }) {
+function postEventCount(value) {
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
+}
+
+function postEventDateLabel(value) {
+  if (!value) return '';
+  const date = value instanceof Date
+    ? new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()))
+    : new Date(`${String(value).slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+}
+
+function postEventMetricCell(value, label) {
+  return `<td width="50%" valign="top" style="width:50%;padding:18px;background:#111111;border:1px solid #292929">
+    <p style="color:#f4f4f4;font-size:28px;font-weight:800;line-height:1;margin:0 0 8px">${postEventCount(value)}</p>
+    <p style="color:#8f8f8f;font-size:13px;line-height:1.4;margin:0">${esc(label)}</p>
+  </td>`;
+}
+
+function buildHostRecapEmail({ event = {}, stats = {}, unsubscribeUrl, manageUrl } = {}) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const going = Number(stats?.totalAttendance) || 0;
-  const returning = Number(stats?.returning) || 0;
-  const fromInvites = Number(stats?.fromInvites) || 0;
-  const people = `${going} ${going === 1 ? 'person' : 'people'}`;
-  const returningLine = returning
-    ? `${returning} of them had been to one of your events before${fromInvites ? `, and ${fromInvites} came from your invites` : ''}.`
-    : 'Everyone there was new to your events.';
-  const statsHtml = `
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #222;border-radius:18px;padding:22px;margin:0 0 14px">
-        <tr><td style="padding:0 0 10px">
-          <p style="color:#f0f0f0;font-size:18px;font-weight:800;line-height:1.3;margin:0">${esc(people)} came through your list.</p>
-          <p style="color:#9a9a9a;font-size:15px;line-height:1.6;margin:8px 0 0">${esc(returningLine)}</p>
-        </td></tr>
-        <tr><td style="padding:14px 0 0;border-top:1px solid #1a1a1a">
-          <p style="color:#9a9a9a;font-size:14px;line-height:1.6;margin:0">They're saved in your guest list. You can invite them again from Familiar Faces when you create your next event.</p>
-        </td></tr>
-      </table>`;
+  const eventId = String(event.id || '').trim();
+  const dateLabel = postEventDateLabel(event.event_date);
+  const markedGoing = postEventCount(stats.markedGoing);
+  const rsvpSubmissions = postEventCount(stats.rsvpSubmissions);
+  const additionalGuests = postEventCount(stats.additionalGuests);
+  const returning = postEventCount(stats.returning);
+  const newFaces = postEventCount(stats.newFaces);
+  const comments = postEventCount(stats.comments);
+  const recapUrl = `${baseUrl}/events/${encodeURIComponent(eventId)}/manage?postEvent=recap`;
+  const statsHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="8" border="0" style="width:100%;border-collapse:separate;margin:0 0 20px">
+    <tr>
+      ${postEventMetricCell(markedGoing, 'Marked going')}
+      ${postEventMetricCell(rsvpSubmissions, 'RSVP submissions')}
+    </tr>
+    <tr>
+      ${postEventMetricCell(additionalGuests, 'Additional guests')}
+      ${postEventMetricCell(returning, 'Returning faces')}
+    </tr>
+    <tr>
+      ${postEventMetricCell(newFaces, 'New faces')}
+      ${postEventMetricCell(comments, 'Comments')}
+    </tr>
+  </table>
+  <p style="color:#8f8f8f;font-size:14px;line-height:1.65;margin:0">These are guest-list numbers, not verified attendance. Open your recap to see who returned and privately record your estimated turnout.</p>`;
+  const subject = cleanPostEventSubject(
+    `Your night, revisited: ${String(event.title || 'Your event').trim() || 'Your event'}`,
+    'Your night, revisited'
+  );
+  const html = rsvpConfirmationLayout({
+    event,
+    kicker: 'Your night, revisited',
+    sub: `${dateLabel ? `${dateLabel}. ` : ''}Here’s a look at the RSVPs around your event.`,
+    bodyHtml: statsHtml,
+    cta: 'See your night',
+    ctaUrl: recapUrl,
+    footerHtml: policyFooter({
+      reason: 'You’re receiving this optional recap because you hosted this event.',
+      includeAddress: true,
+      links: [
+        { label: 'Turn off host recaps', url: unsubscribeUrl },
+        { label: 'Manage host emails', url: manageUrl },
+        { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+      ]
+    }),
+    showEventIdentity: false,
+    footerActionLabel: '',
+    footerActionUrl: ''
+  });
+  const text = [
+    'YOUR NIGHT, REVISITED',
+    String(event.title || 'Your event').trim() || 'Your event',
+    dateLabel,
+    '',
+    `${markedGoing} marked going`,
+    `${rsvpSubmissions} RSVP submissions`,
+    `${additionalGuests} additional guests`,
+    `${returning} returning faces`,
+    `${newFaces} new faces`,
+    `${comments} comments`,
+    '',
+    'These are guest-list numbers, not verified attendance.',
+    `See your night: ${recapUrl}`
+  ].filter((line, index, lines) => line || (index > 0 && lines[index - 1])).join('\n');
+  return { subject, html, text };
+}
+
+// The morning after: a private, artwork-led recap with one path back to the
+// existing event manager. The pure builder above keeps previews send-free.
+async function sendHostRecap({ to, event, stats, unsubscribeUrl, manageUrl, idempotencyKey }) {
+  const email = buildHostRecapEmail({ event, stats, unsubscribeUrl, manageUrl });
   return send({
     to,
-    subject: returning
-      ? `${event.title}: ${people}, ${returning} returning`
-      : `${event.title}: ${people} came`,
+    ...email,
     headers: oneClickHeaders(unsubscribeUrl),
-    html: layout({
-      kicker: 'Last night',
-      headline: event.title,
-      sub: 'Here’s how it went.',
-      bodyHtml: statsHtml,
-      cta: 'Create your next event',
-      ctaUrl: `${baseUrl}/events/new`,
-      footerHtml: policyFooter({
-        reason: 'You’re receiving this optional recap because you hosted this event.',
-        includeAddress: true,
-        links: [
-          { label: 'Turn off host recaps', url: unsubscribeUrl },
-          { label: 'Manage host emails', url: manageUrl },
-          { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
-        ]
-      })
+    idempotencyKey
+  });
+}
+
+function cleanPostEventSubject(value, fallback) {
+  const cleaned = String(value || '')
+    .replace(/[\r\n\u0000-\u001F\u007F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  return cleaned || fallback;
+}
+
+function safeReplyToAddress(value) {
+  const address = deliveryAddress(value).replace(/[\r\n]/g, '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) ? address : undefined;
+}
+
+function buildPostEventThankYouEmail({
+  event = {},
+  host = {},
+  subject,
+  message,
+  includeFollow = false,
+  alreadyFollowing = false,
+  unsubscribeUrl
+} = {}) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const eventTitle = String(event.title || '').trim() || 'our event';
+  const hostLabel = senderDisplayName(host.org_name || host.name || eventHostLabel(event), 'Your host');
+  const cleanSubject = cleanPostEventSubject(subject, `Thanks for being part of ${eventTitle}`);
+  const cleanMessage = String(message || '').trim() || `Thanks for being part of ${eventTitle}. You made it a night to remember.`;
+  const dateLabel = postEventDateLabel(event.event_date);
+  const hostSlug = String(host.public_slug || '').trim();
+  const followUrl = hostSlug ? `${baseUrl}/h/${encodeURIComponent(hostSlug)}` : '';
+  const showFollow = includeFollow === true && alreadyFollowing !== true && Boolean(followUrl);
+  const safeUnsubscribeUrl = safeHttpUrl(unsubscribeUrl);
+  const messageHtml = `<p style="color:#d7d7d7;font-size:17px;line-height:1.7;margin:0;white-space:normal">${esc(cleanMessage).replace(/\r?\n/g, '<br>')}</p>`;
+  const dateHtml = dateLabel
+    ? `<p style="color:#777777;font-size:13px;font-weight:700;letter-spacing:.04em;margin:0 0 18px">${esc(dateLabel)}</p>`
+    : '';
+  const footerHtml = safeUnsubscribeUrl
+    ? policyFooter({
+      reason: `You’re receiving this note because you RSVP’d to ${eventTitle} and opted into emails from ${hostLabel}.`,
+      hostLabel,
+      includeAddress: true,
+      links: [
+        { label: 'Unsubscribe from emails from this host', url: safeUnsubscribeUrl },
+        { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+      ]
     })
+    : '<p style="color:#666666;font-size:12px;line-height:1.6;text-align:center;margin:0">Preview only — the sent email includes the recipient’s unsubscribe link.</p>';
+  const html = rsvpConfirmationLayout({
+    event,
+    kicker: `A note from ${hostLabel}`,
+    sub: 'Thanks for making it a night to remember.',
+    bodyHtml: `${dateHtml}${messageHtml}`,
+    cta: showFollow ? 'Follow our page for more events' : '',
+    ctaUrl: showFollow ? followUrl : '',
+    footerHtml,
+    showEventIdentity: false,
+    footerActionLabel: '',
+    footerActionUrl: ''
+  });
+  const text = [
+    eventTitle,
+    dateLabel,
+    '',
+    cleanMessage,
+    showFollow ? `Follow ${hostLabel}: ${followUrl}` : '',
+    '',
+    safeUnsubscribeUrl
+      ? `Unsubscribe from emails from this host: ${safeUnsubscribeUrl}`
+      : '[Preview only: the sent email includes the recipient’s unsubscribe link.]'
+  ].filter((line, index, lines) => line || (index > 0 && lines[index - 1])).join('\n');
+  return { html, text, subject: cleanSubject };
+}
+
+async function sendPostEventThankYou({
+  to,
+  event,
+  host,
+  subject,
+  message,
+  includeFollow,
+  alreadyFollowing,
+  unsubscribeUrl,
+  idempotencyKey
+}) {
+  const safeUnsubscribeUrl = safeHttpUrl(unsubscribeUrl);
+  if (!safeUnsubscribeUrl) throw new Error('A valid unsubscribe URL is required for post-event thank-you delivery');
+  const stableIdempotencyKey = String(idempotencyKey || '').trim();
+  if (!stableIdempotencyKey) throw new Error('An idempotency key is required for post-event thank-you delivery');
+  const email = buildPostEventThankYouEmail({
+    event,
+    host,
+    subject,
+    message,
+    includeFollow,
+    alreadyFollowing,
+    unsubscribeUrl: safeUnsubscribeUrl
+  });
+  const hostLabel = senderDisplayName(host?.org_name || host?.name || eventHostLabel(event), 'Your host');
+  return send({
+    to,
+    ...email,
+    from: hostFrom(hostLabel),
+    replyTo: safeReplyToAddress(host?.email),
+    headers: oneClickHeaders(safeUnsubscribeUrl),
+    idempotencyKey: stableIdempotencyKey
   });
 }
 
@@ -1337,7 +1508,8 @@ module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendAdminIdentityChangeVerification, sendAdminFlyerNotification,
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
-  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome, sendHostRecap,
+  sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
+  buildHostRecapEmail, sendHostRecap, buildPostEventThankYouEmail, sendPostEventThankYou,
   sendHostProfileNudge, sendFirstEventNudge, sendPhotoRequest, sendCommerceLaunch,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,

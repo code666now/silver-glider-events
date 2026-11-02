@@ -34,8 +34,9 @@ test('event management and promotion actions remain clearly separated', () => {
 
   for (const label of ['View page', 'Edit', 'Event actions']) {
     assert.match(toolbar, new RegExp(`\\b${label}\\b`));
-    assert.doesNotMatch(promotion, new RegExp(`\\b${label}\\b`));
+    if (label !== 'Edit') assert.doesNotMatch(promotion, new RegExp(`\\b${label}\\b`));
   }
+  assert.doesNotMatch(promotion, /id="(?:view-link|edit-link|more-menu)"/);
   assert.match(toolbar, /Share event link/);
   assert.match(promotion, /Share event/);
   for (const label of ['Download QR code', 'Submit to The Line']) {
@@ -63,9 +64,9 @@ test('promotion actions share the event and download its existing QR endpoint', 
   assert.match(client, /link\.download = `\$\{eventData\.slug\}-qr-code\.png`/);
   assert.match(client, /\$\('line-feature'\)\.style\.display = 'none'/);
   assert.match(client, /function setManageReady\(\)/);
-  assert.match(client, /secondaryTasks = eventData\.lifecycle_phase === 'ended'/);
+  assert.match(client, /const eventEnded = isPostEventEligible\(\)[\s\S]*const secondaryTasks = eventEnded/);
   assert.match(client, /desktopManageLayout = window\.matchMedia\('\(min-width: 1024px\)'\)/);
-  assert.match(client, /eventData\?\.is_past && desktopManageLayout\.matches/);
+  assert.match(client, /isPostEventEligible\(\) && desktopManageLayout\.matches/);
   assert.match(client, /manage-guest-desktop-slot'\)\.append\(section\)/);
   assert.match(client, /\$\('hero-link'\)\.href = manageImage/);
   assert.match(client, /manage-guest-home'\)\.after\(section\)/);

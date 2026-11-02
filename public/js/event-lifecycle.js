@@ -17,8 +17,14 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  function isPostEventEligible(event = {}) {
+    if (event.status !== 'published') return false;
+    if (typeof event.post_event_ended === 'boolean') return event.post_event_ended;
+    return event.lifecycle_phase === 'ended' || Boolean(event.is_past);
+  }
+
   function variantFor({ event = {}, smsPreview = null, followerPreview = null } = {}) {
-    if (event.lifecycle_phase === 'ended' || event.is_past) return VARIANTS.ENDED;
+    if (isPostEventEligible(event)) return VARIANTS.ENDED;
     if (event.lifecycle_phase === 'tonight') return VARIANTS.TONIGHT;
 
     const reminderCount = number(smsPreview?.recipientCount ?? event.sms_eligible_count);
@@ -64,5 +70,5 @@
     };
   }
 
-  return { VARIANTS, variantFor, reminderDateLabel, deliveryReceipt };
+  return { VARIANTS, variantFor, isPostEventEligible, reminderDateLabel, deliveryReceipt };
 });

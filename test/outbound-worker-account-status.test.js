@@ -38,6 +38,7 @@ function fakePool({ userId = 71, accountStatus = 'active' } = {}) {
   };
   return {
     calls,
+    client,
     async connect() {
       calls.push(['connect']);
       return client;
@@ -47,7 +48,8 @@ function fakePool({ userId = 71, accountStatus = 'active' } = {}) {
 
 test('active host delivery holds the canonical account advisory lock across the provider send', async () => {
   const pool = fakePool();
-  const result = await withActiveHostAccount(pool, 19, async () => {
+  const result = await withActiveHostAccount(pool, 19, async lockedClient => {
+    assert.equal(lockedClient, pool.client, 'last-moment consent checks reuse the already locked connection');
     pool.calls.push(['provider-send']);
     return { id: 'provider-1' };
   });

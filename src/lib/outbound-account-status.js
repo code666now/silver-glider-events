@@ -39,7 +39,9 @@ async function withActiveHostAccount(pool, organizerId, send) {
       return { accountStatus, allowed: false, result: null, userId };
     }
 
-    return { accountStatus, allowed: true, result: await send(), userId };
+    // Let delivery-specific checks reuse this locked connection rather than
+    // wait for another pool slot while already holding the account lock.
+    return { accountStatus, allowed: true, result: await send(client), userId };
   } finally {
     if (locked) {
       try {
