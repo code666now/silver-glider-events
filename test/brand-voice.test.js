@@ -17,7 +17,7 @@ test('customer navigation uses the warmer page, Home base, and Following languag
   assert.match(dashboard, /dashboard-eyebrow dashboard-desktop-only">Home base</);
   assert.match(publicHosts, /aria-label="Return to Home base">← Home base<\/a>/);
   assert.match(following, /<h1 class="sg-page-title">Following<\/h1>/);
-  assert.match(following, /The people and places you follow\./);
+  assert.match(following, /Your next good night, from people and places you follow\./);
   assert.match(following, /You’re not following anyone yet\./);
   assert.match(following, /Follow people and places you like\. They’ll show up here\./);
 });

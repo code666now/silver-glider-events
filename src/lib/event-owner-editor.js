@@ -21,6 +21,7 @@ function ownerEventData(event) {
     title: event.title,
     description: event.description || '',
     eventDate: event.event_date,
+    timezone: event.timezone,
     startTime: event.start_time,
     endTime: event.end_time || '',
     venueName: event.venue_name,
@@ -228,6 +229,7 @@ function renderOwnerEditor(event) {
           </section>
 
           <section class="owner-editor-panel" id="owner-panel-details" role="tabpanel" aria-labelledby="owner-tab-details" data-owner-panel="details" hidden>
+            <p class="owner-repeat-guidance" id="owner-repeat-guidance" role="status" hidden>Choose a new date and time, then review your copied details. Guests and messages were not copied.</p>
             <div class="owner-section-intro"><h3>Event details</h3><p>Edit the essentials while seeing the page update beside you.</p></div>
             <label class="owner-field"><span>Title</span><input class="owner-input" id="owner-title" maxlength="140" required></label>
             <div class="owner-field-row">

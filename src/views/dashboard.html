@@ -90,6 +90,16 @@
       letter-spacing: .14em;
       text-transform: uppercase;
     }
+    .next-card:focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px; }
+    .next-plan-actions { display:flex;flex-wrap:wrap;gap:10px;padding:0 20px 20px; }
+    .next-plan-actions .sg-btn { min-height:44px; }
+    .next-plan-host { margin-top:6px; }
+    .next-plan .next-count strong { font-size:22px; }
+    .next-plan .next-details h2 { white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.2; }
+    .dashboard-overview[hidden] { display:none; }
+    div.dashboard-empty { cursor:default; }
+    .dashboard-error { padding:32px 22px;border:1px solid var(--sg-border-soft);border-radius:24px;color:var(--sg-text-dim);line-height:1.6; }
+    .dashboard-error .sg-btn { margin-top:16px; }
     .dashboard-stats {
       color: var(--sg-text-dim);
       font-size: 14px;
@@ -443,7 +453,7 @@
       <section class="dashboard-feature" aria-labelledby="next-up-heading">
         <div class="dashboard-section-head dashboard-desktop-only">
           <h2 id="next-up-heading">Next up</h2>
-          <a href="/events">View all events →</a>
+          <a id="dashboard-view-all" href="/events">View all events →</a>
         </div>
         <div id="next-event" aria-live="polite" aria-busy="true">
           <div class="dashboard-skeleton" aria-hidden="true">
@@ -460,7 +470,7 @@
         <section class="dashboard-overview" aria-labelledby="overview-heading">
           <div class="dashboard-overview-head">
             <h2 id="overview-heading">At a glance</h2>
-            <span>All events</span>
+            <span>Hosting</span>
           </div>
           <div class="dashboard-stat-grid" aria-live="polite" aria-busy="true">
             <div class="dashboard-stat dashboard-stat-primary"><strong id="upcoming-count"><span class="dashboard-stat-skeleton sg-skeleton" aria-hidden="true"></span></strong><span>Upcoming events</span></div>
@@ -472,8 +482,8 @@
         <p class="dashboard-stats" id="dashboard-stats"></p>
 
         <div class="dashboard-actions">
-          <a class="sg-btn sg-btn-primary sg-btn-block sg-mobile-sticky-action" href="/events/new">Create Event</a>
-          <a class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
+          <a id="dashboard-create" class="sg-btn sg-btn-primary sg-btn-block sg-mobile-sticky-action" href="/events/new">Create Event</a>
+          <a id="dashboard-my-events" class="sg-btn sg-btn-ghost sg-btn-block" href="/events">My Events</a>
         </div>
       </aside>
     </div>
@@ -499,7 +509,7 @@
     const dashboardMobileLayout = window.matchMedia('(max-width: 879px)');
 
     function syncDashboardEmptyCardAction() {
-      document.querySelectorAll('.dashboard-empty').forEach(card => {
+      document.querySelectorAll('a.dashboard-empty').forEach(card => {
         if (!card.dataset.desktopAriaLabel) {
           card.dataset.desktopAriaLabel = card.getAttribute('aria-label') || 'Create an event';
         }
@@ -517,6 +527,16 @@
     if (dashboardMobileLayout.addEventListener) dashboardMobileLayout.addEventListener('change', syncDashboardEmptyCardAction);
     else dashboardMobileLayout.addListener(syncDashboardEmptyCardAction);
 
+    function planStart(event) {
+      return new Date(event.starts_at || `${String(event.event_date).slice(0, 10)}T${event.start_time || '00:00'}`).getTime();
+    }
+
+    function hasUpcomingPlan(event) {
+      // Both authenticated event APIs use the canonical timezone/overnight
+      // end calculation. An event stays handy until it actually ends.
+      return event.status === 'published' && new Date(event.ends_at).getTime() > Date.now();
+    }
+
     (async () => {
       const container = document.getElementById('next-event');
       const statGrid = document.querySelector('.dashboard-stat-grid');
@@ -526,37 +546,57 @@
       };
 
       try {
-        // Nights you're playing count as your next event too, so an artist who
-        // has only claimed a lineup slot doesn't land on an empty Home.
+        // Reuse Going for guests and artists. Home never creates a separate
+        // plans model or asks somebody who already RSVP'd to start again.
         const [{ organizer }, { events }, going] = await Promise.all([
           api('/api/auth/me'),
           api('/api/events'),
-          api('/api/events/going').catch(() => ({ events: [] }))
+          api('/api/events/going')
         ]);
-        const today = new Date(new Date().toDateString());
-        const playing = (going.events || [])
-          .filter(item => item.playing && item.status === 'published' && new Date(item.event_date) >= today)
-          .map(item => ({ ...item, isPlaying: true }));
+        const plans = (going.events || []).filter(hasUpcomingPlan)
+          .map(item => ({ ...item, isPlaying: Boolean(item.playing), isGoing: !item.playing }));
         document.getElementById('greeting').textContent =
           organizer.name ? `Welcome back, ${organizer.name.split(' ')[0]}` : 'Welcome';
-        const hostedUpcoming = events.filter(e => e.status === 'published' && new Date(e.event_date) >= today);
-        // The stats below stay about events you host; only the card can be a playing night.
-        const upcoming = [...hostedUpcoming, ...playing];
+        const hostedUpcoming = events.filter(hasUpcomingPlan);
+        // An event somebody both hosts and attends stays one management card.
+        const hostedIds = new Set(hostedUpcoming.map(event => Number(event.id)));
+        const upcoming = [...hostedUpcoming, ...plans.filter(event => !hostedIds.has(Number(event.id)))];
         const totalRsvps = events.reduce((sum, item) => sum + Number(item.rsvp_count || 0), 0);
         document.getElementById('upcoming-count').textContent = String(hostedUpcoming.length);
         document.getElementById('rsvp-count').textContent = String(totalRsvps);
         document.getElementById('event-count').textContent = String(events.length);
+        if (!events.length) {
+          document.querySelector('.dashboard-overview').hidden = true;
+          const create = document.getElementById('dashboard-create');
+          create.classList.remove('sg-btn-primary', 'sg-mobile-sticky-action');
+          create.classList.add('sg-btn-ghost');
+          document.body.classList.remove('has-mobile-sticky-action');
+          document.getElementById('dashboard-my-events').href = '/events?view=going';
+          document.getElementById('dashboard-my-events').textContent = 'My plans';
+          document.getElementById('dashboard-view-all').href = '/events?view=going';
+          document.getElementById('dashboard-view-all').textContent = 'View all plans →';
+        }
         if (!upcoming.length) {
-          document.getElementById('sub').textContent = 'No upcoming events. Create one when you are ready.';
+          document.getElementById('sub').textContent = events.length
+            ? 'No upcoming events. Create one when you are ready.' : 'Your next good night is still ahead.';
           document.getElementById('dashboard-stats').textContent =
             `${events.length} total event${events.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`;
-          container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create your first event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Your next event starts here.</h3><p>Create a polished event page, then manage every RSVP from one place.</p></div></a>';
+          container.innerHTML = events.length
+            ? '<a class="dashboard-empty" href="/events/new" aria-label="Create your next event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Your next event starts here.</h3><p>Create a polished event page, then manage every RSVP from one place.</p></div></a>'
+            : '<div class="dashboard-empty"><div><div class="dashboard-empty-mark" aria-hidden="true">↗</div><h3>No upcoming plans yet.</h3><p>Events you RSVP to will appear here. See what’s coming up from the people you follow.</p><a class="sg-btn sg-btn-primary" href="/following" style="margin-top:20px">See Following</a></div></div>';
+          if (!events.length) {
+            document.getElementById('dashboard-stats').textContent = '';
+            document.body.classList.remove('has-mobile-sticky-action');
+            document.querySelector('.sg-mobile-sticky-action')?.classList.remove('sg-mobile-sticky-action');
+          }
           syncDashboardEmptyCardAction();
           finishLoading();
           return;
         }
-        const ev = upcoming.sort((a, b) => new Date(a.event_date) - new Date(b.event_date))[0];
+        const ev = upcoming.sort((a, b) => planStart(a) - planStart(b) || Number(a.id) - Number(b.id))[0];
         const dateStr = new Date(ev.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+        const timeParts = String(ev.start_time || '').match(/^(\d{2}):(\d{2})/);
+        const clock = timeParts ? `${Number(timeParts[1]) % 12 || 12}:${timeParts[2]} ${Number(timeParts[1]) >= 12 ? 'PM' : 'AM'}` : '';
         const title = String(ev.title || 'Untitled event');
         const flyerMode = ev.presentation_mode === 'flyer';
         const coverUrl = flyerMode
@@ -564,36 +604,43 @@
           : sgSafeHttpUrl(ev.cover_image_url);
         const rsvpCount = Number(ev.rsvp_count) || 0;
         const capacity = Number(ev.capacity) || 0;
-        document.getElementById('sub').textContent = ev.isPlaying ? 'Your next night.' : 'Your next event.';
-        // The summary is about events you host. An artist with only lineup
-        // nights hears about those instead of a row of zeros.
+        document.getElementById('sub').textContent = ev.isPlaying || ev.isGoing ? 'Your next night.' : 'Your next event.';
         document.getElementById('dashboard-stats').textContent = hostedUpcoming.length
-          ? `${hostedUpcoming.length} upcoming event${hostedUpcoming.length === 1 ? '' : 's'} · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`
-          : `${playing.length} night${playing.length === 1 ? '' : 's'} you’re playing`;
+          ? `${hostedUpcoming.length} upcoming event${hostedUpcoming.length === 1 ? '' : 's'} you host · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`
+          : `${plans.length} upcoming plan${plans.length === 1 ? '' : 's'}`;
+        const eventPath = `/e/${encodeURIComponent(String(ev.slug))}`;
+        if (ev.isGoing) {
+          // The event page rechecks the signed-in RSVP before exposing a
+          // protected location. No address or personal token goes in this link.
+          document.body.classList.remove('has-mobile-sticky-action');
+          document.querySelector('.sg-mobile-sticky-action')?.classList.remove('sg-mobile-sticky-action');
+        }
         container.innerHTML = `
-          <a class="next-card" href="${ev.isPlaying ? `/e/${encodeURIComponent(String(ev.slug))}` : `/events/${encodeURIComponent(String(ev.id))}/manage`}">
+          ${ev.isGoing ? '<article class="next-card next-plan">' : `<a class="next-card" href="${ev.isPlaying ? eventPath : `/events/${encodeURIComponent(String(ev.id))}/manage`}">`}
             ${coverUrl
               ? `<div class="next-visual"><img class="${flyerMode ? 'flyer' : ''}" src="${sgEscapeHtml(coverUrl)}" alt=""></div>`
               : `<div class="next-visual placeholder">${sgEscapeHtml(title.charAt(0).toUpperCase())}</div>`}
             <div class="next-details">
               <div>
                 <h2>${sgEscapeHtml(title)}</h2>
-                <p>${sgEscapeHtml(dateStr)} · ${sgEscapeHtml(ev.venue_name)}</p>
+                <p>${sgEscapeHtml(dateStr)}${clock ? ` · ${sgEscapeHtml(clock)}` : ''}</p>
+                ${ev.venue_name ? `<p>${sgEscapeHtml(ev.venue_name)}</p>` : ''}
+                ${ev.isGoing && ev.host_name ? `<p class="next-plan-host">Hosted by ${sgEscapeHtml(ev.host_name)}</p>` : ''}
               </div>
               <div class="next-count">
-                ${ev.isPlaying
+                ${ev.isGoing ? '<strong>Going</strong><span>Your RSVP</span>' : ev.isPlaying
                   ? '<strong>Playing</strong><span>View event</span>'
                   : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
               </div>
             </div>
-          </a>`;
+            ${ev.isGoing ? `<div class="next-plan-actions"><a class="sg-btn sg-btn-primary" href="${eventPath}#returning-rsvp-state">View RSVP</a><a class="sg-btn sg-btn-ghost" href="${eventPath}#event-location-map">Get directions</a></div></article>` : '</a>'}`;
         finishLoading();
       } catch (_) {
-        document.getElementById('upcoming-count').textContent = '0';
-        document.getElementById('rsvp-count').textContent = '0';
-        document.getElementById('event-count').textContent = '0';
-        container.innerHTML = '<a class="dashboard-empty" href="/events/new" aria-label="Create an event"><div><div class="dashboard-empty-mark" aria-hidden="true">+</div><h3>Create your next event.</h3><p>Your dashboard data could not be loaded, but event creation is still available.</p></div></a>';
-        syncDashboardEmptyCardAction();
+        document.getElementById('sub').textContent = 'Your plans could not be loaded.';
+        document.getElementById('upcoming-count').textContent = '—';
+        document.getElementById('rsvp-count').textContent = '—';
+        document.getElementById('event-count').textContent = '—';
+        container.innerHTML = '<div class="dashboard-error" role="alert"><p>We couldn’t load your events. Your RSVPs haven’t changed.</p><a class="sg-btn sg-btn-ghost" href="/dashboard">Try again</a></div>';
         finishLoading();
       }
     })();

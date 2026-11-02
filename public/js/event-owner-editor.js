@@ -10,6 +10,7 @@
   const trigger = $('owner-edit-trigger');
   const saveButton = $('owner-editor-save');
   const saveStatus = $('owner-save-status');
+  const repeatRequested = new URLSearchParams(window.location.search).get('repeat') === '1' && EVENT.status === 'draft';
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
   const EventBackgrounds = window.SGEventBackgrounds;
@@ -1720,6 +1721,17 @@
     readInputs();
     setMobileViewStatus('');
     const publishing = isDraftEvent();
+    if (publishing && repeatRequested && draft.eventDate && draft.startTime) {
+      const local = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: EVENT.timezone || 'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',
+        hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+      }).formatToParts(new Date()).map(part => [part.type,part.value]));
+      const localNow = `${local.year}-${local.month}-${local.day}T${local.hour}:${local.minute}`;
+      if (`${draft.eventDate}T${draft.startTime}` <= localNow) {
+        showEditorValidation('Choose a new date and time in the future for this event.', 'details', $('owner-date'));
+        return;
+      }
+    }
     if (draft.presentationMode === 'flyer') {
       const flyerInstagram = validateOwnerFlyerDesignerHandle({ normalize: true });
       if (flyerInstagram.error) {
@@ -1788,7 +1800,7 @@
         saveButton.textContent = 'Publishing…';
         saveStatus.textContent = 'Publishing your event…';
         await request(`/api/events/${EVENT.id}/publish`, { method: 'POST' });
-        window.location.assign(`/events/${encodeURIComponent(EVENT.id)}/manage?created=1`);
+        window.location.assign(`/events/${encodeURIComponent(EVENT.id)}/manage?created=1${repeatRequested ? '&repeat=1' : ''}`);
         return;
       }
       sessionStorage.setItem('sge-owner-editor-reopen', EVENT.slug);
@@ -1914,6 +1926,7 @@
   const reopenRequested = sessionStorage.getItem('sge-owner-editor-reopen') === EVENT.slug;
   const savedMessage = sessionStorage.getItem('sge-owner-editor-saved');
   populate();
+  if (repeatRequested && $('owner-repeat-guidance')) $('owner-repeat-guidance').hidden = false;
   if (mobileEditorMedia.matches) {
     if (requestedTab) openMobileView(initialTab === 'settings' ? 'admission' : initialTab, { focus: false });
     else showMobileHub({ focus: false });
@@ -1927,6 +1940,7 @@
       openMobileView('appearance', { focus: false });
     }
     openEditor();
+    if (repeatRequested) requestAnimationFrame(() => $('owner-date')?.focus({ preventScroll: true }));
     sessionStorage.removeItem('sge-owner-editor-saved');
     if (savedMessage) setTimeout(() => showToast(savedMessage), 180);
   }

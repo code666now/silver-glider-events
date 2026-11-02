@@ -26,6 +26,7 @@ const {
 const { queueSmsBatch } = require('../jobs/sms-notifications');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { locationForViewer } = require('../lib/event-location-privacy');
+const { eventEndAtSql } = require('../lib/post-event');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -107,6 +108,9 @@ router.get('/api/events/going', async (req, res, next) => {
        )
        SELECT DISTINCT ON (e.id)
               e.id, e.slug, e.title, e.event_date, e.start_time, e.end_time,
+              e.timezone,
+              (e.event_date + e.start_time) AT TIME ZONE e.timezone AS starts_at,
+              ${eventEndAtSql('e')} AS ends_at,
               e.venue_name, e.venue_city, e.venue_state, e.status, e.visibility,
               e.presentation_mode, e.flyer_image_url, e.cover_image_url,
               o.org_name AS host_name, o.name AS host_person_name,
@@ -127,6 +131,8 @@ router.get('/api/events', async (req, res, next) => {
     const archivedOnly = req.query.archived === '1';
     const { rows } = await pool.query(
       `SELECT e.*,
+              (e.event_date + e.start_time) AT TIME ZONE e.timezone AS starts_at,
+              ${eventEndAtSql('e')} AS ends_at,
               COALESCE(r.cnt, 0)::int AS rsvp_count,
               COALESCE(r.guest_count, 0)::int AS guest_count,
               (COALESCE(r.cnt, 0) + COALESCE(r.guest_count, 0))::int AS total_attendance,

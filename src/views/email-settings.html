@@ -19,6 +19,7 @@
     .email-settings-row input { width:22px;height:22px;margin:2px 0 0;accent-color:var(--sg-accent);flex:0 0 auto; }
     .email-settings-row strong { display:block;margin-bottom:5px;font-size:17px; }
     .email-settings-row small { display:block;color:var(--sg-text-dim);font-size:14px;line-height:1.55; }
+    .email-settings-additional { margin-top:24px;padding-top:24px;border-top:1px solid var(--sg-border); }
     .email-settings-status { min-height:22px;margin:18px 0 0;color:var(--sg-text-dim);font-size:14px;text-align:center; }
     .email-settings-status.is-error { color:var(--sg-danger); }
     @media(max-width:879px) {
@@ -38,22 +39,22 @@
         <input id="email-setting-enabled" type="checkbox" {{CHECKED}}>
         <span><strong>{{SETTING_LABEL}}</strong><small>{{SETTING_DESCRIPTION}}</small></span>
       </label>
+      {{ADDITIONAL_SETTINGS}}
       <p class="email-settings-status" id="email-settings-status" role="status" aria-live="polite"></p>
     </section>
   </main>
   <script>
-    const input = document.getElementById('email-setting-enabled');
     const status = document.getElementById('email-settings-status');
-    input.addEventListener('change', async () => {
+    document.querySelectorAll('.email-settings-row input').forEach(input => input.addEventListener('change', async () => {
       const enabled = input.checked;
       input.disabled = true;
       status.classList.remove('is-error');
       status.textContent = 'Saving…';
       try {
-        const response = await fetch('{{SAVE_URL}}', {
+        const response = await fetch(input.dataset.emailToken ? '/api/email-settings' : '{{SAVE_URL}}', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token: '{{TOKEN}}', enabled })
+          body: JSON.stringify({ token: input.dataset.emailToken || '{{TOKEN}}', enabled })
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Your setting could not be saved.');
@@ -65,7 +66,7 @@
       } finally {
         input.disabled = false;
       }
-    });
+    }));
   </script>
 </body>
 </html>

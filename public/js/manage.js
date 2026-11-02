@@ -418,7 +418,7 @@ function setManageReady() {
   $('manage-shell').removeAttribute('data-loading');
   $('manage-overview').setAttribute('aria-busy', 'false');
   $('manage-hero-skeleton').hidden = true;
-  ['copy-link', 'share-event', 'download-qr', 'duplicate', 'cancel-event', 'delete-event'].forEach(id => {
+  ['copy-link', 'share-event', 'download-qr', 'duplicate', 'lifecycle-next-event', 'cancel-event', 'delete-event'].forEach(id => {
     $(id).disabled = false;
   });
   ['view-link', 'edit-link'].forEach(id => {
@@ -926,9 +926,7 @@ $('share-event').addEventListener('click', async () => {
 // the phone still allows the native share sheet.
 $('manage-mobile-share').addEventListener('click', () => $('share-event').click());
 
-$('lifecycle-next-event').addEventListener('click', () => {
-  window.location.assign('/events/new');
-});
+$('lifecycle-next-event').addEventListener('click', () => duplicateEvent($('lifecycle-next-event'), { repeat: true }));
 
 $('copy-photo-link').addEventListener('click', async () => {
   const url = $('collect-photos-card').dataset.collectionUrl;
@@ -1014,29 +1012,35 @@ $('export-csv').addEventListener('click', () => {
   window.location.href = `/api/events/${eventId}/rsvps.csv`;
 });
 
-$('duplicate').addEventListener('click', async () => {
-  const button = $('duplicate');
+async function duplicateEvent(button, { repeat = false } = {}) {
   if (button.dataset.busy === 'true') return;
 
+  const previousHtml = button.innerHTML;
   button.dataset.busy = 'true';
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
-  button.textContent = 'Duplicating…';
+  button.textContent = repeat ? 'Creating your draft…' : 'Duplicating…';
+  $('duplicate').disabled = true;
+  $('lifecycle-next-event').disabled = true;
   if (!mobileManageLayout.matches || activeMobileManageView !== 'actions') $('more-menu').removeAttribute('open');
 
   try {
     const { event } = await api(`/api/events/${eventId}/duplicate`, { method: 'POST' });
     if (!event?.id) throw new Error('The duplicate was created without an editable event');
     if (!event.slug) throw new Error('The duplicate was created without an event page');
-    window.location.assign(`/e/${encodeURIComponent(event.slug)}?edit=appearance`);
+    window.location.assign(`/e/${encodeURIComponent(event.slug)}?edit=${repeat ? 'details&repeat=1' : 'appearance'}`);
   } catch (err) {
     delete button.dataset.busy;
     button.disabled = false;
     button.removeAttribute('aria-busy');
-    button.textContent = 'Duplicate event';
+    button.innerHTML = previousHtml;
+    $('duplicate').disabled = false;
+    $('lifecycle-next-event').disabled = false;
     toast(err.message || 'Could not duplicate this event');
   }
-});
+}
+
+$('duplicate').addEventListener('click', () => duplicateEvent($('duplicate')));
 
 let smsPreviewState = null;
 let followerPreviewState = null;
@@ -1131,9 +1135,11 @@ function renderLifecycleCard() {
   }
 
   $('lifecycle-card-title').textContent = 'Promote your event';
-  $('promotion-copy').textContent = variant === 'new-event'
-    ? 'Start sharing. Reminder signups and followers will appear here.'
-    : 'Spread the word and keep your guests in the loop.';
+  $('promotion-copy').textContent = eventData.duplicated_from_id
+    ? 'Your new event is ready to share. Guests and messages were not copied. Choose whom to invite with Familiar Faces; review before anything is sent.'
+    : variant === 'new-event'
+      ? 'Start sharing. Reminder signups and followers will appear here.'
+      : 'Spread the word and keep your guests in the loop.';
   $('get-word-out-label').hidden = false;
   $('reach-guests-label').hidden = false;
   setPromotionActionVisible('share-event', true);
@@ -1248,6 +1254,12 @@ function renderPeopleAction() {
   const available = peopleState.canInvite && (peopleState.total > 0 || peopleState.plusOnes.length > 0 || Boolean(peopleSearch));
   button.style.display = available ? '' : 'none';
   button.disabled = !available;
+  $('invite-previous-guests-title').textContent = eventData?.duplicated_from_id
+    ? 'Review who to invite'
+    : 'Invite Familiar Faces';
+  $('invite-previous-guests-copy').textContent = eventData?.duplicated_from_id
+    ? 'Your past guests are here to choose from. Nothing has been sent.'
+    : 'Choose people from your past events.';
 }
 
 async function loadPeople({ append = false } = {}) {

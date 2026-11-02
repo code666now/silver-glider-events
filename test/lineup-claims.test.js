@@ -75,8 +75,8 @@ test('a claimed night shows up as Playing, on Home and in My Events', () => {
 
   assert.match(events, /ev\.playing[\s\S]*playing-label">Playing/);
   // Home counts a night you're playing, but its stats stay about events you host.
-  assert.match(dashboard, /item\.playing && item\.status === 'published'/);
-  assert.match(dashboard, /ev\.isPlaying \? 'Your next night\.' : 'Your next event\.'/);
+  assert.match(dashboard, /isPlaying: Boolean\(item\.playing\)/);
+  assert.match(dashboard, /ev\.isPlaying \|\| ev\.isGoing \? 'Your next night\.' : 'Your next event\.'/);
   assert.match(dashboard, /getElementById\('upcoming-count'\)\.textContent = String\(hostedUpcoming\.length\)/);
   assert.match(claim, /See it in my events/);
 });

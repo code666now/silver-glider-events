@@ -84,6 +84,29 @@
 .rsvp-follow-host h3 { margin:0 0 7px;font-size:20px;line-height:1.2; }
 .rsvp-follow-host > p:not(.rsvp-follow-host-label) { margin:0 0 14px;color:var(--sg-text-dim,#aaa);font-size:12px;line-height:1.55; }
 .rsvp-follow-host .sg-btn { min-height:48px; }
+.rsvp-invite-friend { margin:20px 0 0;padding-top:20px;border-top:1px solid rgba(255,255,255,.1); }
+.rsvp-invite-friend[hidden] { display:none; }
+.rsvp-invite-friend h3 { margin:0 0 7px;font-size:17px;line-height:1.35; }
+.rsvp-invite-friend p { margin:0 0 12px;color:var(--sg-text-dim,#aaa);font-size:12px;line-height:1.55; }
+.rsvp-invite-friend .sg-btn { min-height:48px; }
+.event-return { margin:30px 0;padding:24px;border:1px solid rgba(255,255,255,.12);border-radius:20px;background:rgba(12,14,14,.78);text-align:left;overflow-wrap:anywhere; }
+.event-return-kicker { margin:0 0 10px;color:var(--sg-accent,#1cc5be);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase; }
+.event-return h2 { margin:0 0 14px;font-size:24px;line-height:1.2;letter-spacing:-.025em; }
+.event-return > p:not(.event-return-kicker) { margin:0 0 18px;color:var(--sg-text-dim,#aaa);font-size:14px;line-height:1.6; }
+.event-return-next { display:flex;gap:18px;align-items:center;color:var(--sg-text,#fff);text-decoration:none;min-height:90px; }
+.event-return-next > img { width:90px;height:112px;object-fit:cover;border-radius:12px;flex-shrink:0; }
+.event-return-next > span { min-width:0;display:grid;gap:8px; }
+.event-return-next small { color:var(--sg-text-dim,#aaa);font-size:12px; }
+.event-return-next strong { font-size:20px;line-height:1.3; }
+.event-return-next b { color:var(--sg-accent,#1cc5be);font-size:13px; }
+.event-return-host { display:inline-block;margin:12px 0 0 14px;color:var(--sg-text-dim,#aaa);font-size:13px;min-height:44px;line-height:44px; }
+.event-return a:focus-visible, .rsvp-invite-friend button:focus-visible { outline:2px solid var(--sg-accent,#1cc5be);outline-offset:5px; }
+@media (max-width:640px) {
+  .event-return { padding:20px; }
+  .event-return h2 { font-size:22px; }
+  .event-return-next > img { width:72px;height:96px; }
+  .event-return-host { display:block;margin-left:0; }
+}
 .rsvp-confirmation-editor { margin:18px 0 0;padding:18px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(0,0,0,.2); }
 .rsvp-confirmation-editor[hidden] { display:none; }
 .rsvp-confirmation-editor > p:first-child { margin:0 0 13px;font-size:13px;font-weight:800; }

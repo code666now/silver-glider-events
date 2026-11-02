@@ -115,6 +115,19 @@ async function sendRecapFor(event) {
       console.log(`[host-recap] skipped event ${event.id}: ${HOST_ACCOUNT_INACTIVE}`);
       return false;
     }
+    // Only newly accepted recaps may anchor the separately opt-in follow-up.
+    // Historical host_recap_sent_at values are claims and are never backfilled.
+    try {
+      await pool.query(
+        'UPDATE events SET host_recap_delivered_at=COALESCE(host_recap_delivered_at,NOW()) WHERE id=$1',
+        [event.id]
+      );
+    } catch (_) {
+      // The provider has already accepted the recap. A bookkeeping failure
+      // must not release its one-ever claim or resend it. Missing the optional
+      // follow-up is safer than guessing that an accepted recap was not sent.
+      console.error('[host-recap] accepted recap follow-up timestamp could not be saved', { eventId: event.id });
+    }
     return true;
   } catch (error) {
     console.error('[host-recap] send failed', { eventId: event.id, error: error.message });

@@ -89,18 +89,18 @@ test('duplicate event exposes progress, prevents repeat requests, and recovers f
   const view = source('src/views/event-manage.html');
   const client = source('public/js/manage.js');
   const handler = client.slice(
-    client.indexOf("$('duplicate').addEventListener"),
-    client.indexOf('async function loadFollowers')
+    client.indexOf('async function duplicateEvent('),
+    client.indexOf("$('duplicate').addEventListener")
   );
 
   assert.match(view, /id="duplicate" type="button" disabled/);
   assert.match(handler, /button\.dataset\.busy === 'true'/);
-  assert.match(handler, /button\.textContent = 'Duplicating…'/);
+  assert.match(handler, /button\.textContent = repeat \? 'Creating your draft…' : 'Duplicating…'/);
   assert.match(handler, /button\.setAttribute\('aria-busy', 'true'\)/);
   assert.match(handler, /api\(`\/api\/events\/\$\{eventId\}\/duplicate`, \{ method: 'POST' \}\)/);
-  assert.match(handler, /window\.location\.assign\(`\/e\/\$\{encodeURIComponent\(event\.slug\)\}\?edit=appearance`\)/);
+  assert.match(handler, /window\.location\.assign\(`\/e\/\$\{encodeURIComponent\(event\.slug\)\}\?edit=\$\{repeat \? 'details&repeat=1' : 'appearance'\}`\)/);
   assert.match(handler, /catch \(err\)/);
-  assert.match(handler, /button\.textContent = 'Duplicate event'/);
+  assert.match(handler, /button\.innerHTML = previousHtml/);
   assert.match(handler, /toast\(err\.message \|\| 'Could not duplicate this event'\)/);
 });
 

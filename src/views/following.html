@@ -13,6 +13,23 @@
   <script src="/js/legal-footer.js" defer></script>
   <style>
     .following-shell { max-width:1080px; }
+    .following-shell [hidden] { display:none !important; }
+    .following-section-title { margin:36px 0 16px;font-size:24px;line-height:1.3; }
+    .following-events { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px; }
+    .following-event { min-width:0;overflow:hidden;border:1px solid var(--sg-border-soft);border-radius:22px;background:rgba(17,17,17,.76);color:var(--sg-text); }
+    .following-event-art { display:block;aspect-ratio:16/10;overflow:hidden;background:var(--sg-surface); }
+    .following-event-art img { display:block;width:100%;height:100%;object-fit:cover; }
+    .following-event-art img.flyer { object-fit:contain;background:#090909; }
+    .following-event-placeholder { display:grid;place-items:center;height:100%;color:var(--sg-accent);font:40px var(--sg-font-display); }
+    .following-event-copy { min-width:0;padding:20px; }
+    .following-event-date { color:var(--sg-accent);font-size:13px;font-weight:700;line-height:1.5; }
+    .following-event h3 { margin:8px 0;font-size:24px;line-height:1.25;overflow-wrap:anywhere; }
+    .following-event-meta { color:var(--sg-text-dim);font-size:14px;line-height:1.6;overflow-wrap:anywhere; }
+    .following-event .sg-btn { margin-top:18px;min-height:44px; }
+    .following-event a:focus-visible { outline:2px solid var(--sg-accent);outline-offset:-3px; }
+    .following-event-limit { margin-top:14px;color:var(--sg-text-dim);font-size:13px; }
+    .following-message { padding:24px;border:1px dashed var(--sg-border);border-radius:20px;color:var(--sg-text-dim);font-size:15px;line-height:1.6; }
+    .following-message h3 { margin-bottom:8px;color:var(--sg-text);font-size:20px; }
     .following-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
     .following-card { display:flex;align-items:center;gap:18px;min-width:0;padding:18px;border:1px solid var(--sg-border-soft);border-radius:22px;background:rgba(17,17,17,.76);color:var(--sg-text);transition:transform .16s ease,border-color .16s ease; }
     @media (hover: hover) { .following-card:hover { transform:translateY(-2px);border-color:rgba(28,197,190,.4); } }
@@ -31,6 +48,7 @@
     .following-skeleton-link { width:86px;height:11px;margin-top:3px; }
     .following-loading { grid-column:1/-1;padding:52px 24px;text-align:center;color:var(--sg-text-dim); }
     @media(max-width:720px) { .following-grid { grid-template-columns:1fr; } }
+    @media(max-width:600px) { .following-events { grid-template-columns:1fr; }.following-event-copy { padding:18px; }.following-section-title { font-size:22px; }.following-event h3 { font-size:22px; } }
     @media(max-width:480px) { .following-card { padding:15px;gap:14px; }.following-art { width:70px;height:70px;border-radius:17px; } }
     @media(max-width:879px) {
       .following-shell .sg-page-sub { margin-bottom:28px; }
@@ -73,7 +91,16 @@
   <div class="sg-shell following-shell">
     <nav id="nav"></nav>
     <h1 class="sg-page-title">Following</h1>
-    <p class="sg-page-sub">The people and places you follow.</p>
+    <p class="sg-page-sub">Your next good night, from people and places you follow.</p>
+    <section aria-labelledby="following-events-heading">
+      <h2 class="following-section-title" id="following-events-heading">Coming up from people you follow</h2>
+      <div id="following-events" class="following-events" aria-live="polite" aria-busy="true">
+        <p class="following-message" role="status">Finding what’s coming up…</p>
+      </div>
+      <p class="following-message" id="following-events-empty" hidden>No upcoming public events right now. Visit a host’s page below to see their past events or manage your follow preferences.</p>
+      <p class="following-event-limit" id="following-events-limit" hidden>Showing the next 60 events. Visit a host’s page for more.</p>
+    </section>
+    <h2 class="following-section-title" id="following-hosts-heading">People and places</h2>
     <div class="following-grid" id="following-list" aria-busy="true" aria-label="Loading people and places you follow">
       <div class="following-card following-card-skeleton" aria-hidden="true">
         <span class="sg-skeleton following-skeleton-art"></span>
@@ -102,12 +129,43 @@
       if (header) return `<img src="${sgEscapeHtml(header)}" alt="">`;
       return `<span aria-hidden="true">${sgEscapeHtml(initials(host.org_name))}</span>`;
     }
-    api('/api/following').then(({ hosts }) => {
+    function upcomingCard(event) {
+      const title = String(event.title || 'Untitled event');
+      const flyer = event.presentation_mode === 'flyer';
+      const artwork = sgSafeHttpUrl(flyer ? event.flyer_image_url : event.cover_image_url);
+      const url = `/e/${encodeURIComponent(String(event.slug))}`;
+      const day = new Date(event.event_date).toLocaleDateString('en-US', { weekday:'short',month:'short',day:'numeric',timeZone:'UTC' });
+      const time = String(event.start_time || '').match(/^(\d{2}):(\d{2})/);
+      const clock = time ? `${Number(time[1]) % 12 || 12}:${time[2]} ${Number(time[1]) >= 12 ? 'PM' : 'AM'}` : '';
+      const zone = event.timezone ? String(event.timezone).replaceAll('_', ' ') : '';
+      const date = new Date(event.starts_at).getTime() <= Date.now() ? `Happening now · ${day}` : `${day}${clock ? ` · ${clock}` : ''}`;
+      const place = [event.venue_name,event.venue_city].filter(Boolean).join(' · ');
+      return `<article class="following-event">
+        <a class="following-event-art" href="${url}" aria-label="View ${sgEscapeHtml(title)}">${artwork
+          ? `<img${flyer ? ' class="flyer"' : ''} src="${sgEscapeHtml(artwork)}" alt="" loading="lazy">`
+          : `<span class="following-event-placeholder" aria-hidden="true">${sgEscapeHtml(title.charAt(0).toUpperCase())}</span>`}</a>
+        <div class="following-event-copy"><p class="following-event-date">${sgEscapeHtml(date)}</p><h3>${sgEscapeHtml(title)}</h3>
+          <p class="following-event-meta">Hosted by ${sgEscapeHtml(event.host_name)}</p>
+          ${place ? `<p class="following-event-meta">${sgEscapeHtml(place)}</p>` : ''}
+          ${clock && zone ? `<p class="following-event-meta">${sgEscapeHtml(zone.split('/').pop())} time</p>` : ''}
+          <a class="sg-btn sg-btn-ghost" href="${url}">View event →</a>
+        </div>
+      </article>`;
+    }
+    api('/api/following').then(({ hosts = [], events = [] }) => {
       const list = document.getElementById('following-list');
+      const upcoming = document.getElementById('following-events');
+      upcoming.setAttribute('aria-busy', 'false');
+      upcoming.innerHTML = events.map(upcomingCard).join('');
+      upcoming.hidden = !events.length;
+      document.getElementById('following-events-empty').hidden = Boolean(events.length) || !hosts.length;
+      document.getElementById('following-events-limit').hidden = events.length < 60;
       list.setAttribute('aria-busy', 'false');
       list.removeAttribute('aria-label');
       if (!hosts.length) {
         list.style.display = 'none';
+        document.getElementById('following-events-heading').hidden = true;
+        document.getElementById('following-hosts-heading').hidden = true;
         document.getElementById('following-empty').hidden = false;
         return;
       }
@@ -122,9 +180,14 @@
       }).join('');
     }).catch(err => {
       const list = document.getElementById('following-list');
+      const upcoming = document.getElementById('following-events');
+      upcoming.setAttribute('aria-busy', 'false');
+      upcoming.hidden = true;
+      document.getElementById('following-events-heading').hidden = true;
+      document.getElementById('following-hosts-heading').hidden = true;
       list.setAttribute('aria-busy', 'false');
       list.removeAttribute('aria-label');
-      list.innerHTML = `<div class="following-loading"><p>${sgEscapeHtml(err.message)}</p><a class="sg-btn sg-btn-ghost" href="/following" style="margin-top:18px">Try again</a></div>`;
+      list.innerHTML = '<div class="following-loading" role="alert"><p>We couldn’t load Following. Please try again.</p><a class="sg-btn sg-btn-ghost" href="/following" style="margin-top:18px">Try again</a></div>';
     });
   </script>
 </body>

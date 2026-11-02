@@ -478,10 +478,10 @@ test('existing reminder senders select the flyer-focused template and attendee c
   const mailer = read('src/lib/mailer.js');
   const reminders = read('src/jobs/reminders.js');
   const html = renderFlyerReminderEmail({ event: flyerEvent, rsvp, kicker: 'Reminder', headline: 'Tomorrow.' });
-  assert.match(html, /Night Garden flyer/);
+  assert.match(html, /Night Garden artwork/);
   assert.match(html, /Tomorrow\./);
   assert.match(html, /\/r\/attendee-secret-token\/calendar\.ics/);
-  assert.match(mailer, /isFlyerEvent\(event\) \? renderFlyerReminderEmail/);
+  assert.match(mailer, /html: renderEventReminderEmail/);
   assert.match(reminders, /SELECT e\.\*, o\.org_name, o\.public_slug AS organizer_public_slug/);
   assert.equal((reminders.match(/cron\.schedule/g) || []).length, 1);
 });

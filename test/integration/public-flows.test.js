@@ -142,6 +142,8 @@ function resetRateLimits() {
 
 async function resetDatabase() {
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
+  await pool.query("DELETE FROM email_optins WHERE scope='host_followups'");
+  await pool.query("DELETE FROM email_optouts WHERE scope='host_followups'");
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -494,6 +496,132 @@ test.after(async () => {
   await settleFlyerPublicationNotificationWork();
   if (server) await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   await pool.end();
+});
+
+test('ended event pages lead only to the same host’s next public event, then explicit Follow', async () => {
+  const ended = await createEvent({slug:'return-ended',event_date:'2020-10-30'});
+  await createEvent({slug:'return-private-hidden',event_date:'2099-01-01',visibility:'private',title:'Private Never Promote'});
+  await createEvent({slug:'return-secret-hidden',event_date:'2099-01-02',visibility:'private',secret_show_enabled:true,title:'Secret Never Promote'});
+  await createEvent({slug:'return-draft-hidden',event_date:'2099-01-03',status:'draft',title:'Draft Never Promote'});
+  const next = await createEvent({slug:'return-next-public',event_date:'2099-02-01',title:'Next Public Night'});
+  const html = await (await fetch(`${baseUrl}/e/${ended.slug}`)).text();
+  assert.match(html,/id="event-return-title">Next from Test Host/);
+  assert.match(html,/href="\/e\/return-next-public"/);
+  assert.doesNotMatch(html,/Private Never Promote|Secret Never Promote|Draft Never Promote/);
+  assert.match(html,/Standard Night/,'the original event remains');
+  await pool.query("UPDATE events SET status='cancelled' WHERE id=$1",[next.id]);
+  const fallback = await (await fetch(`${baseUrl}/e/${ended.slug}`)).text();
+  assert.match(fallback,/id="event-return-follow"/);
+  assert.doesNotMatch(fallback,/Next Public Night/);
+  const upcoming = await (await fetch(`${baseUrl}/e/return-private-hidden`)).text();
+  assert.doesNotMatch(upcoming,/id="event-return-title"/);
+});
+
+test('post-RSVP friend sharing is public-only and stops when the RSVP fills capacity', async () => {
+  const event = await createEvent({slug:'friend-share-capacity',event_date:'2099-10-30',capacity:1});
+  const before = await (await fetch(`${baseUrl}/e/${event.slug}`)).text();
+  assert.match(before,/id="rsvp-invite-friend"/);
+  const response = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`,{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({full_name:'Friend Guest',email:'friend-guest@example.test'})
+  });
+  assert.equal(response.status,201);
+  assert.equal((await response.json()).friendShareAllowed,false,'the final place includes the just-committed RSVP');
+  const full = await (await fetch(`${baseUrl}/e/${event.slug}`)).text();
+  assert.doesNotMatch(full,/id="rsvp-invite-friend"/);
+  const privateEvent = await createEvent({slug:'friend-share-private',event_date:'2099-10-30',visibility:'private'});
+  assert.doesNotMatch(await (await fetch(`${baseUrl}/e/${privateEvent.slug}`)).text(),/id="rsvp-invite-friend"/);
+  const publicEvent = await createEvent({slug:'friend-share-public',event_date:'2099-10-30'});
+  const publicResponse = await fetch(`${baseUrl}/api/public/events/${publicEvent.slug}/rsvp`,{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({full_name:'Another Guest',email:'another-friend@example.test'})
+  });
+  assert.equal(publicResponse.status,201);
+  assert.equal((await publicResponse.json()).friendShareAllowed,true);
+});
+
+test('Following exposes chronological public events only for the session’s active follows', async () => {
+  const {sessionCookie} = await signInAccount('following-plans@example.test');
+  const followed = await fetch(`${baseUrl}/api/hosts/test-host/follow`,{method:'POST',headers:{cookie:sessionCookie}});
+  assert.equal(followed.status,200);
+  await createEvent({slug:'follow-later',title:'Later Public',event_date:'2099-04-01'});
+  await createEvent({slug:'follow-first',title:'First Public',event_date:'2099-03-01'});
+  await createEvent({slug:'follow-private',title:'Private Hidden',event_date:'2099-02-01',visibility:'private'});
+  await createEvent({slug:'follow-secret',title:'Secret Hidden',event_date:'2099-02-02',visibility:'private',secret_show_enabled:true});
+  await createEvent({slug:'follow-cancelled',title:'Cancelled Hidden',event_date:'2099-02-03',status:'cancelled'});
+  await createEvent({slug:'follow-ended',title:'Ended Hidden',event_date:'2020-02-03'});
+  const result = await fetch(`${baseUrl}/api/following`,{headers:{cookie:sessionCookie}});
+  assert.match(result.headers.get('cache-control'),/no-store/);
+  const data = await result.json();
+  assert.deepEqual(data.events.map(event=>event.title),['First Public','Later Public']);
+  assert.equal(data.hosts[0].upcoming_count,2);
+  assert.ok(data.events.every(event=>event.starts_at&&event.ends_at&&!('venue_address' in event)&&!('manage_token' in event)));
+  const other = await signInAccount('following-other@example.test');
+  const empty = await (await fetch(`${baseUrl}/api/following`,{headers:{cookie:other.sessionCookie}})).json();
+  assert.deepEqual(empty.events,[]);
+  assert.equal((await fetch(`${baseUrl}/api/following`)).status,401);
+});
+
+test('host follow-ups are prospective, explicitly opt-in, one-time and suppressed after publishing', async () => {
+  const {setEmailPreference,emailOptedOut} = require('../../src/lib/email-preferences');
+  const {createHostFollowUpWorker} = require('../../src/jobs/host-follow-ups');
+  await addVerifiedEmailIdentity(organizerId,'host@example.test',{primary:true});
+  const event = await createEvent({slug:'host-followup-ended',event_date:'2020-01-01'});
+  const cutoff = (await pool.query("SELECT applied_at FROM schema_migrations WHERE filename='074_host_follow_ups.sql'")).rows[0].applied_at;
+  try {
+    // Move only the test database cohort boundary to exercise a newly delivered
+    // recap three days later without changing production scheduling or clocks.
+    await pool.query("UPDATE schema_migrations SET applied_at=NOW()-INTERVAL '10 days' WHERE filename='074_host_follow_ups.sql'");
+    await pool.query("UPDATE events SET host_recap_sent_at=NOW()-INTERVAL '4 days',host_recap_delivered_at=NOW()-INTERVAL '4 days' WHERE id=$1",[event.id]);
+    assert.equal(await emailOptedOut(pool,'host@example.test','host_followups'),true);
+    const worker = createHostFollowUpWorker();
+    const hours = Array.from({length:24},(_,hour)=>hour);
+    assert.equal(await worker.runHostFollowUpPass({hours}),0,'recap permission alone does not enroll the host');
+    const token = signEmailPreference('host@example.test','host_recaps');
+    const settings = await (await fetch(`${baseUrl}/email-settings?token=${encodeURIComponent(token)}`)).text();
+    assert.match(settings,/id="host-followups-enabled"/);
+    assert.doesNotMatch(settings,/id="host-followups-enabled"[^>]*checked/);
+    await setEmailPreference(pool,'host@example.test','host_followups',true);
+    const upcoming = await createEvent({slug:'host-followup-next',event_date:'2099-01-01'});
+    assert.equal(await worker.runHostFollowUpPass({hours}),0,'new publication suppresses the nudge');
+    await pool.query("UPDATE events SET status='draft' WHERE id=$1",[upcoming.id]);
+    const sent = await worker.runHostFollowUpPass({hours});
+    assert.equal(sent,1);
+    const delivery = (await pool.query('SELECT * FROM host_event_follow_ups WHERE event_id=$1',[event.id])).rows[0];
+    assert.equal(delivery.status,'sent');
+    assert.match(delivery.render_snapshot.email.subject,/taking shape/);
+    assert.equal(await worker.runHostFollowUpPass({hours}),0,'one delivery, even on another pass');
+    await setEmailPreference(pool,'host@example.test','host_followups',false);
+    assert.equal(await emailOptedOut(pool,'host@example.test','host_followups'),true);
+  } finally {
+    await pool.query("UPDATE schema_migrations SET applied_at=$1 WHERE filename='074_host_follow_ups.sql'",[cutoff]);
+  }
+});
+
+test('reminder retries suppress cancelled RSVPs, revoked consent and cancelled events while preserving legacy reminders', async () => {
+  const event = await createEvent({slug:'reminder-current-state',timezone:'UTC'});
+  await pool.query("UPDATE events SET event_date=(NOW() AT TIME ZONE 'UTC')::date+1,start_time='20:00' WHERE id=$1",[event.id]);
+  const attendees=[];
+  for(const patch of [
+    {email:'retry-legacy@example.test'},
+    {email:'retry-optout@example.test',wants_reminders:false},
+    {email:'retry-cancelled@example.test',status:'cancelled'}
+  ]) attendees.push(await createRsvp(event.id,patch));
+  for(const attendee of attendees) await pool.query(`INSERT INTO message_log
+    (event_id,rsvp_id,recipient,message_type,channel,status,error)
+    VALUES($1,$2,$3,'reminder_day_before','email','failed','temporary')`,[event.id,attendee.id,attendee.email]);
+  const cancelled = await createEvent({slug:'reminder-cancelled-event',timezone:'UTC',status:'cancelled'});
+  await pool.query("UPDATE events SET event_date=(NOW() AT TIME ZONE 'UTC')::date+1 WHERE id=$1",[cancelled.id]);
+  const cancelledGuest=await createRsvp(cancelled.id,{email:'retry-event-off@example.test'});
+  await pool.query(`INSERT INTO message_log(event_id,rsvp_id,recipient,message_type,channel,status,error)
+    VALUES($1,$2,$3,'reminder_day_before','email','failed','temporary')`,[cancelled.id,cancelledGuest.id,cancelledGuest.email]);
+  await require('../../src/jobs/reminders').runReminderPass({dayBeforeHour:99,dayOfHour:99});
+  const logs = (await pool.query("SELECT recipient,status,error FROM message_log WHERE message_type='reminder_day_before' ORDER BY id")).rows;
+  assert.equal(logs[0].status,'sent');
+  for(const suppressed of logs.slice(1)) {
+    assert.equal(suppressed.status,'failed');
+    assert.match(suppressed.error,/^cancelled:/);
+  }
 });
 
 test('background confirmation work is tracked so tests can settle it before resetting', async () => {

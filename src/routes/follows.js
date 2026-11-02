@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
+const { eventEndAtSql } = require('../lib/post-event');
 const {
   findPublicHost, followHost, unfollowHost, followStatus, enableFollowSms, setFollowPreferences
 } = require('../lib/host-follows');
@@ -109,22 +110,44 @@ router.patch('/api/hosts/:slug/follow/texts', requireOrganizer, async (req, res,
 
 router.get('/api/following', requireOrganizer, async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
+    // Following is a personal view, not discovery. Only this authenticated
+    // person's active relationships can contribute public, non-secret events.
+    const publicUpcoming = `e.status='published' AND e.visibility='public'
+          AND e.secret_show_enabled=FALSE AND ${eventEndAtSql('e')} > NOW()`;
+    const [hosts, events] = await Promise.all([pool.query(
       `SELECT o.org_name, o.public_slug, o.logo_url, o.header_image_url,
               COUNT(e.id)::int AS upcoming_count
          FROM host_follows hf
          JOIN organizers o ON o.id=hf.host_organizer_id
+         JOIN users host_account ON host_account.id=o.user_id AND host_account.account_status='active'
          LEFT JOIN events e ON e.organizer_id=o.id
-          AND e.status='published' AND e.visibility='public'
-          AND e.event_date >= CURRENT_DATE
+          AND ${publicUpcoming}
         WHERE hf.follower_organizer_id=$1
           AND hf.unsubscribed_at IS NULL
           AND o.org_name IS NOT NULL AND o.public_slug IS NOT NULL
         GROUP BY hf.id, o.id
         ORDER BY hf.created_at DESC, LOWER(o.org_name) ASC`,
       [req.organizer.id]
-    );
-    res.json({ hosts: rows });
+    ), pool.query(
+      `SELECT e.id,e.slug,e.title,e.event_date,e.start_time,e.timezone,
+              e.presentation_mode,e.flyer_image_url,e.cover_image_url,
+              e.venue_name,e.venue_city,
+              (e.event_date + e.start_time) AT TIME ZONE e.timezone AS starts_at,
+              ${eventEndAtSql('e')} AS ends_at,
+              o.org_name AS host_name,o.public_slug AS host_slug
+         FROM host_follows hf
+         JOIN organizers o ON o.id=hf.host_organizer_id
+         JOIN users host_account ON host_account.id=o.user_id AND host_account.account_status='active'
+         JOIN events e ON e.organizer_id=o.id
+        WHERE hf.follower_organizer_id=$1 AND hf.unsubscribed_at IS NULL
+          AND o.org_name IS NOT NULL AND o.public_slug IS NOT NULL
+          AND ${publicUpcoming}
+        ORDER BY starts_at ASC,e.id ASC
+        LIMIT 60`,
+      [req.organizer.id]
+    )]);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ hosts: hosts.rows, events: events.rows });
   } catch (err) { next(err); }
 });
 

@@ -6,7 +6,7 @@ if (!SECRET) throw new Error('SESSION_SECRET is required');
 const EMAIL_PREFERENCE_SCOPES = Object.freeze({
   host_recaps: Object.freeze({
     label: 'Morning-after host recaps',
-    description: 'Receive one recap after an event when confirmed guests attended.'
+    description: 'Receive one recap after an event with confirmed RSVPs. RSVP counts are not verified attendance.'
   }),
   product_updates: Object.freeze({
     label: 'Silver Glider product announcements',
@@ -15,6 +15,11 @@ const EMAIL_PREFERENCE_SCOPES = Object.freeze({
   host_onboarding: Object.freeze({
     label: 'Host Page setup tips',
     description: 'Receive up to two optional emails that help you finish your Host Page and publish your first event.'
+  }),
+  host_followups: Object.freeze({
+    label: 'A nudge toward your next event',
+    description: 'Receive one optional email about three days after a recap when you have no upcoming event. At most once every 30 days. Off until you turn it on.',
+    consentVersion: 'host_followups_v1'
   })
 });
 
@@ -63,6 +68,17 @@ function emailPreferenceUrls(email, scope) {
 async function emailOptedOut(db, email, scope) {
   const normalized = normalizeEmail(email);
   if (!normalized || !validScope(scope)) return false;
+  if (scope === 'host_followups') {
+    const { rows } = await db.query(
+      `SELECT 1 FROM email_optins optin
+        WHERE optin.email=$1 AND optin.scope=$2 AND optin.consent_version=$3
+          AND NOT EXISTS (
+            SELECT 1 FROM email_optouts optout WHERE optout.email=$1 AND optout.scope=$2
+          )`,
+      [normalized, scope, EMAIL_PREFERENCE_SCOPES.host_followups.consentVersion]
+    );
+    return rows.length === 0;
+  }
   const { rows } = await db.query(
     'SELECT 1 FROM email_optouts WHERE email=$1 AND scope=$2',
     [normalized, scope]
@@ -75,6 +91,15 @@ async function setEmailPreference(db, email, scope, enabled) {
   if (!normalized || !validScope(scope)) throw new Error('Invalid email preference');
   if (enabled) {
     await db.query('DELETE FROM email_optouts WHERE email=$1 AND scope=$2', [normalized, scope]);
+    if (scope === 'host_followups') {
+      await db.query(
+        `INSERT INTO email_optins (email,scope,consent_version,consent_text)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (email,scope)
+         DO UPDATE SET consent_version=EXCLUDED.consent_version,consent_text=EXCLUDED.consent_text,updated_at=NOW()`,
+        [normalized, scope, EMAIL_PREFERENCE_SCOPES.host_followups.consentVersion,
+          EMAIL_PREFERENCE_SCOPES.host_followups.description]
+      );
+    }
   } else {
     await db.query(
       `INSERT INTO email_optouts (email,scope)
@@ -82,6 +107,9 @@ async function setEmailPreference(db, email, scope, enabled) {
        ON CONFLICT (email,scope) DO UPDATE SET updated_at=NOW()`,
       [normalized, scope]
     );
+    if (scope === 'host_followups') {
+      await db.query('DELETE FROM email_optins WHERE email=$1 AND scope=$2', [normalized, scope]);
+    }
   }
 }
 

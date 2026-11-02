@@ -267,6 +267,7 @@ async function start() {
   const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
   require('./jobs/reminders').startReminderCron();
   require('./jobs/host-recap').startHostRecapCron();
+  require('./jobs/host-follow-ups').startHostFollowUpCron();
   require('./jobs/host-onboarding').startHostOnboardingCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();

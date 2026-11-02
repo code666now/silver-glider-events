@@ -74,7 +74,7 @@ test('RSVP email sends guests back to the reusable confirmation and keeps calend
   assert.match(html, /\/r\/private-manage-token\/event/);
   assert.match(html, /View or change RSVP/);
   assert.match(html, /Open your RSVP any time to view it or change your answer\./);
-  assert.match(html, /We’ll send one reminder the day before\./);
+  assert.match(html, /Reminders are scheduled for the day before and the day of the event\./);
   assert.doesNotMatch(html, /Saturday, August 22, 2026|8:30 PM|The Silver Room|Open in Maps|Add to Calendar|>Manage RSVP</);
   assert.match(html, /Manage RSVP &amp; email settings/);
 

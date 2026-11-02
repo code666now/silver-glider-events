@@ -17,6 +17,8 @@ function getEventFollowFlow() {
     sourceEventSlug: EVENT.slug,
     onChange(state) {
       if (state.following && $('rsvp-follow-host')) $('rsvp-follow-host').hidden = true;
+      const endedFollow = $('event-return-follow');
+      if (endedFollow) endedFollow.textContent = state.following ? 'Following · Manage notifications' : `Follow ${EVENT.hostName}`;
     }
   });
   return eventFollowFlow;
@@ -337,6 +339,7 @@ async function postJson(url, body) {
     body: JSON.stringify(body || {})
   });
   const data = await response.json().catch(() => ({}));
+  if (typeof data.friendShareAllowed === 'boolean') EVENT.friendShareAllowed = data.friendShareAllowed;
   return { response, data };
 }
 
@@ -508,6 +511,8 @@ function renderConfirmationDialog() {
   calendar.hidden = response !== 'going' || confirmationEditing;
   const followCard = $('rsvp-follow-host');
   if (followCard && (!confirmationFresh || confirmationEditing)) followCard.hidden = true;
+  const inviteFriend = $('rsvp-invite-friend');
+  if (inviteFriend) inviteFriend.hidden = response !== 'going' || confirmationEditing || !EVENT.friendShareAllowed;
   setReturningSelection(response);
 }
 
@@ -620,6 +625,17 @@ $('rsvp-follow-host-button')?.addEventListener('click', () => {
   closeRsvpConfirmation();
   flow.open();
 });
+
+$('rsvp-invite-friend-button')?.addEventListener('click', () => {
+  if (!EVENT.friendShareAllowed || EVENT.returningGuest?.response !== 'going') return;
+  closeRsvpConfirmation();
+  share();
+});
+
+$('event-return-follow')?.addEventListener('click', () => getEventFollowFlow()?.open());
+if ($('event-return-follow')) getEventFollowFlow()?.status().then(state => {
+  if (state.following) $('event-return-follow').textContent = 'Following · Manage notifications';
+}).catch(() => {});
 
 if (EVENT.hostSlug && eventUrlParams.get('follow') === '1') {
   ['follow', 'after_rsvp'].forEach(key => eventUrlParams.delete(key));
@@ -839,6 +855,7 @@ async function submitRsvp({ afterVerification = false } = {}) {
       })
     });
     const data = await res.json().catch(() => ({}));
+    if (typeof data.friendShareAllowed === 'boolean') EVENT.friendShareAllowed = data.friendShareAllowed;
     if (res.status === 409 && data.error === 'full') return show('full-state');
     if (res.status === 409 && data.error === 'party_full') throw new Error(data.message || 'There is not enough room for a guest.');
     if (res.status === 409 && data.error === 'verification_required' && !afterVerification) {

@@ -868,3 +868,4 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
     font-size: 14px;
   }
 }
+#owner-repeat-guidance:not([hidden]) { display:block;margin:0 0 20px;padding:14px 16px;border:1px solid rgba(28,197,190,.3);border-radius:12px;background:rgba(28,197,190,.06);color:var(--sg-text,#f4f4f4);font-size:13px;line-height:1.6; }

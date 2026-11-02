@@ -6,6 +6,7 @@ const { esc } = require('../lib/public-html');
 const { verifyOptout } = require('../lib/followers');
 const {
   EMAIL_PREFERENCE_SCOPES,
+  signEmailPreference,
   verifyEmailPreference,
   emailOptedOut,
   setEmailPreference
@@ -28,12 +29,13 @@ function statusPage({ title, message, manageUrl = '' }) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} — Silver Glider Events</title><link rel="stylesheet" href="/css/brand.css"><script src="/js/legal-footer.js" defer></script></head><body><main style="max-width:440px;margin:0 auto;padding:18vh 24px;text-align:center"><p class="sg-label" style="margin-bottom:20px">Silver Glider Events</p><h1 style="font-size:28px;margin-bottom:12px">${esc(title)}</h1><p style="color:var(--sg-text-dim);font-size:15px;line-height:1.7">${esc(message)}</p>${manageUrl ? `<p style="margin-top:24px"><a class="sg-btn sg-btn-ghost" href="${esc(manageUrl)}">Manage email settings</a></p>` : ''}</main></body></html>`;
 }
 
-function renderSettings({ token, enabled, label, description, saveUrl }) {
+function renderSettings({ token, enabled, label, description, saveUrl, additionalSettings = '' }) {
   return settingsTemplate
     .replace(/{{CHECKED}}/g, enabled ? 'checked' : '')
     .replace(/{{SETTING_LABEL}}/g, esc(label))
     .replace(/{{SETTING_DESCRIPTION}}/g, esc(description))
     .replace(/{{SAVE_URL}}/g, esc(saveUrl))
+    .replace(/{{ADDITIONAL_SETTINGS}}/g, additionalSettings)
     .replace(/{{TOKEN}}/g, esc(token));
 }
 
@@ -44,12 +46,23 @@ router.get('/email-settings', async (req, res, next) => {
     if (!data) return res.status(400).send(invalidLinkPage());
     const preference = EMAIL_PREFERENCE_SCOPES[data.scope];
     const enabled = !await emailOptedOut(pool, data.email, data.scope);
+    let additionalSettings = '';
+    if (data.scope === 'host_recaps') {
+      const followups = EMAIL_PREFERENCE_SCOPES.host_followups;
+      const followupsEnabled = !await emailOptedOut(pool, data.email, 'host_followups');
+      const followupsToken = signEmailPreference(data.email, 'host_followups');
+      additionalSettings = `<label class="email-settings-row email-settings-additional" for="host-followups-enabled">
+        <input id="host-followups-enabled" type="checkbox" data-email-token="${esc(followupsToken)}" ${followupsEnabled ? 'checked' : ''}>
+        <span><strong>${esc(followups.label)}</strong><small>${esc(followups.description)}</small></span>
+      </label>`;
+    }
     res.send(renderSettings({
       token: req.query.token,
       enabled,
       label: preference.label,
       description: preference.description,
-      saveUrl: '/api/email-settings'
+      saveUrl: '/api/email-settings',
+      additionalSettings
     }));
   } catch (error) { next(error); }
 });

@@ -122,7 +122,7 @@ test('Following is a lightweight authenticated list in the shared navigation', (
   assert.match(view, /list\.setAttribute\('aria-busy', 'false'\)/);
   assert.doesNotMatch(view, /Create Event/);
   assert.match(routes, /e\.status='published' AND e\.visibility='public'/);
-  assert.match(routes, /e\.event_date >= CURRENT_DATE/);
+  assert.match(routes, /eventEndAtSql\('e'\)/);
 });
 
 test('new-event updates combine legacy consent and explicit Host follows without changing RSVP', () => {

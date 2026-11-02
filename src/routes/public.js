@@ -33,6 +33,8 @@ const {
 } = require('../lib/event-location-privacy');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const { esc, fmtDate, render404 } = require('../lib/public-html');
+const { eventEndAtSql } = require('../lib/post-event');
+const { canInviteFriend, friendShareAvailable, nextPublicEvent, renderEventReturn } = require('../lib/event-return');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
 const { readFlyerPreviewAccess } = require('../lib/flyer-preview-access');
 const { cleanInstagramHandle } = require('../lib/host-profile');
@@ -243,6 +245,8 @@ async function loadEventBySlug(slug, { includeDraft = false } = {}) {
   const { rows } = await pool.query(
     `SELECT e.*,
             e.event_date < (CURRENT_TIMESTAMP AT TIME ZONE e.timezone)::date AS is_past,
+            ${eventEndAtSql('e')} <= NOW() AS post_event_ended,
+            (e.event_date + e.start_time) AT TIME ZONE e.timezone > NOW() AS starts_in_future,
             COALESCE((SELECT COUNT(*) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS rsvp_count,
             COALESCE((SELECT COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS guest_count,
             COALESCE((SELECT COUNT(*) + COUNT(guest_first_name) FROM rsvps WHERE event_id=e.id AND status='confirmed'), 0)::int AS total_attendance,
@@ -472,7 +476,7 @@ function firstNameFrom(value) {
   return String(value || '').trim().split(/\s+/)[0].slice(0, 80) || 'there';
 }
 
-function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location }) {
+function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location, friendShareAllowed = false }) {
   const hostName = String(event.org_name || '').trim();
   const locationName = String(location?.name || '').trim();
   const locationAddress = String(location?.address || '').trim();
@@ -505,6 +509,12 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location })
         <h3 id="rsvp-follow-host-title">Follow ${esc(hostName)}</h3>
         <p>Choose email, text, or both for new-event announcements. Your RSVP reminders stay the same.</p>
         <button class="sg-btn sg-btn-ghost sg-btn-block" id="rsvp-follow-host-button" type="button">Choose notifications</button>
+      </section>` : ''}
+
+      ${friendShareAllowed ? `<section class="rsvp-invite-friend" id="rsvp-invite-friend" hidden aria-labelledby="rsvp-invite-friend-title">
+        <h3 id="rsvp-invite-friend-title">Know someone who’d love this?</h3>
+        <p>Send them the invite. They’ll need their own RSVP; sharing doesn’t reserve a place.</p>
+        <button class="sg-btn sg-btn-ghost" id="rsvp-invite-friend-button" type="button">Send the invite <span aria-hidden="true">→</span></button>
       </section>` : ''}
 
       <div class="rsvp-confirmation-editor" id="rsvp-confirmation-editor" hidden>
@@ -813,6 +823,10 @@ router.get('/e/:slug', async (req, res, next) => {
     }
 
     const isFull = rsvpEnabled && event.capacity != null && event.total_attendance >= event.capacity;
+    const friendShareAllowed = !ownerPreview && rsvpEnabled && canInviteFriend(event);
+    const eventReturnHtml = !ownerDraft
+      ? renderEventReturn(event, await nextPublicEvent(pool, event))
+      : '';
     const presenterHtml = event.org_name
       ? `<div class="host-attribution">
           ${event.organizer_logo_url ? `<img src="${esc(event.organizer_logo_url)}" alt="">` : ''}
@@ -978,6 +992,7 @@ router.get('/e/:slug', async (req, res, next) => {
       commentsEnabled: event.comments_enabled,
       rsvpEnabled,
       isPast: event.is_past,
+      friendShareAllowed,
       coverImageUrl: primaryImageUrl || null,
       coverFitMode,
       adaptiveBackground: theme === 'adaptive',
@@ -1031,6 +1046,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{DESCRIPTION_HTML}}/g, esc(event.description || '').replace(/\n/g, '<br>'))
       .replace(/{{VIBE_HTML}}/g, vibeHtml)
       .replace(/{{PRESENTER_HTML}}/g, presenterHtml)
+      .replace(/{{EVENT_RETURN_HTML}}/g, eventReturnHtml)
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
       .replace(/{{SMS_REMINDER_OPTIN_HTML}}/g, rsvpEnabled ? renderSmsReminderOptin(event) : '')
       .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
@@ -1038,7 +1054,8 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{RSVP_CONFIRMATION_DIALOG}}/g, renderRsvpConfirmationDialog(event, {
         dateLabel,
         timeLabel,
-        location: locationDisplay
+        location: locationDisplay,
+        friendShareAllowed
       }))
       .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview, viewerIdentityId: req.sessionAccount?.id }) : '')
       .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
@@ -1341,6 +1358,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
         confirmationResent: Boolean(confirmationResent),
         ...(ownsExisting ? {
           response: 'going',
+          friendShareAllowed: await friendShareAvailable(pool, event.id),
           rsvpToken: existing[0].manage_token,
           calendarUrl: `/r/${encodeURIComponent(existing[0].manage_token)}/calendar.ics`,
           location: locationResponse(event, {
@@ -1468,6 +1486,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     res.status(201).json({
       ok: true,
       response: 'going',
+      friendShareAllowed: await friendShareAvailable(pool, event.id),
       rsvpToken: rsvp.manage_token,
       calendarUrl: `/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`,
       location: locationResponse(event, {
@@ -1616,6 +1635,7 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
     return res.json({
       ok: true,
       response: answer,
+      friendShareAllowed: answer === 'going' && await friendShareAvailable(pool, event.id),
       location: locationResponse(event, {
         canViewExact: answer === 'going',
         manageToken: answer === 'going' ? rsvp.manage_token : null

@@ -2,6 +2,28 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.186
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### From one good night to the next
+
+* Home now surfaces guests’ upcoming Going plans with existing RSVP and authorized directions links, while keeping host and artist tools accessible. Following adds chronological event cards from followed hosts, excluding private, Secret, draft, cancelled, ended, and inactive-host events.
+* Ended event pages preserve the original event and offer the same host’s next public event or an explicit Follow action. Confirmed guests at eligible upcoming public events can share the canonical invitation; full events and private/Secret events receive no contextual sharing prompt.
+* Recaps offer **Do this again**, reusing draft duplication and opening date/details first. Guests and messages are never copied; published repeats point to reviewed Familiar Faces invitations.
+* A separately opted-in, default-off host follow-up can offer a saved draft or next event three days after a newly accepted recap. It respects current verified identity, publication, preferences, local hours, recent host mail, a 30-day frequency limit, frozen provider-idempotent retries, and no historical backfill. Additive migration `074_host_follow_ups.sql` records that permission and delivery state.
+
+### Email reliability and consistency
+
+* Reminder delivery and retries recheck current response, permission, recipient, event publication, event-local day, and future start. Retry claims are atomic and provider keys are stable.
+* Guest reminders, updates, cancellations, and follower announcements use the artwork-first email family. Reminder copy reflects both scheduled emails and daytime events; one-way replies are clearly disclosed. Security emails stay compact and focused, with unchanged authentication behavior.
+* RSVP/host consent boundaries, private-address redaction, calendar attachments, and explicit host send approvals remain intact. Provider acceptance is never presented as verified attendance or inbox delivery.
+
+### Verification
+
+* All **661 automated tests** and static checks pass, including real local SQL coverage of sharing capacity, private-event exclusions, per-account Following, opt-in follow-ups, and cancelled/opted-out reminder retries.
+* Synthetic end-to-end Chrome checks passed at 1440px desktop and 390px phone, covering Home, protected directions, Following, Standard/Flyer RSVP sharing, repeat draft/publication with zero copied guests or invitations, and reversible email preferences. Email previews were inspected at both sizes; no real guest emails were sent. Real Safari/iOS and inbox-client rendering remain manual checks.
+
 ## 1.0.185
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.
