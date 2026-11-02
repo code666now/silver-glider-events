@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.185
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### Clear permission for event messages
+
+* Standard and Flyer RSVP forms and RSVP settings now say **Email me reminders and messages about this event**, with a clear explanation of reminders, one thank-you afterward, and unsubscribe. Critical changes and cancellations remain essential notices.
+* New choices record the exact disclosure, version, source, and time. Existing reminder-only selections keep their previous permissions. Turning optional event emails off excludes the guest from the thank-you.
+* Hosts can send one thank-you to verified, confirmed primary guests with event-message permission or existing host-email permission. The Follow action requires separate host-email permission, and each recipient's approved email scope stays fixed through retries.
+
+### Verification
+
+* All 620 automated tests and static checks pass, including prospective consent, revocation, historical compatibility, separate promotion permission, and delivery safeguards.
+* Standard, Flyer, and RSVP settings were checked locally at 1440px desktop and 390px phone for wording, checkbox behavior, readability, and overflow.
+* Additive migration `073_event_email_consent.sql` records consent without backfilling existing guests. No real guest emails were sent during verification.
+
 ## 1.0.184
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.

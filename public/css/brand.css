@@ -535,6 +535,14 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sms-reminder-optin .check { margin-bottom: 0; }
 .sms-reminder-phone { margin: 14px 0 0; }
 .sms-reminder-phone[hidden] { display: none; }
+.event-email-consent { margin-bottom: 14px; }
+.event-email-consent .check { margin-bottom: 5px; }
+.event-email-consent > p {
+  margin: 0 0 0 29px;
+  color: var(--sg-text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
 /* Returning guest: the answered state reads as a status, not two buttons. */
 .returning-rsvp-answer[hidden], #returning-rsvp-ask[hidden] { display: none; }

@@ -74,7 +74,7 @@ test('ended-event manage UI extends Recap with one private draw and an exact san
 
   assert.match(view, /id="post-event-preview-frame"[^>]*sandbox/);
   assert.match(view, /id="post-event-thank-subject"[^>]*maxlength="160"/);
-  assert.match(view, /Only primary RSVPs with existing host-email consent are included\. Additional guests are not contacted\./);
+  assert.match(view, /Only confirmed guests with permission for this email are included\. Additional guests are not contacted\./);
   assert.match(view, /Only you can see this estimate\. Your RSVP count stays the same\./);
   assert.match(client, /post-event\/thank-you\/preview/);
   assert.match(client, /post-event\/thank-you\/send/);

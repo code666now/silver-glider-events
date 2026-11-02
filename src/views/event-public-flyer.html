@@ -80,7 +80,10 @@
             <div class="sg-field"><label for="full_name">Full name</label><input class="sg-input" id="full_name" autocomplete="name" required></div>
             <div class="sg-field"><label for="email">Email</label><input class="sg-input" type="email" id="email" autocomplete="email" required></div>
             {{GUEST_FIELDS_HTML}}
-            <label class="check"><input type="checkbox" id="wants_reminders" checked> Email me a reminder before the event</label>
+            <div class="event-email-consent">
+              <label class="check"><input type="checkbox" id="wants_reminders" checked data-event-email-consent-version="{{EVENT_EMAIL_CONSENT_VERSION}}" aria-describedby="event-email-consent-description"> Email me reminders and messages about this event.</label>
+              <p id="event-email-consent-description">Includes reminders before the event and one thank-you afterward. Unsubscribe anytime.</p>
+            </div>
             {{SMS_REMINDER_OPTIN_HTML}}
             <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="rsvp-submit">Confirm RSVP</button>
           </form>

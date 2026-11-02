@@ -44,6 +44,10 @@ const {
   smsConsentHeading
 } = require('../lib/sms-consent');
 const {
+  EVENT_EMAIL_CONSENT_VERSION,
+  prepareEventEmailConsent
+} = require('../lib/event-email-consent');
+const {
   ensureAttemptSession,
   hasUnlockCookie,
   setUnlockCookie,
@@ -1030,6 +1034,7 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{GUEST_FIELDS_HTML}}/g, rsvpEnabled ? renderGuestFields(event, { ownerPreview }) : '')
       .replace(/{{SMS_REMINDER_OPTIN_HTML}}/g, rsvpEnabled ? renderSmsReminderOptin(event) : '')
       .replace(/{{EMAIL_CONSENT_HEADING}}/g, esc(emailConsentHeading(event.org_name)))
+      .replace(/{{EVENT_EMAIL_CONSENT_VERSION}}/g, esc(EVENT_EMAIL_CONSENT_VERSION))
       .replace(/{{RSVP_CONFIRMATION_DIALOG}}/g, renderRsvpConfirmationDialog(event, {
         dateLabel,
         timeLabel,
@@ -1187,6 +1192,11 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
     const email = String(req.body.email || '').trim().toLowerCase();
     const phone = String(req.body.phone || '').trim().slice(0, 30) || null;
     const wantsReminders = req.body.wants_reminders !== false;
+    const eventEmailConsent = prepareEventEmailConsent({
+      enabled: req.body.wants_reminders === true,
+      version: req.body.event_email_consent_version,
+      source: 'event_rsvp'
+    });
     const organizerOptin = req.body.organizer_optin === true;
     const requestedSmsOptin = req.body.sms_optin === true;
     const invitationToken = String(req.body.inviteToken || '').trim();
@@ -1405,24 +1415,33 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
                 guest_first_name=$12, guest_last_name=$13, guest_email=$14,
                 account_id=COALESCE(account_id,$15),
                 guest_session_id=COALESCE(guest_session_id,$16),
-                user_id=COALESCE(user_id,$17)
+                user_id=COALESCE(user_id,$17),
+                event_email_optin=$18,
+                event_email_consent_at=CASE WHEN $18 THEN $19 ELSE event_email_consent_at END,
+                event_email_consent_source=CASE WHEN $18 THEN $20 ELSE event_email_consent_source END,
+                event_email_consent_version=CASE WHEN $18 THEN $21 ELSE event_email_consent_version END,
+                event_email_consent_text=CASE WHEN $18 THEN $22 ELSE event_email_consent_text END
           WHERE id=$1 RETURNING *`,
         [existing[0].id, firstName, lastName, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail, provenIdentityId, guestSessionId,
-         relationshipUserId]
+         relationshipUserId, eventEmailConsent.optedIn, eventEmailConsent.consentedAt,
+         eventEmailConsent.source, eventEmailConsent.version, eventEmailConsent.text]
       )).rows[0];
     } else {
       rsvp = (await client.query(
         `INSERT INTO rsvps (event_id, first_name, last_name, email, phone, wants_reminders, organizer_optin,
                             sms_optin, sms_consent_at, sms_consent_source, sms_consent_version, sms_consent_text,
                             guest_first_name, guest_last_name, guest_email, manage_token, account_id,
-                            guest_session_id, user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+                            guest_session_id, user_id, event_email_optin, event_email_consent_at,
+                            event_email_consent_source, event_email_consent_version, event_email_consent_text)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
         [event.id, firstName, lastName, email, smsConsent.phone, wantsReminders, organizerOptin,
          smsConsent.optedIn, smsConsent.consentedAt, smsConsent.source, smsConsent.version, smsConsent.text,
          guest.guestFirstName, guest.guestLastName, guest.guestEmail,
-         crypto.randomBytes(16).toString('hex'), provenIdentityId, guestSessionId, relationshipUserId]
+         crypto.randomBytes(16).toString('hex'), provenIdentityId, guestSessionId, relationshipUserId,
+         eventEmailConsent.optedIn, eventEmailConsent.consentedAt, eventEmailConsent.source,
+         eventEmailConsent.version, eventEmailConsent.text]
       )).rows[0];
     }
     if (invitationIdentityId) {
@@ -1834,6 +1853,7 @@ router.get('/r/:token', async (req, res, next) => {
       .replace(/{{TOKEN}}/g, esc(req.params.token))
       .replace(/{{RSVP_STATUS}}/g, esc(row.rsvp_status))
       .replace(/{{REMINDERS_CHECKED}}/g, row.wants_reminders ? 'checked' : '')
+      .replace(/{{EVENT_EMAIL_CONSENT_VERSION}}/g, esc(EVENT_EMAIL_CONSENT_VERSION))
       .replace(/{{EVENT_STATUS}}/g, esc(row.status));
     res.send(html);
   } catch (err) { next(err); }
@@ -1873,24 +1893,40 @@ function unsubscribePage(message, ok) {
 </main></body></html>`;
 }
 
-// RSVP email controls are deliberately scoped to one event. Turning reminders
-// off does not block confirmations, cancellations, or important event changes.
+// RSVP email controls are deliberately scoped to one event. Turning optional
+// mail off does not block confirmations, cancellations, or important changes.
 router.post('/api/public/rsvps/:token/reminders', async (req, res, next) => {
   try {
     if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'Choose an email setting' });
+    const consent = prepareEventEmailConsent({
+      enabled: req.body.enabled,
+      version: req.body.event_email_consent_version,
+      source: 'rsvp_manage'
+    });
     const { rows } = await pool.query(
-      'UPDATE rsvps SET wants_reminders=$2 WHERE manage_token=$1 RETURNING wants_reminders',
-      [req.params.token, req.body.enabled]
+      `UPDATE rsvps
+          SET wants_reminders=$2,
+              event_email_optin=$3,
+              event_email_consent_at=CASE WHEN $3 THEN $4 ELSE event_email_consent_at END,
+              event_email_consent_source=CASE WHEN $3 THEN $5 ELSE event_email_consent_source END,
+              event_email_consent_version=CASE WHEN $3 THEN $6 ELSE event_email_consent_version END,
+              event_email_consent_text=CASE WHEN $3 THEN $7 ELSE event_email_consent_text END
+        WHERE manage_token=$1 RETURNING wants_reminders`,
+      [req.params.token, req.body.enabled, consent.optedIn, consent.consentedAt,
+       consent.source, consent.version, consent.text]
     );
     if (!rows.length) return res.status(404).json({ error: 'RSVP not found' });
     res.json({ ok: true, enabled: rows[0].wants_reminders });
   } catch (err) { next(err); }
 });
 
-// RFC 8058 one-click endpoint used only by optional RSVP reminder mail.
+// RFC 8058 one-click endpoint for optional messages about one RSVP's event.
 router.post('/api/email/unsubscribe/rsvp/:token', async (req, res, next) => {
   try {
-    await pool.query('UPDATE rsvps SET wants_reminders=FALSE WHERE manage_token=$1', [req.params.token]);
+    await pool.query(
+      'UPDATE rsvps SET wants_reminders=FALSE,event_email_optin=FALSE WHERE manage_token=$1',
+      [req.params.token]
+    );
     res.status(204).end();
   } catch (err) { next(err); }
 });

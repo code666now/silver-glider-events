@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { EVENT_EMAIL_CONSENT_VERSION } = require('./event-email-consent');
 
 const SUBJECT_MAX = 160;
 const MESSAGE_MAX = 4000;
@@ -64,7 +65,8 @@ function audienceDigest(recipients) {
       Number(recipient.userId) || null,
       String(recipient.email || '').trim().toLowerCase(),
       Boolean(recipient.alreadyFollowing),
-      String(recipient.consentSource || '')
+      String(recipient.consentSource || ''),
+      String(recipient.consentScope || 'host')
     ])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   return digest(JSON.stringify(stable));
@@ -267,10 +269,11 @@ async function eligibleThankYouAudience(db, { eventId, organizerId, rsvpId = nul
                    AND follow.follower_user_id=r.user_id
                    AND follow.unsubscribed_at IS NULL
               ) AS already_following,
-              r.organizer_optin
+              r.organizer_optin,r.wants_reminders,
+              (r.event_email_optin AND r.event_email_consent_version=$4
+                AND r.event_email_consent_at IS NOT NULL) AS event_email_consent
          FROM rsvps r
         WHERE r.event_id=$1 AND r.status='confirmed'
-          AND ($3::int IS NULL OR r.id=$3)
           AND NULLIF(BTRIM(r.email),'') IS NOT NULL
      ), ranked AS (
        SELECT candidate.*,
@@ -283,14 +286,16 @@ async function eligibleThankYouAudience(db, { eventId, organizerId, rsvpId = nul
      SELECT ranked.*
        FROM ranked
       WHERE ranked.person_rank=1
+        AND ranked.wants_reminders=TRUE
+        AND ($3::int IS NULL OR ranked.rsvp_id=$3)
         AND ranked.email_verified
-        AND (ranked.organizer_optin OR ranked.follow_email_consent)
+        AND (ranked.organizer_optin OR ranked.follow_email_consent OR ranked.event_email_consent)
         AND NOT EXISTS (
           SELECT 1 FROM follower_optouts optout
            WHERE optout.organizer_id=$2 AND LOWER(BTRIM(optout.email))=ranked.email
         )
       ORDER BY ranked.rsvp_id`,
-    [eventId, organizerId, rsvpId]
+    [eventId, organizerId, rsvpId, EVENT_EMAIL_CONSENT_VERSION]
   );
   const { rows: countRows } = await db.query(
     `SELECT COUNT(*)::int AS total
@@ -306,7 +311,9 @@ async function eligibleThankYouAudience(db, { eventId, organizerId, rsvpId = nul
     firstName: row.first_name || '',
     lastName: row.last_name || '',
     name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || null,
-    consentSource: row.follow_email_consent ? 'host_follow' : 'rsvp_host_email',
+    consentSource: row.follow_email_consent ? 'host_follow'
+      : row.organizer_optin ? 'rsvp_host_email' : 'rsvp_event_email',
+    consentScope: row.follow_email_consent || row.organizer_optin ? 'host' : 'event',
     alreadyFollowing: Boolean(row.already_following)
   }));
   const totalConfirmed = Number(countRows[0]?.total || 0);
@@ -353,7 +360,8 @@ function serializeThankYou({ batch, draft, audience, host }) {
     message: clean.message,
     includeFollow: clean.includeFollow,
     eligibleCount: approved ? Number(source.recipient_count || 0) : Number(audience?.eligibleCount || 0),
-    canIncludeFollow: Boolean(host?.public_slug && audience?.recipients?.some(recipient => !recipient.alreadyFollowing)),
+    canIncludeFollow: Boolean(host?.public_slug && audience?.recipients?.some(recipient =>
+      recipient.consentScope === 'host' && !recipient.alreadyFollowing)),
     status: finalStatus,
     batchId: source.id == null ? null : Number(source.id),
     sentCount: Number(source.sent_count || 0),

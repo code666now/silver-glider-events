@@ -238,8 +238,8 @@
       byId('post-event-include-follow').checked = thankYou.canIncludeFollow && thankYou.includeFollow;
       byId('post-event-include-follow').disabled = !thankYou.canIncludeFollow;
       setText('post-event-follow-copy', thankYou.canIncludeFollow
-        ? 'Give guests a choice to follow your future events.'
-        : 'Set up your Host Page before including a follow invitation.');
+        ? 'Shown only to guests who separately agreed to emails from you.'
+        : 'Available when eligible guests have separate permission for emails from you.');
       byId('post-event-preview-tab').disabled = !previewToken;
       byId('post-event-dialog-tabs').hidden = false;
       byId('post-event-dialog-next').hidden = false;

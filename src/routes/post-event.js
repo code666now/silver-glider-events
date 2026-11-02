@@ -218,15 +218,17 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
       eventId: context.event.id,
       organizerId: req.organizer.id
     });
-    const allAlreadyFollowing = audience.recipients.length > 0 &&
-      audience.recipients.every(recipient => recipient.alreadyFollowing);
+    const followEligible = audience.recipients.filter(recipient => recipient.consentScope === 'host');
+    const allAlreadyFollowing = followEligible.length === 0 ||
+      followEligible.every(recipient => recipient.alreadyFollowing);
     const renderSnapshot = emailRenderSnapshot(context.event, context.host);
     const renderHash = renderSnapshotDigest(renderSnapshot);
     const rendered = buildPostEventThankYouEmail({
       event: renderSnapshot.event,
       host: renderSnapshot.host,
       ...draft,
-      alreadyFollowing: allAlreadyFollowing
+      alreadyFollowing: allAlreadyFollowing,
+      consentScope: followEligible.length > 0 ? 'host' : 'event'
     });
     const previewToken = signPreviewToken({
       eventId: context.event.id,
@@ -287,18 +289,19 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
       throw new PostEventError(409, 'stale_preview', 'The draft or audience changed. Preview again before sending.');
     }
     if (!audience.recipients.length) {
-      throw new PostEventError(409, 'no_eligible_recipients', 'No confirmed guests currently have verified host-email consent');
+      throw new PostEventError(409, 'no_eligible_recipients', 'No confirmed guests currently have verified email permission for this thank-you');
     }
 
     for (const recipient of audience.recipients) {
       await client.query(
         `INSERT INTO message_log
            (rsvp_id,event_id,post_event_thank_you_batch_id,recipient,recipient_name,
-            recipient_user_id,message_type,channel,status,post_event_already_following)
-         VALUES ($1,$2,$3,$4,$5,$6,'post_event_thank_you','email','pending',$7)
+            recipient_user_id,message_type,channel,status,post_event_already_following,
+            post_event_consent_scope)
+         VALUES ($1,$2,$3,$4,$5,$6,'post_event_thank_you','email','pending',$7,$8)
          ON CONFLICT DO NOTHING`,
         [recipient.rsvpId, context.event.id, batch.id, recipient.email,
-         recipient.name, recipient.userId, recipient.alreadyFollowing]
+         recipient.name, recipient.userId, recipient.alreadyFollowing, recipient.consentScope]
       );
     }
     const { rows } = await client.query(

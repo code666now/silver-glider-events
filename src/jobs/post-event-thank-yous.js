@@ -102,7 +102,7 @@ async function processPostEventThankYouBatch(batchId) {
 
   const { rows: deliveries } = await pool.query(
     `SELECT id AS log_id,rsvp_id,recipient,recipient_name,recipient_user_id,
-            post_event_already_following
+            post_event_already_following,post_event_consent_scope
        FROM message_log
       WHERE post_event_thank_you_batch_id=$1
         AND status <> 'sent'
@@ -152,7 +152,9 @@ async function processPostEventThankYouBatch(batchId) {
           rsvpId: Number(delivery.rsvp_id)
         });
         const nowEligible = currentAudience.recipients[0];
-        if (!nowEligible || nowEligible.email !== String(delivery.recipient || '').trim().toLowerCase()) {
+        const consentScope = delivery.post_event_consent_scope || 'host';
+        if (!nowEligible || nowEligible.email !== String(delivery.recipient || '').trim().toLowerCase()
+            || (consentScope === 'host' && nowEligible.consentScope !== 'host')) {
           return { recipientSuppressed: true };
         }
         return {
@@ -165,6 +167,7 @@ async function processPostEventThankYouBatch(batchId) {
             message: row.thank_you_message,
             includeFollow: Boolean(row.include_follow),
             alreadyFollowing: Boolean(delivery.post_event_already_following),
+            consentScope,
             unsubscribeUrl,
             idempotencyKey: `post-event-thank-you:${batchId}:${delivery.log_id}`
           })

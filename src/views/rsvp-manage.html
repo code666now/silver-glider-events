@@ -25,6 +25,7 @@
     .rsvp-email-setting-row input { width:21px;height:21px;margin:2px 0 0;accent-color:var(--sg-accent);flex:0 0 auto; }
     .rsvp-email-setting-row strong { display:block;margin-bottom:4px;font-size:15px; }
     .rsvp-email-setting-row small { display:block;color:var(--sg-text-dim);font-size:13px;line-height:1.5; }
+    .rsvp-email-essential-note { margin:12px 0 0 35px;color:var(--sg-text-dim);font-size:13px;line-height:1.5; }
     .rsvp-email-setting-status { min-height:19px;margin:12px 0 0;color:var(--sg-text-dim);font-size:13px;text-align:center; }
     .rsvp-email-setting-status.is-error { color:var(--sg-danger); }
     .rsvp-cancel-status { min-height:20px;margin:12px 0 0;color:var(--sg-text-dim);font-size:13px;line-height:1.5;text-align:center; }
@@ -82,9 +83,10 @@
 
       <section class="sg-card rsvp-email-settings" id="email-settings">
         <label class="rsvp-email-setting-row" for="email-reminders">
-          <input id="email-reminders" type="checkbox" {{REMINDERS_CHECKED}}>
-          <span><strong>Event reminders and optional follow-ups</strong><small>Critical event updates and cancellations still arrive even when this is off.</small></span>
+          <input id="email-reminders" type="checkbox" {{REMINDERS_CHECKED}} data-event-email-consent-version="{{EVENT_EMAIL_CONSENT_VERSION}}" aria-describedby="event-email-consent-description event-email-essential-note">
+          <span><strong>Email me reminders and messages about this event.</strong><small id="event-email-consent-description">Includes reminders before the event and one thank-you afterward. Unsubscribe anytime.</small></span>
         </label>
+        <p class="rsvp-email-essential-note" id="event-email-essential-note">Critical event updates and cancellations still arrive even when this is off.</p>
         <p class="rsvp-email-setting-status" id="email-reminders-status" role="status" aria-live="polite"></p>
       </section>
 
@@ -126,7 +128,10 @@
         const response = await fetch('/api/public/rsvps/{{TOKEN}}/reminders', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled })
+          body: JSON.stringify({
+            enabled,
+            event_email_consent_version: enabled ? emailReminders.dataset.eventEmailConsentVersion : null
+          })
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Your email setting could not be saved.');

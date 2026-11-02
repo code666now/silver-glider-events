@@ -830,6 +830,9 @@ async function submitRsvp({ afterVerification = false } = {}) {
         guest_name: $('guest_name')?.value.trim() || null,
         guest_email: $('guest_email')?.value.trim() || null,
         wants_reminders: $('wants_reminders').checked,
+        event_email_consent_version: $('wants_reminders').checked
+          ? $('wants_reminders').dataset.eventEmailConsentVersion
+          : null,
         organizer_optin: false,
         sms_optin: Boolean(smsOptin?.checked),
         ...personalAccess

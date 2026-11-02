@@ -1204,8 +1204,12 @@ function buildPostEventThankYouEmail({
   message,
   includeFollow = false,
   alreadyFollowing = false,
+  consentScope = 'host',
   unsubscribeUrl
 } = {}) {
+  if (consentScope !== 'host' && consentScope !== 'event') {
+    throw new Error('A valid consent scope is required for post-event thank-you delivery');
+  }
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const eventTitle = String(event.title || '').trim() || 'our event';
   const hostLabel = senderDisplayName(host.org_name || host.name || eventHostLabel(event), 'Your host');
@@ -1214,7 +1218,10 @@ function buildPostEventThankYouEmail({
   const dateLabel = postEventDateLabel(event.event_date);
   const hostSlug = String(host.public_slug || '').trim();
   const followUrl = hostSlug ? `${baseUrl}/h/${encodeURIComponent(hostSlug)}` : '';
-  const showFollow = includeFollow === true && alreadyFollowing !== true && Boolean(followUrl);
+  const showFollow = consentScope === 'host' && includeFollow === true && alreadyFollowing !== true && Boolean(followUrl);
+  const consentReason = consentScope === 'event'
+    ? `You’re receiving this note because you RSVP’d to ${eventTitle} and chose to receive messages about this event.`
+    : `You’re receiving this note because you RSVP’d to ${eventTitle} and opted into emails from ${hostLabel}.`;
   const safeUnsubscribeUrl = safeHttpUrl(unsubscribeUrl);
   const messageHtml = `<p style="color:#d7d7d7;font-size:17px;line-height:1.7;margin:0;white-space:normal">${esc(cleanMessage).replace(/\r?\n/g, '<br>')}</p>`;
   const dateHtml = dateLabel
@@ -1222,7 +1229,7 @@ function buildPostEventThankYouEmail({
     : '';
   const footerHtml = safeUnsubscribeUrl
     ? policyFooter({
-      reason: `You’re receiving this note because you RSVP’d to ${eventTitle} and opted into emails from ${hostLabel}.`,
+      reason: consentReason,
       hostLabel,
       includeAddress: true,
       links: [
@@ -1250,6 +1257,7 @@ function buildPostEventThankYouEmail({
     cleanMessage,
     showFollow ? `Follow ${hostLabel}: ${followUrl}` : '',
     '',
+    ...(safeUnsubscribeUrl && consentScope === 'event' ? [consentReason] : []),
     safeUnsubscribeUrl
       ? `Unsubscribe from emails from this host: ${safeUnsubscribeUrl}`
       : '[Preview only: the sent email includes the recipient’s unsubscribe link.]'
@@ -1265,6 +1273,7 @@ async function sendPostEventThankYou({
   message,
   includeFollow,
   alreadyFollowing,
+  consentScope = 'host',
   unsubscribeUrl,
   idempotencyKey
 }) {
@@ -1279,6 +1288,7 @@ async function sendPostEventThankYou({
     message,
     includeFollow,
     alreadyFollowing,
+    consentScope,
     unsubscribeUrl: safeUnsubscribeUrl
   });
   const hostLabel = senderDisplayName(host?.org_name || host?.name || eventHostLabel(event), 'Your host');

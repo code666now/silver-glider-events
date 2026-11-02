@@ -158,6 +158,37 @@ test('thank-you suppresses an unnecessary follow prompt for an existing follower
   assert.match(email.html, /490 Post Street, Suite 500/);
 });
 
+test('event-only thank-you permission uses an honest reason and excludes future-event promotion', () => {
+  const email = buildPostEventThankYouEmail({
+    event,
+    host,
+    subject: 'Thank you',
+    message: 'Thanks for coming.',
+    includeFollow: true,
+    alreadyFollowing: false,
+    consentScope: 'event',
+    unsubscribeUrl: 'https://silvergliderevents.com/unsubscribe-email?token=event-safe'
+  });
+
+  assert.match(email.html, /RSVP’d to Night &lt;Two&gt; and chose to receive messages about this event/);
+  assert.match(email.text, /RSVP’d to Night <Two> and chose to receive messages about this event/);
+  assert.doesNotMatch(email.html, /opted into emails from|Follow our page|\/h\/host-collective/);
+  assert.doesNotMatch(email.text, /opted into emails from|Follow Host Collective|\/h\/host-collective/);
+  assert.equal((email.html.match(/class="sg-email-cta"/g) || []).length, 0);
+  assert.match(email.html, /Unsubscribe from emails from this host/);
+  assert.match(email.text, /Unsubscribe from emails from this host: https:\/\/silvergliderevents\.com\/unsubscribe-email\?token=event-safe/);
+  assert.match(email.html, /490 Post Street, Suite 500/);
+});
+
+test('unknown thank-you permission scope cannot silently enable promotional content', () => {
+  assert.throws(() => buildPostEventThankYouEmail({
+    event,
+    host,
+    includeFollow: true,
+    consentScope: 'unrecognized'
+  }), /valid consent scope/);
+});
+
 test('thank-you delivery requires unsubscribe and idempotency, then uses host sender conventions', async () => {
   const base = {
     to: 'guest@example.test', event, host, subject: 'Thank you', message: 'See you next time.',
@@ -185,4 +216,27 @@ test('thank-you delivery requires unsubscribe and idempotency, then uses host se
   assert.equal(sent.idempotencyKey, 'sge-post-event-thanks-42-99-v1');
   assert.equal(sent.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
   assert.match(sent.text, /Unsubscribe from emails from this host/);
+});
+
+test('event-only thank-you delivery preserves its scope and host-wide one-click unsubscribe', async () => {
+  devOutbox.length = 0;
+  await sendPostEventThankYou({
+    to: 'guest@example.test',
+    event,
+    host,
+    subject: 'Thank you',
+    message: 'Thanks for coming.',
+    includeFollow: true,
+    alreadyFollowing: false,
+    consentScope: 'event',
+    unsubscribeUrl: 'https://silvergliderevents.com/unsubscribe-email?token=event-safe',
+    idempotencyKey: 'sge-post-event-thanks-42-100-v1'
+  });
+  const sent = devOutbox.at(-1);
+  assert.match(sent.html, /chose to receive messages about this event/);
+  assert.match(sent.text, /chose to receive messages about this event/);
+  assert.doesNotMatch(sent.html, /opted into emails from|Follow our page|\/h\/host-collective/);
+  assert.equal(sent.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+  assert.match(sent.headers['List-Unsubscribe'], /event-safe/);
+  assert.equal(sent.idempotencyKey, 'sge-post-event-thanks-42-100-v1');
 });
