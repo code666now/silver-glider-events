@@ -144,8 +144,8 @@ async function processPostEventThankYouBatch(batchId) {
       const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${signOptout(row.organizer_id, delivery.recipient)}`;
       const deliveryResult = await withActiveHostAccount(pool, row.organizer_id, async lockedClient => {
         // Recheck recipient eligibility only after the host-account gate is
-        // locked, immediately before delivery. This closes the window where an
-        // opt-out could otherwise be accepted while this job waited to send.
+        // locked, immediately before delivery, so opt-outs accepted while this
+        // job waited are observed. Unsubscribe writes use their existing route.
         const currentAudience = await eligibleThankYouAudience(lockedClient || pool, {
           eventId: row.id,
           organizerId: row.organizer_id,
@@ -154,7 +154,9 @@ async function processPostEventThankYouBatch(batchId) {
         const nowEligible = currentAudience.recipients[0];
         const consentScope = delivery.post_event_consent_scope || 'host';
         if (!nowEligible || nowEligible.email !== String(delivery.recipient || '').trim().toLowerCase()
-            || (consentScope === 'host' && nowEligible.consentScope !== 'host')) {
+            || (consentScope === 'host' && nowEligible.consentScope !== 'host')
+            || (consentScope === 'event' && nowEligible.consentScope === 'event_rsvp')
+            || !['host', 'event', 'event_rsvp'].includes(consentScope)) {
           return { recipientSuppressed: true };
         }
         return {

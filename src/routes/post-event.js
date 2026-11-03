@@ -228,7 +228,8 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
       host: renderSnapshot.host,
       ...draft,
       alreadyFollowing: allAlreadyFollowing,
-      consentScope: followEligible.length > 0 ? 'host' : 'event'
+      consentScope: followEligible.length > 0 ? 'host'
+        : audience.recipients.some(recipient => recipient.consentScope === 'event_rsvp') ? 'event_rsvp' : 'event'
     });
     const previewToken = signPreviewToken({
       eventId: context.event.id,
@@ -289,7 +290,7 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
       throw new PostEventError(409, 'stale_preview', 'The draft or audience changed. Preview again before sending.');
     }
     if (!audience.recipients.length) {
-      throw new PostEventError(409, 'no_eligible_recipients', 'No confirmed guests currently have verified email permission for this thank-you');
+      throw new PostEventError(409, 'no_eligible_recipients', 'No guests marked Going currently have an email available for this thank-you. Email opt-outs and unsubscribes are excluded.');
     }
 
     for (const recipient of audience.recipients) {

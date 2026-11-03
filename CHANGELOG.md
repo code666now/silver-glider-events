@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.187
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### A thank-you for the people on your list
+
+* Hosts can review and approve one event-related thank-you to confirmed primary RSVPs with a valid email, including historical and no-account guests. Email opt-outs, host unsubscribes, cancelled RSVPs, invalid addresses, and named +1 emails remain excluded.
+* The new RSVP-only email explains why it was sent, includes unsubscribe, and never adds a Follow promotion or subscribes anyone to future events. Existing permission records and previously approved host/event email scopes remain unchanged.
+* Clearer Going/email audience copy replaces the blocked consent-settings message. Server-side owner checks, normalized mailbox deduplication, preview approval, one batch per event, delivery-time eligibility checks, and provider-idempotent retries remain in place.
+* Migration `075_rsvp_thank_you_audience.sql` adds only the frozen RSVP-only delivery scope; it changes no guest permissions and queues no emails.
+
+### Verification
+
+* All **669 automated tests** and static checks pass. Coverage includes anonymous signup, historical guests, malformed and duplicate addresses, preview changes, delivery-time opt-outs, and permission downgrades on older queued messages.
+* Synthetic Chrome end-to-end checks passed at 1440px desktop and 390px phone for recap, editing, preview, explicit send, single-batch enforcement, focus and overflow. No real guest emails were sent; real Safari/iOS and live inbox rendering remain manual checks.
+
 ## 1.0.186
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.

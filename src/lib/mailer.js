@@ -1239,7 +1239,7 @@ function buildPostEventThankYouEmail({
   consentScope = 'host',
   unsubscribeUrl
 } = {}) {
-  if (consentScope !== 'host' && consentScope !== 'event') {
+  if (consentScope !== 'host' && consentScope !== 'event' && consentScope !== 'event_rsvp') {
     throw new Error('A valid consent scope is required for post-event thank-you delivery');
   }
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
@@ -1251,9 +1251,11 @@ function buildPostEventThankYouEmail({
   const hostSlug = String(host.public_slug || '').trim();
   const followUrl = hostSlug ? `${baseUrl}/h/${encodeURIComponent(hostSlug)}` : '';
   const showFollow = consentScope === 'host' && includeFollow === true && alreadyFollowing !== true && Boolean(followUrl);
-  const consentReason = consentScope === 'event'
-    ? `You’re receiving this note because you RSVP’d to ${eventTitle} and chose to receive messages about this event.`
-    : `You’re receiving this note because you RSVP’d to ${eventTitle} and opted into emails from ${hostLabel}.`;
+  const consentReason = consentScope === 'event_rsvp'
+    ? `You’re receiving this one thank-you because you RSVP’d to ${eventTitle}. This does not subscribe you to future-event emails.`
+    : consentScope === 'event'
+      ? `You’re receiving this note because you RSVP’d to ${eventTitle} and chose to receive messages about this event.`
+      : `You’re receiving this note because you RSVP’d to ${eventTitle} and opted into emails from ${hostLabel}.`;
   const safeUnsubscribeUrl = safeHttpUrl(unsubscribeUrl);
   const messageHtml = `<p style="color:#d7d7d7;font-size:17px;line-height:1.7;margin:0;white-space:normal">${esc(cleanMessage).replace(/\r?\n/g, '<br>')}</p>`;
   const dateHtml = dateLabel
@@ -1269,7 +1271,7 @@ function buildPostEventThankYouEmail({
         { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
       ]
     })
-    : '<p style="color:#666666;font-size:12px;line-height:1.6;text-align:center;margin:0">Preview only — the sent email includes the recipient’s unsubscribe link.</p>';
+    : `${consentScope === 'event_rsvp' ? `<p style="color:#666666;font-size:12px;line-height:1.6;text-align:center;margin:0 0 8px">${esc(consentReason)}</p>` : ''}<p style="color:#666666;font-size:12px;line-height:1.6;text-align:center;margin:0">Preview only — the sent email includes the recipient’s unsubscribe link.</p>`;
   const html = rsvpConfirmationLayout({
     event,
     kicker: `A note from ${hostLabel}`,
@@ -1289,7 +1291,7 @@ function buildPostEventThankYouEmail({
     cleanMessage,
     showFollow ? `Follow ${hostLabel}: ${followUrl}` : '',
     '',
-    ...(safeUnsubscribeUrl && consentScope === 'event' ? [consentReason] : []),
+    ...(consentScope === 'event_rsvp' || (safeUnsubscribeUrl && consentScope === 'event') ? [consentReason] : []),
     safeUnsubscribeUrl
       ? `Unsubscribe from emails from this host: ${safeUnsubscribeUrl}`
       : '[Preview only: the sent email includes the recipient’s unsubscribe link.]'

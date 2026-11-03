@@ -273,6 +273,7 @@ async function eligibleThankYouAudience(db, { eventId, organizerId, rsvpId = nul
               (r.event_email_optin AND r.event_email_consent_version=$4
                 AND r.event_email_consent_at IS NOT NULL) AS event_email_consent
          FROM rsvps r
+         JOIN events owned_event ON owned_event.id=r.event_id AND owned_event.organizer_id=$2
         WHERE r.event_id=$1 AND r.status='confirmed'
           AND NULLIF(BTRIM(r.email),'') IS NOT NULL
      ), ranked AS (
@@ -282,40 +283,55 @@ async function eligibleThankYouAudience(db, { eventId, organizerId, rsvpId = nul
                 ORDER BY candidate.created_at DESC,candidate.rsvp_id DESC
               ) AS person_rank
          FROM candidates candidate
+     ), mailboxes AS (
+       SELECT ranked.*,
+              ROW_NUMBER() OVER (
+                PARTITION BY ranked.email
+                ORDER BY ranked.created_at DESC,ranked.rsvp_id DESC
+              ) AS mailbox_rank
+         FROM ranked
+        WHERE ranked.person_rank=1
      )
-     SELECT ranked.*
-       FROM ranked
-      WHERE ranked.person_rank=1
-        AND ranked.wants_reminders=TRUE
-        AND ($3::int IS NULL OR ranked.rsvp_id=$3)
-        AND ranked.email_verified
-        AND (ranked.organizer_optin OR ranked.follow_email_consent OR ranked.event_email_consent)
+     SELECT mailboxes.*
+       FROM mailboxes
+      WHERE mailboxes.mailbox_rank=1
+        AND mailboxes.wants_reminders=TRUE
+        AND ($3::int IS NULL OR mailboxes.rsvp_id=$3)
         AND NOT EXISTS (
           SELECT 1 FROM follower_optouts optout
-           WHERE optout.organizer_id=$2 AND LOWER(BTRIM(optout.email))=ranked.email
+           WHERE optout.organizer_id=$2 AND LOWER(BTRIM(optout.email))=mailboxes.email
         )
-      ORDER BY ranked.rsvp_id`,
+      ORDER BY mailboxes.rsvp_id`,
     [eventId, organizerId, rsvpId, EVENT_EMAIL_CONSENT_VERSION]
   );
   const { rows: countRows } = await db.query(
     `SELECT COUNT(*)::int AS total
-       FROM rsvps
-      WHERE event_id=$1 AND status='confirmed'
-        AND ($2::int IS NULL OR id=$2)`,
-    [eventId, rsvpId]
+       FROM rsvps r
+       JOIN events owned_event ON owned_event.id=r.event_id AND owned_event.organizer_id=$3
+      WHERE r.event_id=$1 AND r.status='confirmed'
+        AND ($2::int IS NULL OR r.id=$2)`,
+    [eventId, rsvpId, organizerId]
   );
-  const recipients = rows.map(row => ({
-    rsvpId: Number(row.rsvp_id),
-    userId: row.user_id == null ? null : Number(row.user_id),
-    email: row.email,
-    firstName: row.first_name || '',
-    lastName: row.last_name || '',
-    name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || null,
-    consentSource: row.follow_email_consent ? 'host_follow'
-      : row.organizer_optin ? 'rsvp_host_email' : 'rsvp_event_email',
-    consentScope: row.follow_email_consent || row.organizer_optin ? 'host' : 'event',
-    alreadyFollowing: Boolean(row.already_following)
-  }));
+  // This one event-related note does not grant marketing permission or prove
+  // mailbox ownership. Retain the original verified scopes for existing
+  // permissions, and freeze the distinct RSVP-only scope for all other guests.
+  const recipients = rows.filter(row => row.email.length <= 320 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)).map(row => {
+    const hostPermission = row.email_verified && (row.follow_email_consent || row.organizer_optin);
+    const eventPermission = row.email_verified && row.event_email_consent;
+    return {
+      rsvpId: Number(row.rsvp_id),
+      userId: row.user_id == null ? null : Number(row.user_id),
+      email: row.email,
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || null,
+      consentSource: hostPermission ? (row.follow_email_consent ? 'host_follow' : 'rsvp_host_email')
+        : eventPermission ? 'rsvp_event_email' : 'rsvp_event_thank_you',
+      consentScope: hostPermission ? 'host' : eventPermission ? 'event' : 'event_rsvp',
+      alreadyFollowing: Boolean(row.already_following)
+    };
+  });
   const totalConfirmed = Number(countRows[0]?.total || 0);
   return {
     recipients,

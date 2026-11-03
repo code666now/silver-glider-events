@@ -13040,7 +13040,7 @@ test('post-event recap keeps turnout private and distinguishes primary RSVPs, re
   assert.doesNotMatch(publicPage, /estimatedTurnout|estimated_turnout|event_draw_estimates/);
 });
 
-test('post-event thank-you eligibility requires existing host consent and verified email; previews do not send', async () => {
+test('post-event thank-you includes Going guests without account verification or marketing permission; previews do not send', async () => {
   const { event, cookie } = await postEventFixture({ secret_show_enabled: true, secret_show_version: 1 });
   await postEventGuest(event.id, 'allowed-post@example.test');
   await postEventGuest(event.id, 'reminders-only-post@example.test', { organizer_optin: false, wants_reminders: true });
@@ -13053,7 +13053,7 @@ test('post-event thank-you eligibility requires existing host consent and verifi
 
   const before = mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith('post-event-thank-you:')).length;
   const recap = await (await postEventRequest(event.id, cookie)).json();
-  assert.equal(recap.thankYou.eligibleCount, 2);
+  assert.equal(recap.thankYou.eligibleCount, 4);
   assert.equal(recap.thankYou.canIncludeFollow, true);
   const draft = { subject: 'Thanks for our night', message: 'So glad you could join. <script>alert(1)</script>', includeFollow: true };
   assert.equal((await postEventRequest(event.id, cookie, '/thank-you', 'PUT', draft)).status, 200);
@@ -13064,7 +13064,7 @@ test('post-event thank-you eligibility requires existing host consent and verifi
   assert.equal(previewResponse.status, 200);
   assert.match(previewResponse.headers.get('cache-control'), /no-store/);
   const preview = await previewResponse.json();
-  assert.equal(preview.eligibleCount, 2);
+  assert.equal(preview.eligibleCount, 4);
   assert.ok(preview.previewToken);
   assert.match(preview.html, /&lt;script&gt;/);
   assert.doesNotMatch(preview.html, /<script|9876 Private Address|\/e\/post-event-night/);
@@ -13115,7 +13115,7 @@ test('RSVP signup records prospective event-message permission without broadenin
   assert.deepEqual(old, { event_email_optin: false, event_email_consent_at: null });
 });
 
-test('event-message settings grant and revoke one thank-you without silently upgrading historical reminders', async () => {
+test('event-message settings preserve permission records while optional-mail opt-outs exclude the RSVP thank-you', async () => {
   const { event, cookie } = await postEventFixture();
   const guest = await postEventGuest(event.id, 'event-setting@example.test', { organizer_optin: false });
   const setting = body => fetch(`${baseUrl}/api/public/rsvps/${guest.rsvp.manage_token}/reminders`, {
@@ -13127,9 +13127,11 @@ test('event-message settings grant and revoke one thank-you without silently upg
     [guest.rsvp.id]
   )).rows[0];
   await fetch(`${baseUrl}/r/${guest.rsvp.manage_token}`);
-  assert.equal((await audience()).eligibleCount, 0, 'merely opening the new wording grants no permission');
+  assert.equal((await audience()).eligibleCount, 1, 'an RSVP permits the single event note, not marketing consent');
+  assert.equal((await readConsent()).event_email_optin, false, 'viewing the new wording grants no broader permission');
   assert.equal((await setting({ enabled: true })).status, 200);
-  assert.equal((await audience()).eligibleCount, 0, 'a stale client can enable only the reminders it disclosed');
+  assert.equal((await audience()).eligibleCount, 1);
+  assert.equal((await readConsent()).event_email_optin, false, 'the historical record is not backfilled');
   assert.equal((await setting({ enabled: true, event_email_consent_version: EVENT_EMAIL_CONSENT_VERSION })).status, 200);
   const consented = await readConsent();
   assert.equal(consented.event_email_optin, true);
@@ -13146,14 +13148,15 @@ test('event-message settings grant and revoke one thank-you without silently upg
   assert.equal(revoked.event_email_consent_at.toISOString(), consented.event_email_consent_at.toISOString());
   assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 409);
   await setting({ enabled: true });
-  assert.equal((await audience()).eligibleCount, 0);
+  assert.equal((await audience()).eligibleCount, 1);
+  assert.equal((await readConsent()).event_email_optin, false, 'enabling reminders does not manufacture new consent');
   await setting({ enabled: true, event_email_consent_version: EVENT_EMAIL_CONSENT_VERSION });
   assert.equal((await audience()).eligibleCount, 1);
   assert.equal((await fetch(`${baseUrl}/api/email/unsubscribe/rsvp/${guest.rsvp.manage_token}`, { method: 'POST' })).status, 204);
   assert.equal((await audience()).eligibleCount, 0);
 });
 
-test('thank-you sends honor event permission and optional-mail opt-outs while keeping promotions separately scoped', async () => {
+test('thank-you sends one event note to historical and unverified guests while honoring opt-outs and separating promotions', async () => {
   const { event, cookie } = await postEventFixture();
   const hostGuest = await postEventGuest(event.id, 'host-permission@example.test');
   const eventPermission = {
@@ -13162,15 +13165,16 @@ test('thank-you sends honor event permission and optional-mail opt-outs while ke
     event_email_consent_text: `${EVENT_EMAIL_CONSENT_LABEL} ${EVENT_EMAIL_CONSENT_HELPER}`
   };
   const eventGuest = await postEventGuest(event.id, 'event-permission@example.test', eventPermission);
-  await postEventGuest(event.id, 'legacy-reminder@example.test', { organizer_optin: false });
-  await postEventGuest(event.id, 'event-unverified@example.test', { ...eventPermission, verified: false });
+  const legacyGuest = await postEventGuest(event.id, 'legacy-reminder@example.test', { organizer_optin: false });
+  const unverifiedGuest = await postEventGuest(event.id, 'event-unverified@example.test', { ...eventPermission, verified: false });
+  const anonymousGuest = await createRsvp(event.id, { email: 'anonymous-thanks@example.test', organizer_optin: false });
   await postEventGuest(event.id, 'event-optional-off@example.test', { ...eventPermission, wants_reminders: false });
   await postEventGuest(event.id, 'host-optional-off@example.test', { wants_reminders: false });
   const hostOptout = await postEventGuest(event.id, 'event-host-optout@example.test', eventPermission);
   await pool.query('INSERT INTO follower_optouts (organizer_id,email) VALUES ($1,$2)', [organizerId, hostOptout.rsvp.email]);
   const draft = { subject: 'Thanks for sharing the night', message: 'It was lovely to bring everyone together.', includeFollow: true };
   const preview = await previewPostEventDraft(event.id, cookie, draft);
-  assert.equal(preview.eligibleCount, 2);
+  assert.equal(preview.eligibleCount, 5);
   assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
   await settlePostEventThankYouWork();
   const eventEmail = lastDevEmail(eventGuest.rsvp.email);
@@ -13181,10 +13185,19 @@ test('thank-you sends honor event permission and optional-mail opt-outs while ke
   const logs = (await pool.query(
     "SELECT recipient,post_event_consent_scope,status FROM message_log WHERE event_id=$1 AND message_type='post_event_thank_you' ORDER BY recipient", [event.id]
   )).rows;
-  assert.equal(logs.length, 2);
+  assert.equal(logs.length, 5);
   assert.ok(logs.every(row => row.status === 'sent'));
   assert.equal(logs.find(row => row.recipient === eventGuest.rsvp.email).post_event_consent_scope, 'event');
   assert.equal(logs.find(row => row.recipient === hostGuest.rsvp.email).post_event_consent_scope, 'host');
+  for (const email of [legacyGuest.rsvp.email, unverifiedGuest.rsvp.email, anonymousGuest.email]) {
+    assert.equal(logs.find(row => row.recipient === email).post_event_consent_scope, 'event_rsvp');
+    const sent = lastDevEmail(email);
+    assert.match(sent.html, /one thank-you because you RSVP’d/);
+    assert.match(sent.html, /does not subscribe you to future-event emails/);
+    assert.doesNotMatch(sent.html, /Follow our page for more events|opted into emails from|chose to receive messages/);
+  }
+  const unchanged = (await pool.query('SELECT event_email_optin,organizer_optin,user_id FROM rsvps WHERE id=$1', [anonymousGuest.id])).rows[0];
+  assert.deepEqual(unchanged, { event_email_optin: false, organizer_optin: false, user_id: null });
 });
 
 test('post-event thank-you approval rejects changed messages and audiences, then concurrent sends queue each person once', async () => {
@@ -13228,6 +13241,52 @@ test('post-event thank-you approval rejects changed messages and audiences, then
   assert.equal((await pool.query(
     "SELECT COUNT(*)::int AS count FROM message_log WHERE event_id=$1 AND message_type='post_event_thank_you'", [event.id]
   )).rows[0].count, 2);
+});
+
+test('an ordinary anonymous RSVP becomes eligible for its one event thank-you without acquiring an account or marketing permission', async () => {
+  const { event, cookie } = await postEventFixture({ event_date: '2099-10-30' });
+  const response = await fetch(`${baseUrl}/api/public/events/${event.slug}/rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Anonymous Guest', email: 'normal-signup-thanks@example.test', wants_reminders: true })
+  });
+  assert.equal(response.status, 201);
+  await waitForConfirmation('normal-signup-thanks@example.test');
+  await pool.query("UPDATE events SET event_date='2020-10-30' WHERE id=$1", [event.id]);
+  const audience = (await (await postEventRequest(event.id, cookie)).json()).thankYou;
+  assert.equal(audience.eligibleCount, 1);
+  assert.equal(audience.canIncludeFollow, false);
+  const saved = (await pool.query('SELECT organizer_optin,event_email_optin,user_id FROM rsvps WHERE event_id=$1', [event.id])).rows[0];
+  assert.equal(saved.organizer_optin, false);
+  assert.equal(saved.event_email_optin, false);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS total FROM user_identities WHERE user_id=$1 AND verified_at IS NOT NULL AND revoked_at IS NULL", [saved.user_id])).rows[0].total, 0,
+    'an anonymous identity row is not proof of mailbox verification');
+  const preview = await previewPostEventDraft(event.id, cookie, {
+    subject: 'Thanks for being part of it', message: 'A note about our night.', includeFollow: true
+  });
+  assert.match(preview.html, /one thank-you because you RSVP’d/);
+  assert.doesNotMatch(preview.html, /Follow our page for more events|opted into emails from/);
+});
+
+test('RSVP thank-you audience validates and deduplicates historical mailboxes without reviving a later opt-out or crossing hosts', async () => {
+  const { event } = await postEventFixture();
+  const { eligibleThankYouAudience } = require('../../src/lib/post-event');
+  await createRsvp(event.id, { email: 'duplicate-thanks@example.test', created_at: '2020-01-01' });
+  const newest = await createRsvp(event.id, { email: ' DUPLICATE-thanks@example.test ', created_at: '2020-02-01' });
+  const old = await createRsvp(event.id, { email: 'withdrawn-thanks@example.test', created_at: '2020-01-01' });
+  await createRsvp(event.id, { email: ' withdrawn-thanks@example.test ', wants_reminders: false, created_at: '2020-02-01' });
+  for (const email of ['bad-address', 'bad\r\naddress@example.test', '', `${'a'.repeat(321)}@example.test`]) {
+    await createRsvp(event.id, { email });
+  }
+  const audience = await eligibleThankYouAudience(pool, { eventId: event.id, organizerId });
+  assert.equal(audience.eligibleCount, 1);
+  assert.equal(audience.recipients[0].rsvpId, newest.id);
+  assert.equal(audience.recipients[0].email, 'duplicate-thanks@example.test');
+  assert.equal(audience.recipients[0].consentScope, 'event_rsvp');
+  const olderChoice = await eligibleThankYouAudience(pool, { eventId: event.id, organizerId, rsvpId: old.id });
+  assert.equal(olderChoice.eligibleCount, 0, 'a delivery-ID filter cannot resurrect a prior optional-mail choice');
+  const other = await eligibleThankYouAudience(pool, { eventId: event.id, organizerId: organizerId + 100000 });
+  assert.equal(other.eligibleCount, 0);
+  assert.equal(other.skippedCount, 0);
 });
 
 test('post-event controls handle empty events and reject upcoming or unpublished events', async () => {
@@ -13303,12 +13362,58 @@ async function seedApprovedPostEventBatch(event, recipients) {
   for (const person of recipients) {
     logs.push((await pool.query(`INSERT INTO message_log
       (rsvp_id,event_id,post_event_thank_you_batch_id,recipient,recipient_user_id,
-       message_type,channel,status,post_event_already_following)
-      VALUES ($1,$2,$3,$4,$5,'post_event_thank_you','email','pending',FALSE) RETURNING id`,
-    [person.rsvp.id, event.id, batch.id, person.rsvp.email, person.userId])).rows[0]);
+       message_type,channel,status,post_event_already_following,post_event_consent_scope)
+      VALUES ($1,$2,$3,$4,$5,'post_event_thank_you','email','pending',FALSE,$6) RETURNING id`,
+    [person.rsvp.id, event.id, batch.id, person.rsvp.email, person.userId, person.consentScope || null])).rows[0]);
   }
   return { batch, logs };
 }
+
+test('new RSVP-only deliveries honor delivery-time opt-outs and cancellation without widening old approved scopes', async () => {
+  const { event } = await postEventFixture();
+  const people = [];
+  for (const [name, consentScope] of [
+    ['allowed', 'event_rsvp'], ['optional-off', 'event_rsvp'], ['unsubscribe', 'event_rsvp'],
+    ['cancelled', 'event_rsvp'], ['old-null', null], ['old-host', 'host'], ['old-event', 'event']
+  ]) {
+    const rsvp = await createRsvp(event.id, { email: `${name}-queued-thanks@example.test` });
+    people.push({ rsvp, userId: null, consentScope });
+  }
+  const { batch } = await seedApprovedPostEventBatch(event, people);
+  await pool.query('UPDATE rsvps SET wants_reminders=FALSE WHERE id=$1', [people[1].rsvp.id]);
+  await pool.query('INSERT INTO follower_optouts(organizer_id,email) VALUES($1,$2)', [organizerId, people[2].rsvp.email]);
+  await pool.query("UPDATE rsvps SET status='cancelled' WHERE id=$1", [people[3].rsvp.id]);
+  await require('../../src/jobs/post-event-thank-yous').processPostEventThankYouBatch(batch.id);
+  const logs = (await pool.query("SELECT recipient,status,error FROM message_log WHERE post_event_thank_you_batch_id=$1", [batch.id])).rows;
+  assert.equal(logs.filter(row => row.status === 'sent').length, 1);
+  assert.equal(logs.find(row => row.status === 'sent').recipient, people[0].rsvp.email);
+  assert.ok(logs.filter(row => row.status !== 'sent').every(row => row.error === 'recipient_suppressed'));
+  const sent = lastDevEmail(people[0].rsvp.email);
+  assert.match(sent.html, /one thank-you because you RSVP’d/);
+  assert.doesNotMatch(sent.html, /Follow our page for more events/);
+});
+
+test('previously eligible host and event deliveries cannot fall back to the new RSVP basis after their permission is narrowed', async () => {
+  const { event } = await postEventFixture();
+  const permission = {
+    event_email_optin: true, event_email_consent_at: new Date(),
+    event_email_consent_version: EVENT_EMAIL_CONSENT_VERSION,
+    event_email_consent_source: 'event_rsvp', event_email_consent_text: EVENT_EMAIL_CONSENT_LABEL
+  };
+  const host = await postEventGuest(event.id, 'narrowed-host-thanks@example.test', permission);
+  const eventGuest = await postEventGuest(event.id, 'revoked-verification-thanks@example.test', {
+    ...permission, organizer_optin: false
+  });
+  const { batch } = await seedApprovedPostEventBatch(event, [
+    { ...host, consentScope: 'host' }, { ...eventGuest, consentScope: 'event' }
+  ]);
+  await pool.query('UPDATE rsvps SET organizer_optin=FALSE WHERE id=$1', [host.rsvp.id]);
+  await pool.query('UPDATE user_identities SET revoked_at=NOW() WHERE user_id=$1', [eventGuest.userId]);
+  await require('../../src/jobs/post-event-thank-yous').processPostEventThankYouBatch(batch.id);
+  const logs = (await pool.query('SELECT status,error FROM message_log WHERE post_event_thank_you_batch_id=$1', [batch.id])).rows;
+  assert.equal(logs.length, 2);
+  assert.ok(logs.every(row => row.error === 'recipient_suppressed' && row.status !== 'sent'));
+});
 
 test('post-event worker rechecks opt-outs after approval and uses immutable approved artwork and title', async () => {
   const { event } = await postEventFixture();

@@ -1,8 +1,22 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 2, 2026 (host and guest return journeys, v1.0.186)
+**Last updated:** November 2, 2026 (one event thank-you for RSVP guests, v1.0.187)
 
-## Current release — Host and guest return journeys (v1.0.186)
+## Current release — One event thank-you for RSVP guests (v1.0.187)
+
+Extends `a888e82` / v1.0.186. The user explicitly changed the thank-you policy: let the host send one event-related note to everyone marked Going who supplied an email, unless they opted out. This **supersedes the narrower eligibility rules in v1.0.184–185 below**, without backfilling consent or granting marketing permission. The original blocker was both historical consent and the verified-email gate, which ordinary anonymous RSVPs do not necessarily satisfy.
+
+- `eligibleThankYouAudience` now includes confirmed primary RSVPs with valid email and `wants_reminders=true`, excluding host-wide `follower_optouts`. No registration or verified-email identity is required for this one event note. Named +1s, cancelled RSVPs and malformed addresses stay excluded. Rank latest per-person and normalized mailbox choices before applying optional-mail or delivery-ID filters; the query also verifies event ownership.
+- New `event_rsvp` delivery scope explains the RSVP-based reason and no future-event subscription, includes the existing host-wide unsubscribe, and never includes a Follow promotion. Verified guests with existing event or host permission retain those original scopes. No identity is marked verified, and no RSVP/follow/consent records are changed by the new eligibility policy.
+- Migration `075_rsvp_thank_you_audience.sql` only extends the message-log scope constraint. Previously approved NULL/host/event recipients retain their original strict permission and verified-email rules and byte-identical render payloads. The worker never falls back to the new scope for old approvals. Completed batches are not reopened, approved audiences are not expanded, and migration queues no mail.
+- Existing owner-only draft → sandboxed preview → explicit single send remains mandatory. Eligibility and opt-outs are rechecked at preview, approval and immediately before delivery; unchanged recipient/content hashes, frozen snapshots, stable provider keys, bounded retries and single batch per event remain. Unsubscribe writes are not serialized by the host advisory lock: immediate rechecks are not a claim that provider delivery is atomic with an opt-out.
+- The UX review kept the existing styling and made the actual Going/email audience and exclusions clear, including the zero-audience explanation. Test sends use only the local development outbox; do not send the real Halloween guest list during QA. User’s next action after release is refresh their ended event’s Recap → Thank your guests → review/preview → approve if intended.
+
+**Verification:** `npm run check` passed **669/669** tests plus static checks (239 JavaScript / 395 project files), and `git diff --check` passed. Local synthetic Chrome QA `/private/tmp/sge-thank-you-browser.cjs` passed at 1440px and 390px: two RSVP-only recipients, excluded optional-mail/host opt-outs/cancelled/+1 contacts, honest sandboxed preview, no save/preview send, explicit dev-outbox-only delivery, duplicate approval rejected, unchanged permission records, focus/Escape and no overflow/page exceptions. Screenshots `/private/tmp/sge-thank-you-{recap,editor,preview}-{1440,390}.png` were visually inspected. Real Safari/iOS and inbox rendering remain manual checks. Run only one test/fixture process against `sge_test` at a time.
+
+**Release/rollback:** normal version/commit/`.git-sha`/Railway `--path-as-root`/health/assets/tag/push flow. Verify migration 075, matching version/SHA and previous deployment `REMOVED`; do not roll back to v1.0.186 while RSVP-only emails are pending because it does not understand that scope. Existing dependency-audit follow-up from v1.0.186 remains separate from this targeted fix.
+
+## Previous release — Host and guest return journeys (v1.0.186)
 
 Extends `00cf310` / v1.0.185, authorized November 2. Reuses Going, Follow, Familiar Faces, duplication, recap, existing email transports and account ownership. No photo feature, authentication replacement, automatic guest invitations, new third-party analytics, or retrospective consent. Version and SHA must match live `/health` before calling this release deployed.
 

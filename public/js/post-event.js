@@ -289,8 +289,8 @@
       setText('post-event-thank-copy', thankStatus
         ? thankStatus.title
         : thankYou.eligibleCount
-          ? `Review a personal note for ${countLabel(thankYou.eligibleCount, 'eligible guest')}.`
-          : 'No guests are currently eligible under your email consent settings.');
+          ? `Review one thank-you for ${countLabel(thankYou.eligibleCount, 'guest')} marked Going.`
+          : 'No eligible emails right now. Guests must be marked Going, have an email, and not have opted out or unsubscribed.');
       byId('post-event-thank-guests').disabled = !thankStatus && thankYou.eligibleCount === 0;
 
       byId('post-event-loading').hidden = true;
