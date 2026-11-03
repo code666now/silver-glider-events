@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendPostEventThankYou } = require('../lib/mailer');
 const { eligibleThankYouAudience } = require('../lib/post-event');
+const { contributorSpotlightsStillApproved } = require('../lib/contributors');
 const { signOptout } = require('../lib/followers');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 
@@ -146,6 +147,9 @@ async function processPostEventThankYouBatch(batchId) {
         // Recheck recipient eligibility only after the host-account gate is
         // locked, immediately before delivery, so opt-outs accepted while this
         // job waited are observed. Unsubscribe writes use their existing route.
+        if (snapshot.thankYouVersion === 3 && !await contributorSpotlightsStillApproved(lockedClient || pool, {
+          eventId: row.id, organizerId: row.organizer_id, spotlights: snapshot.contributors || []
+        })) return { recipientSuppressed: true };
         const currentAudience = await eligibleThankYouAudience(lockedClient || pool, {
           eventId: row.id,
           organizerId: row.organizer_id,
@@ -170,6 +174,7 @@ async function processPostEventThankYouBatch(batchId) {
             includeFollow: Boolean(row.include_follow),
             alreadyFollowing: Boolean(delivery.post_event_already_following),
             templateVersion: snapshot.thankYouVersion || 1,
+            contributors: snapshot.contributors || [],
             consentScope,
             unsubscribeUrl,
             idempotencyKey: `post-event-thank-you:${batchId}:${delivery.log_id}`

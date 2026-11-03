@@ -113,6 +113,9 @@
     let restoreFocus = null;
     let statusPollTimer = null;
     let statusPollAttempts = 0;
+    const contributorEditor = typeof window.SgeContributors?.createHost === 'function'
+      ? window.SgeContributors.createHost({ eventId, request, onChange: () => invalidatePreview() })
+      : null;
 
     function setText(id, value) {
       const node = byId(id);
@@ -339,6 +342,7 @@
         target?.focus({ preventScroll: true });
       });
       scheduleStatusPoll({ reset: true });
+      if (state.thankYou.status === 'draft') contributorEditor?.refresh();
     }
 
     async function saveDraw(event) {
@@ -381,6 +385,9 @@
       setBusy(button, true, 'Building preview…');
       clearError();
       try {
+        // Re-read approvals and selections before freezing the reviewed email.
+        // Pending invitations are informational and never block the thank-you.
+        await contributorEditor?.preparePreview();
         const saved = await request(`/api/events/${encodeURIComponent(eventId)}/post-event/thank-you`, {
           method: 'PUT', body
         });

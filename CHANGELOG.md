@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.189
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### People who made the night
+
+* Thank-you editors can introduce up to three contributors. Hosts enter a name, role and private email; Silver Glider sends their invitation on request. Contributors add their own information and optional photo, explicitly approve their public spotlight, and can decline. Pending invitations never block the thank-you.
+* Approved photo/name/role cards join the existing flyer, personal host note, Host Page button and footer. Preview freezes the selected approvals; withdrawal suppresses unsent frozen messages, and late approvals never trigger another guest email. Older approved email versions remain unchanged.
+* Guests can discover a contributor and deliberately follow their work. Connections stay pending until the contributor claims through existing verified-email authentication. Claim reuses their account and Host Page without overwriting existing branding. Actual event-attributed follower counts lead into existing profile editing, event creation and reviewed follower announcements.
+* Additive migration 076 records scoped invitations, versioned public approval and explicit follow choices. Bearer tokens are hashed; retry payloads are encrypted and idempotent. Public pages expose no private email, event location or guest list. Upload validation, ownership, opt-outs and separate SMS choices remain enforced.
+
+### Verification
+
+* All **751 automated tests** and static checks pass, including real local SQL coverage of ownership, token expiry, explicit approvals, image decoding, pending follows, exact verified-email claim, multi-event attribution, opt-outs, frozen delivery and the existing follower announcement audience. V1/v2 golden hashes protect already-approved emails.
+* Chrome end-to-end checks pass at 1440px desktop and 390px phone for invitation, approval/decline, pending Follow, existing-account claim, unfollow and a synthetic thank-you send. New pages and actual email cards were visually reviewed. No real contributor or guest emails were sent; Safari/iOS and live inbox-client rendering remain manual checks.
+
 ## 1.0.188
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.

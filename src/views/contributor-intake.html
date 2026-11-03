@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Your introduction — Silver Glider Events</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/contributors.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/contributors.js" defer></script>
+</head>
+<body data-contributor-page="intake">
+  <div class="sg-aurora" aria-hidden="true"></div><div class="sg-aurora-veil" aria-hidden="true"></div>
+  <main class="contributor-shell">
+    <a class="contributor-brand" href="/"><img src="/logo.png" alt="">Silver Glider Events</a>
+    <header class="contributor-intro">
+      <p class="contributor-eyebrow">People who made the night</p>
+      <h1 id="contributor-invitation-heading">You helped make the night.</h1>
+      <p class="contributor-copy" id="contributor-invitation-copy">Your host would love to introduce your work. Make the introduction yours.</p>
+    </header>
+    <p class="contributor-note" id="contributor-loading" role="status">Opening your invitation…</p>
+    <p class="contributor-error" id="contributor-error" role="alert" hidden></p>
+    <p class="contributor-status" id="contributor-status" role="status" hidden></p>
+    <form class="contributor-form" id="contributor-intake-form" hidden>
+      <div class="contributor-photo-row">
+        <div class="contributor-photo" id="contributor-intake-photo" aria-label="Your introduction photo"><span class="contributor-photo-fallback" aria-hidden="true">SG</span></div>
+        <div>
+          <button class="sg-btn sg-btn-ghost" id="contributor-photo-button" type="button">Choose a photo</button>
+          <input id="contributor-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <p class="contributor-photo-note">Optional · JPG, PNG, or WebP · up to 5 MB</p>
+        </div>
+      </div>
+      <label class="contributor-field" for="contributor-name"><span>Your name or artist name</span><input class="sg-input" id="contributor-name" name="name" autocomplete="name" maxlength="100" required></label>
+      <label class="contributor-field" for="contributor-role"><span>Your role</span><input class="sg-input" id="contributor-role" name="role" maxlength="80" placeholder="DJ, photographer, bartender…" required></label>
+      <label class="contributor-field" for="contributor-email"><span>Invitation email · private</span><input class="sg-input" id="contributor-email" name="email" type="email" autocomplete="email" readonly aria-describedby="contributor-email-note"><small id="contributor-email-note">We’ll send your secure claim link here. This email is never shown on your page. Wrong address? Ask your host to send a new invitation.</small></label>
+      <label class="contributor-field" for="contributor-instagram"><span>Instagram · optional</span><input class="sg-input" id="contributor-instagram" name="instagram" autocomplete="off" maxlength="100" placeholder="@yourname"></label>
+      <label class="contributor-field" for="contributor-website"><span>Website · optional</span><input class="sg-input" id="contributor-website" name="website" type="url" inputmode="url" autocomplete="url" maxlength="500" placeholder="https://your-site.com"></label>
+      <label class="contributor-approval" for="contributor-approval"><input id="contributor-approval" type="checkbox" required><span><strong>Yes, introduce my work.</strong> <span id="contributor-approval-text">I approve this introduction and allow my name, role, photo, and links to appear in this event’s thank-you and on my public introduction page.</span> My email stays private. This does not subscribe me to marketing emails.</span></label>
+      <button class="sg-btn sg-btn-primary" id="contributor-approve" type="submit">Looks good—include me</button>
+      <p class="contributor-note">No account setup needed to approve your introduction. Claim the same prepared page through the secure email we send next.</p>
+    </form>
+    <section class="contributor-success" id="contributor-intake-success" tabindex="-1" hidden>
+      <h2>Your introduction is ready.</h2>
+      <p class="contributor-copy">Your host can now include your approved spotlight. Verify your email to claim your page and manage what comes next.</p>
+      <a class="sg-btn sg-btn-ghost" id="contributor-view-page" href="#">See your introduction</a>
+      <button class="sg-btn sg-btn-ghost" id="contributor-claim-retry" type="button" hidden>Retry claim email</button>
+    </section>
+    <button class="contributor-decline" id="contributor-decline" type="button" hidden>Not me / Don’t feature me</button>
+    <p class="contributor-note" id="contributor-decline-note" hidden>You’re in control. Declining or withdrawing stops future inclusion; an email already sent cannot be recalled.</p>
+  </main>
+</body>
+</html>

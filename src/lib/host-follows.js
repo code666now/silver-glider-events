@@ -1,6 +1,8 @@
 const {
   FOLLOW_EMAIL_CONSENT_SOURCE,
   FOLLOW_EMAIL_CONSENT_VERSION,
+  CONTRIBUTOR_EMAIL_CONSENT_SOURCE,
+  CONTRIBUTOR_EMAIL_CONSENT_VERSION,
   FOLLOW_SMS_CONSENT_VERSION,
   followEmailConsentCopy,
   prepareFollowSmsConsent
@@ -242,7 +244,7 @@ async function isFollowingHost(db, followerOrganizerId, hostOrganizerId) {
 
 async function followStatus(db, followerOrganizerId, hostOrganizerId) {
   const { rows } = await db.query(
-    `SELECT hf.id,hf.unsubscribed_at,hf.email_opted_in_at,hf.email_consent_version,
+    `SELECT hf.id,hf.unsubscribed_at,hf.email_opted_in_at,hf.email_consent_version,hf.email_consent_source,
             hf.sms_phone,hf.sms_opted_in_at,hf.sms_opted_out_at,hf.sms_consent_version,
             COALESCE(host.sms_credits,0)::int AS sms_credits,
             EXISTS (
@@ -262,7 +264,9 @@ async function followStatus(db, followerOrganizerId, hostOrganizerId) {
   return {
     following,
     emailOn: Boolean(following && row.email_opted_in_at
-      && row.email_consent_version === FOLLOW_EMAIL_CONSENT_VERSION && !row.email_opted_out),
+      && (row.email_consent_version === FOLLOW_EMAIL_CONSENT_VERSION
+        || (row.email_consent_source === CONTRIBUTOR_EMAIL_CONSENT_SOURCE
+          && row.email_consent_version === CONTRIBUTOR_EMAIL_CONSENT_VERSION)) && !row.email_opted_out),
     textOn: Boolean(following && row.sms_phone && row.sms_opted_in_at
       && row.sms_consent_version === FOLLOW_SMS_CONSENT_VERSION && !row.sms_opted_out_at),
     smsAvailable: true,

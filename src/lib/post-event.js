@@ -72,9 +72,15 @@ function audienceDigest(recipients) {
   return digest(JSON.stringify(stable));
 }
 
-function emailRenderSnapshot(event, host, { thankYouVersion = 1 } = {}) {
+function emailRenderSnapshot(event, host, { thankYouVersion = 1, contributors = [] } = {}) {
   return {
-    ...(thankYouVersion === 2 ? { thankYouVersion: 2 } : {}),
+    ...(thankYouVersion >= 2 ? { thankYouVersion } : {}),
+    ...(thankYouVersion === 3 ? { contributors: contributors.slice(0, 3).map(person => ({
+      id: Number(person.id), profileId: Number(person.profileId),
+      name: String(person.name || ''), role: String(person.role || ''),
+      photoUrl: person.photoUrl || null, profileUrl: String(person.profileUrl || ''),
+      approvalVersion: String(person.approvalVersion || '')
+    })) } : {}),
     event: {
       id: Number(event?.id),
       title: String(event?.title || ''),
@@ -373,7 +379,7 @@ function serializeThankYou({ batch, draft, audience, host }) {
   const finalStatus = source.status || 'draft';
   const approved = finalStatus !== 'draft';
   const standardHostPage = approved
-    ? source.render_snapshot?.thankYouVersion === 2 && Boolean(source.render_snapshot?.host?.public_slug)
+    ? source.render_snapshot?.thankYouVersion >= 2 && Boolean(source.render_snapshot?.host?.public_slug)
     : Boolean(host?.public_slug);
   return {
     subject: clean.subject,

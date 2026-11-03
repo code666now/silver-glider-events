@@ -18,6 +18,9 @@ function classify(req) {
   if (path.startsWith('/api/uploads/') || path.startsWith('/admin-editor/api/uploads/')) {
     return { category: 'upload', action: 'account' };
   }
+  if (/^\/api\/contributors\/intake\/[^/]+\/photo$/.test(path)) {
+    return { category: 'upload', action: 'contributor' };
+  }
   if (/^\/api\/public\/photo-collections\/[^/]+$/.test(path)) {
     return { category: 'upload', action: 'event_photos' };
   }

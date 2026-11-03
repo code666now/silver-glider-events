@@ -138,9 +138,11 @@ function resetRateLimits() {
   });
   uploadRoutes.setAdminHostUploadsForTests();
   postEventRoutes._resetRateLimitsForTests();
+  require('../../src/routes/contributors').resetRateLimitsForTests();
 }
 
 async function resetDatabase() {
+  await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
   await pool.query("DELETE FROM email_optins WHERE scope='host_followups'");
   await pool.query("DELETE FROM email_optouts WHERE scope='host_followups'");
@@ -13283,7 +13285,7 @@ test('new thank-you approval freezes the standard Host Page button without subsc
   assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
   await settlePostEventThankYouWork();
   const batch = (await pool.query('SELECT render_snapshot FROM post_event_thank_you_batches WHERE event_id=$1', [event.id])).rows[0];
-  assert.equal(batch.render_snapshot.thankYouVersion, 2);
+  assert.equal(batch.render_snapshot.thankYouVersion, 3);
   assert.equal(batch.render_snapshot.host.public_slug, 'test-host');
   const email = lastDevEmail(guest.email);
   assert.match(email.html, /Follow my page/);
@@ -13529,4 +13531,14 @@ test('post-event retries stop before provider idempotency expires even after a m
   assert.equal((await pool.query('SELECT error FROM message_log WHERE id=$1', [logs[0].id])).rows[0].error, 'delivery_outcome_unknown');
   assert.equal(mailer.devOutbox.filter(m => m.idempotencyKey?.startsWith(`post-event-thank-you:${batch.id}:`) &&
     m.to === guest.rsvp.email).length, 0);
+});
+
+require('../support/contributors-cases')({
+  test, assert, pool, mailer,
+  get baseUrl() { return baseUrl; },
+  get organizerId() { return organizerId; },
+  createEvent, createRsvp, postEventFixture, postEventGuest,
+  postEventRequest, previewPostEventDraft,
+  signInAccount, followSignInLink, lastDevEmail, resetRateLimits,
+  settlePostEventThankYouWork
 });

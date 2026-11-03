@@ -68,3 +68,31 @@ test('security traffic logging records useful outcomes without paths, tokens, or
   assert.match(messages[0], /"outcome":"rate_limited"/);
   assert.doesNotMatch(messages[0], /private-token-value|203\.0\.113\.10/);
 });
+
+test('contributor image mutations enter upload security telemetry without their intake bearer', () => {
+  const path = '/api/contributors/intake/secret-contributor-intake-bearer/photo';
+  assert.deepEqual(securityTraffic.classify({ method: 'POST', path }), { category: 'upload', action: 'contributor' });
+  assert.deepEqual(securityTraffic.classify({ method: 'DELETE', path }), { category: 'upload', action: 'contributor' });
+  assert.equal(securityTraffic.classify({ method: 'GET', path }), null);
+  assert.equal(securityTraffic.classify({ method: 'POST', path: '/api/contributors/intake/secret-contributor-intake-bearer' }), null);
+  const response = new EventEmitter();
+  response.statusCode = 403;
+  const request = {
+    method: 'POST', path, ip: '203.0.113.22',
+    get(name) { return name.toLowerCase() === 'x-forwarded-for' ? '203.0.113.22' : undefined; }
+  };
+  const messages = [];
+  const original = console.info;
+  console.info = (...parts) => messages.push(parts.join(' '));
+  try {
+    securityTraffic(request, response, () => {});
+    response.emit('finish');
+  } finally {
+    console.info = original;
+  }
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /"category":"upload"/);
+  assert.match(messages[0], /"action":"contributor"/);
+  assert.match(messages[0], /"outcome":"rejected"/);
+  assert.doesNotMatch(messages[0], /secret-contributor-intake-bearer|203\.0\.113\.22|\/api\/contributors/);
+});

@@ -1229,6 +1229,77 @@ function safeReplyToAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) ? address : undefined;
 }
 
+function contributorSpotlightEmailContent(contributors, baseUrl) {
+  const root = new URL(baseUrl);
+  const people = (Array.isArray(contributors) ? contributors : []).slice(0, 3).flatMap(person => {
+    const name = String(person?.name || '').trim().slice(0, 100);
+    if (!name) return [];
+    try {
+      const url = new URL(String(person.profileUrl || ''), root);
+      const safeAttribution = !url.search || /^\?intro=[a-f0-9]{24}$/.test(url.search);
+      if (url.origin !== root.origin || !/^\/people\/[a-z0-9-]+$/.test(url.pathname) || !safeAttribution || url.hash) return [];
+      return [{ name, role: String(person.role || '').trim().slice(0, 80),
+        url: url.toString(), photo: emailSafeImageUrl(person.photoUrl) }];
+    } catch (_) { return []; }
+  });
+  if (!people.length) return { html: '', text: '' };
+  return {
+    html: `<section style="margin:30px 0 0"><h2 style="color:#f4f4f4;font-size:21px;line-height:1.3;margin:0 0 16px">The people who made the night</h2>${people.map(person => `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-top:1px solid #292929"><tr>
+        ${person.photo ? `<td width="72" valign="middle" style="width:72px;padding:16px 12px 16px 0"><img src="${esc(person.photo)}" width="60" height="60" alt="" style="display:block;width:60px;height:60px;object-fit:cover;border-radius:50%;border:0"></td>` : ''}
+        <td valign="middle" style="padding:16px 0"><strong style="color:#f4f4f4;font-size:16px">${esc(person.name)}</strong>${person.role ? `<p style="color:#a7a7a7;font-size:14px;line-height:1.5;margin:3px 0 8px">${esc(person.role)}</p>` : ''}<a href="${esc(person.url)}" style="display:inline-block;color:#1CC5BE;font-size:14px;font-weight:700;line-height:1.5;padding:4px 0;text-decoration:underline">Meet ${esc(person.name)} →</a></td>
+      </tr></table>`).join('')}</section>`,
+    text: `The people who made the night\n${people.map(person => `${person.name}${person.role ? ` — ${person.role}` : ''}\nMeet ${person.name}: ${person.url}`).join('\n\n')}`
+  };
+}
+
+function buildContributorInvitationEmail({ hostName, eventTitle, intakeUrl } = {}) {
+  const host = senderDisplayName(hostName, 'Your host');
+  const title = cleanPostEventSubject(eventTitle, 'their night');
+  const link = safeHttpUrl(intakeUrl);
+  if (!link) throw new Error('A secure contributor invitation link is required');
+  return {
+    subject: cleanPostEventSubject(`${host} would love to introduce your work`, 'An introduction from your host'),
+    html: layout({ kicker: 'You helped make the night', headline: 'Let’s introduce your work.',
+      sub: `${host} would love to introduce you to the people from ${title}.`,
+      bodyHtml: '<p style="color:#a7a7a7;font-size:16px;line-height:1.65;margin:0">Choose your name, photo and links, then approve your introduction. Your email stays private. You do not need to register an account to approve, and you can decline.</p>',
+      cta: 'Review my introduction', ctaUrl: link,
+      footerHtml: policyFooter({ reason: `This is a personal invitation from ${host}, not a subscription. Approving an introduction never gives anyone access to the host’s guest list.`, includeAddress: true,
+        links: [{ label: 'Review or decline this invitation', url: link }] }) }),
+    text: `${host} would love to introduce your work to the people from ${title}.\n\nChoose your name, photo, role and links, then approve your introduction. Your email stays private.\n\nReview or decline: ${link}\n\nThis does not subscribe you to emails or share the host’s guest list.`
+  };
+}
+
+async function sendContributorInvitation({ to, hostName, eventTitle, intakeUrl, idempotencyKey }) {
+  if (!idempotencyKey) throw new Error('Contributor invitation requires an idempotency key');
+  const email = buildContributorInvitationEmail({ hostName, eventTitle, intakeUrl });
+  if (!resend) recordDevEmail({ to, kind: 'contributor_invitation', link: intakeUrl });
+  return send({ to, ...email, from: hostFrom(hostName), idempotencyKey, timeoutMs: 15000 });
+}
+
+function buildContributorClaimEmail({ hostName, eventTitle, name, claimUrl } = {}) {
+  const link = safeHttpUrl(claimUrl);
+  if (!link) throw new Error('A secure contributor claim link is required');
+  const displayName = senderDisplayName(name, 'Your page');
+  const host = senderDisplayName(hostName, 'Your host');
+  return {
+    subject: cleanPostEventSubject(`Your introduction is ready, ${displayName}`, 'Your introduction is ready'),
+    html: layout({ kicker: 'Your work, your page', headline: 'Make this page yours.',
+      sub: `Your introduction for ${String(eventTitle || 'the night')} is ready for ${host}.`,
+      bodyHtml: '<p style="color:#a7a7a7;font-size:16px;line-height:1.65;margin:0">Verify your email to claim the page you already prepared. Nothing to fill out again. People can choose to follow your work; their connections stay pending until you claim. You never receive the host’s attendee list.</p>',
+      cta: 'Confirm my email & claim my page', ctaUrl: link,
+      footerHtml: policyFooter({ reason: 'You’re receiving this because you approved your introduction. Opening the email link does not automatically claim your page; confirm securely on Silver Glider.', includeAddress: true }) }),
+    text: `${displayName}, your introduction for ${String(eventTitle || 'the night')} is ready.\n\nVerify your email and claim the same page: ${link}\n\nNothing to fill out again. Any followers chose to hear from you; the host’s guest list is never shared.`
+  };
+}
+
+async function sendContributorClaim({ to, hostName, eventTitle, name, claimUrl, idempotencyKey }) {
+  if (!idempotencyKey) throw new Error('Contributor claim requires an idempotency key');
+  const email = buildContributorClaimEmail({ hostName, eventTitle, name, claimUrl });
+  if (!resend) recordDevEmail({ to, kind: 'contributor_claim', link: claimUrl });
+  return send({ to, ...email, idempotencyKey, timeoutMs: 15000 });
+}
+
 function buildPostEventThankYouEmail({
   event = {},
   host = {},
@@ -1238,12 +1309,13 @@ function buildPostEventThankYouEmail({
   alreadyFollowing = false,
   consentScope = 'host',
   templateVersion = 1,
+  contributors = [],
   unsubscribeUrl
 } = {}) {
   if (consentScope !== 'host' && consentScope !== 'event' && consentScope !== 'event_rsvp') {
     throw new Error('A valid consent scope is required for post-event thank-you delivery');
   }
-  if (templateVersion !== 1 && templateVersion !== 2) {
+  if (templateVersion !== 1 && templateVersion !== 2 && templateVersion !== 3) {
     throw new Error('A valid template version is required for post-event thank-you delivery');
   }
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
@@ -1256,7 +1328,7 @@ function buildPostEventThankYouEmail({
   const followUrl = hostSlug ? `${baseUrl}/h/${encodeURIComponent(hostSlug)}` : '';
   // Version 1 remains frozen for already approved deliveries and provider
   // idempotent retries. Version 2 offers a public page, never an auto-follow.
-  const showFollow = Boolean(followUrl) && (templateVersion === 2
+  const showFollow = Boolean(followUrl) && (templateVersion >= 2
     || (consentScope === 'host' && includeFollow === true && alreadyFollowing !== true));
   const consentReason = consentScope === 'event_rsvp'
     ? `You’re receiving this one thank-you because you RSVP’d to ${eventTitle}. This does not subscribe you to future-event emails.`
@@ -1268,6 +1340,7 @@ function buildPostEventThankYouEmail({
   const dateHtml = dateLabel
     ? `<p style="color:#777777;font-size:13px;font-weight:700;letter-spacing:.04em;margin:0 0 18px">${esc(dateLabel)}</p>`
     : '';
+  const spotlights = templateVersion === 3 ? contributorSpotlightEmailContent(contributors, baseUrl) : { html: '', text: '' };
   const footerHtml = safeUnsubscribeUrl
     ? policyFooter({
       reason: consentReason,
@@ -1283,10 +1356,10 @@ function buildPostEventThankYouEmail({
     event,
     kicker: `A note from ${hostLabel}`,
     sub: 'Thanks for making it a night to remember.',
-    bodyHtml: `${dateHtml}${messageHtml}`,
-    cta: showFollow ? (templateVersion === 2 ? 'Follow my page' : 'Follow our page for more events') : '',
+    bodyHtml: `${dateHtml}${messageHtml}${spotlights.html}`,
+    cta: showFollow ? (templateVersion >= 2 ? 'Follow my page' : 'Follow our page for more events') : '',
     ctaUrl: showFollow ? followUrl : '',
-    secondaryHtml: templateVersion === 2 && showFollow
+    secondaryHtml: templateVersion >= 2 && showFollow
       ? '<p class="sg-email-secondary" style="color:#a7a7a7;font-size:15px;line-height:1.55;text-align:center;margin:0 0 26px">Stay in the loop about future events.</p>'
       : '',
     footerHtml,
@@ -1299,7 +1372,8 @@ function buildPostEventThankYouEmail({
     dateLabel,
     '',
     cleanMessage,
-    showFollow ? (templateVersion === 2
+    ...(spotlights.text ? [spotlights.text] : []),
+    showFollow ? (templateVersion >= 2
       ? `Follow my page: ${followUrl}\nStay in the loop about future events.`
       : `Follow ${hostLabel}: ${followUrl}`) : '',
     '',
@@ -1321,6 +1395,7 @@ async function sendPostEventThankYou({
   alreadyFollowing,
   consentScope = 'host',
   templateVersion = 1,
+  contributors = [],
   unsubscribeUrl,
   idempotencyKey
 }) {
@@ -1337,6 +1412,7 @@ async function sendPostEventThankYou({
     alreadyFollowing,
     consentScope,
     templateVersion,
+    contributors,
     unsubscribeUrl: safeUnsubscribeUrl
   });
   const hostLabel = senderDisplayName(host?.org_name || host?.name || eventHostLabel(event), 'Your host');
@@ -1568,6 +1644,7 @@ module.exports = {
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
   buildHostRecapEmail, sendHostRecap, buildPostEventThankYouEmail, sendPostEventThankYou,
+  buildContributorInvitationEmail, sendContributorInvitation, buildContributorClaimEmail, sendContributorClaim,
   sendHostProfileNudge, sendFirstEventNudge, sendPhotoRequest, sendCommerceLaunch, sendOptionalHostEmail,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,

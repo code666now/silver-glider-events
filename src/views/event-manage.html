@@ -1009,6 +1009,28 @@
             <input id="post-event-include-follow" name="includeFollow" type="checkbox" hidden aria-hidden="true" tabindex="-1">
             <span><strong id="post-event-follow-title">“Follow my page” is included</strong><small id="post-event-follow-copy">The button opens your Host Page; guests choose whether to follow. Nobody is subscribed automatically.</small></span>
           </div>
+          <section class="post-event-contributors" id="post-event-contributors" aria-labelledby="post-event-contributors-title">
+            <div class="post-event-contributors-heading">
+              <div><p class="post-event-eyebrow">An introduction, not another signup</p><h3 id="post-event-contributors-title">People who made the night</h3></div>
+              <button class="post-event-contributor-refresh" id="post-event-contributors-refresh" type="button">Refresh</button>
+            </div>
+            <p class="post-event-contributors-copy">Introduce up to three people behind this event. We email their invitation; they add their own information and approve the spotlight. Pending invitations never hold up your thank-you.</p>
+            <p class="post-event-contributor-note" id="post-event-contributors-loading" role="status">Loading your introductions…</p>
+            <div id="post-event-contributors-list" class="post-event-contributors-list"></div>
+            <div id="post-event-contributor-suggestions" class="post-event-contributor-suggestions" hidden>
+              <p class="post-event-contributor-note">From your Event Vibe</p><div id="post-event-contributor-suggestion-list"></div>
+            </div>
+            <div id="post-event-contributor-invite-fields" class="post-event-contributor-invite-fields">
+              <label class="post-event-field" for="post-event-contributor-name"><span>Name</span><input class="sg-input" id="post-event-contributor-name" form="post-event-contributor-invite-form" type="text" maxlength="100" autocomplete="off" placeholder="Their name or artist name"></label>
+              <label class="post-event-field" for="post-event-contributor-email"><span>Invitation email · private</span><input class="sg-input" id="post-event-contributor-email" form="post-event-contributor-invite-form" type="email" maxlength="254" autocomplete="off" placeholder="Where should we invite them?"></label>
+              <label class="post-event-field" for="post-event-contributor-role"><span>Role</span><input class="sg-input" id="post-event-contributor-role" form="post-event-contributor-invite-form" type="text" maxlength="80" autocomplete="off" placeholder="DJ, photographer, bartender…"></label>
+              <button class="sg-btn sg-btn-ghost" id="post-event-contributor-invite" type="button">Send invitation</button>
+              <p class="post-event-contributor-note">This sends only their invitation—not your guest thank-you. Their email stays private.</p>
+            </div>
+            <p class="post-event-contributor-note" id="post-event-contributors-limit" hidden>All three places are filled. Remove an introduction to invite someone else.</p>
+            <p class="post-event-dialog-error" id="post-event-contributors-error" role="alert" hidden></p>
+            <p class="post-event-contributor-note" id="post-event-contributors-status" role="status" hidden></p>
+          </section>
           <p class="post-event-send-note">For guests marked Going with an email, excluding email opt-outs and unsubscribes. No account or future-event subscription is needed. Additional guests are not contacted.</p>
         </section>
 
@@ -1035,10 +1057,14 @@
       </footer>
     </form>
   </dialog>
+  <!-- Optional invitation fields have their own form owner so an unfinished
+       invitation never prevents previewing or sending the thank-you. -->
+  <form id="post-event-contributor-invite-form" hidden></form>
 
   <script src="/js/api.js"></script>
   <script src="/js/event-change-dialog.js"></script>
   <script src="/js/event-lifecycle.js"></script>
+  <script src="/js/contributors.js"></script>
   <script src="/js/post-event.js"></script>
   <script src="/js/manage.js"></script>
 </body>

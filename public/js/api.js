@@ -707,6 +707,9 @@ function toast(msg) {
 
 function mountFeedbackBubble() {
   if (sgIsAdminEditorPath()) return;
+  // This page's URL is a scoped bearer grant. The shared feedback draft stores
+  // the current URL, so do not mount it here or copy the grant into feedback.
+  if (document.body.dataset.contributorPage === 'intake') return;
   if (document.getElementById('feedback-bubble')) return;
   const draftKey = 'sge_feedback_draft';
   const root = document.createElement('div');

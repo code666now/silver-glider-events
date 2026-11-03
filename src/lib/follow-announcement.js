@@ -1,6 +1,8 @@
 const { reserveSendCredits } = require('./sms-credit-ledger');
 const {
   FOLLOW_EMAIL_CONSENT_VERSION,
+  CONTRIBUTOR_EMAIL_CONSENT_SOURCE,
+  CONTRIBUTOR_EMAIL_CONSENT_VERSION,
   FOLLOW_SMS_CONSENT_VERSION
 } = require('./follow-consent');
 const { previewFingerprint, smsSegments } = require('./sms-lifecycle');
@@ -42,7 +44,8 @@ async function eligibleEmailRecipients(queryable, organizerId, eventId) {
          FROM host_follows hf JOIN organizers follower ON follower.id=hf.follower_organizer_id
         WHERE hf.host_organizer_id=$1 AND hf.unsubscribed_at IS NULL
           AND hf.email_opted_in_at IS NOT NULL
-          AND hf.email_consent_version=$3
+          AND (hf.email_consent_version=$3
+               OR (hf.email_consent_source=$4 AND hf.email_consent_version=$5))
         GROUP BY hf.follower_user_id,LOWER(follower.email)
      ), ranked AS (
        SELECT candidate.*,
@@ -77,7 +80,8 @@ async function eligibleEmailRecipients(queryable, organizerId, eventId) {
                  AND ml.status IN ('pending','sent')
             )
       ORDER BY c.email`,
-    [organizerId, eventId, FOLLOW_EMAIL_CONSENT_VERSION]
+    [organizerId, eventId, FOLLOW_EMAIL_CONSENT_VERSION,
+      CONTRIBUTOR_EMAIL_CONSENT_SOURCE, CONTRIBUTOR_EMAIL_CONSENT_VERSION]
   );
   return rows;
 }

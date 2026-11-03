@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const { buildPostEventThankYouEmail } = require('../lib/mailer');
+const { loadApprovedContributorSpotlights } = require('../lib/contributors');
 const {
   PostEventError,
   defaultThankYouDraft,
@@ -219,13 +220,15 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
     const followEligible = audience.recipients.filter(recipient => recipient.consentScope === 'host');
     const allAlreadyFollowing = followEligible.length === 0 ||
       followEligible.every(recipient => recipient.alreadyFollowing);
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 2 });
+    const contributors = await loadApprovedContributorSpotlights(pool, { eventId: context.event.id, organizerId: req.organizer.id });
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 3, contributors });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     const rendered = buildPostEventThankYouEmail({
       event: renderSnapshot.event,
       host: renderSnapshot.host,
       ...draft,
       templateVersion: renderSnapshot.thankYouVersion,
+      contributors: renderSnapshot.contributors,
       alreadyFollowing: allAlreadyFollowing,
       consentScope: followEligible.length > 0 ? 'host'
         : audience.recipients.some(recipient => recipient.consentScope === 'event_rsvp') ? 'event_rsvp' : 'event'
@@ -281,7 +284,8 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
       message: batch.message,
       includeFollow: batch.include_follow
     });
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 2 });
+    const contributors = await loadApprovedContributorSpotlights(client, { eventId: context.event.id, organizerId: req.organizer.id });
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 3, contributors });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     if (preview.eventId !== context.event.id || preview.batchId !== String(batch.id) ||
         preview.draftHash !== currentDraftHash || preview.audienceHash !== audience.audienceHash ||

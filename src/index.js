@@ -80,6 +80,7 @@ app.use(require('./routes/admin-done-for-you'));
 app.use('/admin-editor', require('./routes/admin-editor'));
 app.use(require('./routes/events'));
 app.use(require('./routes/post-event'));
+app.use(require('./routes/contributors'));
 app.use(require('./routes/uploads'));
 app.use(require('./routes/event-photos'));
 app.use(require('./routes/photos'));
@@ -153,6 +154,22 @@ app.get('/events', requireOrganizer, view('events.html'));
 app.get('/following', requireOrganizer, view('following.html'));
 app.get('/profile', requireOrganizer, view('profile.html'));
 app.get('/lineup/:claimId', requireOrganizer, view('lineup-claim.html'));
+app.get('/contributors/intake/:token', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  return sendHtmlFile(res, path.join(VIEWS, 'contributor-intake.html'));
+});
+app.get('/people/:slug', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  return sendHtmlFile(res, path.join(VIEWS, 'contributor-public.html'));
+});
+app.get('/contributors/claim/:id', requireOrganizer, (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  return sendHtmlFile(res, path.join(VIEWS, 'contributor-claim.html'));
+});
 app.get('/add-photo', requirePhotoAccess, async (req, res, next) => {
   try {
     const requestedSlug = String(req.query.event || '').trim();

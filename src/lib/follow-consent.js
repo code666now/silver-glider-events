@@ -2,6 +2,11 @@ const { normalizeE164, SmsDeliveryError } = require('./sms');
 
 const FOLLOW_EMAIL_CONSENT_SOURCE = 'host_page_follow';
 const FOLLOW_EMAIL_CONSENT_VERSION = 'host_follow_email_v1';
+// Contributor follows record their original disclosure, rather than rewriting
+// history to look like a Host Page signup. Only this trusted source/version
+// pair grants the equivalent future-event email permission.
+const CONTRIBUTOR_EMAIL_CONSENT_SOURCE = 'contributor_page';
+const CONTRIBUTOR_EMAIL_CONSENT_VERSION = 'contributor-follow-v1';
 const FOLLOW_SMS_CONSENT_SOURCE = 'host_page_follow';
 const FOLLOW_SMS_CONSENT_VERSION = 'host_follow_sms_v1';
 
@@ -38,6 +43,8 @@ function prepareFollowSmsConsent({ phone, hostName, now = new Date() }) {
 module.exports = {
   FOLLOW_EMAIL_CONSENT_SOURCE,
   FOLLOW_EMAIL_CONSENT_VERSION,
+  CONTRIBUTOR_EMAIL_CONSENT_SOURCE,
+  CONTRIBUTOR_EMAIL_CONSENT_VERSION,
   FOLLOW_SMS_CONSENT_SOURCE,
   FOLLOW_SMS_CONSENT_VERSION,
   followEmailConsentCopy,

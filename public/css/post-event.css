@@ -131,6 +131,33 @@
 .post-event-follow-option strong { font-size:13px; }
 .post-event-follow-option small { margin-top:5px;color:var(--sg-text-dim);font-size:11px;line-height:1.45; }
 .post-event-send-note { margin:16px 0 0;color:var(--sg-text-faint);font-size:11px;line-height:1.55; }
+.post-event-contributors { margin-top:24px;padding-top:24px;border-top:1px solid var(--sg-border-soft); }
+.post-event-contributors-heading { display:flex;justify-content:space-between;gap:16px;align-items:start; }
+.post-event-contributors h3 { margin:0;font-size:24px;line-height:1.2; }
+.post-event-contributors-copy { margin:10px 0 16px;color:var(--sg-text-dim);font-size:12px;line-height:1.6; }
+.post-event-contributor-note { margin:8px 0 0;color:var(--sg-text-dim);font-size:11px;line-height:1.55; }
+.post-event-contributor-note[hidden],.post-event-contributor-invite-fields[hidden],.post-event-contributor-suggestions[hidden] { display:none; }
+.post-event-contributor-refresh,.post-event-contributor-remove,.post-event-contributor-suggestion,.post-event-contributor-retry {
+  min-height:44px;padding:9px 10px;border:0;background:transparent;color:var(--sg-accent);font:700 11px var(--sg-font-body);cursor:pointer;
+}
+.post-event-contributor-refresh:focus-visible,.post-event-contributor-remove:focus-visible,.post-event-contributor-suggestion:focus-visible,
+.post-event-contributor-retry:focus-visible,
+.post-event-contributor-selection:focus-within { outline:2px solid var(--sg-accent);outline-offset:3px;border-radius:8px; }
+.post-event-contributors-list { display:grid;gap:10px; }
+.post-event-contributor-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:14px 15px;border:1px solid var(--sg-border);border-radius:15px; }
+.post-event-contributor-card strong { display:block;font-size:13px;overflow-wrap:anywhere; }
+.post-event-contributor-card small { display:block;margin-top:3px;color:var(--sg-text-dim);font-size:11px;overflow-wrap:anywhere; }
+.post-event-contributor-card .post-event-contributor-remove { align-self:start;margin:-6px -8px 0 0; }
+.post-event-contributor-selection { grid-column:1/-1;display:flex;align-items:start;gap:10px;min-height:44px;padding-top:7px;font-size:12px;cursor:pointer; }
+.post-event-contributor-selection input { width:18px;height:18px;flex:0 0 18px;accent-color:var(--sg-accent);margin-top:1px; }
+.post-event-contributor-status { grid-column:1/-1;color:var(--sg-text-dim);font-size:11px;line-height:1.5; }
+.post-event-contributor-retry { grid-column:1/-1;justify-self:start;padding-left:0; }
+.post-event-contributor-invite-fields { display:grid;grid-template-columns:1fr 1fr;gap:0 14px; }
+.post-event-contributor-invite-fields .post-event-field { min-width:0; }
+.post-event-contributor-invite-fields > .sg-btn { align-self:end;min-height:48px;margin-top:18px; }
+.post-event-contributor-invite-fields > .post-event-contributor-note { grid-column:1/-1; }
+.post-event-contributor-suggestions { margin:14px 0 0; }
+.post-event-contributor-suggestion { margin:4px 5px 0 0;padding:8px 10px;border:1px solid var(--sg-border);border-radius:10px;text-align:left; }
 .post-event-preview-meta { display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px; }
 .post-event-preview-meta span,.post-event-preview-meta strong { display:block; }
 .post-event-preview-meta span { color:var(--sg-text-faint);font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
@@ -180,6 +207,12 @@
   .post-event-follow-option { min-height:74px;padding:16px; }
   .post-event-follow-option strong { font-size:14px; }
   .post-event-follow-option small,.post-event-send-note { font-size:12px; }
+  .post-event-contributors h3 { font-size:23px; }
+  .post-event-contributors-copy { font-size:13px; }
+  .post-event-contributor-invite-fields { grid-template-columns:1fr; }
+  .post-event-contributor-invite-fields > .sg-btn { min-height:54px; }
+  .post-event-contributor-card strong,.post-event-contributor-selection { font-size:14px; }
+  .post-event-contributor-card small,.post-event-contributor-note,.post-event-contributor-status { font-size:12px; }
   .post-event-preview-frame { height:52vh;height:52dvh; }
   .post-event-dialog-foot { gap:10px;padding:14px 22px calc(16px + env(safe-area-inset-bottom)); }
   .post-event-dialog-foot .sg-btn { min-width:0;min-height:56px;flex:1;padding:12px;font-size:15px; }
