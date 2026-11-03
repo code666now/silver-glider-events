@@ -3,13 +3,14 @@ const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const { buildPostEventThankYouEmail } = require('../lib/mailer');
-const { loadApprovedContributorSpotlights } = require('../lib/contributors');
+const { ThankYouCreditsError } = require('../lib/thank-you-credits');
 const {
   PostEventError,
   defaultThankYouDraft,
   draftDigest,
   emailRenderSnapshot,
   eligibleThankYouAudience,
+  effectiveThankYouCredits,
   loadPostEventContext,
   loadThankYouBatch,
   loadTurnout,
@@ -75,12 +76,12 @@ async function loadState(db, context) {
     ended: context.ended,
     stats: context.stats,
     draw,
-    thankYou: serializeThankYou({ batch, draft, audience, host: context.host })
+    thankYou: serializeThankYou({ batch, draft, audience, host: context.host, event: context.event })
   };
 }
 
 function handleError(error, res, next) {
-  if (error instanceof PostEventError) {
+  if (error instanceof PostEventError || error instanceof ThankYouCreditsError) {
     return res.status(error.status).json({ error: error.message, code: error.code });
   }
   return next(error);
@@ -160,16 +161,21 @@ router.put('/api/events/:id/post-event/thank-you', async (req, res, next) => {
     // New drafts always include the owner's public Host Page when one exists.
     // This opens a page; it never grants Follow or future-email permission.
     draft.includeFollow = Boolean(context.host.public_slug);
+    const existing = await loadThankYouBatch(client, context.event.id, { lock: true });
+    if (!Object.prototype.hasOwnProperty.call(draft, 'credits')) {
+      draft.credits = effectiveThankYouCredits(existing, context.event);
+    }
     const { rows } = await client.query(
       `INSERT INTO post_event_thank_you_batches
-         (event_id,organizer_id,subject,message,include_follow)
-       VALUES ($1,$2,$3,$4,$5)
+         (event_id,organizer_id,subject,message,include_follow,credits)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb)
        ON CONFLICT (event_id) DO UPDATE
          SET subject=EXCLUDED.subject,message=EXCLUDED.message,
-             include_follow=EXCLUDED.include_follow,updated_at=NOW()
+             include_follow=EXCLUDED.include_follow,credits=EXCLUDED.credits,updated_at=NOW()
        WHERE post_event_thank_you_batches.status='draft'
        RETURNING *`,
-      [context.event.id, req.organizer.id, draft.subject, draft.message, draft.includeFollow]
+      [context.event.id, req.organizer.id, draft.subject, draft.message, draft.includeFollow,
+        JSON.stringify(draft.credits)]
     );
     if (!rows.length) {
       throw new PostEventError(409, 'thank_you_already_approved', 'This event’s thank-you has already been approved');
@@ -181,7 +187,7 @@ router.put('/api/events/:id/post-event/thank-you', async (req, res, next) => {
     await client.query('COMMIT');
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
-      thankYou: serializeThankYou({ batch: rows[0], draft, audience, host: context.host })
+      thankYou: serializeThankYou({ batch: rows[0], draft, audience, host: context.host, event: context.event })
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
@@ -206,10 +212,13 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
     if (!batch || batch.status !== 'draft') {
       throw new PostEventError(409, 'draft_unavailable', 'Save an unsent draft before previewing');
     }
+    const credits = effectiveThankYouCredits(batch, context.event);
+    if (!Object.prototype.hasOwnProperty.call(draft, 'credits')) draft.credits = credits;
     if (draftDigest(draft) !== draftDigest({
       subject: batch.subject,
       message: batch.message,
-      includeFollow: batch.include_follow
+      includeFollow: batch.include_follow,
+      credits
     })) {
       throw new PostEventError(409, 'draft_not_saved', 'Save your latest changes before previewing');
     }
@@ -220,15 +229,14 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
     const followEligible = audience.recipients.filter(recipient => recipient.consentScope === 'host');
     const allAlreadyFollowing = followEligible.length === 0 ||
       followEligible.every(recipient => recipient.alreadyFollowing);
-    const contributors = await loadApprovedContributorSpotlights(pool, { eventId: context.event.id, organizerId: req.organizer.id });
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 3, contributors });
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 4, credits });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     const rendered = buildPostEventThankYouEmail({
       event: renderSnapshot.event,
       host: renderSnapshot.host,
       ...draft,
       templateVersion: renderSnapshot.thankYouVersion,
-      contributors: renderSnapshot.contributors,
+      credits: renderSnapshot.credits,
       alreadyFollowing: allAlreadyFollowing,
       consentScope: followEligible.length > 0 ? 'host'
         : audience.recipients.some(recipient => recipient.consentScope === 'event_rsvp') ? 'event_rsvp' : 'event'
@@ -282,10 +290,12 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
     const currentDraftHash = draftDigest({
       subject: batch.subject,
       message: batch.message,
-      includeFollow: batch.include_follow
+      includeFollow: batch.include_follow,
+      credits: effectiveThankYouCredits(batch, context.event)
     });
-    const contributors = await loadApprovedContributorSpotlights(client, { eventId: context.event.id, organizerId: req.organizer.id });
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 3, contributors });
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, {
+      thankYouVersion: 4, credits: effectiveThankYouCredits(batch, context.event)
+    });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     if (preview.eventId !== context.event.id || preview.batchId !== String(batch.id) ||
         preview.draftHash !== currentDraftHash || preview.audienceHash !== audience.audienceHash ||
@@ -324,7 +334,7 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
     }
     batchId = batch.id;
     await client.query('COMMIT');
-    const thankYou = serializeThankYou({ batch: rows[0], audience, host: context.host });
+    const thankYou = serializeThankYou({ batch: rows[0], audience, host: context.host, event: context.event });
     queuePostEventThankYouBatch(batchId);
     res.setHeader('Cache-Control', 'private, no-store');
     res.status(202).json({ thankYou });

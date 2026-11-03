@@ -13285,7 +13285,7 @@ test('new thank-you approval freezes the standard Host Page button without subsc
   assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
   await settlePostEventThankYouWork();
   const batch = (await pool.query('SELECT render_snapshot FROM post_event_thank_you_batches WHERE event_id=$1', [event.id])).rows[0];
-  assert.equal(batch.render_snapshot.thankYouVersion, 3);
+  assert.equal(batch.render_snapshot.thankYouVersion, 4);
   assert.equal(batch.render_snapshot.host.public_slug, 'test-host');
   const email = lastDevEmail(guest.email);
   assert.match(email.html, /Follow my page/);
@@ -13539,6 +13539,16 @@ require('../support/contributors-cases')({
   get organizerId() { return organizerId; },
   createEvent, createRsvp, postEventFixture, postEventGuest,
   postEventRequest, previewPostEventDraft,
+  signInAccount, followSignInLink, lastDevEmail, resetRateLimits,
+  settlePostEventThankYouWork
+});
+
+require('../support/thank-you-credits-cases')({
+  test, assert, pool, mailer,
+  get baseUrl() { return baseUrl; },
+  get organizerId() { return organizerId; },
+  createEvent, createRsvp, postEventFixture, postEventGuest,
+  postEventRequest, previewPostEventDraft, seedApprovedPostEventBatch,
   signInAccount, followSignInLink, lastDevEmail, resetRateLimits,
   settlePostEventThankYouWork
 });

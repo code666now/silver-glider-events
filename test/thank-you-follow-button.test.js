@@ -115,7 +115,7 @@ test('v1 remains the default and retains legacy approval payloads byte-for-byte'
 });
 
 test('unknown thank-you template versions fail closed', () => {
-  for (const templateVersion of [0, 4, '2', null]) {
+  for (const templateVersion of [0, 5, '2', null]) {
     assert.throws(() => buildPostEventThankYouEmail({ ...base, templateVersion }), /valid template version/);
   }
 });

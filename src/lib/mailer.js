@@ -1253,6 +1253,17 @@ function contributorSpotlightEmailContent(contributors, baseUrl) {
   };
 }
 
+function thankYouCreditsEmailContent(credits) {
+  const { normalizeThankYouCredits } = require('./thank-you-credits');
+  const people = normalizeThankYouCredits(credits);
+  if (!people.length) return { html: '', text: '' };
+  return {
+    html: `<section style="margin:30px 0 0"><h2 style="color:#f4f4f4;font-size:21px;line-height:1.3;margin:0 0 12px">Big thanks to</h2>${people.map(person => `
+      <div style="padding:14px 0;border-top:1px solid #292929;overflow-wrap:anywhere;word-break:break-word"><strong style="color:#f4f4f4;font-size:16px;line-height:1.5">${esc(person.name)}</strong>${person.role ? `<span style="color:#a7a7a7;font-size:15px;line-height:1.5"> — ${esc(person.role)}</span>` : ''}${person.instagramHandle ? `<br><a href="https://www.instagram.com/${encodeURIComponent(person.instagramHandle)}/" style="display:inline-block;padding:5px 0;color:#1CC5BE;font-size:15px;line-height:1.5;font-weight:700;text-decoration:underline">@${esc(person.instagramHandle)} ↗</a>` : ''}</div>`).join('')}</section>`,
+    text: `Big thanks to\n${people.map(person => `${person.name}${person.role ? ` — ${person.role}` : ''}${person.instagramHandle ? `\nInstagram: https://www.instagram.com/${encodeURIComponent(person.instagramHandle)}/` : ''}`).join('\n\n')}`
+  };
+}
+
 function buildContributorInvitationEmail({ hostName, eventTitle, intakeUrl } = {}) {
   const host = senderDisplayName(hostName, 'Your host');
   const title = cleanPostEventSubject(eventTitle, 'their night');
@@ -1310,12 +1321,13 @@ function buildPostEventThankYouEmail({
   consentScope = 'host',
   templateVersion = 1,
   contributors = [],
+  credits = [],
   unsubscribeUrl
 } = {}) {
   if (consentScope !== 'host' && consentScope !== 'event' && consentScope !== 'event_rsvp') {
     throw new Error('A valid consent scope is required for post-event thank-you delivery');
   }
-  if (templateVersion !== 1 && templateVersion !== 2 && templateVersion !== 3) {
+  if (templateVersion !== 1 && templateVersion !== 2 && templateVersion !== 3 && templateVersion !== 4) {
     throw new Error('A valid template version is required for post-event thank-you delivery');
   }
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
@@ -1340,7 +1352,8 @@ function buildPostEventThankYouEmail({
   const dateHtml = dateLabel
     ? `<p style="color:#777777;font-size:13px;font-weight:700;letter-spacing:.04em;margin:0 0 18px">${esc(dateLabel)}</p>`
     : '';
-  const spotlights = templateVersion === 3 ? contributorSpotlightEmailContent(contributors, baseUrl) : { html: '', text: '' };
+  const spotlights = templateVersion === 3 ? contributorSpotlightEmailContent(contributors, baseUrl)
+    : templateVersion === 4 ? thankYouCreditsEmailContent(credits) : { html: '', text: '' };
   const footerHtml = safeUnsubscribeUrl
     ? policyFooter({
       reason: consentReason,
@@ -1396,6 +1409,7 @@ async function sendPostEventThankYou({
   consentScope = 'host',
   templateVersion = 1,
   contributors = [],
+  credits = [],
   unsubscribeUrl,
   idempotencyKey
 }) {
@@ -1413,6 +1427,7 @@ async function sendPostEventThankYou({
     consentScope,
     templateVersion,
     contributors,
+    credits,
     unsubscribeUrl: safeUnsubscribeUrl
   });
   const hostLabel = senderDisplayName(host?.org_name || host?.name || eventHostLabel(event), 'Your host');

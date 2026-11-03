@@ -22,6 +22,10 @@
     return {
       subject: String(value.subject || ''),
       message: String(value.message || ''),
+      credits: Array.isArray(value.credits) ? value.credits.slice(0, 3).map(person => ({
+        name: String(person?.name || ''), role: String(person?.role || ''),
+        instagramHandle: String(person?.instagramHandle || '')
+      })) : [],
       includeFollow: Boolean(value.includeFollow),
       eligibleCount: count(value.eligibleCount),
       canIncludeFollow: Boolean(value.canIncludeFollow),
@@ -113,8 +117,10 @@
     let restoreFocus = null;
     let statusPollTimer = null;
     let statusPollAttempts = 0;
-    const contributorEditor = typeof window.SgeContributors?.createHost === 'function'
-      ? window.SgeContributors.createHost({ eventId, request, onChange: () => invalidatePreview() })
+    let editorDirty = false;
+    let editorRevision = 0;
+    const creditsEditor = typeof window.SgeThankYouCredits?.create === 'function'
+      ? window.SgeThankYouCredits.create({ onChange: markEditorChanged })
       : null;
 
     function setText(id, value) {
@@ -138,11 +144,26 @@
     }
 
     function formBody() {
+      const result = creditsEditor?.read({ reportErrors: true });
+      if (result && !result.valid) return null;
       return {
         subject: byId('post-event-thank-subject').value.trim(),
         message: byId('post-event-thank-message').value.trim(),
-        includeFollow: state.thankYou.canIncludeFollow
+        includeFollow: state.thankYou.canIncludeFollow,
+        credits: result?.credits || state.thankYou.credits
       };
+    }
+
+    function markEditorChanged() {
+      editorDirty = true;
+      editorRevision += 1;
+      invalidatePreview();
+    }
+
+    function setEditorBusy(busy) {
+      byId('post-event-thank-subject').disabled = busy;
+      byId('post-event-thank-message').disabled = busy;
+      creditsEditor?.setDisabled(busy);
     }
 
     function clearError() {
@@ -232,12 +253,15 @@
       }, STATUS_POLL_DELAY);
     }
 
-    function hydrateEditor() {
+    function hydrateEditor({ force = false } = {}) {
       const thankYou = state.thankYou;
       setText('post-event-thank-event', eventRecord?.title || 'Your event');
       setText('post-event-eligible-count', thankYou.eligibleCount.toLocaleString('en-US'));
-      byId('post-event-thank-subject').value = thankYou.subject;
-      byId('post-event-thank-message').value = thankYou.message;
+      if (force || !editorDirty || thankYou.status !== 'draft') {
+        byId('post-event-thank-subject').value = thankYou.subject;
+        byId('post-event-thank-message').value = thankYou.message;
+        creditsEditor?.setRows(thankYou.credits);
+      }
       byId('post-event-include-follow').checked = thankYou.canIncludeFollow;
       setText('post-event-follow-title', thankYou.canIncludeFollow ? '“Follow my page” is included' : 'No Host Page yet');
       setText('post-event-follow-copy', thankYou.canIncludeFollow
@@ -342,7 +366,6 @@
         target?.focus({ preventScroll: true });
       });
       scheduleStatusPoll({ reset: true });
-      if (state.thankYou.status === 'draft') contributorEditor?.refresh();
     }
 
     async function saveDraw(event) {
@@ -379,22 +402,32 @@
       const message = byId('post-event-thank-message');
       if (!subject.reportValidity() || !message.reportValidity()) return;
       const body = formBody();
-      if (!body.subject || !body.message) return;
+      if (!body || !body.subject || !body.message) return;
+      const revision = editorRevision;
 
       const button = byId('post-event-dialog-next');
       setBusy(button, true, 'Building preview…');
+      setEditorBusy(true);
       clearError();
       try {
-        // Re-read approvals and selections before freezing the reviewed email.
-        // Pending invitations are informational and never block the thank-you.
-        await contributorEditor?.preparePreview();
         const saved = await request(`/api/events/${encodeURIComponent(eventId)}/post-event/thank-you`, {
           method: 'PUT', body
         });
         state.thankYou = normalizeThankYou(saved.thankYou || saved);
+        if (revision !== editorRevision) {
+          showError('Your message changed while the preview was being built. Preview it again before sending.');
+          return;
+        }
+        editorDirty = false;
+        hydrateEditor({ force: true });
         const preview = await request(`/api/events/${encodeURIComponent(eventId)}/post-event/thank-you/preview`, {
           method: 'POST', body
         });
+        if (revision !== editorRevision) {
+          invalidatePreview();
+          showError('Your message changed while the preview was being built. Preview it again before sending.');
+          return;
+        }
         previewToken = String(preview.previewToken || '');
         previewHtml = String(preview.html || '');
         state.thankYou.eligibleCount = count(preview.eligibleCount);
@@ -403,8 +436,12 @@
         byId('post-event-preview-tab').disabled = !previewToken;
         showPanel('preview');
       } catch (error) {
-        showError(error.message || 'The preview could not be created. Nothing was sent.');
+        if (error.status === 409) {
+          try { await load(eventRecord); } catch (_) {}
+        }
+        if (state.thankYou.status === 'draft') showError(error.message || 'The preview could not be created. Nothing was sent.');
       } finally {
+        setEditorBusy(false);
         setBusy(button, false);
         if (currentPanel === 'preview') {
           button.textContent = `Send to ${countLabel(state.thankYou.eligibleCount, 'guest')}`;
@@ -475,8 +512,8 @@
       else if (currentPanel === 'edit') createPreview();
     });
     for (const id of ['post-event-thank-subject', 'post-event-thank-message']) {
-      byId(id).addEventListener('input', invalidatePreview);
-      byId(id).addEventListener('change', invalidatePreview);
+      byId(id).addEventListener('input', markEditorChanged);
+      byId(id).addEventListener('change', markEditorChanged);
     }
     dialog.addEventListener('click', event => {
       if (event.target === dialog) closeDialog();

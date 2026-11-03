@@ -24,22 +24,18 @@ test('pending follows explain the claim gate and do not promise automatic subscr
   assert.equal(ui.FOLLOW_VERSION, 'contributor-follow-v1');
 });
 
-test('thank-you editor exposes optional approved spotlight selection and explicit contributor email invitation', () => {
+test('legacy contributor controls remain available to standalone links without mounting onboarding in thank-you', () => {
   const view = read('src/views/event-manage.html');
   const source = read('public/js/contributors.js');
   const thankYou = read('public/js/post-event.js');
-  assert.match(view, /People who made the night/);
-  assert.match(view, /Pending invitations never hold up your thank-you/);
-  assert.match(view, /This sends only their invitation—not your guest thank-you/);
-  assert.match(view, /id="post-event-contributor-invite" type="button"/);
-  assert.match(view, /id="post-event-contributor-email" form="post-event-contributor-invite-form"/);
-  assert.match(view, /src="\/js\/contributors.js"/);
+  assert.match(view, /Give your crew a shout-out/);
+  assert.doesNotMatch(view, /src="\/js\/contributors.js"|post-event-contributor-invite/);
   assert.match(source, /person.status === 'approved'/);
   assert.match(source, /body: \{ selected: input.checked \}/);
   assert.match(source, /body: \{ revoked: true \}/);
   assert.match(source, /result.invitationSent === false/);
   assert.match(source, /Invitation saved, but the email was not delivered/);
-  assert.match(thankYou, /await contributorEditor\?\.preparePreview\(\)/);
+  assert.doesNotMatch(thankYou, /SgeContributors|contributorEditor/);
   assert.match(source, /Promise.allSettled\(\[\.\.\.selectionWrites\]\)/);
   assert.doesNotMatch(source, /\.innerHTML\s*=/);
   assert.doesNotMatch(source, /Adrian Martinez/);

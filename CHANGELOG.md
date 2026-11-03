@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.190
+
+Released November 3, 2026. Built, reviewed, and deployed by Codex.
+
+### Simple shout-outs in your thank-you
+
+* Replace contributor recruitment in the thank-you editor with optional **Give your crew a shout-out**: up to three names, optional roles and direct Instagram links. Names prefill from this event’s Event Vibe; missing Instagram/roles are never guessed. No email collection, invitations, account creation or waiting for replies in this flow.
+* Credits save with the existing thank-you draft, can be added/edited/removed, and deliberately clearing the list stays cleared. Changing credits does not edit the public event. The flyer, personal message, Host Page button, recipient eligibility and explicit preview/send stay intact.
+* Additive migration 077 adds only private draft-credit storage. New v4 emails freeze the reviewed credits and validated canonical Instagram links. Older approved v1–v3 emails, previously issued contributor links, withdrawal safeguards and provider-idempotent retries remain unchanged; nothing is automatically resent or subscribed.
+
+### Verification
+
+* All **781 automated tests** and static checks pass (257 JavaScript / 419 project files), including same-event defaults, deliberately empty drafts, owner isolation, strict Instagram validation, immutable approvals/retries and byte-identical v1–v3 email rendering.
+* Chrome end-to-end checks pass at 1440px desktop and 390px phone: prefills, removal and reload, unsaved edits, invalid-input correction, Instagram preview, stale-preview protection and one synthetic send. Editor and email layouts were visually reviewed. No contributor API calls, profile/follow changes or real emails occurred. Safari/iOS and inbox-client rendering remain manual checks.
+
 ## 1.0.189
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.

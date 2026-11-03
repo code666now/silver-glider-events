@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { EVENT_EMAIL_CONSENT_VERSION } = require('./event-email-consent');
+const { THANK_YOU_CREDITS_MAX, normalizeThankYouCredits } = require('./thank-you-credits');
 
 const SUBJECT_MAX = 160;
 const MESSAGE_MAX = 4000;
@@ -27,6 +28,16 @@ function eventEndAtSql(alias = 'e') {
   )`;
 }
 
+function defaultThankYouCredits(event = {}) {
+  return normalizeThankYouCredits(['', '_2', '_3'].map(suffix => ({
+    name: String(event?.[`event_vibe_label${suffix}`] || '').trim(), role: '', instagramHandle: null
+  })).filter(person => person.name));
+}
+
+function effectiveThankYouCredits(batch, event) {
+  return batch?.credits == null ? defaultThankYouCredits(event) : normalizeThankYouCredits(batch.credits);
+}
+
 function normalizeDraft(input = {}) {
   const subject = String(input.subject || '').trim();
   const message = String(input.message || '').replace(/\r\n?/g, '\n').trim();
@@ -36,7 +47,9 @@ function normalizeDraft(input = {}) {
   if (!message || message.length > MESSAGE_MAX) {
     throw new PostEventError(400, 'invalid_message', `Message must be 1–${MESSAGE_MAX} characters`);
   }
-  return { subject, message, includeFollow: input.includeFollow === true };
+  return { subject, message, includeFollow: input.includeFollow === true,
+    ...(Object.prototype.hasOwnProperty.call(input, 'credits') && input.credits !== undefined
+      ? { credits: normalizeThankYouCredits(input.credits) } : {}) };
 }
 
 function defaultThankYouDraft(event, host) {
@@ -55,7 +68,8 @@ function digest(value) {
 
 function draftDigest(draft) {
   const clean = normalizeDraft(draft);
-  return digest(JSON.stringify([clean.subject, clean.message, clean.includeFollow]));
+  return digest(JSON.stringify([clean.subject, clean.message, clean.includeFollow,
+    ...(Object.prototype.hasOwnProperty.call(clean, 'credits') ? [clean.credits] : [])]));
 }
 
 function audienceDigest(recipients) {
@@ -72,7 +86,7 @@ function audienceDigest(recipients) {
   return digest(JSON.stringify(stable));
 }
 
-function emailRenderSnapshot(event, host, { thankYouVersion = 1, contributors = [] } = {}) {
+function emailRenderSnapshot(event, host, { thankYouVersion = 1, contributors = [], credits = [] } = {}) {
   return {
     ...(thankYouVersion >= 2 ? { thankYouVersion } : {}),
     ...(thankYouVersion === 3 ? { contributors: contributors.slice(0, 3).map(person => ({
@@ -81,6 +95,7 @@ function emailRenderSnapshot(event, host, { thankYouVersion = 1, contributors = 
       photoUrl: person.photoUrl || null, profileUrl: String(person.profileUrl || ''),
       approvalVersion: String(person.approvalVersion || '')
     })) } : {}),
+    ...(thankYouVersion === 4 ? { credits: normalizeThankYouCredits(credits) } : {}),
     event: {
       id: Number(event?.id),
       title: String(event?.title || ''),
@@ -369,7 +384,7 @@ async function loadThankYouBatch(db, eventId, { lock = false } = {}) {
   return rows[0] || null;
 }
 
-function serializeThankYou({ batch, draft, audience, host }) {
+function serializeThankYou({ batch, draft, audience, host, event }) {
   const source = batch || {};
   const clean = batch ? {
     subject: batch.subject,
@@ -385,6 +400,9 @@ function serializeThankYou({ batch, draft, audience, host }) {
     subject: clean.subject,
     message: clean.message,
     includeFollow: approved ? clean.includeFollow : standardHostPage,
+    credits: approved
+      ? source.render_snapshot?.thankYouVersion === 4 ? normalizeThankYouCredits(source.render_snapshot.credits || []) : []
+      : effectiveThankYouCredits(batch || draft, event),
     eligibleCount: approved ? Number(source.recipient_count || 0) : Number(audience?.eligibleCount || 0),
     canIncludeFollow: standardHostPage || Boolean(approved && host?.public_slug && audience?.recipients?.some(recipient =>
       recipient.consentScope === 'host' && !recipient.alreadyFollowing)),
@@ -413,17 +431,21 @@ module.exports = {
   MESSAGE_MAX,
   PREVIEW_TTL_SECONDS,
   SUBJECT_MAX,
+  THANK_YOU_CREDITS_MAX,
   PostEventError,
   audienceDigest,
   defaultThankYouDraft,
+  defaultThankYouCredits,
   draftDigest,
   emailRenderSnapshot,
   eligibleThankYouAudience,
+  effectiveThankYouCredits,
   eventEndAtSql,
   loadPostEventContext,
   loadThankYouBatch,
   loadTurnout,
   normalizeDraft,
+  normalizeThankYouCredits,
   renderSnapshotDigest,
   requireEndedPublished,
   serializeThankYou,

@@ -175,6 +175,7 @@ async function processPostEventThankYouBatch(batchId) {
             alreadyFollowing: Boolean(delivery.post_event_already_following),
             templateVersion: snapshot.thankYouVersion || 1,
             contributors: snapshot.contributors || [],
+            credits: snapshot.credits || [],
             consentScope,
             unsubscribeUrl,
             idempotencyKey: `post-event-thank-you:${batchId}:${delivery.log_id}`

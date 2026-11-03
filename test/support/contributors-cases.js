@@ -85,6 +85,33 @@ module.exports = function registerContributorCases(h) {
     return request(contributorApiPath(contributor, '/follow'), { cookie, method: 'POST', body });
   }
 
+  async function legacySpotlightRender(current, draft) {
+    const { loadPostEventContext, emailRenderSnapshot } = require('../../src/lib/post-event');
+    const { loadApprovedContributorSpotlights } = require('../../src/lib/contributors');
+    const context = await loadPostEventContext(pool, { eventId: current.event.id, organizerId: h.organizerId });
+    const contributors = await loadApprovedContributorSpotlights(pool, { eventId: current.event.id, organizerId: h.organizerId });
+    const snapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 3, contributors });
+    const rendered = require('../../src/lib/mailer').buildPostEventThankYouEmail({
+      event: snapshot.event, host: snapshot.host, ...draft, templateVersion: 3,
+      contributors: snapshot.contributors, consentScope: 'event_rsvp'
+    });
+    return { ...rendered, snapshot };
+  }
+
+  async function seedLegacySpotlightBatch(current, rsvp, draft) {
+    const rendered = await legacySpotlightRender(current, draft);
+    const { renderSnapshotDigest } = require('../../src/lib/post-event');
+    const batch = (await pool.query(`INSERT INTO post_event_thank_you_batches(event_id,organizer_id,subject,message,
+      include_follow,status,recipient_count,approved_by_user_id,approved_at,render_snapshot,render_snapshot_hash)
+      VALUES($1,$2,$3,$4,TRUE,'pending',1,$2,NOW(),$5::jsonb,$6) RETURNING id`,
+    [current.event.id, h.organizerId, draft.subject, draft.message, JSON.stringify(rendered.snapshot), renderSnapshotDigest(rendered.snapshot)])).rows[0];
+    await pool.query(`INSERT INTO message_log(rsvp_id,event_id,post_event_thank_you_batch_id,recipient,message_type,
+      channel,status,post_event_already_following,post_event_consent_scope)
+      VALUES($1,$2,$3,$4,'post_event_thank_you','email','pending',FALSE,'event_rsvp')`,
+    [rsvp.id, current.event.id, batch.id, rsvp.email]);
+    return { ...rendered, batch };
+  }
+
   test('contributor invitations are owner-only, ended-event-only and use saved public host branding', async () => {
     const current = await fixture();
     const outsider = await h.signInAccount('outside-contributor-host@example.test');
@@ -241,14 +268,14 @@ module.exports = function registerContributorCases(h) {
     }
   });
 
-  test('thank-you preview includes only selected approved people, retains the Host Page and never exposes private event access', async () => {
+  test('legacy v3 render snapshots include only selected approved people and preserve private event boundaries', async () => {
     const current = await fixture();
     const approved = await approve(await invite(current, { email: 'approved-spotlight@example.test', name: 'Approved Artist' }), { name: 'Approved Artist' });
     await invite(current, { email: 'pending-spotlight@example.test', name: 'Unapproved Artist' });
     await h.createRsvp(current.event.id, { email: 'thankyou-spotlight-guest@example.test' });
     const before = mailer.devOutbox.length;
     const draft = { subject: 'Thanks for our night', message: 'Thanks for making this night special.', includeFollow: true };
-    const preview = await h.previewPostEventDraft(current.event.id, current.cookie, draft);
+    const preview = await legacySpotlightRender(current, draft);
     assert.match(preview.html, /The people who made the night|people who made the night/);
     assert.match(preview.html, /Meet Approved Artist/);
     assert.match(preview.html, /Follow my page/);
@@ -258,21 +285,22 @@ module.exports = function registerContributorCases(h) {
       cookie: current.cookie, method: 'PATCH', body: { selected: false }
     });
     assert.equal(deselected.status, 200);
-    assert.equal((await h.postEventRequest(current.event.id, current.cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 409,
-      'changed spotlight selection invalidates a previously approved render');
-    const nextPreview = await h.previewPostEventDraft(current.event.id, current.cookie, draft);
+    const nextPreview = await legacySpotlightRender(current, draft);
     assert.doesNotMatch(nextPreview.html, /Meet Approved Artist/);
+    const { renderSnapshotDigest } = require('../../src/lib/post-event');
+    assert.notEqual(renderSnapshotDigest(preview.snapshot), renderSnapshotDigest(nextPreview.snapshot),
+      'selection revisions still change the legacy frozen render binding');
   });
 
-  test('approved thank-you freezes spotlights and late approval does not send another guest email', async () => {
+  test('an already-approved legacy v3 thank-you retains spotlights and late approval cannot send another guest email', async () => {
     const current = await fixture();
     const approved = await approve(await invite(current, { email: 'frozen-spotlight@example.test' }));
     const late = await invite(current, { email: 'late-spotlight@example.test', name: 'Late Artist' });
-    await h.createRsvp(current.event.id, { email: 'frozen-guest@example.test' });
+    const rsvp = await h.createRsvp(current.event.id, { email: 'frozen-guest@example.test' });
     const draft = { subject: 'Thank you for our night', message: 'Lovely to see everyone.', includeFollow: true };
-    const preview = await h.previewPostEventDraft(current.event.id, current.cookie, draft);
-    assert.equal((await h.postEventRequest(current.event.id, current.cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
-    await h.settlePostEventThankYouWork();
+    const { batch } = await seedLegacySpotlightBatch(current, rsvp, draft);
+    const worker = require('../../src/jobs/post-event-thank-yous');
+    await worker.processPostEventThankYouBatch(batch.id);
     const sent = h.lastDevEmail('frozen-guest@example.test');
     assert.match(sent.html, /Meet Night Artist/);
     assert.doesNotMatch(sent.html, /Late Artist/);
@@ -282,9 +310,10 @@ module.exports = function registerContributorCases(h) {
       cookie: current.cookie, method: 'POST', body: { name: 'Too late', email: 'after-approved@example.test', role: 'DJ' }
     })).status, 409);
     await approve(late, { name: 'Late Artist' });
-    await h.settlePostEventThankYouWork();
+    await worker.processPostEventThankYouBatch(batch.id);
     assert.equal(mailer.devOutbox.filter(message => message.to === 'frozen-guest@example.test' && message.html).length, sentCount);
-    assert.equal((await h.postEventRequest(current.event.id, current.cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 409);
+    assert.equal((await h.postEventRequest(current.event.id, current.cookie, '/thank-you', 'PUT', draft)).status, 409,
+      'a completed legacy note cannot be converted to the new credit editor or reopened');
   });
 
   test('a contributor may withdraw after batch approval and the worker suppresses the frozen unsent spotlight', async () => {
