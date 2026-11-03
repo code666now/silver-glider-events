@@ -78,7 +78,7 @@
     }
     if (state.status === 'sent') {
       return {
-        title: accepted ? 'Your thank-you is on its way.' : 'No thank-yous were accepted.',
+        title: accepted ? 'You thanked your guests.' : 'No thank-yous were accepted.',
         copy: accepted
           ? `${countLabel(accepted, 'message')} accepted by the email provider${skipped}. Provider acceptance is not the same as inbox delivery.`
           : `The email provider accepted 0 messages${skipped}. Nothing is shown as delivered.`
@@ -86,7 +86,7 @@
     }
     if (state.status === 'partial_failed') {
       return {
-        title: state.completedAt ? 'Some thank-yous could not be sent.' : 'Some thank-yous need another try.',
+        title: state.completedAt ? 'Some thank-yous could not be sent.' : 'Your thank-you is still processing.',
         copy: state.completedAt
           ? `${accepted.toLocaleString('en-US')} accepted by the email provider · ${state.failedCount.toLocaleString('en-US')} failed${skipped}.`
           : `${accepted.toLocaleString('en-US')} accepted by the email provider${skipped}. Remaining eligible messages will retry.`
@@ -99,6 +99,15 @@
       };
     }
     return null;
+  }
+
+  function thankYouCardTitle(thankYou) {
+    const state = normalizeThankYou(thankYou);
+    if (state.status === 'sent') return state.sentCount > 0 ? 'You thanked your guests' : 'No thank-yous were accepted';
+    if (state.status === 'pending') return 'Thank-you queued';
+    if (state.status === 'processing' || (state.status === 'partial_failed' && !state.completedAt)) return 'Thank-you in progress';
+    if (state.status === 'failed' || state.status === 'partial_failed') return 'Thank-you needs attention';
+    return 'Thank your guests';
   }
 
   function create({ eventId, request, notify, openGuests } = {}) {
@@ -119,6 +128,7 @@
     let statusPollAttempts = 0;
     let editorDirty = false;
     let editorRevision = 0;
+    let actionBusy = false;
     const creditsEditor = typeof window.SgeThankYouCredits?.create === 'function'
       ? window.SgeThankYouCredits.create({ onChange: markEditorChanged })
       : null;
@@ -138,7 +148,8 @@
       } else {
         button.textContent = button.dataset.previousLabel || button.textContent;
         delete button.dataset.previousLabel;
-        button.disabled = false;
+        button.disabled = button.id === 'post-event-dialog-next' && state.thankYou.status !== 'draft';
+        if (button.id === 'post-event-dialog-next' && state.thankYou.status !== 'draft') button.hidden = true;
         button.removeAttribute('aria-busy');
       }
     }
@@ -161,9 +172,10 @@
     }
 
     function setEditorBusy(busy) {
-      byId('post-event-thank-subject').disabled = busy;
-      byId('post-event-thank-message').disabled = busy;
-      creditsEditor?.setDisabled(busy);
+      const disabled = busy || state.thankYou.status !== 'draft';
+      byId('post-event-thank-subject').disabled = disabled;
+      byId('post-event-thank-message').disabled = disabled;
+      creditsEditor?.setDisabled(disabled);
     }
 
     function clearError() {
@@ -186,6 +198,10 @@
     }
 
     function showPanel(panel, { focus = true } = {}) {
+      if (state.thankYou.status !== 'draft') {
+        renderDeliveryState();
+        return;
+      }
       currentPanel = panel === 'preview' && previewToken ? 'preview' : 'edit';
       const previewing = currentPanel === 'preview';
       byId('post-event-edit-panel').hidden = previewing;
@@ -213,7 +229,15 @@
       byId('post-event-dialog-tabs').hidden = hasHistory;
       byId('post-event-send-status').hidden = !hasHistory;
       byId('post-event-dialog-next').hidden = hasHistory;
+      byId('post-event-dialog-next').disabled = hasHistory || actionBusy;
+      byId('post-event-edit-tab').disabled = hasHistory;
+      byId('post-event-preview-tab').disabled = hasHistory || !previewToken;
+      setEditorBusy(actionBusy);
       byId('post-event-dialog-back').textContent = hasHistory ? 'Close' : 'Cancel';
+      setText('post-event-thank-title', hasHistory ? 'Thank-you status' : 'Thank your guests');
+      setText('post-event-thank-intro', hasHistory
+        ? 'Review the saved send status. No further send action is needed here.'
+        : 'Send one thank-you to guests marked Going who gave an email. Make the note yours, then preview it.');
       if (status) {
         setText('post-event-send-status-title', status.title);
         setText('post-event-send-status-copy', status.copy);
@@ -313,8 +337,9 @@
 
       const thankYou = state.thankYou;
       const thankStatus = deliveryStatus(thankYou);
+      setText('post-event-thank-action-title', thankYouCardTitle(thankYou));
       setText('post-event-thank-copy', thankStatus
-        ? thankStatus.title
+        ? 'View the saved send status.'
         : thankYou.eligibleCount
           ? `Review one thank-you for ${countLabel(thankYou.eligibleCount, 'guest')} marked Going.`
           : 'No eligible emails right now. Guests must be marked Going, have an email, and not have opted out or unsubscribed.');
@@ -398,6 +423,7 @@
     }
 
     async function createPreview() {
+      if (actionBusy || state.thankYou.status !== 'draft' || currentPanel === 'status') return;
       const subject = byId('post-event-thank-subject');
       const message = byId('post-event-thank-message');
       if (!subject.reportValidity() || !message.reportValidity()) return;
@@ -406,6 +432,7 @@
       const revision = editorRevision;
 
       const button = byId('post-event-dialog-next');
+      actionBusy = true;
       setBusy(button, true, 'Building preview…');
       setEditorBusy(true);
       clearError();
@@ -441,6 +468,7 @@
         }
         if (state.thankYou.status === 'draft') showError(error.message || 'The preview could not be created. Nothing was sent.');
       } finally {
+        actionBusy = false;
         setEditorBusy(false);
         setBusy(button, false);
         if (currentPanel === 'preview') {
@@ -450,12 +478,14 @@
     }
 
     async function sendThankYou() {
+      if (actionBusy || state.thankYou.status !== 'draft' || currentPanel !== 'preview') return;
       if (!previewToken) {
         showPanel('edit');
         showError('Preview the current message before sending.');
         return;
       }
       const button = byId('post-event-dialog-next');
+      actionBusy = true;
       setBusy(button, true, 'Queuing…');
       clearError();
       try {
@@ -483,9 +513,10 @@
             byId('post-event-thank-subject').focus({ preventScroll: true });
           }
         } else {
-          showError(error.message || 'The thank-you could not be queued. Nothing was sent.');
+          showError('We could not confirm the send status. Refresh this page to check before trying again.');
         }
       } finally {
+        actionBusy = false;
         setBusy(button, false);
       }
     }
@@ -508,6 +539,7 @@
     });
     byId('post-event-thank-form').addEventListener('submit', event => {
       event.preventDefault();
+      if (actionBusy || state.thankYou.status !== 'draft') return;
       if (currentPanel === 'preview') sendThankYou();
       else if (currentPanel === 'edit') createPreview();
     });
@@ -528,5 +560,5 @@
     return { load, renderUnavailable, openDialog, state: () => state };
   }
 
-  return { create, normalizeState, normalizeThankYou, deliveryStatus, countLabel };
+  return { create, normalizeState, normalizeThankYou, deliveryStatus, thankYouCardTitle, countLabel };
 });

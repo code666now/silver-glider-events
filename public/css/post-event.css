@@ -79,6 +79,7 @@
 .post-event-dialog::backdrop {
   background:rgba(0,0,0,.76);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
 }
+.post-event-dialog [hidden] { display:none !important; }
 .post-event-dialog-form { display:flex;flex-direction:column;max-height:min(90vh,860px);max-height:min(90dvh,860px); }
 .post-event-dialog-head {
   display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;padding:27px 30px 20px;

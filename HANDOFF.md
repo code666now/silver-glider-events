@@ -1,8 +1,18 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 3, 2026 (simple thank-you shout-outs, v1.0.190)
+**Last updated:** November 3, 2026 (thank-you completion display, v1.0.191)
 
-## Current release — Simple thank-you shout-outs (v1.0.190)
+## Current release — Clear thank-you completion (v1.0.191)
+
+Extends `32130f3` / v1.0.190. User reported a screenshot of a completed thank-you (16 accepted / 7 skipped) still showing **Send to 16 guests**. They authorized the fix, asked that the Recap/Promote card say **You thanked your guests** afterward, and explicitly instructed **do not resend anything**.
+
+- **Cause/scope:** JS sets `hidden=true`, but the existing `.sg-btn` display rule overrides the browser's hidden styling. Busy cleanup also restores the old label/enabled state. This is a frontend status-display bug, not evidence of pending email. Existing status handlers and server one-batch protections already prevent a second send. Completed batches intentionally cannot reopen the editor or acquire new shout-outs.
+- **Fix:** enforce hidden styling within this dialog, keep approved-state submit controls disabled after cleanup/reopen, and defensively ignore non-draft preview/send attempts. Give the recap action a dynamic title: **You thanked your guests** only after positive provider acceptance in a successful completed batch; other delivery states remain truthful. Preserve accepted/failed/skipped counts, provider-versus-inbox distinction, status polling and Close/focus behavior.
+- **Boundary:** only post-event frontend JS/CSS/manage markup and frontend tests change, plus release documentation/version. No API, worker, mailer, migration, batch reset, approval, template, consent or recipient change. Do not resend the Halloween thank-you or run a live mail test. Existing previously sent emails remain untouched.
+
+**Verification:** `npm run check` passed **784/784** tests and static checks (257 JavaScript / 419 project files); `git diff --check` passed. Permanent controller tests cover draft → preview → accepted/busy cleanup, repeated forced submissions, reopening and every saved delivery state, with truthful zero/partial/failure labels. Mocked Chrome checks passed seven saved states at both 1440px/390px plus the full in-flight approval/cleanup flow: computed Send display none/height zero/disabled, hidden tabs/editor/preview, safe focus, Close/reopen and zero extra send requests or page errors. Styled screenshots `/private/tmp/sge-thank-you-terminal-{1440,390}.png` were visually reviewed. No DB, real recipients or outbound email are used by these browser checks. Normal version/commit/generated `.git-sha`/Railway `--path-as-root`/matching-health/assets/tag/push workflow applies. No new migration. All v1.0.190 compatibility and rollback boundaries below remain in force.
+
+## Previous release — Simple thank-you shout-outs (v1.0.190)
 
 Extends `813c9dd` / v1.0.189. User explicitly simplified the scope: they want to thank the DJ/bartender and link directly to Instagram, not recruit contributors into profiles. They approved the replacement plan and authorized code, tests and deployment. This supersedes the v1.0.189 **new thank-you composer** flow below; it does not erase previously sent invitations or approved deliveries.
 

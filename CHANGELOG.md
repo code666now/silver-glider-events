@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.191
+
+Released November 3, 2026. Built, reviewed, and deployed by Codex.
+
+### A clear ending for thank-yous
+
+* Hide and disable the Send button once a thank-you has been approved. Completed notes show only their read-only status and Close; repeated clicks or form submissions cannot restart the editor or sending flow.
+* The Recap/Promote card changes to **You thanked your guests** after a successful send. Queued, partial, failed and zero-acceptance states keep accurate status language; provider acceptance is never described as confirmed inbox delivery.
+* Frontend-only correction. No email template, audience, batch, worker, recipient, database record or approval is changed. Nothing is reset or resent.
+
+### Verification
+
+* All **784 automated tests** and static checks pass (257 JavaScript / 419 project files). New tests exercise the actual controller through preview, completion, busy cleanup, repeated submissions, reopening and every saved delivery state; successful-card labels never apply to zero acceptance or failures.
+* Chrome checks pass at 1440px and 390px for seven saved delivery states, including the reported 16-accepted/7-skipped state. Actual computed styles and keyboard focus confirm that Send, editor and preview controls stay hidden; Close/reopen and repeated or in-flight submissions cannot send again. Styled screenshots were visually reviewed. All requests are mocked; no real email is sent.
+
 ## 1.0.190
 
 Released November 3, 2026. Built, reviewed, and deployed by Codex.
