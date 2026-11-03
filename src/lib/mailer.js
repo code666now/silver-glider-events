@@ -1237,10 +1237,14 @@ function buildPostEventThankYouEmail({
   includeFollow = false,
   alreadyFollowing = false,
   consentScope = 'host',
+  templateVersion = 1,
   unsubscribeUrl
 } = {}) {
   if (consentScope !== 'host' && consentScope !== 'event' && consentScope !== 'event_rsvp') {
     throw new Error('A valid consent scope is required for post-event thank-you delivery');
+  }
+  if (templateVersion !== 1 && templateVersion !== 2) {
+    throw new Error('A valid template version is required for post-event thank-you delivery');
   }
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const eventTitle = String(event.title || '').trim() || 'our event';
@@ -1250,7 +1254,10 @@ function buildPostEventThankYouEmail({
   const dateLabel = postEventDateLabel(event.event_date);
   const hostSlug = String(host.public_slug || '').trim();
   const followUrl = hostSlug ? `${baseUrl}/h/${encodeURIComponent(hostSlug)}` : '';
-  const showFollow = consentScope === 'host' && includeFollow === true && alreadyFollowing !== true && Boolean(followUrl);
+  // Version 1 remains frozen for already approved deliveries and provider
+  // idempotent retries. Version 2 offers a public page, never an auto-follow.
+  const showFollow = Boolean(followUrl) && (templateVersion === 2
+    || (consentScope === 'host' && includeFollow === true && alreadyFollowing !== true));
   const consentReason = consentScope === 'event_rsvp'
     ? `You’re receiving this one thank-you because you RSVP’d to ${eventTitle}. This does not subscribe you to future-event emails.`
     : consentScope === 'event'
@@ -1277,8 +1284,11 @@ function buildPostEventThankYouEmail({
     kicker: `A note from ${hostLabel}`,
     sub: 'Thanks for making it a night to remember.',
     bodyHtml: `${dateHtml}${messageHtml}`,
-    cta: showFollow ? 'Follow our page for more events' : '',
+    cta: showFollow ? (templateVersion === 2 ? 'Follow my page' : 'Follow our page for more events') : '',
     ctaUrl: showFollow ? followUrl : '',
+    secondaryHtml: templateVersion === 2 && showFollow
+      ? '<p class="sg-email-secondary" style="color:#a7a7a7;font-size:15px;line-height:1.55;text-align:center;margin:0 0 26px">Stay in the loop about future events.</p>'
+      : '',
     footerHtml,
     showEventIdentity: false,
     footerActionLabel: '',
@@ -1289,7 +1299,9 @@ function buildPostEventThankYouEmail({
     dateLabel,
     '',
     cleanMessage,
-    showFollow ? `Follow ${hostLabel}: ${followUrl}` : '',
+    showFollow ? (templateVersion === 2
+      ? `Follow my page: ${followUrl}\nStay in the loop about future events.`
+      : `Follow ${hostLabel}: ${followUrl}`) : '',
     '',
     ...(consentScope === 'event_rsvp' || (safeUnsubscribeUrl && consentScope === 'event') ? [consentReason] : []),
     safeUnsubscribeUrl
@@ -1308,6 +1320,7 @@ async function sendPostEventThankYou({
   includeFollow,
   alreadyFollowing,
   consentScope = 'host',
+  templateVersion = 1,
   unsubscribeUrl,
   idempotencyKey
 }) {
@@ -1323,6 +1336,7 @@ async function sendPostEventThankYou({
     includeFollow,
     alreadyFollowing,
     consentScope,
+    templateVersion,
     unsubscribeUrl: safeUnsubscribeUrl
   });
   const hostLabel = senderDisplayName(host?.org_name || host?.name || eventHostLabel(event), 'Your host');

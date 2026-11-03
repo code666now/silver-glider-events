@@ -77,7 +77,7 @@ test('thank-you edit and preview explain the same Going-email audience and exclu
 
   assert.equal(view.split(audienceCopy).length - 1, 2);
   assert.match(view, /Send one thank-you to guests marked Going who gave an email/);
-  assert.match(view, /Follow button appears only for guests with separate host-email permission/);
+  assert.match(view, /When you have a Host Page, “Follow my page” opens it without subscribing anyone automatically/);
   assert.match(view, /You can send once, and email addresses stay private/);
   assert.match(client, /Guests must be marked Going, have an email, and not have opted out or unsubscribed/);
   assert.doesNotMatch(client, /No guests are currently eligible under your email consent settings/);

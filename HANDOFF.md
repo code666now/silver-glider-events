@@ -1,8 +1,21 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 2, 2026 (one event thank-you for RSVP guests, v1.0.187)
+**Last updated:** November 2, 2026 (standard Host Page button in thank-yous, v1.0.188)
 
-## Current release — One event thank-you for RSVP guests (v1.0.187)
+## Current release — Standard Host Page button in thank-yous (v1.0.188)
+
+Extends `f25995a` / v1.0.187. After reviewing a single test sent only to `adrian_isback@yahoo.com`, the user explicitly approved making the proposed Host Page button standard and deploying it. This supersedes the older rule that the button requires separate host-email permission; it does **not** subscribe recipients or change who may receive the one thank-you.
+
+- Every newly approved thank-you includes **Follow my page** with **Stay in the loop about future events.** if the owner has a public Host Page. The canonical `/h/<slug>` link has no personal credentials or `follow=1` query. Following/email or text enrollment still requires the guest’s existing explicit Follow flow. Already-following recipients can also open the page. No public slug means no button or helper.
+- The editor’s disabled checkbox is replaced by an informational note explaining automatic inclusion and guest choice. A hidden compatibility input remains. Save/preview enforce the owner’s Host Page state server-side; a false client flag or old draft cannot disable the standard link, and a client cannot invent a missing Host Page.
+- `emailRenderSnapshot(..., {thankYouVersion:2})` is used only for new previews/approvals. Its version is signed into the render hash and frozen in the existing JSONB snapshot, so older previews fail safely until refreshed. Delivery forwards that version to the mailer. Old snapshots have no version and keep renderer v1; host/event/event_rsvp legacy outputs are golden-hash tested byte-identical. Already-approved/completed batches are not modified, expanded or resent.
+- v1.0.187’s confirmed-primary/email validation, per-event optional-mail and host opt-outs, owner session checks, reviewed one-batch send, frozen recipients/payload, delivery rechecks, provider idempotency and retry limits remain. No auth, marketing consent, RSVP records, follow enrollment, or schema migration is changed. No additional real guest or test emails are sent during this release QA.
+
+**Verification:** `npm run check` passed **695/695** tests and static checks (241 JavaScript / 397 project files); `git diff --check` passed. Local synthetic Chrome `/private/tmp/sge-thank-you-browser.cjs` passed at 1440px/390px for the informational editor, visible automatic button/helper in preview and dev-outbox-only send, correct canonical Host Page GET, zero resulting follow rows, unchanged consent records/opt-outs, one-batch duplicate rejection, focus and overflow. Visually inspected `/private/tmp/sge-thank-you-preview-390.png` and `/private/tmp/sge-thank-you-editor-1440.png`; other sizes use matching screenshot names. Golden hashes protect all three legacy scopes. Run one DB test/fixture process against `sge_test` at a time. No real Safari/iOS or live inbox-client test was performed for this release.
+
+**Release:** normal version/commit/`.git-sha`/Railway `--path-as-root`/matching-health/assets/tag/push flow. Verify old deployment stopped; do not roll back to v1.0.187 while v2 batches are pending because that worker ignores the new renderer version. User’s next step is refresh Recap → Thank your guests → Preview email to see the included button, then approve only when ready to contact guests.
+
+## Previous release — One event thank-you for RSVP guests (v1.0.187)
 
 Extends `a888e82` / v1.0.186. The user explicitly changed the thank-you policy: let the host send one event-related note to everyone marked Going who supplied an email, unless they opted out. This **supersedes the narrower eligibility rules in v1.0.184–185 below**, without backfilling consent or granting marketing permission. The original blocker was both historical consent and the verified-email gate, which ordinary anonymous RSVPs do not necessarily satisfy.
 

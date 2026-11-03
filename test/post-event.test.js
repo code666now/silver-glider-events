@@ -12,6 +12,7 @@ const {
   eventEndAtSql,
   normalizeDraft,
   renderSnapshotDigest,
+  serializeThankYou,
   signPreviewToken,
   verifyPreviewToken
 } = require('../src/lib/post-event');
@@ -75,6 +76,28 @@ test('email render snapshots contain only allowlisted event and host fields', ()
   assert.match(serialized, /test-host/);
   assert.doesNotMatch(serialized, /Never include this|private-slug|access_code|sessions_valid_after/);
   assert.match(renderSnapshotDigest(snapshot), /^[a-f0-9]{64}$/);
+});
+
+test('new thank-you render version is frozen in the preview hash while old snapshots stay unchanged', () => {
+  const event = { id: 4, title: 'Our Night' };
+  const host = { id: 2, public_slug: 'test-host' };
+  const oldSnapshot = emailRenderSnapshot(event, host);
+  const current = emailRenderSnapshot(event, host, { thankYouVersion: 2 });
+  assert.equal(oldSnapshot.thankYouVersion, undefined);
+  assert.equal(current.thankYouVersion, 2);
+  assert.notEqual(renderSnapshotDigest(oldSnapshot), renderSnapshotDigest(current));
+  assert.deepEqual(current.event, oldSnapshot.event);
+  assert.deepEqual(current.host, oldSnapshot.host);
+});
+
+test('new thank-you state includes the Host Page regardless of audience permission or existing follow state', () => {
+  const draft = { subject: 'Thanks', message: 'A note', includeFollow: false };
+  const state = serializeThankYou({ draft, host: { public_slug: 'my-page' }, audience: { recipients: [], eligibleCount: 0 } });
+  assert.equal(state.includeFollow, true);
+  assert.equal(state.canIncludeFollow, true);
+  const missing = serializeThankYou({ draft, host: {}, audience: { recipients: [], eligibleCount: 0 } });
+  assert.equal(missing.includeFollow, false);
+  assert.equal(missing.canIncludeFollow, false);
 });
 
 test('preview tokens bind draft, audience, and render snapshot and fail closed', () => {

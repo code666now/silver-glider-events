@@ -13137,10 +13137,10 @@ test('event-message settings preserve permission records while optional-mail opt
   assert.equal(consented.event_email_optin, true);
   assert.equal(consented.event_email_consent_source, 'rsvp_manage');
   assert.equal((await audience()).eligibleCount, 1);
-  assert.equal((await audience()).canIncludeFollow, false);
+  assert.equal((await audience()).canIncludeFollow, true);
   const draft = { subject: 'Thanks for our night', message: 'Thanks for being part of it.', includeFollow: true };
   const preview = await previewPostEventDraft(event.id, cookie, draft);
-  assert.doesNotMatch(preview.html, /Follow our page for more events/);
+  assert.match(preview.html, /Follow my page/);
   await setting({ enabled: false });
   const revoked = await readConsent();
   assert.equal(revoked.wants_reminders, false);
@@ -13181,7 +13181,8 @@ test('thank-you sends one event note to historical and unverified guests while h
   const hostEmail = lastDevEmail(hostGuest.rsvp.email);
   assert.match(eventEmail.html, /chose (?:to receive )?messages about this event/);
   assert.doesNotMatch(eventEmail.html, /Follow our page for more events|opted into emails from/);
-  assert.match(hostEmail.html, /Follow our page for more events/);
+  assert.match(eventEmail.html, /Follow my page/);
+  assert.match(hostEmail.html, /Follow my page/);
   const logs = (await pool.query(
     "SELECT recipient,post_event_consent_scope,status FROM message_log WHERE event_id=$1 AND message_type='post_event_thank_you' ORDER BY recipient", [event.id]
   )).rows;
@@ -13194,6 +13195,7 @@ test('thank-you sends one event note to historical and unverified guests while h
     const sent = lastDevEmail(email);
     assert.match(sent.html, /one thank-you because you RSVP’d/);
     assert.match(sent.html, /does not subscribe you to future-event emails/);
+    assert.match(sent.html, /Follow my page/);
     assert.doesNotMatch(sent.html, /Follow our page for more events|opted into emails from|chose to receive messages/);
   }
   const unchanged = (await pool.query('SELECT event_email_optin,organizer_optin,user_id FROM rsvps WHERE id=$1', [anonymousGuest.id])).rows[0];
@@ -13230,7 +13232,7 @@ test('post-event thank-you approval rejects changed messages and audiences, then
   assert.ok(logs.every(row => row.status === 'sent'));
   const followMail = lastDevEmail('followed-thanks@example.test');
   const newMail = lastDevEmail('new-thanks@example.test');
-  assert.doesNotMatch(followMail.html, /Follow our page|Follow .*page|Follow for more/);
+  assert.match(followMail.html, /Follow my page/);
   assert.match(newMail.html, /\/h\/test-host/);
   assert.doesNotMatch(newMail.html, /9876 Private Address|\/e\/post-event-night/);
   const status = await (await postEventRequest(event.id, cookie)).json();
@@ -13254,7 +13256,7 @@ test('an ordinary anonymous RSVP becomes eligible for its one event thank-you wi
   await pool.query("UPDATE events SET event_date='2020-10-30' WHERE id=$1", [event.id]);
   const audience = (await (await postEventRequest(event.id, cookie)).json()).thankYou;
   assert.equal(audience.eligibleCount, 1);
-  assert.equal(audience.canIncludeFollow, false);
+  assert.equal(audience.canIncludeFollow, true);
   const saved = (await pool.query('SELECT organizer_optin,event_email_optin,user_id FROM rsvps WHERE event_id=$1', [event.id])).rows[0];
   assert.equal(saved.organizer_optin, false);
   assert.equal(saved.event_email_optin, false);
@@ -13264,7 +13266,61 @@ test('an ordinary anonymous RSVP becomes eligible for its one event thank-you wi
     subject: 'Thanks for being part of it', message: 'A note about our night.', includeFollow: true
   });
   assert.match(preview.html, /one thank-you because you RSVP’d/);
+  assert.match(preview.html, /Follow my page/);
   assert.doesNotMatch(preview.html, /Follow our page for more events|opted into emails from/);
+});
+
+test('new thank-you approval freezes the standard Host Page button without subscribing RSVP-only guests', async () => {
+  const { event, cookie } = await postEventFixture();
+  const guest = await createRsvp(event.id, { email: 'standard-page-thanks@example.test' });
+  const draft = { subject: 'Thanks for a good night', message: 'It meant a lot.', includeFollow: false };
+  const preview = await previewPostEventDraft(event.id, cookie, draft);
+  assert.match(preview.html, /Follow my page/);
+  assert.match(preview.html, /Stay in the loop about future events\./);
+  assert.match(preview.html, /href="[^"?]*\/h\/test-host"/);
+  assert.doesNotMatch(preview.html, /follow=1/);
+  assert.equal((await pool.query('SELECT include_follow FROM post_event_thank_you_batches WHERE event_id=$1', [event.id])).rows[0].include_follow, true);
+  assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
+  await settlePostEventThankYouWork();
+  const batch = (await pool.query('SELECT render_snapshot FROM post_event_thank_you_batches WHERE event_id=$1', [event.id])).rows[0];
+  assert.equal(batch.render_snapshot.thankYouVersion, 2);
+  assert.equal(batch.render_snapshot.host.public_slug, 'test-host');
+  const email = lastDevEmail(guest.email);
+  assert.match(email.html, /Follow my page/);
+  assert.match(email.text, /Stay in the loop about future events/);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS total FROM host_follows WHERE host_organizer_id=$1', [organizerId])).rows[0].total, 0);
+  assert.deepEqual((await pool.query('SELECT organizer_optin,event_email_optin FROM rsvps WHERE id=$1', [guest.id])).rows[0],
+    { organizer_optin: false, event_email_optin: false });
+});
+
+test('thank-you emails without a Host Page omit the automatic button and never invent a link', async () => {
+  const { event, cookie } = await postEventFixture();
+  await pool.query('UPDATE organizers SET public_slug=NULL WHERE id=$1', [organizerId]);
+  const guest = await createRsvp(event.id, { email: 'no-page-thanks@example.test' });
+  const state = (await (await postEventRequest(event.id, cookie)).json()).thankYou;
+  assert.equal(state.canIncludeFollow, false);
+  const preview = await previewPostEventDraft(event.id, cookie, { subject: 'Thanks', message: 'A note about our night.', includeFollow: true });
+  assert.doesNotMatch(preview.html, /Follow my page|Stay in the loop|\/h\//);
+  assert.equal((await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken: preview.previewToken })).status, 202);
+  await settlePostEventThankYouWork();
+  assert.doesNotMatch(lastDevEmail(guest.email).html, /Follow my page|Stay in the loop|\/h\//);
+});
+
+test('an older-layout preview cannot approve a newly versioned thank-you without previewing its Host Page button', async () => {
+  const { event, cookie } = await postEventFixture();
+  await createRsvp(event.id, { email: 'old-layout-preview@example.test' });
+  const draft = { subject: 'Thanks', message: 'A note about our night.', includeFollow: true };
+  await postEventRequest(event.id, cookie, '/thank-you', 'PUT', draft);
+  const { loadPostEventContext, emailRenderSnapshot, renderSnapshotDigest, eligibleThankYouAudience, draftDigest, signPreviewToken } = require('../../src/lib/post-event');
+  const context = await loadPostEventContext(pool, { eventId: event.id, organizerId });
+  const audience = await eligibleThankYouAudience(pool, { eventId: event.id, organizerId });
+  const batch = (await pool.query('SELECT id FROM post_event_thank_you_batches WHERE event_id=$1', [event.id])).rows[0];
+  const previewToken = signPreviewToken({ eventId: event.id, batchId: batch.id,
+    draftHash: draftDigest(draft), audienceHash: audience.audienceHash,
+    renderHash: renderSnapshotDigest(emailRenderSnapshot(context.event, context.host)) });
+  const response = await postEventRequest(event.id, cookie, '/thank-you/send', 'POST', { previewToken });
+  assert.equal(response.status, 409);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS total FROM message_log WHERE event_id=$1', [event.id])).rows[0].total, 0);
 });
 
 test('RSVP thank-you audience validates and deduplicates historical mailboxes without reviving a later opt-out or crossing hosts', async () => {

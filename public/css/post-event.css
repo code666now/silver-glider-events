@@ -104,8 +104,7 @@
 .post-event-dialog-tabs button[aria-selected="true"] { border-bottom-color:var(--sg-accent);color:var(--sg-text); }
 .post-event-dialog-tabs button:disabled { cursor:not-allowed;opacity:.45; }
 .post-event-dialog-close:focus-visible,.post-event-dialog-tabs button:focus-visible,
-.post-event-dialog-foot .sg-btn:focus-visible,.post-event-preview-meta button:focus-visible,
-.post-event-follow-option:has(input:focus-visible) {
+.post-event-dialog-foot .sg-btn:focus-visible,.post-event-preview-meta button:focus-visible {
   outline:2px solid var(--sg-accent);outline-offset:3px;
 }
 @media (hover:hover) {
@@ -125,14 +124,12 @@
 .post-event-field .sg-input { width:100%; }
 .post-event-field textarea.sg-input { min-height:178px;resize:vertical;line-height:1.6; }
 .post-event-follow-option {
-  min-height:66px;display:grid;grid-template-columns:22px minmax(0,1fr);gap:13px;align-items:start;
-  margin-top:20px;padding:15px 16px;border:1px solid var(--sg-border-soft);border-radius:16px;cursor:pointer;
+  min-height:66px;
+  margin-top:20px;padding:15px 16px;border:1px solid var(--sg-border-soft);border-radius:16px;
 }
-.post-event-follow-option input { width:20px;height:20px;margin:1px 0 0;accent-color:var(--sg-accent); }
 .post-event-follow-option strong,.post-event-follow-option small { display:block; }
 .post-event-follow-option strong { font-size:13px; }
 .post-event-follow-option small { margin-top:5px;color:var(--sg-text-dim);font-size:11px;line-height:1.45; }
-.post-event-follow-option:has(input:disabled) { cursor:not-allowed;opacity:.55; }
 .post-event-send-note { margin:16px 0 0;color:var(--sg-text-faint);font-size:11px;line-height:1.55; }
 .post-event-preview-meta { display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:16px; }
 .post-event-preview-meta span,.post-event-preview-meta strong { display:block; }

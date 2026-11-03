@@ -156,9 +156,9 @@ router.put('/api/events/:id/post-event/thank-you', async (req, res, next) => {
       organizerId: req.organizer.id,
       lock: true
     }));
-    if (draft.includeFollow && !context.host.public_slug) {
-      throw new PostEventError(400, 'host_page_required', 'Set up your Host Page before including a follow invitation');
-    }
+    // New drafts always include the owner's public Host Page when one exists.
+    // This opens a page; it never grants Follow or future-email permission.
+    draft.includeFollow = Boolean(context.host.public_slug);
     const { rows } = await client.query(
       `INSERT INTO post_event_thank_you_batches
          (event_id,organizer_id,subject,message,include_follow)
@@ -200,6 +200,7 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
       eventId: eventId(req),
       organizerId: req.organizer.id
     }));
+    draft.includeFollow = Boolean(context.host.public_slug);
     const batch = await loadThankYouBatch(pool, context.event.id);
     if (!batch || batch.status !== 'draft') {
       throw new PostEventError(409, 'draft_unavailable', 'Save an unsent draft before previewing');
@@ -211,9 +212,6 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
     })) {
       throw new PostEventError(409, 'draft_not_saved', 'Save your latest changes before previewing');
     }
-    if (draft.includeFollow && !context.host.public_slug) {
-      throw new PostEventError(400, 'host_page_required', 'Set up your Host Page before including a follow invitation');
-    }
     const audience = await eligibleThankYouAudience(pool, {
       eventId: context.event.id,
       organizerId: req.organizer.id
@@ -221,12 +219,13 @@ router.post('/api/events/:id/post-event/thank-you/preview', async (req, res, nex
     const followEligible = audience.recipients.filter(recipient => recipient.consentScope === 'host');
     const allAlreadyFollowing = followEligible.length === 0 ||
       followEligible.every(recipient => recipient.alreadyFollowing);
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host);
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 2 });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     const rendered = buildPostEventThankYouEmail({
       event: renderSnapshot.event,
       host: renderSnapshot.host,
       ...draft,
+      templateVersion: renderSnapshot.thankYouVersion,
       alreadyFollowing: allAlreadyFollowing,
       consentScope: followEligible.length > 0 ? 'host'
         : audience.recipients.some(recipient => recipient.consentScope === 'event_rsvp') ? 'event_rsvp' : 'event'
@@ -282,7 +281,7 @@ router.post('/api/events/:id/post-event/thank-you/send', async (req, res, next) 
       message: batch.message,
       includeFollow: batch.include_follow
     });
-    const renderSnapshot = emailRenderSnapshot(context.event, context.host);
+    const renderSnapshot = emailRenderSnapshot(context.event, context.host, { thankYouVersion: 2 });
     const renderHash = renderSnapshotDigest(renderSnapshot);
     if (preview.eventId !== context.event.id || preview.batchId !== String(batch.id) ||
         preview.draftHash !== currentDraftHash || preview.audienceHash !== audience.audienceHash ||

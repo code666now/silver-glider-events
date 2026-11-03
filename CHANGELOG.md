@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.188
+
+Released November 2, 2026. Built, reviewed, and deployed by Codex.
+
+### Keep the good nights going
+
+* Every newly approved thank-you includes **Follow my page** and **Stay in the loop about future events** when the host has a public Host Page. The button opens that page; guests still choose whether to follow or subscribe. Hosts without a page receive no invented link or empty button.
+* The editor replaces the disabled permission checkbox with a clear automatic-inclusion note. Existing audience eligibility, email opt-outs, host unsubscribes, explicit preview/send approval, and the one-send limit remain unchanged.
+* The approved email snapshot freezes the new layout version. Previously approved emails and retries keep their original layout byte-for-byte; older previews must be refreshed before approving the new design. No migration, automatic subscriptions, or guest-list send is introduced.
+
+### Verification
+
+* All **695 automated tests** and static checks pass, covering every recipient scope, existing followers, old saved options, missing Host Pages, stale previews, frozen older deliveries, and unchanged consent/subscription records.
+* Local Chrome end-to-end checks passed at 1440px desktop and 390px phone for automatic inclusion, preview, synthetic send, canonical page navigation, unchanged opt-outs and single-send protection. No real guest emails were sent during QA. Real Safari/iOS and inbox-client rendering remain manual checks.
+
 ## 1.0.187
 
 Released November 2, 2026. Built, reviewed, and deployed by Codex.

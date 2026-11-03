@@ -138,7 +138,7 @@
       return {
         subject: byId('post-event-thank-subject').value.trim(),
         message: byId('post-event-thank-message').value.trim(),
-        includeFollow: Boolean(byId('post-event-include-follow').checked && state.thankYou.canIncludeFollow)
+        includeFollow: state.thankYou.canIncludeFollow
       };
     }
 
@@ -235,11 +235,11 @@
       setText('post-event-eligible-count', thankYou.eligibleCount.toLocaleString('en-US'));
       byId('post-event-thank-subject').value = thankYou.subject;
       byId('post-event-thank-message').value = thankYou.message;
-      byId('post-event-include-follow').checked = thankYou.canIncludeFollow && thankYou.includeFollow;
-      byId('post-event-include-follow').disabled = !thankYou.canIncludeFollow;
+      byId('post-event-include-follow').checked = thankYou.canIncludeFollow;
+      setText('post-event-follow-title', thankYou.canIncludeFollow ? '“Follow my page” is included' : 'No Host Page yet');
       setText('post-event-follow-copy', thankYou.canIncludeFollow
-        ? 'Shown only to guests who separately agreed to emails from you.'
-        : 'Available when eligible guests have separate permission for emails from you.');
+        ? 'Stay in the loop about future events. The button opens your Host Page; guests choose whether to follow. Nobody is subscribed automatically.'
+        : 'This thank-you will not include a Follow button because you do not have a Host Page.');
       byId('post-event-preview-tab').disabled = !previewToken;
       byId('post-event-dialog-tabs').hidden = false;
       byId('post-event-dialog-next').hidden = false;
@@ -467,7 +467,7 @@
       if (currentPanel === 'preview') sendThankYou();
       else if (currentPanel === 'edit') createPreview();
     });
-    for (const id of ['post-event-thank-subject', 'post-event-thank-message', 'post-event-include-follow']) {
+    for (const id of ['post-event-thank-subject', 'post-event-thank-message']) {
       byId(id).addEventListener('input', invalidatePreview);
       byId(id).addEventListener('change', invalidatePreview);
     }

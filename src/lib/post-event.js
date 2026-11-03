@@ -72,8 +72,9 @@ function audienceDigest(recipients) {
   return digest(JSON.stringify(stable));
 }
 
-function emailRenderSnapshot(event, host) {
+function emailRenderSnapshot(event, host, { thankYouVersion = 1 } = {}) {
   return {
+    ...(thankYouVersion === 2 ? { thankYouVersion: 2 } : {}),
     event: {
       id: Number(event?.id),
       title: String(event?.title || ''),
@@ -371,12 +372,15 @@ function serializeThankYou({ batch, draft, audience, host }) {
   } : normalizeDraft(draft);
   const finalStatus = source.status || 'draft';
   const approved = finalStatus !== 'draft';
+  const standardHostPage = approved
+    ? source.render_snapshot?.thankYouVersion === 2 && Boolean(source.render_snapshot?.host?.public_slug)
+    : Boolean(host?.public_slug);
   return {
     subject: clean.subject,
     message: clean.message,
-    includeFollow: clean.includeFollow,
+    includeFollow: approved ? clean.includeFollow : standardHostPage,
     eligibleCount: approved ? Number(source.recipient_count || 0) : Number(audience?.eligibleCount || 0),
-    canIncludeFollow: Boolean(host?.public_slug && audience?.recipients?.some(recipient =>
+    canIncludeFollow: standardHostPage || Boolean(approved && host?.public_slug && audience?.recipients?.some(recipient =>
       recipient.consentScope === 'host' && !recipient.alreadyFollowing)),
     status: finalStatus,
     batchId: source.id == null ? null : Number(source.id),

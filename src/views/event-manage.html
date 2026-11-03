@@ -1005,10 +1005,10 @@
             <span>Your message</span>
             <textarea class="sg-input" id="post-event-thank-message" name="message" rows="8" maxlength="4000" required></textarea>
           </label>
-          <label class="post-event-follow-option" for="post-event-include-follow">
-            <input id="post-event-include-follow" name="includeFollow" type="checkbox">
-            <span><strong>Include my Host Page</strong><small id="post-event-follow-copy">Shown only to guests who separately agreed to emails from you.</small></span>
-          </label>
+          <div class="post-event-follow-option" role="note">
+            <input id="post-event-include-follow" name="includeFollow" type="checkbox" hidden aria-hidden="true" tabindex="-1">
+            <span><strong id="post-event-follow-title">“Follow my page” is included</strong><small id="post-event-follow-copy">The button opens your Host Page; guests choose whether to follow. Nobody is subscribed automatically.</small></span>
+          </div>
           <p class="post-event-send-note">For guests marked Going with an email, excluding email opt-outs and unsubscribes. No account or future-event subscription is needed. Additional guests are not contacted.</p>
         </section>
 
@@ -1019,7 +1019,7 @@
           </div>
           <iframe class="post-event-preview-frame" id="post-event-preview-frame" title="Guest email preview" sandbox></iframe>
           <p class="post-event-send-note">For guests marked Going with an email, excluding email opt-outs and unsubscribes. No account or future-event subscription is needed. Additional guests are not contacted.</p>
-          <p class="post-event-send-note">Personal unsubscribe links are added when sent. The Follow button appears only for guests with separate host-email permission who don’t already follow you. You can send once, and email addresses stay private.</p>
+          <p class="post-event-send-note">Personal unsubscribe links are added when sent. When you have a Host Page, “Follow my page” opens it without subscribing anyone automatically. You can send once, and email addresses stay private.</p>
         </section>
 
         <section class="post-event-send-status" id="post-event-send-status" role="status" tabindex="-1" hidden>
