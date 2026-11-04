@@ -12,6 +12,7 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
+  <link rel="stylesheet" href="/css/date-time-controls.css">
   <style>
     .cover-drop {
       position: relative;
@@ -726,14 +727,6 @@
     }
     .native-picker-wrap { position: relative; }
     .native-picker-wrap .sg-input { padding-right: 52px; }
-    .native-picker-trigger {
-      position: absolute; top: 0; right: 0; bottom: 0; width: 56px;
-      border: 0; border-radius: 0 var(--sg-radius-input) var(--sg-radius-input) 0;
-      background: transparent; color: transparent; cursor: pointer;
-    }
-    .native-picker-trigger:focus-visible {
-      outline: 2px solid var(--sg-accent); outline-offset: -3px;
-    }
     .picker-upload {
       position: relative;
       min-height: 96px;
@@ -1779,18 +1772,23 @@
       <div class="row2">
         <div class="sg-field">
           <label for="event_date">Date</label>
-          <div class="native-picker-wrap">
-            <input class="sg-input" type="date" id="event_date" required>
-            <button class="native-picker-trigger" type="button" data-picker-target="event_date" aria-label="Open date picker">Open date picker</button>
+          <div class="native-picker-wrap sge-datetime-control">
+            <input class="sg-input" type="date" id="event_date" required aria-describedby="event-timezone">
+            <button class="sge-datetime-trigger" id="event-date-picker" type="button" aria-label="Open calendar" hidden>Open calendar</button>
           </div>
         </div>
         <div class="sg-field">
           <label for="start_time">Start time</label>
-          <div class="native-picker-wrap">
-            <input class="sg-input" type="time" id="start_time" required>
-            <button class="native-picker-trigger" type="button" data-picker-target="start_time" aria-label="Open time picker">Open time picker</button>
+          <div class="native-picker-wrap sge-datetime-control">
+            <input class="sg-input" type="time" id="start_time" required aria-describedby="event-timezone">
+            <button class="sge-datetime-trigger" id="event-time-picker" type="button" aria-label="Choose start time" hidden>Choose start time</button>
           </div>
         </div>
+      </div>
+
+      <div class="sge-datetime-meta">
+        <button class="sge-datetime-today" id="event-date-today" type="button" hidden>Today</button>
+        <span class="sge-datetime-timezone" id="event-timezone"></span>
       </div>
 
       <div class="sg-field location-picker" id="location-picker">
@@ -1832,7 +1830,7 @@
         <div class="event-editor-disclosure-body">
           <div class="sg-field mobile-host-identity-field" id="presenter-field" hidden>
             <label for="presenter_name">Who’s hosting this?</label>
-            <input class="sg-input" id="presenter_name" maxlength="100" placeholder="Heat Wave Booking">
+            <input class="sg-input" id="presenter_name" maxlength="100" placeholder="Call Me A Taxi Booking">
             <p id="presenter-help" style="font-size:12px;color:var(--sg-text-faint);margin-top:7px;line-height:1.5">This is the name guests will see.</p>
           </div>
 
@@ -2068,6 +2066,7 @@
   </div>
 
   <script src="/js/api.js"></script>
+  <script src="/js/date-time-controls.js"></script>
   <script src="/js/artwork-color.js"></script>
   <script src="/js/event-backgrounds.js"></script>
   <script src="/js/location-utils.js"></script>

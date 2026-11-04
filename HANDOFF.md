@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 4, 2026 (polished login verification, v1.0.192)
+**Last updated:** November 4, 2026 (event date/time controls, v1.0.193)
 
-## Current release — Polished email and phone verification (v1.0.192)
+## Current release — Event date/time controls (v1.0.193)
+
+Extends `558234f` / v1.0.192. User reported calendar and clock clicks not opening in Create Event and approved the proposed fix/polish, testing and deployment, together with replacing the **Heat Wave Booking** placeholder with **Call Me A Taxi Booking**.
+
+- **Cause:** white SVG icons were painted at right 16px while transparent native picker indicators stayed in normal input flow. Chrome inspection at 1440px/390px measured the actual targets about 37px left of the visible icons: clicking the artwork focused the field, clicking the hidden indicator opened the picker.
+- **Shared controls:** `public/js/date-time-controls.js` and `public/css/date-time-controls.css` provide deliberate real-button opening of native pickers, aligned fallback native targets, explicit Today, readable event timezone and restrained focus/selection/error feedback. One native date input and one native time input remain; no custom calendar library or minute restriction.
+- **Integration:** quick create, inline owner editor and full editor use the same helper. Owner assets are injected only on owner surfaces by `src/routes/public.js`. Create uses the existing event timezone default `America/Los_Angeles` for its minimum date; existing events use their saved timezone and keep past dates editable. Attach/sync never select or overwrite a date/time. The explicit Today action changes date only through the normal input/change path; existing save, draft recovery, editor cancel and publication flows remain.
+- **Copy/scope:** host-name placeholders are now Call Me A Taxi Booking in six existing forms. Existing host records, message templates and fixture host identities stay unchanged. No new backend mutation, migration, provider call or automatic event creation. Production QA must remain read-only; do not send verification messages, real guest mail or past thank-yous.
+
+**Verification/release:** `npm run check` passed **829/829** tests and static checks (262 JavaScript / 426 project files); `git diff --check` passed. Thirteen focused component tests exercise timezone midnight/DST, no automatic selection, explicit date-only Today, bounds/disabled/readonly, fallback and destroy/reattach. `/private/tmp/sge-date-time-regression.cjs` passed ten Chrome journeys at 1440px/390px against actual views/controllers with all APIs mocked: all three editor surfaces, actual icon/Enter/Space opening confirmed via native `:open`, Escape/reopen, manual entry, minute 37, LA Today while browser is in Tokyo, restored past drafts, focused coral errors, disabled controls, reduced motion and three genuine native-icon fallback cases. `/private/tmp/sge-datetime-{create,owner,full}-{1440,390}.png` were visually reviewed; a final CSS-only 12px gap separates Today from Location. No DB/browser mutations, production records or real messages in browser QA; physical Safari/iOS remains manual. Follow the standard version/commit/generated uncommitted `.git-sha`/Railway `--path-as-root`/matching health/assets/tag/push workflow. No migration or dependency change.
+
+## Previous release — Polished email and phone verification (v1.0.192)
 
 Extends `ca6539b` / v1.0.191. After reviewing both screenshots and the plan, the user explicitly approved applying the shared premium polish to phone and email login, testing and deployment. Scope is the code steps in `/login`, not every verification modal or a new authentication system. The earlier **do not resend any thank-you** instruction still applies; this work must not touch those batches.
 

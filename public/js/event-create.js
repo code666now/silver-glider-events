@@ -59,9 +59,16 @@
       .then(({ organizer }) => configureHostName(organizer))
       .catch(() => configureHostName());
 
-  const today = new Date();
-  const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  $('create-date').min = localToday;
+  const dateTimeControls = window.SGEDateTimeControls?.attach({
+    dateInput: $('create-date'),
+    timeInput: $('create-start-time'),
+    dateButton: $('create-date-picker'),
+    timeButton: $('create-time-picker'),
+    todayButton: $('create-date-today'),
+    timeZoneLabel: $('create-timezone'),
+    timeZone: 'America/Los_Angeles',
+    minToday: true
+  });
 
   function setStatus(message) { $('create-places-status').textContent = message || ''; }
   function mobileFlowEnabled() { return mobileFlowQuery.matches; }
@@ -482,6 +489,7 @@
   });
 
   restoreQuickCreateDraft();
+  dateTimeControls?.sync();
   initializeMobileHistory();
   renderMobileFlow();
   initPlaces();

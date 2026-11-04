@@ -233,8 +233,24 @@ function renderOwnerEditor(event) {
             <div class="owner-section-intro"><h3>Event details</h3><p>Edit the essentials while seeing the page update beside you.</p></div>
             <label class="owner-field"><span>Title</span><input class="owner-input" id="owner-title" maxlength="140" required></label>
             <div class="owner-field-row">
-              <label class="owner-field"><span>Date</span><input class="owner-input" id="owner-date" type="date" required></label>
-              <label class="owner-field"><span>Start time</span><input class="owner-input" id="owner-start-time" type="time" required></label>
+              <div class="owner-field">
+                <label class="owner-field-label" for="owner-date">Date</label>
+                <div class="sge-datetime-control">
+                  <input class="owner-input" id="owner-date" type="date" required aria-describedby="owner-timezone">
+                  <button class="sge-datetime-trigger" id="owner-date-picker" type="button" aria-label="Open calendar" hidden>Open calendar</button>
+                </div>
+              </div>
+              <div class="owner-field">
+                <label class="owner-field-label" for="owner-start-time">Start time</label>
+                <div class="sge-datetime-control">
+                  <input class="owner-input" id="owner-start-time" type="time" required aria-describedby="owner-timezone">
+                  <button class="sge-datetime-trigger" id="owner-time-picker" type="button" aria-label="Choose start time" hidden>Choose start time</button>
+                </div>
+              </div>
+            </div>
+            <div class="sge-datetime-meta">
+              <button class="sge-datetime-today" id="owner-date-today" type="button" hidden>Today</button>
+              <span class="sge-datetime-timezone" id="owner-timezone"></span>
             </div>
             <div class="owner-field owner-location-picker">
               <label class="owner-field-label" for="owner-location-search">Location</label>

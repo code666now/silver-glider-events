@@ -508,19 +508,20 @@ $('commerce-interest-toggle').addEventListener('click', async event => {
   }
 });
 
-document.querySelectorAll('[data-picker-target]').forEach(button => {
-  button.addEventListener('click', () => {
-    const input = $(button.dataset.pickerTarget);
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    try {
-      if (typeof input.showPicker === 'function') input.showPicker();
-      else input.click();
-    } catch (_) {
-      input.focus();
-    }
+let dateTimeControls = null;
+function configureDateTimeControls(timeZone = 'America/Los_Angeles') {
+  dateTimeControls?.destroy();
+  dateTimeControls = window.SGEDateTimeControls?.attach({
+    dateInput: $('event_date'),
+    timeInput: $('start_time'),
+    dateButton: $('event-date-picker'),
+    timeButton: $('event-time-picker'),
+    todayButton: $('event-date-today'),
+    timeZoneLabel: $('event-timezone'),
+    timeZone
   });
-});
+}
+if (!editId) configureDateTimeControls();
 
 function renderVisibilityState() {
   const secret = visibility === 'private' && $('secret_show_enabled').checked;
@@ -1695,6 +1696,7 @@ if (editId) {
     }
     $('event_date').value = event.event_date.slice(0, 10);
     $('start_time').value = String(event.start_time).slice(0, 5);
+    configureDateTimeControls(event.timezone || 'America/Los_Angeles');
     populateLocationEditor(event.venue_name, event.venue_address || '');
     $('venue_city').value = event.venue_city || '';
     $('venue_state').value = event.venue_state || '';

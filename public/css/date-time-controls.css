@@ -1,0 +1,106 @@
+/* Real native date/time inputs stay editable; enhancement only adds shortcuts. */
+.sge-datetime-control { position: relative; min-width: 0; }
+.sge-datetime-control > input[type='date'],
+.sge-datetime-control > input[type='time'] {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding-right: 64px;
+  color-scheme: dark;
+  background-position: right 16px center;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+/* With no JS, the native hit target still covers the painted right-hand icon. */
+.sge-datetime-control > input[type='date']::-webkit-calendar-picker-indicator,
+.sge-datetime-control > input[type='time']::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 52px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.sge-datetime-trigger {
+  position: absolute;
+  z-index: 1;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  display: block;
+  width: 52px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.sge-datetime-trigger[hidden], .sge-datetime-today[hidden] { display: none !important; }
+.sge-datetime-trigger:focus-visible {
+  outline: 2px solid var(--sg-accent, #1cc5be);
+  outline-offset: -5px;
+  background: rgba(28,197,190,.08);
+}
+.sge-datetime-control:focus-within > input[type='date'],
+.sge-datetime-control:focus-within > input[type='time'] {
+  border-color: rgba(28,197,190,.7);
+  box-shadow: 0 0 0 2px rgba(28,197,190,.1);
+}
+.sge-datetime-control.is-filled > input { border-color: rgba(28,197,190,.3); }
+.sge-datetime-control.is-invalid > input,
+.sge-datetime-control > input[aria-invalid='true'] { border-color: #f28b82 !important; box-shadow: 0 0 0 2px rgba(242,139,130,.1) !important; }
+.sge-datetime-control.is-invalid .sge-datetime-trigger { border-color: rgba(242,139,130,.45); }
+.sge-datetime-trigger:disabled { cursor: not-allowed; background: transparent; }
+.sge-datetime-control.is-disabled { opacity: .6; }
+.sge-datetime-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-width: 0; margin-top: 4px; margin-bottom: 12px; }
+.sge-datetime-timezone { min-width: 0; color: var(--sg-text-dim, #999); font: 500 12px/1.5 var(--sg-font-body, sans-serif); overflow-wrap: anywhere; }
+.sge-datetime-today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  min-height: 44px;
+  margin: 0;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sg-accent, #1cc5be);
+  font: 700 12px/1.4 var(--sg-font-body, sans-serif);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.sge-datetime-today[aria-pressed='true'] { border-color: rgba(28,197,190,.25); background: rgba(28,197,190,.06); }
+.sge-datetime-today:focus-visible { outline: 2px solid var(--sg-accent, #1cc5be); outline-offset: 2px; }
+.sge-datetime-today:disabled { color: var(--sg-text-faint, #787878); cursor: not-allowed; border-color: transparent; background: transparent; }
+@media (hover: hover) {
+  .sge-datetime-trigger:hover:not(:disabled), .sge-datetime-today:hover:not(:disabled) { background: rgba(28,197,190,.09); border-color: rgba(28,197,190,.2); }
+}
+@media (max-width: 879px), (hover: none) and (pointer: coarse) {
+  .sge-datetime-control > input[type='date'], .sge-datetime-control > input[type='time'] { min-height: 56px; font-size: 16px; }
+  .sge-datetime-trigger { border-radius: 14px; }
+  .sge-datetime-timezone, .sge-datetime-today { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sge-datetime-control > input[type='date'], .sge-datetime-control > input[type='time'],
+  .sge-datetime-trigger, .sge-datetime-today { transition: none !important; }
+}
+@media (forced-colors: active) {
+  .sge-datetime-control > input[type='date'], .sge-datetime-control > input[type='time'] { background-image: none; }
+  .sge-datetime-control > input[type='date']::-webkit-calendar-picker-indicator,
+  .sge-datetime-control > input[type='time']::-webkit-calendar-picker-indicator { opacity: 1; }
+  .sge-datetime-control.is-enhanced .sge-datetime-trigger { color: ButtonText; border-color: ButtonText; background: ButtonFace; font-size: 10px; line-height: 1.2; }
+  .sge-datetime-today { color: LinkText; }
+}

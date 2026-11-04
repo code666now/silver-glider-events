@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.193
+
+Released November 4, 2026. Built, reviewed, and deployed by Codex.
+
+### Reliable, polished event date and time controls
+
+* Align real calendar and clock buttons with their visible icons in Create Event, the inline event editor and the full editor. Generous targets open the native pickers on deliberate clicks or keyboard activation; manual date/time entry remains available.
+* Add an explicit **Today** shortcut and a readable event timezone. New-event minimum dates use Pacific Time, matching the existing event default; saved dates and times are never replaced on initialization, and past events remain editable.
+* Add subtle teal hover/focus and selected/error states with reduced-motion and forced-colors alternatives. Preserve native input values, arbitrary minute choices, mobile draft recovery and existing save/publication behavior.
+* Replace the host-name example with **Call Me A Taxi Booking** across creation, intake, invitations and settings. Existing host names are unchanged.
+
+### Verification
+
+* All **829 automated tests** and static checks pass (262 JavaScript / 426 project files), including explicit Today behavior, event-timezone midnight/DST boundaries, saved values, date bounds, native-picker fallbacks and cleanup.
+* Ten Chrome journeys pass at 1440px desktop and 390px phone across quick create, inline edit and the full editor: actual icon clicks and keyboard activation open native pickers, Escape/reopen and manual entry work, arbitrary minutes remain valid, and focused errors stay visible. Restored drafts, reduced motion and genuine native-icon clicks with unavailable/throwing picker APIs are covered. Styled screenshots were reviewed; all APIs were mocked and no messages or production records were created. Physical Safari/iOS remains a manual check.
+
 ## 1.0.192
 
 Released November 4, 2026. Built, reviewed, and deployed by Codex.

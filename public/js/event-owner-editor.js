@@ -14,6 +14,15 @@
   const toastNode = $('owner-editor-toast');
   const LocationUtils = window.SGLocation;
   const EventBackgrounds = window.SGEventBackgrounds;
+  const dateTimeControls = window.SGEDateTimeControls?.attach({
+    dateInput: $('owner-date'),
+    timeInput: $('owner-start-time'),
+    dateButton: $('owner-date-picker'),
+    timeButton: $('owner-time-picker'),
+    todayButton: $('owner-date-today'),
+    timeZoneLabel: $('owner-timezone'),
+    timeZone: EVENT.timezone || 'America/Los_Angeles'
+  });
   const mobileEditorMedia = window.matchMedia('(max-width: 879px)');
   const OWNER_HISTORY_KEY = 'sgeOwnerEditor';
   const mobileViews = {
@@ -1029,6 +1038,7 @@
     $('owner-description').value = draft.description;
     $('owner-date').value = draft.eventDate;
     $('owner-start-time').value = draft.startTime;
+    dateTimeControls?.sync();
     populateOwnerLocation();
     $('owner-category').value = draft.category;
     $('owner-capacity').value = draft.capacity == null ? '' : draft.capacity;

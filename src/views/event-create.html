@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-owner-editor.css">
+  <link rel="stylesheet" href="/css/date-time-controls.css">
   <script src="/js/legal-footer.js" defer></script>
   <style>
     .quick-create-mobile-top,
@@ -210,7 +211,7 @@
             <p>Give guests a name they’ll recognize.</p>
           </div>
           <label class="owner-field"><span>Event title</span><input class="owner-input" id="create-title" maxlength="140" required placeholder="Vinyl Night at Make Out Room" autocomplete="off"></label>
-          <label class="owner-field quick-create-host" id="create-host-field" hidden><span>Who’s hosting this?</span><input class="owner-input" id="create-host-name" maxlength="100" placeholder="Heat Wave Booking" autocomplete="organization"><small>This is the name guests will see.</small></label>
+          <label class="owner-field quick-create-host" id="create-host-field" hidden><span>Who’s hosting this?</span><input class="owner-input" id="create-host-name" maxlength="100" placeholder="Call Me A Taxi Booking" autocomplete="organization"><small>This is the name guests will see.</small></label>
         </section>
 
         <section class="quick-create-step" data-create-step="when" aria-labelledby="quick-create-when-step">
@@ -220,8 +221,24 @@
             <p>Choose the date and when guests should arrive.</p>
           </div>
           <div class="quick-create-row">
-            <label class="owner-field"><span>Date</span><input class="owner-input" id="create-date" type="date" required></label>
-            <label class="owner-field"><span>Start time</span><input class="owner-input" id="create-start-time" type="time" required></label>
+            <div class="owner-field">
+              <label class="owner-field-label" for="create-date">Date</label>
+              <div class="sge-datetime-control">
+                <input class="owner-input" id="create-date" type="date" required aria-describedby="create-timezone">
+                <button class="sge-datetime-trigger" id="create-date-picker" type="button" aria-label="Open calendar" hidden>Open calendar</button>
+              </div>
+            </div>
+            <div class="owner-field">
+              <label class="owner-field-label" for="create-start-time">Start time</label>
+              <div class="sge-datetime-control">
+                <input class="owner-input" id="create-start-time" type="time" required aria-describedby="create-timezone">
+                <button class="sge-datetime-trigger" id="create-time-picker" type="button" aria-label="Choose start time" hidden>Choose start time</button>
+              </div>
+            </div>
+          </div>
+          <div class="sge-datetime-meta">
+            <button class="sge-datetime-today" id="create-date-today" type="button" hidden>Today</button>
+            <span class="sge-datetime-timezone" id="create-timezone">Pacific Time</span>
           </div>
         </section>
 
@@ -268,6 +285,7 @@
   </main>
   <script src="/js/api.js"></script>
   <script src="/js/location-utils.js"></script>
+  <script src="/js/date-time-controls.js"></script>
   <script src="/js/event-create.js"></script>
 </body>
 </html>

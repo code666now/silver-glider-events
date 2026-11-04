@@ -1016,12 +1016,12 @@ router.get('/e/:slug', async (req, res, next) => {
     const ownerEditorStyles = flyerCompletion
       ? '<link rel="stylesheet" href="/css/flyer-preview.css">'
       : ownerPreview
-        ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
+        ? '<link rel="stylesheet" href="/css/event-owner-editor.css">\n  <link rel="stylesheet" href="/css/date-time-controls.css">\n  <link rel="stylesheet" href="/css/event-change-dialog.css">'
         : flyerPreview ? '<link rel="stylesheet" href="/css/flyer-preview.css">' : '';
     const ownerEditorScripts = flyerCompletion
       ? '<script src="/js/flyer-preview.js"></script>'
       : ownerPreview
-        ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
+        ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/date-time-controls.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
         : flyerPreview ? '<script src="/js/flyer-preview.js"></script>' : '';
 
     const activePublicTemplate = isFlyerPresentation ? flyerPublicTemplate : publicTemplate;
