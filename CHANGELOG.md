@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.192
+
+Released November 4, 2026. Built, reviewed, and deployed by Codex.
+
+### Polished email and phone verification
+
+* Give the login page's phone and email code steps one shared six-slot presentation around the existing single native input. Subtle digit motion, visible focus/selection, full-width soft-rectangle status controls and readable feedback keep typing, editing, formatted paste and autofill familiar. Reduce Motion and forced-colors alternatives preserve access.
+* Keep automatic checking after six digits, with loading and duplicate-submission guards. Show the checkmark only after an affirmative server result: **Phone verified**, **Email verified**, or **Signed in** as appropriate. A new phone still requires email proof; ordinary email sign-in retains its magic-link option and safe return destination.
+* Add visible deadline-based resend countdowns and explicit sending/sent feedback, formatted phone numbers, destination editing and clearer error recovery. Preserve server Retry-After limits across view changes, ignore abandoned responses, and require a new code when the server says the challenge expired or locked. No automatic resends.
+* Frontend-only enhancement: no authentication rules, API, identity, SMS/email transport, templates, database records or permissions change. No real messages are sent during QA.
+
+### Verification
+
+* All **816 automated tests** and static checks pass (260 JavaScript / 423 project files), including actual controller/component tests with fake requests and clocks for proof-driven success, branching, stale requests, duplicates, paste, errors, resend recovery and server cooldowns.
+* Fourteen Chrome journeys pass across 1440px desktop and 390px phone, with native editing, formatted paste/autofill-style input, visible errors/checkmarks, explicit-only resends, slow/stale responses, long email, keyboard-height layout and actual reduced-motion checks. Styled screenshots were visually reviewed. All auth responses are mocked; no real email, SMS or thank-you is sent. Physical iOS/Safari SMS autofill remains a manual check.
+
 ## 1.0.191
 
 Released November 3, 2026. Built, reviewed, and deployed by Codex.

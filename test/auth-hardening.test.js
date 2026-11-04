@@ -130,7 +130,8 @@ test('the sign-in page and Host Page follow modal accept the emailed code', () =
   assert.match(host, /\/js\/follow-flow\.js/);
   assert.match(followFlow, /autocomplete="one-time-code"/);
   assert.match(followFlow, /\/api\/auth\/verify-code/);
-  assert.match(login, /Enter the 6-digit code/);
+  assert.match(login, /We sent a 6-digit sign-in code to your email/);
+  assert.match(login, /id="code"[^>]*data-email-code/);
 });
 
 test('missing-name onboarding is conditional, required, and preserves the intended destination', () => {

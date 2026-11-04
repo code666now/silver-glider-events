@@ -9,6 +9,7 @@
   <link rel="manifest" href="/site.webmanifest">
   <title>Sign in — Silver Glider Events</title>
   <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/verification-code.css">
   <script src="/js/legal-footer.js" defer></script>
   <style>
     .auth-heading { font-size:34px; margin-bottom:10px; }
@@ -42,6 +43,22 @@
       letter-spacing:.18em;
       text-transform:uppercase;
     }
+    .auth-shell .sg-btn { border-radius:17px; }
+    .auth-code-copy { margin-bottom:12px; }
+    .auth-destination { display:flex;align-items:baseline;gap:12px;justify-content:space-between;margin-bottom:26px;min-width:0; }
+    .auth-destination strong { min-width:0;color:var(--sg-text);font-size:15px;line-height:1.6;overflow-wrap:anywhere; }
+    .auth-destination-change { flex:none;min-height:44px;padding:6px 0;border:0;background:transparent;color:var(--sg-accent);font:700 12px var(--sg-font-body);cursor:pointer; }
+    .auth-destination-change:focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px;border-radius:5px; }
+    .auth-code-label { display:block;margin-bottom:12px;color:var(--sg-text-dim);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase; }
+    .auth-verification-form { display:block; }
+    .auth-verification-form .sg-btn { width:100%;min-height:54px;margin-top:18px; }
+    .auth-code-actions { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px; }
+    .auth-code-actions .auth-secondary { width:auto;margin:0;text-decoration:none;font-size:12px; }
+    .auth-code-actions .auth-secondary:disabled { color:var(--sg-text-faint);cursor:default; }
+    .auth-code-hint { margin-top:18px;color:var(--sg-text-dim);font-size:12px;line-height:1.65; }
+    .auth-code-hint[hidden] { display:none; }
+    .auth-code-expiry { margin-top:9px;color:var(--sg-text-faint);font-size:11px;line-height:1.6; }
+    .auth-shell [hidden] { display:none !important; }
     @media (max-width: 879px) {
       body { min-height:100vh;min-height:100dvh; }
       main {
@@ -61,6 +78,13 @@
       .sg-input { min-height:60px;padding:15px 17px;border-radius:17px;font-size:16px; }
       .sg-btn { min-height:60px;border-radius:19px;font-size:17px; }
       .auth-secondary { min-height:48px;margin-top:12px;font-size:15px; }
+      .auth-destination { margin-bottom:24px;gap:14px; }
+      .auth-destination strong { font-size:15px; }
+      .auth-destination-change { min-height:48px;font-size:14px; }
+      .auth-code-label { font-size:12px; }
+      .auth-code-actions .auth-secondary { min-height:48px;font-size:13px; }
+      .auth-code-hint { font-size:13px; }
+      .auth-code-expiry { font-size:12px; }
       .auth-code-input { font-size:24px; }
       .auth-code-row { display:grid !important;grid-template-columns:1fr !important;gap:12px !important; }
       .auth-code-row .sg-btn { width:100%; }
@@ -80,7 +104,7 @@
 <body>
   <div class="sg-aurora" aria-hidden="true"></div>
   <div class="sg-aurora-veil" aria-hidden="true"></div>
-  <main style="max-width:400px;margin:0 auto;padding:12vh 24px 0">
+  <main class="auth-shell" style="max-width:440px;margin:0 auto;padding:12vh 24px 0">
     <p class="sg-label" style="margin-bottom:28px">Silver Glider Events</p>
 
     <div id="phone-state" hidden>
@@ -101,17 +125,21 @@
     <div id="phone-code-state" hidden>
       <p class="auth-progress">Verify your phone</p>
       <h1 class="auth-heading">Enter your code</h1>
-      <p class="auth-copy">We sent a 6-digit code to <strong id="sent-phone" style="color:var(--sg-text)"></strong>.</p>
-      <p class="auth-error" id="phone-code-error" role="alert"></p>
-      <form id="phone-code-form" novalidate>
-        <div class="sg-field">
-          <label for="phone-code">Text message code</label>
-          <input class="sg-input auth-code-input" id="phone-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit text message code" placeholder="000000">
+      <p class="auth-copy auth-code-copy">We sent a 6-digit code to your phone.</p>
+      <div class="auth-destination"><strong id="sent-phone"></strong><button class="auth-destination-change" type="button" id="phone-change-number">Change</button></div>
+      <form id="phone-code-form" class="auth-verification-form" novalidate>
+        <label class="auth-code-label" for="phone-code">Text message code</label>
+        <div class="auth-code-control" id="phone-code-control">
+          <input class="sg-input auth-code-input" id="phone-code" name="phoneCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit text message code" aria-describedby="phone-code-status phone-code-error" spellcheck="false">
         </div>
+        <p class="auth-error" id="phone-code-error" role="alert"></p>
         <button class="sg-btn sg-btn-primary sg-btn-block" type="submit" id="phone-code-submit">Verify phone</button>
+        <p id="phone-code-status" class="sg-verification-status" role="status" aria-live="polite" aria-atomic="true"></p>
       </form>
-      <button class="auth-secondary" type="button" id="resend-phone-code" disabled>Send a new code</button>
-      <button class="auth-secondary use-email-instead" type="button">Use email instead</button>
+      <div class="auth-code-actions">
+        <button class="auth-secondary" type="button" id="resend-phone-code" disabled>Send a new code</button>
+        <button class="auth-secondary use-email-instead" type="button">Use email instead</button>
+      </div>
     </div>
 
     <div id="phone-email-state" hidden>
@@ -155,21 +183,27 @@
          in the email on any device. The code only works in this browser. -->
     <div id="sent-state" hidden>
       <h1 class="auth-heading" id="sent-heading">Check your email</h1>
-      <p class="auth-copy" id="sent-copy" style="margin-bottom:22px"><span id="sent-prefix">Enter the 6-digit code we sent to </span><strong id="sent-email" style="color:var(--sg-text)"></strong><span id="sent-suffix">, or tap the link in that email.</span></p>
-      <form id="code-form" class="sg-code-row auth-code-row" novalidate>
-        <input class="sg-input sg-code-input" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" placeholder="000000" data-email-code>
+      <p class="auth-copy auth-code-copy" id="sent-copy"><span id="sent-prefix">We sent a 6-digit sign-in code to your email.</span><span id="sent-suffix" hidden></span></p>
+      <div class="auth-destination"><strong id="sent-email"></strong><button class="auth-destination-change" type="button" id="different-code-email">Change</button></div>
+      <form id="code-form" class="auth-verification-form" novalidate>
+        <label class="auth-code-label" for="code">Email code</label>
+        <div class="auth-code-control" id="email-code-control">
+          <input class="sg-input sg-code-input" id="code" name="emailCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" aria-label="6-digit code" aria-describedby="email-code-status code-error" spellcheck="false" data-email-code>
+        </div>
+        <p class="sg-code-error" id="code-error" role="alert"></p>
         <button class="sg-btn sg-btn-primary" type="submit" id="code-submit">Sign in</button>
+        <p id="email-code-status" class="sg-verification-status" role="status" aria-live="polite" aria-atomic="true"></p>
       </form>
-      <p class="sg-code-error" id="code-error" role="alert"></p>
-      <div class="sg-code-actions" style="margin-top:22px">
-        <button class="sg-code-link" type="button" id="resend-code" disabled>Send a new code</button>
-        <button class="sg-code-link" type="button" id="different-code-email">Use a different email</button>
-        <button class="sg-code-link" type="button" id="restart-phone" hidden>Use a different phone</button>
+      <div class="auth-code-actions">
+        <button class="auth-secondary" type="button" id="resend-code" disabled>Send a new code</button>
+        <button class="auth-secondary" type="button" id="restart-phone" hidden>Use a different phone</button>
       </div>
-      <p id="code-expiry" style="color:var(--sg-text-faint);font-size:13px;margin-top:18px">The code and link expire in 15 minutes.</p>
+      <p class="auth-code-hint" id="email-link-hint">You can also tap the sign-in link in your email.</p>
+      <p id="code-expiry" class="auth-code-expiry">The code and link expire in 15 minutes.</p>
     </div>
   </main>
 
+  <script src="/js/verification-code.js"></script>
   <script src="/js/email-code-input.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
@@ -208,6 +242,136 @@
     const phoneCodeSubmit = document.getElementById('phone-code-submit');
     const phoneResendButton = document.getElementById('resend-phone-code');
     const usePhoneInstead = document.getElementById('use-phone-instead');
+    let flowRevision = 0;
+    let activeState = '';
+    const verificationUi = window.SgeVerificationCode;
+    const emailVerification = createVerification('email', 'sent-state', codeInput, codeSubmit, resendButton, codeError);
+    const phoneVerification = createVerification('phone', 'phone-code-state', phoneCodeInput, phoneCodeSubmit, phoneResendButton, document.getElementById('phone-code-error'));
+
+    function createVerification(kind, stateId, input, button, resend, error) {
+      const control = verificationUi?.attach({
+        input, button, error,
+        container: document.getElementById(`${kind}-code-control`),
+        status: document.getElementById(`${kind}-code-status`)
+      });
+      let fallbackDeadline = 0;
+      let fallbackTimer = null;
+      const cooldown = verificationUi?.createResend(resend) || {
+        getRemaining: () => Math.max(0, fallbackDeadline - Date.now()),
+        start(ms = 30000) {
+          fallbackDeadline = Date.now() + ms;
+          const tick = () => {
+            const left = Math.ceil(this.getRemaining() / 1000);
+            resend.disabled = left > 0;
+            resend.textContent = left ? `Resend in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : 'Send a new code';
+            if (left) fallbackTimer = setTimeout(tick, 1000);
+          };
+          clearTimeout(fallbackTimer);
+          tick();
+        },
+        setSending(sending) {
+          resend.disabled = sending || this.getRemaining() > 0;
+          if (sending) resend.textContent = 'Sending…';
+          else if (!this.getRemaining()) resend.textContent = 'Send a new code';
+        }
+      };
+      return { kind, stateId, input, button, resend, error, control, cooldown,
+        operation: 0, busy: false, success: false, lastAttempt: '',
+        blockedUntil: 0, blockedMessage: '', blockedTimer: null,
+        requiresNewCode: false, recoveryMessage: '' };
+    }
+
+    function verificationState(context, state, options = {}) {
+      if (context.control) return context.control.setState(state, options);
+      context.input.readOnly = ['checking', 'sending', 'success'].includes(state);
+      context.input.setAttribute('aria-invalid', String(state === 'error'));
+      context.button.textContent = options.label || 'Enter all 6 digits';
+      context.button.disabled = options.disabled === true || context.input.readOnly || context.input.value.replace(/\D/g, '').length !== 6;
+      context.error.textContent = state === 'error' ? options.message || '' : '';
+      context.error.style.display = state === 'error' && options.message ? 'block' : 'none';
+      const status = document.getElementById(`${context.kind}-code-status`);
+      status.textContent = state === 'error' ? '' : options.message || '';
+    }
+
+    function readyVerification(context) {
+      clearTimeout(context.blockedTimer);
+      const remaining = Math.ceil(Math.max(0, context.blockedUntil - Date.now()) / 1000);
+      if (remaining) {
+        verificationState(context, 'error', {
+          label: `Try again in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`,
+          message: context.blockedMessage, disabled: true
+        });
+        context.blockedTimer = setTimeout(() => {
+          if (!context.busy && !context.success) readyVerification(context);
+        }, 1000);
+      } else if (context.requiresNewCode) {
+        verificationState(context, 'error', { label: 'Request a new code below', message: context.recoveryMessage, disabled: true });
+      } else {
+        verificationState(context, 'idle', { label: context.input.value.length === 6 ? 'Try again' : 'Enter all 6 digits' });
+      }
+    }
+
+    function resetVerification(context) {
+      context.operation += 1;
+      context.busy = false;
+      context.success = false;
+      context.lastAttempt = '';
+      context.requiresNewCode = false;
+      context.recoveryMessage = '';
+      if (context.control) context.control.reset();
+      else context.input.value = '';
+      readyVerification(context);
+    }
+
+    function liveOperation(context, operation, revision) {
+      return context.operation === operation && flowRevision === revision && activeState === context.stateId;
+    }
+
+    function focusSoon(id, stateId = activeState) {
+      const revision = flowRevision;
+      setTimeout(() => {
+        if (revision === flowRevision && stateId === activeState) document.getElementById(id)?.focus();
+      }, 0);
+    }
+
+    function retryAfterMs(value) {
+      if (!value) return 0;
+      const seconds = Number(value);
+      const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - Date.now();
+      return Number.isFinite(delay) ? Math.max(0, delay) : 0;
+    }
+
+    function rememberRateLimit(context, error, { resending = false } = {}) {
+      if (error.status !== 429) return;
+      const wait = Math.max(30000, error.retryAfterMs || 0);
+      context.cooldown.start(Math.max(wait, context.cooldown.getRemaining()));
+      if (!resending) {
+        context.blockedUntil = Math.max(context.blockedUntil, Date.now() + wait);
+        context.blockedMessage = error.message;
+      }
+    }
+
+    function handleVerificationError(context, error, options = {}) {
+      rememberRateLimit(context, error, options);
+      if (error.status === 429 && !options.resending) {
+        readyVerification(context);
+      } else {
+        context.requiresNewCode ||= ['expired', 'locked', 'phone_verification_expired', 'invalid_phone_verification'].includes(error.code);
+        context.recoveryMessage = error.message || 'We could not check that code. Try again.';
+        verificationState(context, 'error', {
+          label: context.requiresNewCode ? 'Request a new code below' : 'Try again',
+          message: context.recoveryMessage, disabled: context.requiresNewCode
+        });
+        context.input.select();
+      }
+    }
+
+    function formatPhone(value) {
+      const digits = String(value || '').replace(/\D/g, '');
+      if (digits.length === 11 && digits.startsWith('1')) return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      return String(value || '');
+    }
 
     if (invitationAuthFlow) {
       document.getElementById('phone-progress').textContent = 'Accept your invitation';
@@ -232,6 +396,12 @@
     usePhoneInstead.hidden = false;
 
     function showState(activeId) {
+      flowRevision += 1;
+      activeState = activeId;
+      for (const context of [emailVerification, phoneVerification]) {
+        context.operation += 1;
+        context.busy = false;
+      }
       stateIds.forEach(id => {
         document.getElementById(id).hidden = id !== activeId;
       });
@@ -244,7 +414,7 @@
     }
 
     function apiError(data, fallback = 'Something went wrong. Try again.') {
-      return data?.message || data?.error || fallback;
+      return typeof data?.message === 'string' ? data.message : typeof data?.error === 'string' ? data.error : fallback;
     }
 
     async function postJson(url, body) {
@@ -254,7 +424,13 @@
         body: JSON.stringify(body)
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(apiError(data));
+      if (!response.ok) {
+        const error = new Error(apiError(data));
+        error.status = response.status;
+        error.code = data?.code || data?.error || '';
+        error.retryAfterMs = retryAfterMs(response.headers?.get?.('Retry-After'));
+        throw error;
+      }
       return data;
     }
 
@@ -272,32 +448,43 @@
     }
 
     function showEmailLogin() {
+      showState('form-state');
       fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
       emailBindingMode = false;
       lastRequest = null;
+      resetVerification(emailVerification);
+      resetVerification(phoneVerification);
       showCodeError('');
       showError('error', '');
-      showState('form-state');
+      document.getElementById('submit-btn').disabled = false;
+      document.getElementById('submit-btn').textContent = 'Continue';
+      document.getElementById('continue-guest').disabled = false;
+      document.getElementById('continue-guest').textContent = 'Email my sign-in link';
       renderReturningGuest();
       const focusTarget = returningGuest ? document.getElementById('continue-guest') : document.getElementById('email');
-      setTimeout(() => focusTarget.focus(), 0);
+      focusSoon(focusTarget.id);
     }
 
     function showPhoneLogin() {
+      showState('phone-state');
+      fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
       emailBindingMode = false;
       lastRequest = null;
+      resetVerification(emailVerification);
+      resetVerification(phoneVerification);
       showCodeError('');
       showError('phone-error', '');
-      showState('phone-state');
-      setTimeout(() => phoneInput.focus(), 0);
+      document.getElementById('phone-submit').disabled = false;
+      document.getElementById('phone-submit').textContent = 'Text me a code';
+      focusSoon('phone');
     }
 
     if (initialPhoneState) {
       showState('phone-state');
-      setTimeout(() => phoneInput.focus(), 0);
+      focusSoon('phone');
     } else {
       showState('form-state');
-      setTimeout(() => document.getElementById('email').focus(), 0);
+      focusSoon('email');
     }
 
     if (params.get('error') === 'expired') {
@@ -314,8 +501,8 @@
     }
 
     function enableResendSoon(button = resendButton) {
-      button.disabled = true;
-      setTimeout(() => { button.disabled = false; }, 30000);
+      const context = button === phoneResendButton ? phoneVerification : emailVerification;
+      context.cooldown.start(Math.max(30000, context.cooldown.getRemaining()));
     }
 
     function showSent(emailLabel, bindingPhone = false) {
@@ -323,73 +510,107 @@
       showState('sent-state');
       document.getElementById('sent-email').textContent = emailLabel;
       document.getElementById('sent-heading').textContent = bindingPhone ? 'Verify your email' : 'Check your email';
-      document.getElementById('sent-prefix').textContent = 'Enter the 6-digit code we sent to ';
-      document.getElementById('sent-suffix').textContent = bindingPhone ? '.' : ', or tap the link in that email.';
+      document.getElementById('sent-prefix').textContent = bindingPhone
+        ? 'We sent a 6-digit code to verify your email.' : 'We sent a 6-digit sign-in code to your email.';
+      document.getElementById('sent-suffix').textContent = '';
+      document.getElementById('email-link-hint').hidden = bindingPhone;
       document.getElementById('code-expiry').textContent = bindingPhone
         ? 'The code expires in 15 minutes.'
         : 'The code and link expire in 15 minutes.';
       document.getElementById('restart-phone').hidden = false;
       document.getElementById('restart-phone').textContent = bindingPhone ? 'Use a different phone' : 'Use phone instead';
-      codeSubmit.textContent = bindingPhone ? 'Finish' : 'Sign in';
-      codeSubmit.disabled = false;
-      codeInput.value = '';
-      codeInput.focus();
+      resetVerification(emailVerification);
+      focusSoon('code');
       enableResendSoon();
     }
 
-    async function requestSignIn(url, body) {
-      await postJson(url, body);
-      lastRequest = { url, body };
+    async function requestSignIn(url, body, revision = flowRevision) {
+      const data = await postJson(url, body);
+      if (revision === flowRevision) lastRequest = { url, body };
+      return data;
     }
 
-    let verifying = false;
-    async function verifyCode() {
+    async function verifyCode({ automatic = false } = {}) {
+      const context = emailVerification;
       const code = codeInput.value.replace(/\D/g, '');
-      if (verifying || code.length !== 6) return;
-      verifying = true;
-      codeSubmit.disabled = true;
-      codeSubmit.textContent = 'Checking…';
-      showCodeError('');
+      if (activeState !== context.stateId || context.busy || context.success || code.length !== 6 ||
+          context.requiresNewCode || Date.now() < context.blockedUntil || (automatic && context.lastAttempt === code)) return;
+      const operation = ++context.operation;
+      const revision = flowRevision;
+      const binding = emailBindingMode;
+      context.busy = true;
+      context.lastAttempt = code;
+      verificationState(context, 'checking', { label: 'Checking code…', message: 'Checking code…' });
       try {
-        const response = await fetch('/api/auth/verify-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(apiError(data, 'That code didn’t work.'));
-        location.href = data.redirect || next || '/dashboard';
+        const data = await postJson('/api/auth/verify-code', { code });
+        if (!liveOperation(context, operation, revision) || codeInput.value !== code) return;
+        if (data.ok !== true) throw new Error('We could not confirm your sign-in. Try again.');
+        context.success = true;
+        const label = binding ? 'Email verified' : 'Signed in';
+        verificationState(context, 'success', { label, message: label });
+        await new Promise(resolve => setTimeout(resolve, 360));
+        if (!liveOperation(context, operation, revision) || codeInput.value !== code) return;
+        location.href = safeNext(data.redirect) || next || '/dashboard';
       } catch (error) {
-        showCodeError(error.message);
-        codeInput.select();
-        codeSubmit.disabled = false;
-        codeSubmit.textContent = emailBindingMode ? 'Finish' : 'Sign in';
+        rememberRateLimit(context, error);
+        if (liveOperation(context, operation, revision) && codeInput.value === code) handleVerificationError(context, error);
       } finally {
-        verifying = false;
+        if (liveOperation(context, operation, revision)) {
+          context.busy = false;
+          if (codeInput.value !== code) {
+            context.success = false;
+            readyVerification(context);
+          }
+        }
       }
     }
 
-    codeInput.addEventListener('input', () => {
-      codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6);
-      if (codeInput.value.length === 6) verifyCode();
-    });
+    function codeChanged(context) {
+      context.input.value = context.input.value.replace(/\D/g, '').slice(0, 6);
+      if (activeState !== context.stateId || context.busy || context.success) return;
+      if (context.lastAttempt && context.input.value === context.lastAttempt) { context.control?.sync(); return; }
+      if (context.input.value !== context.lastAttempt) context.lastAttempt = '';
+      readyVerification(context);
+      if (context.input.value.length === 6) {
+        if (context.kind === 'phone') verifyPhoneCode({ automatic: true });
+        else verifyCode({ automatic: true });
+      }
+    }
+
+    codeInput.addEventListener('input', () => codeChanged(emailVerification));
+    codeInput.addEventListener('change', () => codeChanged(emailVerification));
     document.getElementById('code-form').addEventListener('submit', event => {
       event.preventDefault();
       verifyCode();
     });
     resendButton.addEventListener('click', async () => {
-      if (!lastRequest) return;
-      resendButton.disabled = true;
-      showCodeError('');
+      const context = emailVerification;
+      if (!lastRequest || activeState !== context.stateId || context.busy || context.success || context.cooldown.getRemaining() > 0) return;
+      const request = lastRequest;
+      const operation = ++context.operation;
+      const revision = flowRevision;
+      context.busy = true;
+      context.cooldown.setSending(true);
+      verificationState(context, 'sending', { label: 'Sending a new code…', message: 'Sending a new code…' });
       try {
-        await requestSignIn(lastRequest.url, lastRequest.body);
-        codeInput.value = '';
-        codeInput.focus();
-        showCodeError('');
+        await requestSignIn(request.url, request.body, revision);
         enableResendSoon();
+        if (!liveOperation(context, operation, revision)) return;
+        context.success = false;
+        context.lastAttempt = '';
+        context.requiresNewCode = false;
+        context.recoveryMessage = '';
+        context.control?.reset();
+        codeInput.value = '';
+        readyVerification(context);
+        document.getElementById('email-code-status').textContent = 'A new code has been sent. Check your email.';
+        focusSoon('code');
       } catch (error) {
-        showCodeError(error.message);
-        resendButton.disabled = false;
+        rememberRateLimit(context, error, { resending: true });
+        if (liveOperation(context, operation, revision)) handleVerificationError(context, error, { resending: true });
+      } finally {
+        if (context.operation === operation || !context.busy) context.cooldown.setSending(false);
+        if (liveOperation(context, operation, revision)) context.busy = false;
       }
     });
 
@@ -398,23 +619,19 @@
       showCodeError('');
       if (emailBindingMode) {
         showState('phone-email-state');
-        setTimeout(() => document.getElementById('phone-email').focus(), 0);
+        resetVerification(emailVerification);
+        document.getElementById('phone-email-submit').disabled = false;
+        document.getElementById('phone-email-submit').textContent = 'Continue';
+        focusSoon('phone-email');
       } else {
         showEmailLogin();
       }
     });
 
-    document.getElementById('restart-phone').addEventListener('click', async () => {
-      await fetch('/api/auth/phone/cancel', { method: 'POST' }).catch(() => {});
-      phoneNumber = '';
-      phoneInput.value = '';
-      phoneCodeInput.value = '';
-      document.getElementById('phone-email').value = '';
-      emailBindingMode = false;
-      lastRequest = null;
-      showCodeError('');
-      showState('phone-state');
-      setTimeout(() => phoneInput.focus(), 0);
+    document.getElementById('restart-phone').addEventListener('click', showPhoneLogin);
+    document.getElementById('phone-change-number').addEventListener('click', () => {
+      showPhoneLogin();
+      phoneInput.select();
     });
 
     document.querySelectorAll('.use-email-instead').forEach(button => {
@@ -425,91 +642,128 @@
     document.getElementById('phone-form').addEventListener('submit', async event => {
       event.preventDefault();
       const button = document.getElementById('phone-submit');
+      if (activeState !== 'phone-state' || button.disabled) return;
       phoneNumber = phoneInput.value.trim();
       if (!phoneNumber) return;
+      const requestedPhone = phoneNumber;
+      const revision = flowRevision;
       button.disabled = true;
       button.textContent = 'Sending…';
       showError('phone-error', '');
       try {
-        await postJson('/api/auth/phone/start', { phone: phoneNumber, next });
-        document.getElementById('sent-phone').textContent = phoneNumber;
-        phoneCodeInput.value = '';
+        await postJson('/api/auth/phone/start', { phone: requestedPhone, next });
+        if (revision !== flowRevision || activeState !== 'phone-state' || phoneNumber !== requestedPhone) return;
+        document.getElementById('sent-phone').textContent = formatPhone(requestedPhone);
         showState('phone-code-state');
-        phoneCodeInput.focus();
+        resetVerification(phoneVerification);
+        focusSoon('phone-code');
         enableResendSoon(phoneResendButton);
       } catch (error) {
-        showError('phone-error', error.message);
+        if (revision === flowRevision && activeState === 'phone-state') showError('phone-error', error.message);
+        if (error.status === 429) phoneVerification.cooldown.start(Math.max(30000, error.retryAfterMs || 0, phoneVerification.cooldown.getRemaining()));
       } finally {
-        button.disabled = false;
-        button.textContent = 'Text me a code';
+        if (revision === flowRevision && activeState === 'phone-state') {
+          button.disabled = false;
+          button.textContent = 'Text me a code';
+        }
       }
     });
 
-    let verifyingPhone = false;
-    async function verifyPhoneCode() {
+    async function verifyPhoneCode({ automatic = false } = {}) {
+      const context = phoneVerification;
       const code = phoneCodeInput.value.replace(/\D/g, '');
-      if (verifyingPhone || code.length !== 6) return;
-      verifyingPhone = true;
-      phoneCodeSubmit.disabled = true;
-      phoneCodeSubmit.textContent = 'Checking…';
-      showError('phone-code-error', '');
+      if (activeState !== context.stateId || context.busy || context.success || code.length !== 6 ||
+          context.requiresNewCode || Date.now() < context.blockedUntil || (automatic && context.lastAttempt === code)) return;
+      const operation = ++context.operation;
+      const revision = flowRevision;
+      context.busy = true;
+      context.lastAttempt = code;
+      verificationState(context, 'checking', { label: 'Checking code…', message: 'Checking code…' });
       try {
         const data = await postJson('/api/auth/phone/verify', { code });
-        if (data.redirect) {
-          location.href = data.redirect;
-          return;
-        }
-        if (!data.needsEmail) throw new Error('We couldn’t finish signing you in. Try again.');
+        if (!liveOperation(context, operation, revision) || phoneCodeInput.value !== code) return;
+        const redirect = safeNext(data.redirect);
+        if (data.ok !== true || (!redirect && data.needsEmail !== true)) throw new Error('We couldn’t finish signing you in. Try again.');
+        context.success = true;
+        verificationState(context, 'success', { label: 'Phone verified', message: 'Phone verified' });
+        await new Promise(resolve => setTimeout(resolve, 360));
+        if (!liveOperation(context, operation, revision) || phoneCodeInput.value !== code) return;
+        if (redirect) { location.href = redirect; return; }
         showState('phone-email-state');
-        setTimeout(() => document.getElementById('phone-email').focus(), 0);
+        document.getElementById('phone-email-submit').disabled = false;
+        document.getElementById('phone-email-submit').textContent = 'Continue';
+        focusSoon('phone-email');
       } catch (error) {
-        showError('phone-code-error', error.message);
-        phoneCodeInput.select();
+        rememberRateLimit(context, error);
+        if (liveOperation(context, operation, revision) && phoneCodeInput.value === code) handleVerificationError(context, error);
       } finally {
-        verifyingPhone = false;
-        phoneCodeSubmit.disabled = false;
-        phoneCodeSubmit.textContent = 'Verify phone';
+        if (liveOperation(context, operation, revision)) {
+          context.busy = false;
+          if (phoneCodeInput.value !== code) {
+            context.success = false;
+            readyVerification(context);
+          }
+        }
       }
     }
 
-    phoneCodeInput.addEventListener('input', () => {
-      phoneCodeInput.value = phoneCodeInput.value.replace(/\D/g, '').slice(0, 6);
-      if (phoneCodeInput.value.length === 6) verifyPhoneCode();
-    });
+    phoneCodeInput.addEventListener('input', () => codeChanged(phoneVerification));
+    phoneCodeInput.addEventListener('change', () => codeChanged(phoneVerification));
     document.getElementById('phone-code-form').addEventListener('submit', event => {
       event.preventDefault();
       verifyPhoneCode();
     });
     phoneResendButton.addEventListener('click', async () => {
-      phoneResendButton.disabled = true;
-      showError('phone-code-error', '');
+      const context = phoneVerification;
+      if (activeState !== context.stateId || context.busy || context.success || context.cooldown.getRemaining() > 0) return;
+      const operation = ++context.operation;
+      const revision = flowRevision;
+      const requestedPhone = phoneNumber;
+      context.busy = true;
+      context.cooldown.setSending(true);
+      verificationState(context, 'sending', { label: 'Sending a new code…', message: 'Sending a new code…' });
       try {
-        await postJson('/api/auth/phone/start', { phone: phoneNumber, next });
-        phoneCodeInput.value = '';
-        phoneCodeInput.focus();
+        await postJson('/api/auth/phone/start', { phone: requestedPhone, next });
         enableResendSoon(phoneResendButton);
+        if (!liveOperation(context, operation, revision) || phoneNumber !== requestedPhone) return;
+        context.lastAttempt = '';
+        context.requiresNewCode = false;
+        context.recoveryMessage = '';
+        context.control?.reset();
+        phoneCodeInput.value = '';
+        readyVerification(context);
+        document.getElementById('phone-code-status').textContent = 'A new code has been sent to your phone.';
+        focusSoon('phone-code');
       } catch (error) {
-        showError('phone-code-error', error.message);
-        phoneResendButton.disabled = false;
+        rememberRateLimit(context, error, { resending: true });
+        if (liveOperation(context, operation, revision)) handleVerificationError(context, error, { resending: true });
+      } finally {
+        if (context.operation === operation || !context.busy) context.cooldown.setSending(false);
+        if (liveOperation(context, operation, revision)) context.busy = false;
       }
     });
 
     document.getElementById('phone-email-form').addEventListener('submit', async event => {
       event.preventDefault();
       const button = document.getElementById('phone-email-submit');
+      if (activeState !== 'phone-email-state' || button.disabled) return;
       const email = document.getElementById('phone-email').value.trim();
+      const revision = flowRevision;
       button.disabled = true;
       button.textContent = 'Sending…';
       showError('phone-email-error', '');
       try {
-        await requestSignIn('/api/auth/phone/email', { email });
+        await requestSignIn('/api/auth/phone/email', { email }, revision);
+        if (revision !== flowRevision || activeState !== 'phone-email-state') return;
         button.disabled = false;
         button.textContent = 'Continue';
         showSent(email, true);
       } catch (error) {
-        showError('phone-email-error', error.message);
-        button.disabled = false;
-        button.textContent = 'Continue';
+        if (revision === flowRevision && activeState === 'phone-email-state') {
+          showError('phone-email-error', error.message);
+          button.disabled = false;
+          button.textContent = 'Continue';
+        }
       }
     });
 
@@ -528,34 +782,42 @@
     });
     document.getElementById('continue-guest').addEventListener('click', async () => {
       const button = document.getElementById('continue-guest');
+      if (activeState !== 'form-state' || button.disabled || !returningGuest) return;
+      const revision = flowRevision;
+      const requestedGuest = returningGuest;
       button.disabled = true;
       button.textContent = 'Sending…';
       try {
-        await requestSignIn('/api/auth/guest-magic-link', { next });
-        showSent(returningGuest.maskedEmail);
+        await requestSignIn('/api/auth/guest-magic-link', { next }, revision);
+        if (revision !== flowRevision || activeState !== 'form-state' || returningGuest !== requestedGuest) return;
+        showSent(requestedGuest.maskedEmail);
       } catch (error) {
-        const el = document.getElementById('error');
-        el.textContent = error.message;
-        el.style.display = 'block';
-        button.disabled = false;
-        button.textContent = 'Email my sign-in link';
+        if (revision === flowRevision && activeState === 'form-state') {
+          showError('error', error.message);
+          button.disabled = false;
+          button.textContent = 'Email my sign-in link';
+        }
       }
     });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submit-btn');
+      if (activeState !== 'form-state' || btn.disabled) return;
       const email = document.getElementById('email').value.trim();
+      if (!email) return;
+      const revision = flowRevision;
       btn.disabled = true;
       btn.textContent = 'Sending…';
       try {
-        await requestSignIn('/api/auth/magic-link', { email, next });
+        await requestSignIn('/api/auth/magic-link', { email, next }, revision);
+        if (revision !== flowRevision || activeState !== 'form-state') return;
         showSent(email);
       } catch (err) {
-        const el = document.getElementById('error');
-        el.textContent = err.message;
-        el.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Continue';
+        if (revision === flowRevision && activeState === 'form-state') {
+          showError('error', err.message);
+          btn.disabled = false;
+          btn.textContent = 'Continue';
+        }
       }
     });
   </script>
