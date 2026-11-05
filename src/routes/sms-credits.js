@@ -5,6 +5,7 @@ const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const paypal = require('../lib/paypal');
 const stripeSms = require('../lib/stripe-sms');
 const ledger = require('../lib/sms-credit-ledger');
+const welcome = require('../lib/sms-welcome');
 
 const router = express.Router();
 const purchaseLimiter = createRateLimiter({
@@ -12,6 +13,13 @@ const purchaseLimiter = createRateLimiter({
   rules: [
     { name: 'organizer', max: 20, key: context => context.organizerId },
     { name: 'ip', max: 40, key: context => context.ip }
+  ]
+});
+const welcomeLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  rules: [
+    { name: 'organizer', max: 12, key: context => context.organizerId },
+    { name: 'ip', max: 30, key: context => context.ip }
   ]
 });
 
@@ -49,6 +57,7 @@ function handleKnownError(error, res, next) {
   res.status(error.status).json({
     error: error.message,
     code: error.code,
+    ...(error.welcome ? { welcome: error.welcome } : {}),
     ...(error.debugId ? { paypalDebugId: error.debugId } : {})
   });
 }
@@ -58,7 +67,10 @@ router.get('/api/sms-credits', requireOrganizer, async (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     const allowed = ledger.canAccessSmsCredits(req.organizer);
     if (!allowed) return res.json({ enabled: false });
-    const summary = await ledger.creditSummary(pool, req.organizer.id);
+    const [summary, welcomeState] = await Promise.all([
+      ledger.creditSummary(pool, req.organizer.id),
+      welcome.welcomeStatus(pool, req.organizer)
+    ]);
     const configured = stripeSms.stripeSmsClient.isConfigured();
     const ready = stripePaymentReady();
     const publicConfig = configured ? stripeSms.stripeSmsClient.publicConfig() : null;
@@ -67,6 +79,8 @@ router.get('/api/sms-credits', requireOrganizer, async (req, res, next) => {
       checkoutReady: ready,
       setupRequired: !ready,
       balance: summary.balance,
+      welcomeBalance: summary.welcomeBalance,
+      welcome: welcomeState,
       transactions: summary.transactions,
       packs: ledger.publicPacks(),
       environment: publicConfig?.environment || null
@@ -74,6 +88,51 @@ router.get('/api/sms-credits', requireOrganizer, async (req, res, next) => {
   } catch (error) {
     handleKnownError(error, res, next);
   }
+});
+
+router.get('/api/sms-credits/welcome', requireOrganizer, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await welcome.welcomeStatus(pool, req.organizer));
+  } catch (error) { handleKnownError(error, res, next); }
+});
+
+router.post(['/api/sms-credits/welcome/claim', '/api/sms-credits/welcome-claim'], requireOrganizer, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const limit = welcomeLimiter.consume({ organizerId: String(req.organizer.id), ip: clientIp(req) });
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(limit.retryAfterMs / 1000)));
+      return res.status(429).json({ error: 'Too many claim attempts. Try again later.', code: 'welcome_rate_limited' });
+    }
+    res.json(await welcome.claimWelcomeCredits(pool, req.organizer, {
+      confirm: req.body?.confirm, previewFingerprint: req.body?.previewFingerprint
+    }));
+  } catch (error) { handleKnownError(error, res, next); }
+});
+
+router.get('/api/sms-credits/checkout-sessions/:sessionId', requireOrganizer, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!ledger.canAccessSmsCredits(req.organizer)) {
+      return res.status(404).json({ error: 'SMS credits are not available', code: 'sms_credits_disabled' });
+    }
+    const sessionId = String(req.params.sessionId || '');
+    if (!/^cs_(?:test_|live_)?[A-Za-z0-9_]{8,240}$/.test(sessionId)) {
+      return res.status(400).json({ error: 'Invalid checkout session', code: 'invalid_checkout_session' });
+    }
+    // Read only our webhook-confirmed purchase. Never capture a payment or trust
+    // the browser's success return as proof of funds.
+    const purchase = (await pool.query(
+      `SELECT p.status,p.credits,p.completed_at,o.sms_credits
+         FROM sms_credit_purchases p JOIN organizers o ON o.id=p.organizer_id
+        WHERE p.organizer_id=$1 AND p.provider='stripe' AND p.provider_order_id=$2`,
+      [req.organizer.id, sessionId]
+    )).rows[0];
+    if (!purchase) return res.status(404).json({ error: 'Checkout not found', code: 'checkout_not_found' });
+    res.json({ status: purchase.status, credited: Boolean(purchase.completed_at),
+      balance: Number(purchase.sms_credits), credits: Number(purchase.credits) });
+  } catch (error) { handleKnownError(error, res, next); }
 });
 
 function checkoutReturnUrl(req, result) {
@@ -89,7 +148,7 @@ function checkoutReturnUrl(req, result) {
       code: 'sms_credit_return_url_invalid', status: 503
     });
   }
-  return `${origin}/settings/messaging?checkout=${result}`;
+  return `${origin}/settings/messaging?checkout=${result}${result === 'success' ? '&session_id={CHECKOUT_SESSION_ID}' : ''}`;
 }
 
 router.post('/api/sms-credits/checkout-sessions', requireOrganizer, async (req, res, next) => {
@@ -124,7 +183,7 @@ router.post('/api/sms-credits/checkout-sessions', requireOrganizer, async (req, 
       });
     }
     await ledger.attachProviderOrder(pool, purchase.id, req.organizer.id, checkout.id, 'stripe');
-    res.status(201).json({ checkoutUrl: checkoutUrl.toString() });
+    res.status(201).json({ checkoutUrl: checkoutUrl.toString(), sessionId: checkout.id });
   } catch (error) {
     if (purchase) await ledger.markPurchaseFailed(pool, purchase.id, error.code).catch(() => {});
     handleKnownError(error, res, next);

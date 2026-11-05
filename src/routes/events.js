@@ -1455,7 +1455,7 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
 router.get('/api/events/:id/followers', async (req, res, next) => {
   try {
     const { rows: ev } = await pool.query(
-      `SELECT e.*,o.sms_credits,o.public_slug AS organizer_public_slug,
+      `SELECT e.*,o.sms_credits,o.sms_welcome_credits,o.public_slug AS organizer_public_slug,
               COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label
          FROM events e JOIN organizers o ON o.id=e.organizer_id
         WHERE e.id=$1 AND e.organizer_id=$2`,
@@ -1470,6 +1470,9 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
       textCount: preview.textCount,
       textCreditCost: preview.creditCost,
       textBalance: preview.balance,
+      textUsableBalance: preview.usableBalance,
+      textCreditsNeeded: preview.creditsNeeded,
+      textReason: preview.textReason,
       canIncludeTexts: preview.canIncludeTexts,
       needsTextFunds: preview.needsFunds,
       fingerprint: preview.fingerprint,
@@ -1497,7 +1500,7 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
     }
     await client.query('BEGIN');
     const { rows: ev } = await client.query(
-      `SELECT e.*,o.sms_credits,
+      `SELECT e.*,o.sms_credits,o.sms_welcome_credits,
               COALESCE(o.org_name,o.name,'Silver Glider Events') AS organizer_label
          FROM events e JOIN organizers o ON o.id=e.organizer_id
         WHERE e.id=$1 AND e.organizer_id=$2 FOR UPDATE OF e,o`,
@@ -1524,8 +1527,8 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
     if (includeTexts) {
       if (!preview.canIncludeTexts) {
         const message = preview.needsFunds
-          ? `Add ${preview.creditCost - preview.balance} more texting credits before sending texts.`
-          : 'No followers are eligible for text updates.';
+          ? `Add ${preview.creditsNeeded} more paid texting credits before sending texts. Complimentary texts cover U.S. numbers only.`
+          : (preview.textReason || 'No followers are eligible for text updates.');
         throw Object.assign(new Error(message), { statusCode: preview.needsFunds ? 402 : 400 });
       }
       const created = await createFollowerAnnouncementBatch(client, event, preview);

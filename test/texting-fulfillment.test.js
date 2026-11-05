@@ -53,7 +53,7 @@ test('automatic fulfillment is all-or-nothing, retry-safe, and gives each guest 
   assert.match(fulfillment, /const PREVIEW_ACCESS_TOKEN = 'x'\.repeat\(32\)/);
   assert.match(fulfillment, /crypto\.randomBytes\(16\)\.toString\('hex'\)/);
   assert.match(fulfillment, /r\.sms_consent_version=\$2/);
-  assert.match(fulfillment, /reserveSendCredits\(client/);
+  assert.match(fulfillment, /reserveSendCreditsDetailed\(client/);
   assert.match(fulfillment, /NOW\(\)\+INTERVAL '8 days'/);
   assert.match(job, /runAutomaticReminderPass/);
   assert.match(job, /NOT EXISTS \([\s\S]*sms_notification_batches/);

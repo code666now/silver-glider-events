@@ -10,6 +10,9 @@ const settingsRoutes = new Map([
 ]);
 const requestedSettingsSection = settingsRoutes.get(window.location.pathname) || 'index';
 const desktopSettingsSection = requestedSettingsSection === 'index' ? 'account' : requestedSettingsSection;
+if (requestedSettingsSection === 'account' && new URLSearchParams(window.location.search).get('welcome') === 'texts') {
+  settingsElement('welcome-verification-help').hidden = false;
+}
 
 document.body.dataset.settingsRoute = requestedSettingsSection;
 document.querySelectorAll('[data-settings-section]').forEach(panel => {
@@ -27,6 +30,23 @@ let savedHostSnapshot = '';
 let smsCreditState = null;
 let selectedCreditPack = null;
 let paymentBusy = false;
+let checkoutConfirmationBusy = false;
+const welcomeTexts = window.SgeWelcomeTexts?.create(settingsElement('settings-welcome-texts'), {
+  context: 'messaging',
+  onClaim: async result => {
+    if (currentOrganizer) updateNavAccount({ ...currentOrganizer, sms_credits: result.balance });
+    await loadSmsCredits();
+  }
+});
+function creditSelectionStorageKey() {
+  return currentOrganizer?.id ? `sge-text-pack:${currentOrganizer.id}` : '';
+}
+function storedCreditPack() {
+  try { return sessionStorage.getItem(creditSelectionStorageKey()) || ''; } catch (_) { return ''; }
+}
+function rememberCreditPack(key) {
+  try { if (creditSelectionStorageKey()) sessionStorage.setItem(creditSelectionStorageKey(), key); } catch (_) {}
+}
 let identityState = {
   identities: [],
   capabilities: { canAddPhone: true, identityStepUpVerified: false, phoneLimit: 1 }
@@ -571,10 +591,12 @@ function creditDate(value) {
 }
 
 function transactionLabel(transaction) {
+  if (transaction.reason === 'welcome_credit') return 'Welcome texts';
+  if (transaction.reason === 'provider_not_accepted') return 'Unused texting credits returned';
   if (transaction.kind === 'purchase') return 'Credit pack purchased';
   if (transaction.kind === 'refund') return 'Payment refunded';
   if (transaction.kind === 'reversal') return 'Payment reversed';
-  if (transaction.kind === 'send') return 'SMS delivery';
+  if (transaction.kind === 'send') return 'Texting credits used';
   return 'Credit adjustment';
 }
 
@@ -584,7 +606,7 @@ function renderCreditHistory(transactions) {
   if (!transactions.length) {
     const empty = document.createElement('p');
     empty.className = 'credits-empty';
-    empty.textContent = 'No credit activity yet.';
+    empty.textContent = 'Your welcome texts, purchases, and usage will appear here.';
     list.appendChild(empty);
     return;
   }
@@ -620,39 +642,38 @@ function unitPrice(pack) {
 }
 
 function chooseCreditPack(pack) {
-  if (!smsCreditState?.checkoutReady || paymentBusy) return;
+  if (!smsCreditState?.checkoutReady || paymentBusy || checkoutConfirmationBusy) return;
   selectedCreditPack = pack;
+  rememberCreditPack(pack.key);
   document.querySelectorAll('.credit-pack').forEach(button => {
     button.setAttribute('aria-pressed', String(button.dataset.packKey === pack.key));
   });
   settingsElement('sms-credit-continue').disabled = false;
-  settingsElement('sms-credit-load-status').textContent = `${pack.credits.toLocaleString('en-US')} credits selected.`;
-  settingsElement('sms-credit-result').hidden = true;
+  settingsElement('sms-credit-continue').textContent = `Continue — ${creditMoney(pack.amountCents)}`;
+  settingsElement('sms-credit-load-status').textContent = `${pack.credits.toLocaleString('en-US')} texts · ${creditMoney(pack.amountCents)} total · No subscription.`;
 }
 
 function renderCreditPacks(packs, checkoutReady) {
   const container = settingsElement('sms-credit-packs');
   container.replaceChildren();
-  packs.forEach((pack, index) => {
+  packs.forEach(pack => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'credit-pack';
     button.dataset.packKey = pack.key;
     button.setAttribute('aria-pressed', String(selectedCreditPack?.key === pack.key));
-    button.disabled = !checkoutReady;
+    button.disabled = !checkoutReady || checkoutConfirmationBusy || paymentBusy;
+    const check = document.createElement('small');
+    check.className = 'credit-pack-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.textContent = '✓';
     const amount = document.createElement('strong');
-    amount.textContent = `${Number(pack.credits).toLocaleString('en-US')} credits`;
+    amount.textContent = `${Number(pack.credits).toLocaleString('en-US')} texts`;
     const price = document.createElement('span');
     price.textContent = creditMoney(pack.amountCents);
     const unit = document.createElement('em');
     unit.textContent = unitPrice(pack);
-    if (index === 1) {
-      const badge = document.createElement('small');
-      badge.className = 'credit-pack-badge';
-      badge.textContent = 'MOST POPULAR';
-      button.appendChild(badge);
-    }
-    button.append(amount, price, unit);
+    button.append(check, amount, price, unit);
     button.addEventListener('click', () => chooseCreditPack(pack));
     container.appendChild(button);
   });
@@ -660,20 +681,28 @@ function renderCreditPacks(packs, checkoutReady) {
 
 function renderSmsCredits(state) {
   smsCreditState = state;
-  const balance = Number(state.balance || 0).toLocaleString('en-US');
+  const hasBalance = state.balance != null && Number.isFinite(Number(state.balance));
+  const balance = hasBalance ? Number(state.balance).toLocaleString('en-US') : '—';
   settingsElement('sms-credit-balance').textContent = balance;
-  settingsElement('settings-index-credit-balance').textContent = `${balance} credits`;
-  settingsElement('settings-rail-credit-balance').textContent = balance;
+  const complimentary = Math.max(0, Number(state.welcome?.availableCredits) || 0);
+  settingsElement('sms-welcome-balance').hidden = complimentary === 0;
+  settingsElement('sms-welcome-balance').textContent = `Includes ${complimentary} complimentary ${complimentary === 1 ? 'text' : 'texts'} for US recipients.`;
+  settingsElement('settings-index-credit-balance').textContent = hasBalance && Number(state.balance) > 0 ? `${balance} texts` : '';
+  settingsElement('settings-rail-credit-balance').textContent = hasBalance && Number(state.balance) > 0 ? balance : '';
   settingsElement('sms-credit-env').hidden = state.environment !== 'sandbox';
   settingsElement('sms-credit-setup').hidden = !state.setupRequired;
+  selectedCreditPack = (state.packs || []).find(pack => pack.key === (selectedCreditPack?.key || storedCreditPack())) || null;
   renderCreditPacks(state.packs || [], state.checkoutReady);
   renderCreditHistory(state.transactions || []);
   settingsElement('sms-credit-load-status').textContent = state.enabled
-    ? (state.checkoutReady ? 'Choose a pack to continue.' : '')
-    : 'SMS credits are not available for this account.';
+    ? (state.checkoutReady ? 'Choose a pack to continue. Email reminders remain included.' : '')
+    : 'Text purchases are not available for this account. Email reminders remain included.';
   settingsElement('sms-credit-load-status').classList.toggle('error', !state.enabled);
   if (!state.checkoutReady) selectedCreditPack = null;
-  settingsElement('sms-credit-continue').disabled = !state.checkoutReady || !selectedCreditPack;
+  settingsElement('sms-credit-continue').disabled = !state.checkoutReady || !selectedCreditPack || checkoutConfirmationBusy;
+  settingsElement('sms-credit-continue').textContent = selectedCreditPack ? `Continue — ${creditMoney(selectedCreditPack.amountCents)}` : 'Choose a text pack';
+  if (state.welcome) welcomeTexts?.load(state.welcome);
+  if (hasBalance && currentOrganizer) updateNavAccount({ ...currentOrganizer, sms_credits: Number(state.balance) });
 }
 
 async function loadSmsCredits() {
@@ -696,17 +725,17 @@ function showCreditResult(message) {
 function setCheckoutBusy(busy) {
   paymentBusy = busy;
   document.querySelectorAll('.credit-pack').forEach(button => {
-    button.disabled = busy || !smsCreditState?.checkoutReady;
+    button.disabled = busy || checkoutConfirmationBusy || !smsCreditState?.checkoutReady;
   });
   const continueButton = settingsElement('sms-credit-continue');
-  continueButton.disabled = busy || !smsCreditState?.checkoutReady || !selectedCreditPack;
+  continueButton.disabled = busy || checkoutConfirmationBusy || !smsCreditState?.checkoutReady || !selectedCreditPack;
   continueButton.setAttribute('aria-busy', String(busy));
-  continueButton.textContent = busy ? 'Opening secure checkout…' : 'Continue to payment';
+  continueButton.textContent = busy ? 'Opening secure checkout…' : selectedCreditPack ? `Continue — ${creditMoney(selectedCreditPack.amountCents)}` : 'Choose a text pack';
 }
 
 async function startStripeCheckout() {
   const pack = selectedCreditPack;
-  if (!pack || paymentBusy || !smsCreditState?.checkoutReady) return;
+  if (!pack || paymentBusy || checkoutConfirmationBusy || !smsCreditState?.checkoutReady) return;
   setCheckoutBusy(true);
   settingsElement('sms-credit-load-status').textContent = 'Opening Stripe’s secure checkout…';
   settingsElement('sms-credit-load-status').classList.remove('error');
@@ -726,17 +755,59 @@ async function startStripeCheckout() {
   }
 }
 
-function showCheckoutReturn() {
+async function showCheckoutReturn() {
   const params = new URLSearchParams(window.location.search);
   const checkout = params.get('checkout');
   if (checkout === 'success') {
-    showCreditResult('Checkout returned. Your balance includes only payments Stripe has confirmed. If it has not updated yet, refresh in a moment.');
+    const sessionId = params.get('session_id');
+    showCreditResult('Confirming payment… Your texts will appear once payment is confirmed.');
     settingsElement('sms-credit-result').focus();
+    if (!sessionId || !/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
+      showCreditResult('We could not identify this checkout. Your balance shows confirmed purchases only. Check your recent activity before buying again.');
+      return;
+    }
+    checkoutConfirmationBusy = true;
+    setCheckoutBusy(false);
+    let paymentSettled = false;
+    try {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const result = await api(`/api/sms-credits/checkout-sessions/${encodeURIComponent(sessionId)}`);
+        if (result.status === 'completed' && result.credited === true) {
+          paymentSettled = true;
+          await loadSmsCredits();
+          showCreditResult(`✓ ${Number(result.credits).toLocaleString('en-US')} texts added. Your balance is up to date.`);
+          const cleaned = new URL(window.location.href);
+          cleaned.searchParams.delete('checkout'); cleaned.searchParams.delete('session_id');
+          window.history.replaceState(window.history.state, '', `${cleaned.pathname}${cleaned.search}${cleaned.hash}`);
+          return;
+        }
+        if (['failed', 'cancelled', 'expired', 'partially_refunded', 'refunded', 'reversed'].includes(result.status)) {
+          paymentSettled = true;
+          await loadSmsCredits();
+          showCreditResult(['partially_refunded', 'refunded', 'reversed'].includes(result.status)
+            ? (result.status === 'partially_refunded'
+              ? 'This payment was partially refunded. Your current balance and recent activity reflect the adjustment.'
+              : 'This payment was refunded or reversed. Your current balance and recent activity reflect the adjustment.')
+            : 'This checkout did not add texts. Check recent activity for its payment status. Your selected pack is still here.');
+          return;
+        }
+        if (attempt < 7) await new Promise(resolve => window.setTimeout(resolve, 1800));
+      }
+      showCreditResult('Payment confirmation is taking a little longer. No texts have been added yet. Refresh this page to check again; please don’t purchase again while it is pending.');
+    } catch (_) {
+      showCreditResult('We could not confirm this payment yet. Refresh this page to check again, and check your recent activity before buying again.');
+    } finally {
+      // Keep purchasing disabled while this checkout is unresolved, avoiding a second accidental purchase.
+      checkoutConfirmationBusy = !paymentSettled;
+      setCheckoutBusy(false);
+    }
   } else if (checkout === 'cancelled') {
-    showCreditResult('Checkout cancelled. No charge was made.');
+    showCreditResult('Checkout closed. Your selected pack is still here. Your balance shows confirmed purchases only.');
     settingsElement('sms-credit-result').focus();
+    const cleaned = new URL(window.location.href);
+    cleaned.searchParams.delete('checkout'); cleaned.searchParams.delete('session_id');
+    window.history.replaceState(window.history.state, '', `${cleaned.pathname}${cleaned.search}${cleaned.hash}`);
   }
-  if (checkout) window.history.replaceState({}, '', window.location.pathname);
 }
 
 function showSettings() {

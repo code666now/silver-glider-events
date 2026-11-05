@@ -21,7 +21,8 @@ test('new-event management keeps its success note and offers one accessible Host
   assert.match(view, /id="host-page-success-view"[^>]*target="_blank"[^>]*rel="noopener"/);
   assert.match(view, /id="host-page-success-later"[^>]*>Keep managing my event<\/button>/);
 
-  assert.match(client, /if \(createdFromEventFlow\)[\s\S]*showHostPageSuccessIfNeeded\(\)/);
+  assert.match(client, /if \(!createdFromEventFlow \|\| eventData\?\.status !== 'published'\) return/);
+  assert.match(client, /if \(welcomeVisible\)[\s\S]*else showHostPageSuccessIfNeeded\(\)/);
   assert.match(client, /api\('\/api\/host-onboarding'\)/);
   assert.match(client, /state\.showHostPageSuccess/);
   assert.match(client, /safeHostPageUrl\(state\.hostPageUrl\)/);

@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.194
+
+Released November 4, 2026. Built, reviewed, and deployed by Codex.
+
+### Welcome texts, clear costs, and working mobile Create
+
+* Add an explicit, one-time **50 complimentary texts** claim after publication for hosts with verified email and phone. Reuse the existing wallet, preserve paid balances, prevent repeat claims, and cap the initial campaign at 200 claims. Complimentary credits cover U.S. recipients; opt-in and STOP rules remain unchanged. Claiming does not enable reminders or subscribe anyone, and already-enabled reminders are disclosed before confirmation.
+* Give first publication and Messaging a coordinated welcome/sharing experience, a clear **Email reminders and event updates are included at no extra cost** explanation, honest balances, selected-pack feedback, and webhook-confirmed checkout states. Remove unexplained zero navigation badges and the unsupported Most Popular badge; pack prices remain unchanged.
+* Keep both new controlled SMS templates within one GSM-7 segment, including the full secure reminder link or public-event short link and STOP wording. Existing queued message bodies are unchanged. Hold ambiguous provider responses for confirmation rather than risking a duplicate send.
+* Add Super Admin → Overview complimentary-text cost reporting: recorded USD message charges, hosts claimed, credits granted/remaining, and separate pending-pricing or uncertain-acceptance counts. Durable accounting survives account/event deletion; unused credits are not reported as money spent, and the panel does not claim to be the full provider invoice.
+* Fix mobile Home’s large Create card: obsolete responsive code removed its link below 880px. The card and bottom Create tab now both open the existing new-event form.
+
+### Verification
+
+* All **879 automated tests** and static checks pass (274 JavaScript / 441 project files). Coverage includes claim races, verification/ownership, cap enforcement, paid/welcome accounting, US-only allocation, consent revocation/refunds, one-segment templates, durable billing/unknown outcomes, checkout returns, admin authorization, and mobile navigation.
+* Desktop and 390px phone layouts were visually reviewed. Browser APIs and providers were mocked; no real texts, emails, guest thank-yous, payments, or production events were created. Physical Safari/iOS remains a manual check.
+
 ## 1.0.193
 
 Released November 4, 2026. Built, reviewed, and deployed by Codex.

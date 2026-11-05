@@ -3,7 +3,12 @@ const pool = require('../config/db');
 const sms = require('../lib/sms');
 const { SMS_CONSENT_VERSION } = require('../lib/sms-consent');
 const { FOLLOW_SMS_CONSENT_VERSION } = require('../lib/follow-consent');
-const { refundSendCredits, SmsCreditError } = require('../lib/sms-credit-ledger');
+const { refundSendCredits, accountWelcomeSmsAccepted, SmsCreditError } = require('../lib/sms-credit-ledger');
+const { SINGLE_SEGMENT_TEMPLATE_VERSION, assertSingleSegmentMessage } = require('../lib/sms-lifecycle');
+const {
+  markWelcomeSmsCostOutcome, prepareWelcomeSmsCost,
+  recordWelcomeSmsCost, reconcileWelcomeSmsCosts
+} = require('../lib/sms-costs');
 const {
   HOST_ACCOUNT_DELETED,
   HOST_ACCOUNT_INACTIVE,
@@ -45,7 +50,10 @@ async function finalizeSmsBatch(batchId) {
                 (status='failed' AND provider_message_sid IS NULL AND attempt_count < $3))::int AS outstanding,
               COALESCE(SUM(segment_count) FILTER (WHERE status='failed' AND
                 provider_message_sid IS NULL AND attempt_count >= $3
-                AND COALESCE(provider_error_code <> ALL($4::text[]),TRUE)),0)::int AS refundable
+                AND COALESCE(provider_error_code <> ALL($4::text[]),TRUE)),0)::int AS refundable,
+              COALESCE(SUM(welcome_credits) FILTER (WHERE status='failed' AND
+                provider_message_sid IS NULL AND attempt_count >= $3
+                AND COALESCE(provider_error_code <> ALL($4::text[]),TRUE)),0)::int AS welcome_refundable
          FROM sms_notification_recipients WHERE batch_id=$1`,
       [batchId, ACCEPTED_STATUSES, MAX_ATTEMPTS, [HOST_ACCOUNT_DELETED, HOST_ACCOUNT_INACTIVE]]
     )).rows[0];
@@ -63,6 +71,7 @@ async function finalizeSmsBatch(batchId) {
         organizerId: batch.organizer_id,
         batchId,
         credits: refundable,
+        welcomeRefundCredits: Math.max(0, Number(counts.welcome_refundable || 0) - Number(batch.welcome_refunded_credits || 0)),
         metadata: { eventId: batch.event_id, reason: 'provider_not_accepted' }
       });
     }
@@ -84,6 +93,45 @@ async function finalizeSmsBatch(batchId) {
   }
 }
 
+async function persistProviderAcceptance(db, recipientId, result) {
+  const providerStatus = ACCEPTED_STATUSES.includes(result.status) ? result.status : 'accepted';
+  const billing = sms.providerBillingFields(result);
+  await db.query(
+    `WITH accepted AS (UPDATE sms_notification_recipients
+        SET status=CASE WHEN provider_message_sid IS NOT NULL THEN status ELSE $2 END,
+            provider_status=CASE WHEN provider_message_sid IS NOT NULL THEN provider_status ELSE $3 END,
+            provider_message_sid=COALESCE(provider_message_sid,$4),
+            provider_price=COALESCE($5,provider_price),provider_price_unit=COALESCE($6,provider_price_unit),
+            provider_num_segments=COALESCE($7,provider_num_segments),
+            provider_price_checked_at=CASE WHEN $5::numeric IS NOT NULL THEN NOW() ELSE provider_price_checked_at END,
+            accepted_at=COALESCE(accepted_at,NOW()),updated_at=NOW(),
+            provider_error_code=CASE WHEN provider_message_sid IS NOT NULL THEN provider_error_code ELSE NULL END
+      WHERE id=$1 AND (provider_message_sid IS NULL OR provider_message_sid=$4) RETURNING id)
+     UPDATE sms_provider_cost_facts SET provider_message_sid=COALESCE(provider_message_sid,$4),
+        acceptance_state='accepted',accepted_at=COALESCE(accepted_at,NOW())
+      WHERE source_recipient_id=$1 AND (provider_message_sid IS NULL OR provider_message_sid=$4)`,
+    [recipientId,providerStatus,result.status,result.sid,billing.price,billing.priceUnit,billing.numSegments]
+  );
+}
+
+async function persistWelcomeAcceptance(db, batch, delivery, result) {
+  if (!(Number(delivery.welcome_credits) > 0)) return;
+  try {
+    await db.query('BEGIN');
+    await recordWelcomeSmsCost(db, {
+      recipientId: delivery.id, welcomeClaimId: batch.welcome_claim_id,
+      welcomeCredits: delivery.welcome_credits, result
+    });
+    await accountWelcomeSmsAccepted(db, delivery.id);
+    await db.query('COMMIT');
+  } catch (_) {
+    await db.query('ROLLBACK').catch(() => {});
+    // The SID has already been committed. Accounting can be reconciled later;
+    // an unavailable price/ledger must never turn an accepted text into a retry.
+    console.error('[sms-costs] acceptance accounting pending reconciliation');
+  }
+}
+
 async function processSmsBatch(batchId) {
   const batch = (await pool.query(
     `SELECT b.* FROM sms_notification_batches b
@@ -93,7 +141,7 @@ async function processSmsBatch(batchId) {
   if (!batch) return null;
   await pool.query("UPDATE sms_notification_batches SET status='processing' WHERE id=$1", [batchId]);
   const { rows: deliveries } = await pool.query(
-    `SELECT sr.id, sr.rsvp_id, sr.host_follow_id, sr.recipient, sr.status_token, sr.message_body
+    `SELECT sr.id, sr.rsvp_id, sr.host_follow_id, sr.recipient, sr.status_token, sr.message_body,sr.welcome_credits
        FROM sms_notification_recipients sr
       WHERE sr.batch_id=$1 AND sr.provider_message_sid IS NULL
         AND sr.status IN ('pending','failed') AND sr.attempt_count < $2
@@ -136,12 +184,29 @@ async function processSmsBatch(batchId) {
       );
       continue;
     }
+    let acceptedResult = null;
+    let providerAttempted = false;
     try {
-      const deliveryResult = await withActiveHostAccount(pool, batch.organizer_id, () => sms.sendSms({
-        to: delivery.recipient,
-        body: delivery.message_body || batch.message_body,
-        statusCallback: callbackUrl(delivery.status_token)
-      }));
+      const body = delivery.message_body || batch.message_body;
+      if (batch.template_version === SINGLE_SEGMENT_TEMPLATE_VERSION) assertSingleSegmentMessage(body);
+      const deliveryResult = await withActiveHostAccount(pool, batch.organizer_id, async client => {
+        // Reserve a durable, non-PII billing fact before the external side effect.
+        // A timeout or deletion can then never erase a potentially charged text.
+        await prepareWelcomeSmsCost(client, {
+          recipientId: delivery.id, welcomeClaimId: batch.welcome_claim_id,
+          welcomeCredits: delivery.welcome_credits
+        });
+        providerAttempted = true;
+        const result = await sms.sendSms({
+          to: delivery.recipient, body, statusCallback: callbackUrl(delivery.status_token)
+        });
+        acceptedResult = result;
+        // Keep the account-deletion lock until the SID and durable, non-PII
+        // cost attribution have been saved. Costs are always best effort.
+        await persistProviderAcceptance(client, delivery.id, result);
+        await persistWelcomeAcceptance(client, batch, delivery, result);
+        return result;
+      });
       if (!deliveryResult.allowed) {
         const inactiveCode = deliveryResult.accountStatus === 'suspended'
           ? HOST_ACCOUNT_SUSPENDED
@@ -157,20 +222,36 @@ async function processSmsBatch(batchId) {
         );
         continue;
       }
-      const result = deliveryResult.result;
-      const providerStatus = ACCEPTED_STATUSES.includes(result.status) ? result.status : 'accepted';
-      await pool.query(
-        `UPDATE sms_notification_recipients
-            SET status=CASE WHEN provider_message_sid IS NOT NULL THEN status ELSE $2 END,
-                provider_status=CASE WHEN provider_message_sid IS NOT NULL THEN provider_status ELSE $3 END,
-                provider_message_sid=COALESCE(provider_message_sid,$4),
-                accepted_at=COALESCE(accepted_at,NOW()),updated_at=NOW(),
-                provider_error_code=CASE WHEN provider_message_sid IS NOT NULL THEN provider_error_code ELSE NULL END
-          WHERE id=$1 AND (provider_message_sid IS NULL OR provider_message_sid=$4)`,
-        [delivery.id, providerStatus, result.status, result.sid]
-      );
     } catch (error) {
-      const permanent = error.code === 'sms_rejected';
+      if (acceptedResult) {
+        // Even a connection/unlock failure after a successful provider response
+        // must not send another text. Try to save its SID again; otherwise leave
+        // it processing for investigation instead of marking it retryable.
+        await persistProviderAcceptance(pool, delivery.id, acceptedResult).catch(() => {});
+        await recordWelcomeSmsCost(pool, {
+          recipientId: delivery.id, welcomeClaimId: batch.welcome_claim_id,
+          welcomeCredits: delivery.welcome_credits, result: acceptedResult
+        }).catch(() => {});
+        console.error('[sms-notifications] accepted delivery persistence needs reconciliation');
+        continue;
+      }
+      const acceptanceUnknown = error.acceptance === 'unknown' ||
+        (providerAttempted && error.acceptance !== 'not_sent' && error.acceptance !== 'rejected' && error.code !== 'sms_rejected');
+      if (acceptanceUnknown) {
+        // A transport timeout/5xx is not proof that Twilio rejected a POST.
+        // Hold it for its signed callback/manual investigation, without a
+        // retry or automatic credit refund that could enable another send.
+        await pool.query(
+          `UPDATE sms_notification_recipients SET status='processing',attempt_count=$2,
+             provider_error_code='sms_acceptance_unknown',updated_at=NOW()
+            WHERE id=$1 AND provider_message_sid IS NULL`, [delivery.id,MAX_ATTEMPTS]
+        );
+        await markWelcomeSmsCostOutcome(pool, delivery.id, 'unknown').catch(() => {});
+        console.error('[sms-notifications] provider acceptance unknown; automatic retry withheld');
+        continue;
+      }
+      await markWelcomeSmsCostOutcome(pool, delivery.id, 'not_sent').catch(() => {});
+      const permanent = error.code === 'sms_rejected' || error.code === 'sms_single_segment_required';
       if (Number(error.providerCode) === 21610) {
         await Promise.all([
           pool.query(
@@ -251,11 +332,21 @@ async function runSmsPass() {
   try {
     await runAutomaticReminderPass();
     const { rows } = await pool.query(
-      `SELECT id FROM sms_notification_batches
-        WHERE status IN ('pending','processing','partial_failed')
-        ORDER BY id LIMIT 25`
+      `SELECT b.id FROM sms_notification_batches b
+        WHERE b.status IN ('pending','processing','partial_failed')
+          AND (NOT EXISTS (SELECT 1 FROM sms_notification_recipients held
+                WHERE held.batch_id=b.id AND held.status='processing')
+               OR EXISTS (SELECT 1 FROM sms_notification_recipients retry
+                WHERE retry.batch_id=b.id AND retry.provider_message_sid IS NULL
+                  AND retry.status IN ('pending','failed') AND retry.attempt_count<$1))
+        ORDER BY b.id LIMIT 25`, [MAX_ATTEMPTS]
     );
     for (const row of rows) await processSmsBatch(row.id);
+    // Provider price lookups run separately so delayed billing can never delay
+    // the reminder queue. The reconciler bounds/leases its work and never sends.
+    void reconcileWelcomeSmsCosts().catch(() => {
+      console.error('[sms-costs] provider cost reconciliation unavailable');
+    });
   } catch (error) {
     console.error('[sms-notifications] retry pass failed:', error.message);
   } finally {

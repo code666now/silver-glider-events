@@ -24,7 +24,7 @@ router.post('/api/webhooks/twilio/status/:token', verifyTwilio, async (req, res,
       ? providerStatus : null;
     if (!mapped || !/^(SM|MM)[0-9a-f]{32}$/i.test(providerSid)) return res.sendStatus(204);
     const { rows } = await pool.query(
-      `UPDATE sms_notification_recipients
+      `WITH accepted AS (UPDATE sms_notification_recipients
           SET status=$2,provider_status=$2,
               provider_message_sid=COALESCE(provider_message_sid,$3),
               provider_error_code=NULLIF($4,''),
@@ -32,7 +32,14 @@ router.post('/api/webhooks/twilio/status/:token', verifyTwilio, async (req, res,
               failed_at=CASE WHEN $2 IN ('failed','undelivered') THEN COALESCE(failed_at,NOW()) ELSE failed_at END,
               updated_at=NOW()
         WHERE status_token=$1 AND (provider_message_sid IS NULL OR provider_message_sid=$3)
-        RETURNING batch_id`,
+        RETURNING batch_id,id),
+       costs AS (
+         UPDATE sms_provider_cost_facts SET provider_message_sid=COALESCE(provider_message_sid,$3),
+           acceptance_state='accepted',accepted_at=COALESCE(accepted_at,NOW())
+          WHERE source_recipient_id IN (SELECT id FROM accepted)
+            AND (provider_message_sid IS NULL OR provider_message_sid=$3)
+          RETURNING id
+       ) SELECT batch_id FROM accepted`,
       [req.params.token, mapped, providerSid, String(req.body.ErrorCode || '').slice(0, 40)]
     );
     if (rows[0]) await finalizeSmsBatch(rows[0].batch_id);
@@ -96,7 +103,7 @@ router.post('/api/events/:id/sms/tomorrow', async (req, res, next) => {
     }
     if (!preview.canSend) {
       await client.query('ROLLBACK');
-      return res.status(preview.balance < preview.creditCost ? 402 : 400).json({ error: preview.reason });
+      return res.status(preview.creditsNeeded > 0 ? 402 : 400).json({ error: preview.reason });
     }
     if (String(req.body.fingerprint || '') !== preview.fingerprint) {
       await client.query('ROLLBACK');

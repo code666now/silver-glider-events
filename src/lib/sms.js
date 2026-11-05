@@ -8,7 +8,8 @@ class SmsDeliveryError extends Error {
     code = 'sms_error',
     status = 502,
     providerCode = null,
-    providerStatus = null
+    providerStatus = null,
+    acceptance = 'not_sent'
   } = {}) {
     super(message);
     this.name = 'SmsDeliveryError';
@@ -16,6 +17,7 @@ class SmsDeliveryError extends Error {
     this.status = status;
     this.providerCode = providerCode;
     this.providerStatus = providerStatus;
+    this.acceptance = acceptance;
   }
 }
 
@@ -57,7 +59,7 @@ function readConfig(env) {
   return { accountSid, authToken, messagingServiceSid };
 }
 
-function providerError(error) {
+function providerError(error, { submitted = true } = {}) {
   const providerStatus = Number.isInteger(Number(error?.status)) ? Number(error.status) : null;
   const numericProviderCode = Number(error?.code);
   const providerCode = Number.isInteger(numericProviderCode) ? numericProviderCode : null;
@@ -75,20 +77,35 @@ function providerError(error) {
       code: 'sms_rejected',
       status: 422,
       providerCode,
-      providerStatus
+      providerStatus,
+      acceptance: 'rejected'
     });
   }
   return new SmsDeliveryError('SMS provider is temporarily unavailable', {
     code: 'sms_provider_unavailable',
     status: 502,
     providerCode,
-    providerStatus
+    providerStatus,
+    // A timeout/5xx can arrive after Twilio accepted the POST. Without a SID
+    // it is unsafe to retry. A 429 is a definitive rejection of this request.
+    acceptance: submitted && providerStatus !== 429 ? 'unknown' : 'not_sent'
   });
+}
+
+function providerBillingFields(message) {
+  const rawPrice = message?.price == null ? '' : String(message.price).trim();
+  const rawUnit = String(message?.priceUnit || '').trim().toUpperCase();
+  const segments = message?.numSegments == null || message.numSegments === '' ? null : Number(message.numSegments);
+  return {
+    price: /^-?\d{1,10}(?:\.\d{1,8})?$/.test(rawPrice) ? rawPrice : null,
+    priceUnit: /^[A-Z]{3}$/.test(rawUnit) ? rawUnit : null,
+    numSegments: Number.isSafeInteger(segments) && segments > 0 ? segments : null
+  };
 }
 
 function createSmsService({
   env = process.env,
-  clientFactory = (accountSid, authToken) => twilio(accountSid, authToken)
+  clientFactory = (accountSid, authToken) => twilio(accountSid, authToken, { timeout: 10000 })
 } = {}) {
   let client = null;
 
@@ -103,6 +120,7 @@ function createSmsService({
     }
 
     const config = configReader(env);
+    let submitted = false;
     try {
       if (!client) client = clientFactory(config.accountSid, config.authToken);
       const payload = {
@@ -111,22 +129,25 @@ function createSmsService({
         messagingServiceSid: config.messagingServiceSid
       };
       if (statusCallback) payload.statusCallback = String(statusCallback);
+      submitted = true;
       const message = await client.messages.create(payload);
       const sid = String(message?.sid || '').trim();
       if (!/^(SM|MM)[0-9a-f]{32}$/i.test(sid)) {
         throw new SmsDeliveryError('SMS provider returned an invalid response', {
           code: 'sms_invalid_provider_response',
-          status: 502
+          status: 502,
+          acceptance: 'unknown'
         });
       }
       return {
         sid,
         status: String(message?.status || 'accepted').slice(0, 40),
-        recipient
+        recipient,
+        ...providerBillingFields(message)
       };
     } catch (error) {
       if (error instanceof SmsDeliveryError) throw error;
-      throw providerError(error);
+      throw providerError(error, { submitted });
     }
   }
 
@@ -135,8 +156,31 @@ function createSmsService({
     return sendWithConfig(input, readConfig);
   }
 
+  // Read-only reconciliation: Twilio commonly returns price=null on create.
+  // This method can fetch one known SID, but has no send or recipient input.
+  async function fetchMessageBilling(sid) {
+    if (!/^(SM|MM)[0-9a-f]{32}$/i.test(String(sid || ''))) {
+      throw new SmsDeliveryError('Invalid SMS reference', { code: 'invalid_sms_reference', status: 400 });
+    }
+    const config = readConfig(env);
+    try {
+      if (!client) client = clientFactory(config.accountSid, config.authToken);
+      const message = await client.messages(sid).fetch();
+      if (String(message?.sid || '') !== sid) {
+        throw new SmsDeliveryError('SMS provider returned an invalid response', {
+          code: 'sms_invalid_provider_response', status: 502
+        });
+      }
+      return { sid, ...providerBillingFields(message) };
+    } catch (error) {
+      if (error instanceof SmsDeliveryError) throw error;
+      throw providerError(error, { submitted: false });
+    }
+  }
+
   return {
     sendSms,
+    fetchMessageBilling,
     sendTestSms: to => sendSms({ to, body: TEST_SMS_BODY })
   };
 }
@@ -148,6 +192,8 @@ module.exports = {
   SmsDeliveryError,
   normalizeE164,
   createSmsService,
+  providerBillingFields,
   sendSms: input => smsService.sendSms(input),
-  sendTestSms: to => smsService.sendTestSms(to)
+  sendTestSms: to => smsService.sendTestSms(to),
+  fetchMessageBilling: sid => smsService.fetchMessageBilling(sid)
 };

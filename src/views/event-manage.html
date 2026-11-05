@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/css/familiar-faces.css">
   <link rel="stylesheet" href="/css/post-event.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
+  <link rel="stylesheet" href="/css/welcome-texts.css">
   <style>
     .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
     .stat {
@@ -639,6 +640,7 @@
       <strong style="color:var(--sg-accent)">Your event is live.</strong> Copy the link below and share it anywhere.
       <span id="created-host-note"></span>
     </div>
+    <section id="published-welcome-texts" hidden aria-label="Your first published event"></section>
 
     <section class="manage-mobile-screen-intro" id="manage-mobile-screen-intro" tabindex="-1" aria-labelledby="manage-mobile-screen-title" hidden>
       <h1 class="sr-only" id="manage-mobile-screen-title">Overview</h1>
@@ -1050,6 +1052,7 @@
   <script src="/js/event-lifecycle.js"></script>
   <script src="/js/thank-you-credits.js"></script>
   <script src="/js/post-event.js"></script>
+  <script src="/js/welcome-texts.js"></script>
   <script src="/js/manage.js"></script>
 </body>
 </html>

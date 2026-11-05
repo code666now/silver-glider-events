@@ -64,7 +64,7 @@ test('lifecycle card uses existing share, credits, host page, and create-event f
   assert.match(client, /settings\/messaging\?return=/);
   assert.match(client, /duplicateEvent\(\$\('lifecycle-next-event'\), \{ repeat: true \}\)/);
   assert.match(client, /Copy and share your public page/);
-  assert.match(client, /email reminders still send free/i);
+  assert.match(client, /email stays included/i);
   assert.match(client, /Reminder sent yesterday/);
   assert.match(editor, /AS lifecycle_phase/);
   assert.match(editor, /AS new_follower_count/);

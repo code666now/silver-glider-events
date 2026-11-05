@@ -295,10 +295,11 @@ async function applyPurchaseAdjustment(db, {
 async function creditSummary(db, organizerId, { limit = 20 } = {}) {
   const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
   const [account, transactions] = await Promise.all([
-    db.query('SELECT sms_credits FROM organizers WHERE id=$1', [organizerId]),
+    db.query('SELECT sms_credits,sms_welcome_credits FROM organizers WHERE id=$1', [organizerId]),
     db.query(
       `SELECT id,kind,credits_delta,balance_after,amount_cents_delta,currency,created_at,
-              metadata->>'packKey' AS pack_key
+              metadata->>'packKey' AS pack_key,metadata->>'reason' AS reason,
+              metadata->>'welcomeCredits' AS welcome_credits
          FROM sms_credit_transactions
         WHERE organizer_id=$1
         ORDER BY created_at DESC,id DESC LIMIT $2`,
@@ -307,6 +308,7 @@ async function creditSummary(db, organizerId, { limit = 20 } = {}) {
   ]);
   return {
     balance: Number(account.rows[0]?.sms_credits || 0),
+    welcomeBalance: Number(account.rows[0]?.sms_welcome_credits || 0),
     transactions: transactions.rows.map(row => ({
       id: String(row.id),
       kind: row.kind,
@@ -315,22 +317,39 @@ async function creditSummary(db, organizerId, { limit = 20 } = {}) {
       amountCentsDelta: row.amount_cents_delta == null ? null : Number(row.amount_cents_delta),
       currency: row.currency || null,
       packKey: row.pack_key || null,
+      reason: row.reason || null,
+      welcomeCredits: Number(row.welcome_credits || 0),
       createdAt: row.created_at
     }))
   };
 }
 
-async function reserveSendCredits(client, { organizerId, batchId, credits, metadata = {} }) {
+async function reserveSendCreditsDetailed(client, {
+  organizerId, batchId, credits, maxWelcomeCredits = 0, metadata = {}
+}) {
   const amount = Number(credits);
   if (!Number.isInteger(amount) || amount < 1) {
     throw new SmsCreditError('SMS credit cost is invalid', { code: 'invalid_sms_credit_cost', status: 400 });
   }
+  const welcomeMaximum = Math.min(amount, Math.max(0, Math.floor(Number(maxWelcomeCredits) || 0)));
+  // Serialize against payment/grant/refund mutations, then check both the total
+  // balance and the eligible portion. A purchase reversal can leave paid debt;
+  // never manufacture paid funds by treating welcome credits as unrestricted.
+  const account = (await client.query(
+    'SELECT sms_credits,sms_welcome_credits FROM organizers WHERE id=$1 FOR UPDATE', [organizerId]
+  )).rows[0];
+  const availableWelcome = Math.min(welcomeMaximum, Number(account?.sms_welcome_credits || 0));
+  if (!account || Number(account.sms_credits) - Number(account.sms_welcome_credits) + availableWelcome < amount) {
+    throw new SmsCreditError('Add paid texting credits for this audience. Complimentary texts cover U.S. numbers only.', {
+      code: 'insufficient_sms_credits', status: 402
+    });
+  }
   const { rows } = await client.query(
     `UPDATE organizers
-        SET sms_credits=sms_credits-$2,updated_at=NOW()
+        SET sms_credits=sms_credits-$2,sms_welcome_credits=sms_welcome_credits-$3,updated_at=NOW()
       WHERE id=$1 AND sms_credits >= $2
       RETURNING sms_credits`,
-    [organizerId, amount]
+    [organizerId, amount, availableWelcome]
   );
   if (!rows.length) {
     throw new SmsCreditError('Buy more SMS credits before sending this text', {
@@ -338,35 +357,87 @@ async function reserveSendCredits(client, { organizerId, batchId, credits, metad
     });
   }
   const balance = Number(rows[0].sms_credits);
+  let welcomeClaimId = null;
+  if (availableWelcome > 0) {
+    const claim = (await client.query(
+      `UPDATE sms_welcome_claims SET funded_credits=funded_credits+$2
+        WHERE organizer_id=$1 AND campaign_key='welcome-texts-v1' RETURNING id`,
+      [organizerId, availableWelcome]
+    )).rows[0];
+    if (!claim) throw new SmsCreditError('Welcome-text balance could not be verified.', {
+      code: 'welcome_balance_invalid', status: 409
+    });
+    welcomeClaimId = String(claim.id);
+  }
+  await client.query(
+    `UPDATE sms_notification_batches SET welcome_credit_cost=$2,welcome_claim_id=$3 WHERE id=$1`,
+    [batchId, availableWelcome, welcomeClaimId]
+  );
   await client.query(
     `INSERT INTO sms_credit_transactions
        (organizer_id,kind,credits_delta,balance_after,external_key,metadata)
      VALUES ($1,'send',$2,$3,$4,$5::jsonb)`,
-    [organizerId, -amount, balance, `sms:batch:${batchId}:send`, JSON.stringify(metadata)]
+    [organizerId, -amount, balance, `sms:batch:${batchId}:send`,
+      JSON.stringify({ ...metadata, welcomeCredits: availableWelcome })]
   );
-  return balance;
+  return { balance, welcomeCredits: availableWelcome, welcomeClaimId };
 }
 
-async function refundSendCredits(client, { organizerId, batchId, credits, metadata = {} }) {
+async function reserveSendCredits(client, options) {
+  return (await reserveSendCreditsDetailed(client, options)).balance;
+}
+
+async function refundSendCredits(client, {
+  organizerId, batchId, credits, welcomeRefundCredits = 0, metadata = {}
+}) {
   const amount = Number(credits);
   if (!Number.isInteger(amount) || amount < 1) return null;
+  // Callers already lock this batch, but retaining the lock here makes a second
+  // concurrent finalizer harmless even when this helper is used independently.
+  const batch = (await client.query(
+    'SELECT welcome_credit_cost,welcome_refunded_credits,welcome_claim_id FROM sms_notification_batches WHERE id=$1 FOR UPDATE',
+    [batchId]
+  )).rows[0];
   const externalKey = `sms:batch:${batchId}:refund`;
   const existing = await client.query(
     'SELECT balance_after FROM sms_credit_transactions WHERE external_key=$1', [externalKey]
   );
   if (existing.rows.length) return Number(existing.rows[0].balance_after);
+  const welcomeCredits = Math.min(amount,
+    Math.max(0, Math.floor(Number(welcomeRefundCredits) || 0)),
+    Math.max(0, Number(batch?.welcome_credit_cost || 0) - Number(batch?.welcome_refunded_credits || 0)));
   const balance = Number((await client.query(
-    `UPDATE organizers SET sms_credits=sms_credits+$2,updated_at=NOW()
+    `UPDATE organizers SET sms_credits=sms_credits+$2,sms_welcome_credits=sms_welcome_credits+$3,updated_at=NOW()
       WHERE id=$1 RETURNING sms_credits`,
-    [organizerId, amount]
+    [organizerId, amount, welcomeCredits]
   )).rows[0].sms_credits);
+  if (welcomeCredits > 0) {
+    await client.query('UPDATE sms_welcome_claims SET funded_credits=funded_credits-$2 WHERE id=$1',
+      [batch.welcome_claim_id, welcomeCredits]);
+    await client.query('UPDATE sms_notification_batches SET welcome_refunded_credits=welcome_refunded_credits+$2 WHERE id=$1',
+      [batchId, welcomeCredits]);
+  }
   await client.query(
     `INSERT INTO sms_credit_transactions
        (organizer_id,kind,credits_delta,balance_after,external_key,metadata)
      VALUES ($1,'adjustment',$2,$3,$4,$5::jsonb)`,
-    [organizerId, amount, balance, externalKey, JSON.stringify(metadata)]
+    [organizerId, amount, balance, externalKey, JSON.stringify({ ...metadata, welcomeCredits })]
   );
   return balance;
+}
+
+async function accountWelcomeSmsAccepted(client, recipientId) {
+  const recipient = (await client.query(
+    `UPDATE sms_notification_recipients r SET welcome_accounted_at=NOW()
+       FROM sms_notification_batches b
+      WHERE r.id=$1 AND b.id=r.batch_id AND r.welcome_credits>0
+        AND r.welcome_accounted_at IS NULL AND r.provider_message_sid IS NOT NULL
+      RETURNING r.welcome_credits,b.welcome_claim_id`, [recipientId]
+  )).rows[0];
+  if (!recipient) return false;
+  await client.query('UPDATE sms_welcome_claims SET accepted_credits=accepted_credits+$2 WHERE id=$1',
+    [recipient.welcome_claim_id, recipient.welcome_credits]);
+  return true;
 }
 
 module.exports = {
@@ -386,5 +457,7 @@ module.exports = {
   publicPacks,
   purchaseForOrganizerOrder,
   reserveSendCredits,
+  reserveSendCreditsDetailed,
+  accountWelcomeSmsAccepted,
   refundSendCredits
 };

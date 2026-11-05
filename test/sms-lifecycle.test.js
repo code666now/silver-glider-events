@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildTomorrowMessage,
+  buildFollowerAnnouncementMessage,
+  assertSingleSegmentMessage,
   maskPhone,
   previewFingerprint,
   smsSegments
@@ -23,7 +25,7 @@ test('tomorrow SMS copy is fixed from event data and includes opt-out language',
     venue_name: 'Make Out Room',
     slug: 'the-mummies'
   }, 'https://silvergliderevents.com/');
-  assert.equal(body, 'Heatwave Booking: The Mummies is tomorrow at Make Out Room. Details: https://silvergliderevents.com/e/the-mummies Reply STOP to opt out.');
+  assert.equal(body, 'Heatwave Booking: Your event is tomorrow. Details: https://silvergliderevents.com/e/the-mummies Reply STOP to opt out.');
   assert.equal(smsSegments(body).segments, 1);
 
   const personal = buildTomorrowMessage({
@@ -34,6 +36,7 @@ test('tomorrow SMS copy is fixed from event data and includes opt-out language',
   }, 'https://silvergliderevents.com/', 'a'.repeat(32));
   assert.match(personal, /https:\/\/silvergliderevents\.com\/t\/a{32}/);
   assert.doesNotMatch(personal, /\/e\/the-mummies/);
+  assert.equal(smsSegments(personal).segments, 1);
 });
 
 test('SMS previews mask phone numbers and fingerprints change with audience or cost', () => {
@@ -62,7 +65,7 @@ test('paid tomorrow SMS stays server-generated, explicitly confirmed, and credit
   const job = fs.readFileSync(path.join(__dirname, '..', 'src', 'jobs', 'sms-notifications.js'), 'utf8');
   const client = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'manage.js'), 'utf8');
   assert.match(fulfillment, /buildTomorrowMessage\(event/);
-  assert.match(fulfillment, /reserveSendCredits\(client/);
+  assert.match(fulfillment, /reserveSendCreditsDetailed\(client/);
   assert.match(route, /confirm !== 'SEND_TOMORROW_SMS'/);
   assert.match(fulfillment, /event\.is_tomorrow/);
   assert.match(fulfillment, /r\.sms_optin=TRUE/);
@@ -71,4 +74,31 @@ test('paid tomorrow SMS stays server-generated, explicitly confirmed, and credit
   assert.match(route, /twilio\.webhook/);
   assert.doesNotMatch(client, /SEND_TOMORROW_SMS/);
   assert.doesNotMatch(client, /body:\s*\{[^}]*messageBody/);
+});
+
+test('controlled SMS stays one GSM-7 segment with long or decorative host names', () => {
+  for (const organizer_label of ['Adrian Martinez', 'Call Me A Taxi Booking', 'A'.repeat(1000), 'DJ 🎉 José’s — Night', '東京音楽', '^{}[]'.repeat(100), '\n\t  ']) {
+    const event = { id: 2147483647, organizer_label, slug: 'x'.repeat(2000) };
+    const reminder = buildTomorrowMessage(event, 'https://silvergliderevents.com', 'a'.repeat(32));
+    const announcement = buildFollowerAnnouncementMessage(event, 'https://silvergliderevents.com');
+    for (const body of [reminder, announcement]) {
+      assert.equal(smsSegments(body).encoding, 'GSM-7');
+      assert.equal(smsSegments(body).segments, 1);
+      assert.match(body, /Reply STOP to opt out\.$/);
+    }
+    assert.ok(reminder.includes(`/t/${'a'.repeat(32)}`), 'all 128 token bits are preserved');
+    assert.ok(announcement.includes('/s/e/2147483647'), 'unbounded slug never leaks into the SMS budget');
+  }
+});
+
+test('oversized or invalid link configurations fail closed, never truncate a link', () => {
+  const event = { id: 42, organizer_label: 'Host' };
+  for (const root of ['https://example.com/' + 'a'.repeat(200), 'https://user:pass@example.com', 'javascript:alert(1)', 'https://example.com?query=1']) {
+    assert.throws(() => buildTomorrowMessage(event, root, 'a'.repeat(32)), { code: 'sms_single_segment_required' });
+    assert.throws(() => buildFollowerAnnouncementMessage(event, root), { code: 'sms_single_segment_required' });
+  }
+  assert.throws(() => buildTomorrowMessage(event, undefined, 'short'), { code: 'sms_single_segment_required' });
+  assert.throws(() => buildFollowerAnnouncementMessage({ id: '../private' }), { code: 'sms_single_segment_required' });
+  assert.throws(() => assertSingleSegmentMessage('☃ Reply STOP to opt out.'), { code: 'sms_single_segment_required' });
+  assert.throws(() => assertSingleSegmentMessage('A'.repeat(200) + ' Reply STOP to opt out.'), { code: 'sms_single_segment_required' });
 });

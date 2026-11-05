@@ -1,0 +1,46 @@
+.welcome-texts { margin:0 0 28px;padding:28px;border:1px solid rgba(28,197,190,.25);border-radius:24px;background:linear-gradient(145deg,rgba(28,197,190,.065),rgba(17,17,17,.8) 65%); }
+.welcome-texts[hidden] { display:none !important; }
+.welcome-texts-top { display:flex;align-items:center;gap:12px;margin-bottom:17px; }
+.welcome-texts-mark { display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:var(--sg-accent);background:rgba(28,197,190,.12);font-size:23px;flex-shrink:0; }
+.welcome-texts-eyebrow { margin:0;color:var(--sg-accent);font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase; }
+.welcome-texts h3 { margin:0;font-size:clamp(25px,4vw,32px);line-height:1.15; }
+.welcome-texts-copy,.welcome-texts-email,.welcome-texts-share p,.welcome-texts-claim p { margin:13px 0 0;color:var(--sg-text-dim);font-size:14px;line-height:1.65; }
+.welcome-texts-email { padding:15px 0 0;font-size:12px; }
+.welcome-texts-email strong { color:var(--sg-text);font-weight:600; }
+.welcome-texts-claim { display:grid;justify-items:start;gap:12px;margin-top:24px; }
+.welcome-texts-claim .sg-btn { min-height:50px;white-space:normal;text-align:center; }
+.welcome-texts-claim small { max-width:480px;color:var(--sg-text-dim);font-size:11px;line-height:1.6; }
+.welcome-texts-claimed { color:var(--sg-accent);font-size:17px;font-weight:750; }
+.welcome-texts-share { margin-top:25px;padding-top:23px;border-top:1px solid var(--sg-border-soft); }
+.welcome-texts h4 { margin:0;font-size:19px; }
+.welcome-texts-share p { margin-top:7px;font-size:13px; }
+.welcome-texts-share-actions { display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:15px 0 5px; }
+.welcome-texts-share-actions .sg-btn { min-height:46px; }
+.welcome-texts-link { display:inline-flex;align-items:center;min-height:44px;padding:0;background:none;border:0;text-decoration:underline;text-underline-offset:4px;color:var(--sg-text-dim);font:inherit;font-size:12px;cursor:pointer; }
+.welcome-texts-host .welcome-texts-link { color:var(--sg-accent); }
+.welcome-texts-reminders { margin-top:22px;padding:17px;border:1px solid rgba(226,189,113,.3);border-radius:16px;background:rgba(226,189,113,.035);font-size:13px; }
+.welcome-texts-reminders ul { padding:0;margin:12px 0;list-style:none; }
+.welcome-texts-reminders li { display:flex;justify-content:space-between;gap:16px;padding:6px 0;overflow-wrap:anywhere; }
+.welcome-texts-reminders li span { flex-shrink:0;color:var(--sg-text-dim); }
+.welcome-texts-reminders p { color:var(--sg-text-dim);line-height:1.6;margin:10px 0; }
+.welcome-texts-reminders label { display:flex;gap:10px;align-items:flex-start;min-height:44px;padding-top:10px;line-height:1.5;cursor:pointer; }
+.welcome-texts-reminders input { width:20px;height:20px;flex-shrink:0;accent-color:var(--sg-accent);margin-top:0; }
+.welcome-texts-status { margin:0;color:var(--sg-accent);font-size:13px;line-height:1.6; }
+.welcome-texts-status:not(:empty) { margin-top:14px; }
+.welcome-texts-status.is-error { color:var(--sg-danger); }
+.welcome-texts button:focus-visible,.welcome-texts a:focus-visible,.welcome-texts input:focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px; }
+.welcome-texts.is-celebrating .welcome-texts-mark { animation:welcome-texts-pop .55s ease-out both; }
+@keyframes welcome-texts-pop { 0% { transform:scale(.7);opacity:.4; } 65% { transform:scale(1.12);opacity:1; } 100% { transform:scale(1); } }
+@media (max-width:600px) {
+  .welcome-texts { padding:23px 20px;border-radius:22px; }
+  .welcome-texts-copy,.welcome-texts-share p { font-size:15px; }
+  .welcome-texts-email,.welcome-texts-claim small { font-size:13px; }
+  .welcome-texts-claim { justify-items:stretch; }
+  .welcome-texts-claim .sg-btn { min-height:56px;font-size:15px;padding:14px; }
+  .welcome-texts-share-actions { gap:10px 18px; }
+  .welcome-texts-share-actions .sg-btn { width:100%;min-height:52px; }
+  .welcome-texts-link { font-size:14px; }
+  .welcome-texts-reminders li { display:block; }
+  .welcome-texts-reminders li span { display:block;margin-top:3px; }
+}
+@media (prefers-reduced-motion:reduce) { .welcome-texts.is-celebrating .welcome-texts-mark { animation:none; } }

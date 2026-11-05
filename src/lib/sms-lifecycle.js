@@ -33,18 +33,74 @@ function compact(value, fallback) {
   return String(value || fallback || '').replace(/\s+/g, ' ').trim();
 }
 
+const SINGLE_SEGMENT_TEMPLATE_VERSION = 'single_segment_v1';
+const SMS_OPT_OUT_SUFFIX = ' Reply STOP to opt out.';
+
+function singleSegmentError() {
+  return Object.assign(new Error('This text cannot safely fit in one credit. Please contact support before sending.'), {
+    code: 'sms_single_segment_required', status: 400, statusCode: 400
+  });
+}
+
+function assertSingleSegmentMessage(body) {
+  const info = smsSegments(body);
+  if (!body || info.encoding !== 'GSM-7' || info.segments !== 1 || !body.endsWith(SMS_OPT_OUT_SUFFIX)) {
+    throw singleSegmentError();
+  }
+  return info;
+}
+
+function publicSmsRoot(baseUrl) {
+  let url;
+  try { url = new URL(baseUrl || 'https://silvergliderevents.com'); } catch (_) { throw singleSegmentError(); }
+  const localHttp = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if ((url.protocol !== 'https:' && !localHttp) || url.username || url.password || url.search || url.hash) {
+    throw singleSegmentError();
+  }
+  return url.toString().replace(/\/$/, '');
+}
+
+function smsHostLabel(value) {
+  // SMS is the short pointer, not the full event page. Normalize decorative
+  // typography and accents so a host's emoji cannot turn every send into UCS-2.
+  const normalized = compact(value, 'Silver Glider')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[^\x20-\x7e]/g, '');
+  return compact(normalized, 'Silver Glider');
+}
+
+function buildSingleSegmentMessage(hostName, copy, link) {
+  const tail = `: ${copy} ${link}${SMS_OPT_OUT_SUFFIX}`;
+  let host = smsHostLabel(hostName);
+  const remaining = 160 - smsSegments(tail).units;
+  // Never shorten a token or URL. Only the human-readable host label can be
+  // condensed, and a known brand replaces names that cannot be represented.
+  if (smsSegments(host).units > remaining) {
+    while (host.length && smsSegments(`${host}...`).units > remaining) host = host.slice(0, -1);
+    host = host.trim();
+    host = host.length >= 8 ? `${host}...` : 'Silver Glider';
+  }
+  const body = `${host}${tail}`;
+  assertSingleSegmentMessage(body);
+  return body;
+}
+
 function buildTomorrowMessage(event, baseUrl = process.env.APP_URL, accessToken = null) {
-  const root = String(baseUrl || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const host = compact(event.organizer_label, 'Silver Glider Events');
-  const title = compact(event.title, 'Your event');
-  const venue = compact(event.venue_name, 'the venue');
+  const root = publicSmsRoot(baseUrl);
+  if (accessToken != null && !/^[a-z0-9]{32}$/i.test(String(accessToken))) throw singleSegmentError();
   const link = accessToken
     ? `${root}/t/${encodeURIComponent(accessToken)}`
     : `${root}/e/${encodeURIComponent(event.slug)}`;
-  const suffix = ` is tomorrow at ${venue}. Details: ${link} Reply STOP to opt out.`;
-  const maxHostAndTitle = Math.max(30, 300 - suffix.length);
-  const lead = `${host}: ${title}`.slice(0, maxHostAndTitle).trim();
-  return `${lead}${suffix}`;
+  return buildSingleSegmentMessage(event.organizer_label, 'Your event is tomorrow. Details:', link);
+}
+
+function buildFollowerAnnouncementMessage(event, baseUrl = process.env.APP_URL) {
+  const id = Number(event.id);
+  if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) throw singleSegmentError();
+  const link = `${publicSmsRoot(baseUrl)}/s/e/${id}`;
+  return buildSingleSegmentMessage(event.organizer_label, 'New event! Details & RSVP:', link);
 }
 
 function previewFingerprint({ event, recipients, messageBody, creditCost }) {
@@ -62,4 +118,8 @@ function maskPhone(phone) {
   return value.length > 4 ? `•••• ${value.slice(-4)}` : value;
 }
 
-module.exports = { buildTomorrowMessage, maskPhone, previewFingerprint, smsSegments };
+module.exports = {
+  SINGLE_SEGMENT_TEMPLATE_VERSION, assertSingleSegmentMessage,
+  buildFollowerAnnouncementMessage, buildTomorrowMessage, maskPhone,
+  previewFingerprint, smsSegments
+};

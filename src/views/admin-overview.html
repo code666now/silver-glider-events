@@ -56,6 +56,31 @@
     </section>
 
     <div class="admin-overview-grid">
+      <section class="admin-overview-panel admin-texting-costs" id="admin-texting-costs" aria-labelledby="texting-cost-title" aria-busy="true" hidden>
+        <div class="admin-overview-panel-head">
+          <div>
+            <p class="admin-overview-eyebrow">Super Admin · Welcome gift</p>
+            <h2 id="texting-cost-title">Complimentary texting</h2>
+            <p>What the 50-text welcome offer has cost to date.</p>
+          </div>
+          <button class="sg-btn sg-btn-ghost" id="texting-cost-refresh" type="button">Refresh</button>
+        </div>
+        <div class="texting-cost-total">
+          <span>Recorded message charges · USD</span>
+          <strong id="texting-cost-amount">—</strong>
+          <p id="texting-cost-coverage" role="status" aria-live="polite">Loading provider charges…</p>
+        </div>
+        <dl class="texting-cost-metrics">
+          <div><dt>Hosts who claimed</dt><dd id="texting-cost-hosts">—</dd></div>
+          <div><dt>Welcome credits granted</dt><dd id="texting-cost-granted">—</dd></div>
+          <div><dt>Texts submitted</dt><dd id="texting-cost-used">—</dd></div>
+          <div><dt>Available welcome credits</dt><dd id="texting-cost-remaining">—</dd></div>
+        </dl>
+        <p class="texting-cost-footnote" id="texting-cost-campaign"></p>
+        <p class="texting-cost-footnote">Claimed credits are not money spent. Charges cover welcome-funded outbound texts only, not sign-in codes, incoming texts, phone rental, taxes, or other account fees. Pending charges are not counted as zero.</p>
+        <p class="texting-cost-updated" id="texting-cost-updated"></p>
+      </section>
+
       <section class="admin-overview-panel admin-traction" aria-labelledby="traction-title" aria-busy="true">
         <div class="admin-overview-panel-head">
           <div>

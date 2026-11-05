@@ -120,13 +120,26 @@ async function showHostPageSuccessIfNeeded() {
   }
 }
 
-if (createdFromEventFlow) {
+async function showPublishedWelcome() {
+  if (!createdFromEventFlow || eventData?.status !== 'published') return;
   $('created-note').style.display = 'block';
   api('/api/auth/me').then(({ organizer }) => {
     if (!organizer.public_slug) return;
     $('created-host-note').innerHTML = ` Your public page is also live. <a href="/h/${encodeURIComponent(organizer.public_slug)}" target="_blank" rel="noopener">View it</a> or <a href="/settings/host-page">personalize it</a>.`;
   }).catch(() => {});
-  showHostPageSuccessIfNeeded();
+  const welcome = window.SgeWelcomeTexts?.create($('published-welcome-texts'), {
+    context: 'publication', eventId,
+    onClaim: result => {
+      api('/api/auth/me').then(({ organizer }) => updateNavAccount({ ...organizer, sms_credits: result.balance })).catch(() => {});
+      loadSmsPreview().catch(() => {});
+    }
+  });
+  const welcomeVisible = await welcome?.load();
+  // One success experience: the inline gift includes sharing, so don't stack an onboarding dialog.
+  if (welcomeVisible) {
+    $('created-note').style.display = 'none';
+    markHostPageSuccessSeen();
+  } else showHostPageSuccessIfNeeded();
 }
 
 $('host-page-success-close').addEventListener('click', closeHostPageSuccess);
@@ -1408,6 +1421,8 @@ $('invite-previous-guests').addEventListener('click', () => {
 function renderSmsAction(preview) {
   const button = $('sms-audience');
   const count = Number(preview.recipientCount) || 0;
+  const usableBalance = Number(preview.usableBalance ?? preview.balance) || 0;
+  const creditsNeeded = Number(preview.creditsNeeded ?? Math.max(0, Number(preview.creditCost) - usableBalance)) || 0;
   button.classList.remove('promotion-action-ready');
   $('sms-audience-count').textContent = count.toLocaleString('en-US');
   button.hidden = !preview.reminderEnabled && !preview.batch;
@@ -1421,7 +1436,7 @@ function renderSmsAction(preview) {
     button.disabled = true;
     if (batch.status === 'sent') {
       $('sms-audience-title').textContent = `${batch.acceptedCount} ${batch.acceptedCount === 1 ? 'text' : 'texts'} sent`;
-      $('sms-audience-copy').textContent = `${batch.creditCost - batch.refundedCredits} paid SMS ${batch.creditCost - batch.refundedCredits === 1 ? 'credit' : 'credits'} used.`;
+      $('sms-audience-copy').textContent = `${batch.creditCost - batch.refundedCredits} texting ${batch.creditCost - batch.refundedCredits === 1 ? 'credit' : 'credits'} used.`;
     } else if (batch.status === 'failed') {
       $('sms-audience-title').textContent = 'Tomorrow text failed';
       $('sms-audience-copy').textContent = `${batch.refundedCredits} ${batch.refundedCredits === 1 ? 'credit was' : 'credits were'} returned.`;
@@ -1444,6 +1459,9 @@ function renderSmsAction(preview) {
   } else if (preview.secretShowEnabled) {
     button.disabled = true;
     $('sms-audience-copy').textContent = 'Text reminders are not available for Secret Shows yet.';
+  } else if (preview.templateVersion && preview.segmentCount !== 1) {
+    button.disabled = true;
+    $('sms-audience-copy').textContent = preview.reason || 'This text cannot be sent safely yet. Email reminders remain included.';
   } else if (!count) {
     button.disabled = true;
     button.classList.add('promotion-action-ready');
@@ -1453,11 +1471,11 @@ function renderSmsAction(preview) {
     button.disabled = false;
     button.dataset.needsFunds = 'true';
     $('sms-audience-count').textContent = 'Add credits';
-    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} needed · ${preview.balance} available. Add credits to text them; email reminders still send free.`;
+    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} credits total · ${usableBalance} usable for this audience. Add ${creditsNeeded} paid ${creditsNeeded === 1 ? 'credit' : 'credits'}. Complimentary texts cover US numbers only; email stays included.`;
   } else {
     button.disabled = true;
     const sendDate = window.SgeEventLifecycle.reminderDateLabel(eventData?.event_date);
-    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${preview.balance} available. Sends ${sendDate} at 4 PM.`;
+    $('sms-audience-copy').textContent = `${count} opted in · ${preview.creditCost} ${preview.creditCost === 1 ? 'credit' : 'credits'} · ${usableBalance} usable for this audience. Sends ${sendDate} at 4 PM.`;
   }
 }
 
@@ -1485,6 +1503,8 @@ function renderFollowerAction(preview) {
   const { count, emailCount, textCount, textCreditCost, textBalance, canIncludeTexts,
     needsTextFunds, fingerprint, announcedAt, announcedCount, announcedTextCount, canAnnounce,
     hostPageUrl } = preview;
+  const textUsableBalance = Number(preview.textUsableBalance ?? textBalance) || 0;
+  const textCreditsNeeded = Number(preview.textCreditsNeeded ?? Math.max(0, Number(textCreditCost) - textUsableBalance)) || 0;
   const btn = $('announce');
   btn.hidden = false;
   btn.style.display = '';
@@ -1520,16 +1540,23 @@ function renderFollowerAction(preview) {
   btn.dataset.includeTexts = String(canIncludeTexts);
   btn.dataset.needsTextFunds = String(needsTextFunds);
   btn.dataset.fingerprint = fingerprint;
-  if (emailCount === 0 && needsTextFunds) {
-    $('announce-title').textContent = `Add credits to update ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
-    $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} ${textCreditCost === 1 ? 'credit' : 'credits'} needed · ${textBalance} available.`;
+  if (emailCount === 0 && preview.textReason) {
+    btn.disabled = true;
+    $('announce-title').textContent = 'Text update unavailable';
+    $('announce-copy').textContent = preview.textReason;
     return;
   }
-  $('announce-title').textContent = `Update ${count} ${count === 1 ? 'follower' : 'followers'}`;
+  if (emailCount === 0 && needsTextFunds) {
+    $('announce-title').textContent = `Add credits to update ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
+    $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} credits total · ${textUsableBalance} usable for this audience. Add ${textCreditsNeeded} paid ${textCreditsNeeded === 1 ? 'credit' : 'credits'}; complimentary texts cover US numbers only.`;
+    return;
+  }
+  const recipientsToNotify = canIncludeTexts ? count : emailCount;
+  $('announce-title').textContent = `Update ${recipientsToNotify} ${recipientsToNotify === 1 ? 'follower' : 'followers'}`;
   if (canIncludeTexts) {
-    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · ${textCount} text${textCount === 1 ? '' : 's'} · Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'}.`;
+    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · ${textCount} text${textCount === 1 ? '' : 's'} · Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'} · ${Math.max(0, Number(textBalance) - Number(textCreditCost))} left afterward.`;
   } else if (needsTextFunds) {
-    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} now · ${textCount} opted into texts (more texting credits needed).`;
+    $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} now, at no extra cost. Texts are not included in this send: ${textCount} opted in, but ${textCreditsNeeded} more paid credits are needed. Complimentary texts cover US numbers only.`;
   } else {
     $('announce-copy').textContent = `${emailCount} email${emailCount === 1 ? '' : 's'} · No paid texts.`;
   }
@@ -1578,7 +1605,9 @@ $('announce').addEventListener('click', async () => {
   const delivery = includeTexts
     ? `${emailCount} email${emailCount === 1 ? '' : 's'} and ${textCount} text${textCount === 1 ? '' : 's'} (${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'})`
     : `${emailCount} email${emailCount === 1 ? '' : 's'}`;
-  if (!confirm(`Send this event to ${count} ${count === '1' ? 'follower' : 'followers'} as ${delivery}? This can only be done once.`)) return;
+  const deliveryCount = includeTexts ? Number(count) : emailCount;
+  const remaining = includeTexts ? ` Your balance afterward: ${Math.max(0, Number(button.dataset.textBalance || 0) - textCreditCost)} credits.` : '';
+  if (!confirm(`Send this event to ${deliveryCount} ${deliveryCount === 1 ? 'follower' : 'followers'} as ${delivery}?${remaining} This can only be done once.`)) return;
   button.disabled = true;
   $('announce-title').textContent = 'Sending…';
   $('announce-copy').textContent = includeTexts ? 'Emailing and texting your followers.' : 'Emailing your followers.';
@@ -1662,6 +1691,7 @@ async function initializeManagePage() {
     sessionStorage.removeItem('sge-manage-message');
     await loadEvent();
     setManageReady();
+    showPublishedWelcome();
     const eventEnded = isPostEventEligible();
     if (eventEnded) {
       postEventExperience = window.SgePostEvent?.create({

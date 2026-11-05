@@ -1,33 +1,15 @@
-const { reserveSendCredits } = require('./sms-credit-ledger');
+const { reserveSendCreditsDetailed } = require('./sms-credit-ledger');
+const { isWelcomeSmsDestination } = require('./sms-welcome');
 const {
   FOLLOW_EMAIL_CONSENT_VERSION,
   CONTRIBUTOR_EMAIL_CONSENT_SOURCE,
   CONTRIBUTOR_EMAIL_CONSENT_VERSION,
   FOLLOW_SMS_CONSENT_VERSION
 } = require('./follow-consent');
-const { previewFingerprint, smsSegments } = require('./sms-lifecycle');
-
-function compact(value, fallback) {
-  return String(value || fallback || '').replace(/\s+/g, ' ').trim();
-}
-
-function shortEventDate(value) {
-  const raw = value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
-  const date = new Date(`${raw}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', timeZone: 'UTC'
-  });
-}
-
-function buildFollowerAnnouncementMessage(event, baseUrl = process.env.APP_URL) {
-  const root = String(baseUrl || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const host = compact(event.organizer_label, 'Silver Glider Events');
-  const title = compact(event.title, 'New event');
-  const link = `${root}/e/${encodeURIComponent(event.slug)}`;
-  const suffix = ` on ${shortEventDate(event.event_date)}. RSVP: ${link} Reply STOP to opt out.`;
-  const lead = `${host}: New event - ${title}`.slice(0, Math.max(35, 300 - suffix.length)).trim();
-  return `${lead}${suffix}`;
-}
+const {
+  SINGLE_SEGMENT_TEMPLATE_VERSION, assertSingleSegmentMessage,
+  buildFollowerAnnouncementMessage, previewFingerprint
+} = require('./sms-lifecycle');
 
 async function eligibleEmailRecipients(queryable, organizerId, eventId) {
   const { rows } = await queryable.query(
@@ -123,10 +105,19 @@ async function makeFollowerAnnouncementPreview(queryable, event) {
   const emails = await eligibleEmailRecipients(queryable, event.organizer_id, event.id);
   const texts = await eligibleSmsRecipients(queryable, event.organizer_id, event.id);
   const batch = await currentFollowerBatch(queryable, event.id);
-  const messageBody = buildFollowerAnnouncementMessage(event);
-  const segmentInfo = smsSegments(messageBody);
-  const creditCost = segmentInfo.segments * texts.length;
+  let messageBody = '';
+  let textReason = null;
+  try { messageBody = buildFollowerAnnouncementMessage(event); } catch (error) {
+    if (error.code !== 'sms_single_segment_required') throw error;
+    textReason = error.message;
+  }
+  const segmentCount = messageBody ? 1 : 0;
+  const creditCost = segmentCount * texts.length;
   const balance = Number(event.sms_credits || 0);
+  const welcomeBalance = Number(event.sms_welcome_credits || 0);
+  const welcomeEligibleCredits = texts.filter(recipient => isWelcomeSmsDestination(recipient.phone)).length;
+  const usableBalance = balance - welcomeBalance + Math.min(welcomeBalance, welcomeEligibleCredits);
+  const creditsNeeded = Math.max(0, creditCost - usableBalance);
   const fingerprint = previewFingerprint({ event, recipients: texts, messageBody, creditCost });
   return {
     emailCount: emails.length,
@@ -136,12 +127,18 @@ async function makeFollowerAnnouncementPreview(queryable, event) {
       ...texts.map(row => row.user_id ? `user:${row.user_id}` : (row.email || `sms:${row.phone}`))
     ]).size,
     messageBody,
-    segmentCount: segmentInfo.segments,
+    segmentCount,
+    templateVersion: SINGLE_SEGMENT_TEMPLATE_VERSION,
+    textReason,
     creditCost,
     balance,
+    welcomeBalance,
+    welcomeEligibleCredits,
+    usableBalance,
+    creditsNeeded,
     balanceAfter: Math.max(0, balance - creditCost),
-    canIncludeTexts: texts.length > 0 && !batch && balance >= creditCost,
-    needsFunds: texts.length > 0 && balance < creditCost,
+    canIncludeTexts: !textReason && texts.length > 0 && !batch && creditsNeeded === 0,
+    needsFunds: !textReason && texts.length > 0 && creditsNeeded > 0,
     fingerprint,
     batch,
     _emails: emails,
@@ -150,26 +147,35 @@ async function makeFollowerAnnouncementPreview(queryable, event) {
 }
 
 async function createFollowerAnnouncementBatch(client, event, preview) {
+  assertSingleSegmentMessage(preview.messageBody);
+  if (preview.segmentCount !== 1 || preview.creditCost !== preview._texts.length ||
+      preview.messageBody !== buildFollowerAnnouncementMessage(event)) {
+    throw Object.assign(new Error('The text cost changed. Review the updated preview.'), { code: 'sms_cost_changed', statusCode: 409 });
+  }
   const batch = (await client.query(
     `INSERT INTO sms_notification_batches
-       (event_id,organizer_id,kind,message_body,segment_count,recipient_count,credit_cost)
-     VALUES ($1,$2,'follower_announcement',$3,$4,$5,$6) RETURNING *`,
+       (event_id,organizer_id,kind,message_body,segment_count,recipient_count,credit_cost,template_version)
+     VALUES ($1,$2,'follower_announcement',$3,$4,$5,$6,$7) RETURNING *`,
     [event.id,event.organizer_id,preview.messageBody,preview.segmentCount,
-     preview.textCount,preview.creditCost]
+     preview.textCount,preview.creditCost,SINGLE_SEGMENT_TEMPLATE_VERSION]
   )).rows[0];
-  const balance = await reserveSendCredits(client, {
+  const { balance, welcomeCredits } = await reserveSendCreditsDetailed(client, {
     organizerId: event.organizer_id,
     batchId: batch.id,
     credits: preview.creditCost,
+    maxWelcomeCredits: preview._texts.filter(recipient => isWelcomeSmsDestination(recipient.phone)).length,
     metadata: { eventId: event.id, kind: 'follower_announcement', recipientCount: preview.textCount }
   });
+  let welcomeRemaining = welcomeCredits;
   for (const recipient of preview._texts) {
+    const welcomeCreditsForRecipient = welcomeRemaining > 0 && isWelcomeSmsDestination(recipient.phone) ? 1 : 0;
+    welcomeRemaining -= welcomeCreditsForRecipient;
     await client.query(
       `INSERT INTO sms_notification_recipients
-         (batch_id,host_follow_id,recipient,recipient_name,segment_count,message_body)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+         (batch_id,host_follow_id,recipient,recipient_name,segment_count,message_body,welcome_credits)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [batch.id,recipient.id,recipient.phone,recipient.name || null,
-       preview.segmentCount,preview.messageBody]
+       preview.segmentCount,preview.messageBody,welcomeCreditsForRecipient]
     );
   }
   return { batch, balance };

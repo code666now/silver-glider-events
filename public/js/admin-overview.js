@@ -87,6 +87,56 @@ async function loadTeamMetric() {
   }
 }
 
+async function loadWelcomeTextCosts() {
+  const session = await window.adminShellSession.catch(() => null);
+  if (!session?.capabilities?.manageOperators) return;
+  const panel = document.getElementById('admin-texting-costs');
+  const refresh = document.getElementById('texting-cost-refresh');
+  panel.hidden = false;
+  panel.setAttribute('aria-busy', 'true');
+  refresh.disabled = true;
+  const set = (id, value) => { document.getElementById(id).textContent = value; };
+  try {
+    const { campaign, costs } = await api('/api/admin/sms-welcome-costs');
+    const submitted = Number(costs.acceptedTexts) || 0;
+    const recorded = Number(costs.recordedTexts) || 0;
+    const pending = Number(costs.pendingTexts) || 0;
+    const unknownAcceptance = Number(costs.unknownAcceptanceTexts) || 0;
+    const nonUsd = Number(costs.nonUsdTexts) || 0;
+    const amount = costs.recordedUsdCost;
+    // Neither a missing provider price nor an uncertain send is a zero-cost text.
+    set('texting-cost-amount', submitted === 0 && unknownAcceptance === 0 ? '$0.00' : amount == null ? (pending || unknownAcceptance ? 'Pending' : 'No USD total') :
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD',
+        minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(amount)));
+    const coverage = submitted === 0
+      ? (unknownAcceptance ? '' : 'No complimentary texts have been submitted yet.')
+      : `${overviewNumber(recorded)} of ${overviewNumber(submitted)} texts have USD charges recorded.` +
+        (pending ? ` ${overviewNumber(pending)} awaiting provider pricing.` : '') +
+        (nonUsd ? ` ${overviewNumber(nonUsd)} priced in another currency, excluded from this USD total.` : '');
+    set('texting-cost-coverage', (coverage + (unknownAcceptance
+      ? ` ${overviewNumber(unknownAcceptance)} texts awaiting provider acceptance confirmation.` : '')).trim());
+    set('texting-cost-hosts', overviewNumber(campaign.claims));
+    set('texting-cost-granted', overviewNumber(campaign.creditsGranted));
+    set('texting-cost-used', overviewNumber(submitted));
+    set('texting-cost-remaining', overviewNumber(campaign.creditsRemaining));
+    set('texting-cost-campaign', `Welcome campaign ${campaign.enabled ? 'enabled' : 'paused'} · ${overviewNumber(campaign.claims)} of ${overviewNumber(campaign.cap)} claims used.` +
+      (Number(campaign.claims) >= Number(campaign.cap) ? ' No welcome claims available.' : ''));
+    const asOf = new Date(costs.asOf);
+    set('texting-cost-updated', Number.isNaN(asOf.getTime()) ? '' : `Totals as of ${asOf.toLocaleString()}. Provider charges can arrive later; refresh does not send messages.`);
+  } catch (_) {
+    for (const id of ['texting-cost-amount', 'texting-cost-hosts', 'texting-cost-granted', 'texting-cost-used', 'texting-cost-remaining']) set(id, '—');
+    set('texting-cost-coverage', 'Texting costs could not be loaded. Try refreshing.');
+    set('texting-cost-campaign', '');
+    set('texting-cost-updated', '');
+  } finally {
+    panel.setAttribute('aria-busy', 'false');
+    refresh.disabled = false;
+  }
+}
+
+document.getElementById('texting-cost-refresh').addEventListener('click', loadWelcomeTextCosts);
+loadWelcomeTextCosts();
+
 Promise.allSettled([loadAccountMetrics(), loadTeamMetric(), loadTraction()]).then(() => {
   overview.metrics.setAttribute('aria-busy', 'false');
 });

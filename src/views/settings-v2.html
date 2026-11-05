@@ -12,6 +12,7 @@
   <script src="/js/legal-footer.js" defer></script>
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/settings.css">
+  <link rel="stylesheet" href="/css/welcome-texts.css">
 </head>
 <body data-settings-route="index">
   <div class="sg-shell settings-shell" data-settings-shell>
@@ -45,7 +46,7 @@
             <span class="settings-index-value"></span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
           <a class="settings-index-link" href="/settings/messaging">
-            <span><strong>Messaging</strong><span class="settings-index-description">SMS credits, payments, and activity.</span></span>
+            <span><strong>Messaging</strong><span class="settings-index-description">Text reminders, balance, and activity.</span></span>
             <span class="settings-index-value" id="settings-index-credit-balance">—</span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
           <a class="settings-index-link" href="/settings/host-page">
@@ -105,6 +106,7 @@
                 <h3 id="account-identities-title">Sign-in &amp; recovery</h3>
                 <p>Verified methods that belong to this account. Sensitive changes require a fresh code to your primary email.</p>
               </div>
+              <p class="credits-result" id="welcome-verification-help" hidden>Verify your email and mobile number below, then <a href="/settings/messaging">return to Messaging to claim your 50 welcome texts</a>. Verification does not subscribe you or your guests to texts.</p>
               <div class="identity-list" id="identity-list" aria-live="polite" aria-busy="true">
                 <div class="identity-loading"><span class="sg-skeleton"></span><span class="sg-skeleton"></span></div>
               </div>
@@ -123,23 +125,26 @@
           <section class="settings-panel" id="settings-messaging" data-settings-section="messaging" aria-labelledby="sms-credits-title" hidden>
             <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
             <div class="settings-section-head">
-              <div><h2 id="sms-credits-title">Add funds for texting</h2><p><strong>Text your guests</strong><br>Reach people with event invites, announcements, and reminders.</p></div>
+              <div><h2 id="sms-credits-title">Keep your guests in the loop</h2><p>Send event reminders and new-event announcements to guests and followers who opted into texts.</p></div>
             </div>
+            <section id="settings-welcome-texts" hidden aria-label="Your welcome texts"></section>
             <div class="credits-balance-block">
-              <div><span class="credits-balance-label">Credits available</span><strong class="credits-balance-number" id="sms-credit-balance">—</strong></div>
+              <div><span class="credits-balance-label">Your texting balance</span><strong class="credits-balance-number"><span id="sms-credit-balance">—</span><span class="credits-balance-unit">texts available</span></strong></div>
               <span class="credits-env" id="sms-credit-env" hidden>Sandbox test</span>
             </div>
+            <p class="credits-welcome-balance" id="sms-welcome-balance" hidden></p>
+            <p class="credits-included"><span aria-hidden="true">✓</span> <strong>Email reminders and event updates are included at no extra cost.</strong> Texts are an optional extra for guests and followers who choose them.</p>
             <p class="credits-setup" id="sms-credit-setup" hidden>Stripe Checkout setup is incomplete. Purchases remain unavailable until its server credentials, Price IDs, and verified webhook are connected.</p>
             <p class="credits-result" id="sms-credit-result" role="status" aria-live="polite" tabindex="-1" hidden></p>
             <div class="settings-group">
-              <div class="settings-group-head"><h3>Choose how many texts you need</h3><p>One-time purchase. No subscription.</p></div>
+              <div class="settings-group-head"><h3>Add texts when you need them</h3><p>One text uses one credit with our short reminder and announcement messages. One-time purchase. No subscription.</p></div>
               <div class="credit-packs" id="sms-credit-packs" aria-label="Choose how many texts you need"></div>
               <button class="sg-btn sg-btn-primary credit-continue" type="button" id="sms-credit-continue" disabled>Continue to payment</button>
               <p class="credits-load-status" id="sms-credit-load-status" role="status" aria-live="polite">Loading credit options…</p>
             </div>
             <section class="credits-activity" aria-labelledby="sms-credit-history-title">
               <h3 id="sms-credit-history-title">Recent activity</h3>
-              <p class="credits-activity-copy">Purchases, SMS usage, refunds, and reversals.</p>
+              <p class="credits-activity-copy">Welcome credits, purchases, texting usage, and refunds.</p>
               <div class="credits-history-list" id="sms-credit-transactions"><p class="credits-empty">No credit activity yet.</p></div>
             </section>
           </section>
@@ -279,6 +284,7 @@
   <script src="/js/email-code-input.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/image-optimizer.js"></script>
+  <script src="/js/welcome-texts.js"></script>
   <script src="/js/settings.js"></script>
 </body>
 </html>

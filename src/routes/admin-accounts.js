@@ -333,7 +333,7 @@ async function forfeitSmsCreditBalance(client, { organizerId, userId, balance })
     ]
   );
   await client.query(
-    'UPDATE organizers SET sms_credits=0,updated_at=NOW() WHERE id=$1',
+    'UPDATE organizers SET sms_credits=0,sms_welcome_credits=0,updated_at=NOW() WHERE id=$1',
     [organizerId]
   );
 }
@@ -1370,7 +1370,7 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
     await client.query('DELETE FROM user_identities WHERE user_id=$1', [userId]);
     await client.query(
       `UPDATE organizers
-          SET email=$3,name=NULL,org_name=NULL,public_slug=NULL,plan='free',sms_credits=0,
+          SET email=$3,name=NULL,org_name=NULL,public_slug=NULL,plan='free',sms_credits=0,sms_welcome_credits=0,
               is_admin=FALSE,last_login_at=NULL,logo_url=NULL,header_image_url=NULL,bio=NULL,
               website_url=NULL,instagram_url=NULL,instagram_handle=NULL,contact_email=NULL,
               avatar_url=NULL,sessions_valid_after=NOW(),updated_at=NOW()

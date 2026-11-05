@@ -148,9 +148,9 @@ function fillAccountMenu(menu, account) {
     if (hostLabel) hostLabel.textContent = 'My public page';
     if (hostValue) hostValue.textContent = account.public_slug ? 'View' : 'Set up';
   }
-  const credits = Number(account.sms_credits) || 0;
+  const credits = Number(account.sms_credits);
   const creditValue = menu.querySelector('[data-sg-account-credits]');
-  if (creditValue) creditValue.textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
+  if (creditValue) creditValue.textContent = Number.isFinite(credits) && credits > 0 ? `${credits.toLocaleString('en-US')} texts` : '';
 }
 
 function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = false } = {}) {
@@ -181,7 +181,7 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = fa
         ${primaryLinks}
         <div class="sg-account-popover-group">
           <a class="sg-account-menu-row" data-sg-account-host href="/settings/host-page" role="menuitem">${menuIcon('host')}<span data-sg-account-host-label>My public page</span><span class="sg-account-menu-value" data-sg-account-host-value>Set up</span></a>
-          <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits>0 credits</span></a>
+          <a class="sg-account-menu-row" href="/settings/messaging" role="menuitem">${menuIcon('messaging')}<span>Messaging</span><span class="sg-account-menu-value" data-sg-account-credits></span></a>
           <button class="sg-account-menu-row" type="button" role="menuitem" data-sg-account-feedback>${menuIcon('feedback')}<span>Send feedback</span></button>
         </div>
         <div class="sg-account-popover-group"><a class="sg-account-menu-row" href="/settings" role="menuitem">${menuIcon('settings')}<span>Settings</span></a></div>
@@ -593,8 +593,8 @@ function fillMenuSheet(sheet, organizer) {
     host.href = '/settings/host-page';
     sheet.querySelector('[data-menu-host-value]').textContent = 'Set up';
   }
-  const credits = Number(organizer.sms_credits) || 0;
-  sheet.querySelector('[data-menu-credits]').textContent = `${credits.toLocaleString('en-US')} credit${credits === 1 ? '' : 's'}`;
+  const credits = Number(organizer.sms_credits);
+  sheet.querySelector('[data-menu-credits]').textContent = Number.isFinite(credits) && credits > 0 ? `${credits.toLocaleString('en-US')} texts` : '';
 }
 
 function loadMenuArtworkUrls() {

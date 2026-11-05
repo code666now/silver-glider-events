@@ -121,9 +121,15 @@ body.identity-dialog-open { overflow:hidden; }
 .settings-index-chevron { color:var(--sg-text-faint);font-size:19px; }
 .settings-mobile-signout { width:100%;margin-top:40px;padding:15px 0;border:0;border-top:1px solid var(--sg-border-soft);background:transparent;color:var(--sg-text-dim);font:700 13px var(--sg-font-body);text-align:left;cursor:pointer; }
 
-.credits-balance-block { display:flex;align-items:center;justify-content:space-between;gap:22px;min-height:140px;padding:24px;border:1px solid var(--sg-border-soft);border-radius:20px;background:rgba(255,255,255,.018); }
+.credits-balance-block { display:flex;align-items:center;justify-content:space-between;gap:22px;min-height:108px;padding:22px 24px;border:1px solid var(--sg-border-soft);border-radius:20px;background:rgba(255,255,255,.018); }
 .credits-balance-label { display:block;color:var(--sg-text-faint);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.13em; }
-.credits-balance-number { display:block;margin-top:6px;font-family:var(--sg-font-display);font-size:48px;line-height:1; }
+.credits-balance-number { display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;margin-top:9px;font-family:var(--sg-font-display);font-size:38px;line-height:1.15; }
+.credits-balance-unit { color:var(--sg-text-dim);font-family:var(--sg-font-body,inherit);font-size:15px;font-weight:500; }
+.credits-included { margin:15px 0 0;color:var(--sg-text-dim);font-size:12px;line-height:1.7; }
+.credits-included strong { font-weight:600;color:var(--sg-text); }
+.credits-included > span { color:var(--sg-accent);margin-right:5px; }
+.credits-welcome-balance { margin:10px 0 0;color:var(--sg-accent);font-size:12px;line-height:1.5; }
+.credits-welcome-balance[hidden] { display:none; }
 .credits-env { display:inline-flex;padding:6px 9px;border:1px solid rgba(255,193,92,.26);border-radius:999px;color:#d9ba77;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em; }
 .credits-env[hidden] { display:none; }
 .credits-setup,.credits-result { margin:18px 0;padding:13px 15px;border:1px solid var(--sg-border-soft);border-radius:14px;color:var(--sg-text-dim);font-size:12px;line-height:1.55; }
@@ -131,16 +137,17 @@ body.identity-dialog-open { overflow:hidden; }
 .credits-result { background:rgba(255,255,255,.025); }
 .credits-setup[hidden],.credits-result[hidden] { display:none; }
 .credit-packs { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:15px; }
-.credit-pack { position:relative;min-width:0;padding:18px;text-align:left;border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.014);color:var(--sg-text);cursor:pointer;transition:border-color .15s ease,background .15s ease; }
+.credit-pack { position:relative;min-width:0;padding:22px 18px 18px;text-align:left;border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.014);color:var(--sg-text);cursor:pointer;transition:border-color .18s ease,background .18s ease,box-shadow .18s ease; }
 @media (hover: hover) { .credit-pack:hover:not(:disabled) { border-color:rgba(255,255,255,.18); } }
 .credit-pack:focus-visible { outline:2px solid rgba(28,197,190,.38);outline-offset:3px; }
-.credit-pack[aria-pressed="true"] { border-color:var(--sg-accent);background:rgba(28,197,190,.045); }
+.credit-pack[aria-pressed="true"] { border-color:var(--sg-accent);background:rgba(28,197,190,.065);box-shadow:0 0 0 1px rgba(28,197,190,.2); }
 .credit-pack:disabled { opacity:.46;cursor:not-allowed; }
 .credit-pack strong,.credit-pack span,.credit-pack em { display:block; }
-.credit-pack strong { font-family:var(--sg-font-display);font-size:21px; }
+.credit-pack strong { padding-right:20px;font-family:var(--sg-font-display);font-size:21px; }
 .credit-pack span { margin-top:4px;color:var(--sg-text-dim);font-size:12px; }
 .credit-pack em { margin-top:15px;color:var(--sg-text-faint);font-size:10px;font-style:normal;font-weight:700; }
-.credit-pack-badge { position:absolute;top:12px;right:12px;padding:4px 7px;border-radius:999px;background:rgba(28,197,190,.12);color:var(--sg-accent);font-size:8px;font-weight:800;letter-spacing:.08em;line-height:1; }
+.credit-pack-check { position:absolute;top:16px;right:13px;display:grid;place-items:center;width:19px;height:19px;border:1px solid var(--sg-border-soft);border-radius:50%;color:transparent;font-size:12px; }
+.credit-pack[aria-pressed="true"] .credit-pack-check { background:var(--sg-accent);color:#081313;border-color:var(--sg-accent); }
 .credit-continue { width:100%;min-height:50px;margin-top:18px;font-size:13px; }
 .credits-activity { margin-top:42px; }
 .credits-activity h3 { font-size:20px; }
@@ -239,7 +246,7 @@ body.host-share-dialog-open { overflow:hidden; }
   .account-avatar-status,.settings-form-status { text-align:left; }
   .settings-form-actions { display:grid;grid-template-columns:1fr; }
   .settings-form-actions .sg-btn { width:100%; }
-  .credits-balance-block { min-height:124px;padding:21px; }
+  .credits-balance-block { min-height:110px;padding:21px; }
   .credits-balance-number { font-size:42px; }
   .host-image-row { grid-template-columns:1fr;gap:13px; }
   .host-image-action { width:100%; }
@@ -402,9 +409,11 @@ body.host-share-dialog-open { overflow:hidden; }
   #host-status { bottom:calc(166px + env(safe-area-inset-bottom)); }
   body:not(.has-mobile-sticky-action) #host-status { bottom:calc(20px + env(safe-area-inset-bottom)); }
   #account-status.error,#host-status.error { color:#ff8c8c; }
-  .credits-balance-block { min-height:164px;padding:24px;border-radius:22px; }
+  .credits-balance-block { min-height:116px;padding:22px;border-radius:22px; }
   .credits-balance-label { font-size:12px; }
-  .credits-balance-number { font-size:56px; }
+  .credits-balance-number { font-size:40px; }
+  .credits-balance-unit { font-size:16px; }
+  .credits-included { font-size:14px; }
   .credit-packs { grid-template-columns:1fr;gap:14px; }
   .credit-pack { min-height:112px;padding:21px;border-radius:20px; }
   .credit-pack strong { font-size:25px; }
@@ -419,6 +428,7 @@ body.host-share-dialog-open { overflow:hidden; }
     font-size:17px;
     box-shadow:0 12px 34px rgba(0,0,0,.45);
   }
+  .credit-continue:disabled { position:static;box-shadow:none; }
   .credits-transaction { min-height:80px;padding:17px 0; }
   .credits-transaction strong { font-size:15px; }
   .credits-transaction time { font-size:12px; }

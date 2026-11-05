@@ -69,7 +69,10 @@ test('server SMS transport uses the Messaging Service and returns only safe deli
   assert.deepEqual(result, {
     sid: `SM${'c'.repeat(32)}`,
     status: 'accepted',
-    recipient: '+14155551234'
+    recipient: '+14155551234',
+    price: null,
+    priceUnit: null,
+    numSegments: null
   });
   assert.equal(JSON.stringify(result).includes(validEnv.TWILIO_AUTH_TOKEN), false);
   assert.equal(Object.hasOwn(calls[0], 'from'), false);
@@ -153,9 +156,25 @@ test('Twilio client initialization failures are sanitized too', async () => {
     assert.equal(error instanceof SmsDeliveryError, true);
     assert.equal(error.code, 'sms_provider_unavailable');
     assert.equal(error.status, 502);
+    assert.equal(error.acceptance, 'not_sent');
     assert.equal(error.message.includes(validEnv.TWILIO_AUTH_TOKEN), false);
     return true;
   });
+});
+
+test('ambiguous provider POST failures cannot be mistaken for definitive rejection', async () => {
+  for (const error of [{ status: 500 }, { status: 503 }, { code: 'ETIMEDOUT' }, { code: 'ECONNRESET' }]) {
+    const { service } = fakeService({ error });
+    await assert.rejects(service.sendTestSms('+14155551234'), received => received.acceptance === 'unknown');
+  }
+  for (const error of [{ status: 429 }, { status: 401 }, { status: 403 }]) {
+    const { service } = fakeService({ error });
+    await assert.rejects(service.sendTestSms('+14155551234'), received => received.acceptance === 'not_sent');
+  }
+  const rejected = fakeService({ error: { status: 400, code: 21614 } });
+  await assert.rejects(rejected.service.sendTestSms('+14155551234'), received => received.acceptance === 'rejected');
+  const invalid = fakeService({ result: { status: 'accepted', sid: 'invalid' } });
+  await assert.rejects(invalid.service.sendTestSms('+14155551234'), received => received.acceptance === 'unknown');
 });
 
 test('admin test endpoint is protected, confirmed, fixed-message only, and rate limited', () => {

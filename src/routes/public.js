@@ -1798,6 +1798,25 @@ router.get('/r/:token/event', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Short first-party announcement links only resolve public, published events.
+// They never grant an attendee session or bypass the event's own access rules.
+router.get('/s/e/:id', async (req, res, next) => {
+  const rawId = String(req.params.id || '');
+  if (!/^[1-9]\d{0,9}$/.test(rawId) || Number(rawId) > 2147483647) {
+    return res.status(404).send(render404());
+  }
+  try {
+    const { rows } = await pool.query(
+      `SELECT slug FROM events WHERE id=$1 AND status='published' AND visibility='public'`,
+      [Number(rawId)]
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (!rows[0]) return res.status(404).send(render404());
+    return res.redirect(302, `/e/${encodeURIComponent(rows[0].slug)}`);
+  } catch (error) { next(error); }
+});
+
 // A private link in each reminder restores the same event-scoped attendee
 // session as the email confirmation link. It verifies control of the supplied
 // phone without creating a Silver Glider account or organizer profile.

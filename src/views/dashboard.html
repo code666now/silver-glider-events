@@ -506,26 +506,8 @@
   <script src="/js/api.js"></script>
   <script>
     renderNav('dashboard');
-    const dashboardMobileLayout = window.matchMedia('(max-width: 879px)');
-
-    function syncDashboardEmptyCardAction() {
-      document.querySelectorAll('a.dashboard-empty').forEach(card => {
-        if (!card.dataset.desktopAriaLabel) {
-          card.dataset.desktopAriaLabel = card.getAttribute('aria-label') || 'Create an event';
-        }
-        if (dashboardMobileLayout.matches) {
-          if (document.activeElement === card) document.querySelector('.sg-mobile-sticky-action')?.focus();
-          card.removeAttribute('href');
-          card.removeAttribute('aria-label');
-        } else {
-          card.setAttribute('href', '/events/new');
-          card.setAttribute('aria-label', card.dataset.desktopAriaLabel);
-        }
-      });
-    }
-
-    if (dashboardMobileLayout.addEventListener) dashboardMobileLayout.addEventListener('change', syncDashboardEmptyCardAction);
-    else dashboardMobileLayout.addListener(syncDashboardEmptyCardAction);
+    // Keep the large create card a native link at every screen size. The bottom
+    // Create tab is a second entry point, not a replacement for the card action.
 
     function planStart(event) {
       return new Date(event.starts_at || `${String(event.event_date).slice(0, 10)}T${event.start_time || '00:00'}`).getTime();
@@ -589,7 +571,6 @@
             document.body.classList.remove('has-mobile-sticky-action');
             document.querySelector('.sg-mobile-sticky-action')?.classList.remove('sg-mobile-sticky-action');
           }
-          syncDashboardEmptyCardAction();
           finishLoading();
           return;
         }

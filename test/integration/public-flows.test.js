@@ -142,6 +142,7 @@ function resetRateLimits() {
 }
 
 async function resetDatabase() {
+  await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
   await pool.query("DELETE FROM email_optins WHERE scope='host_followups'");
@@ -1729,7 +1730,7 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
   const blockedPreview = await noCredits.json();
   assert.equal(blockedPreview.recipientCount, 1, 'the same phone is charged only once');
   assert.equal(blockedPreview.canSend, false);
-  assert.match(blockedPreview.reason, /Add .* more texting credit/);
+  assert.match(blockedPreview.reason, /Add .* more paid texting credit/);
 
   const blockedSend = await fetch(`${baseUrl}/api/events/${event.id}/sms/tomorrow`, {
     method: 'POST',
@@ -1745,7 +1746,8 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
   )).json();
   assert.equal(readyPreview.canSend, true);
   assert.equal(readyPreview.creditCost, readyPreview.segmentCount);
-  assert.match(readyPreview.messageBody, /^Test Host: Tomorrow Night is tomorrow at Test Hall\./);
+  assert.match(readyPreview.messageBody, /^Test Host: Your event is tomorrow\. Details:/);
+  assert.equal(readyPreview.segmentCount, 1);
   assert.match(readyPreview.messageBody, /Reply STOP to opt out\.$/);
   assert.deepEqual(readyPreview.recipients.map(item => item.phone), ['•••• 1234']);
 
@@ -1784,7 +1786,7 @@ test('tomorrow SMS requires purchased host credits, debits once, deduplicates ph
     await waitForSmsBatch(payload.batch.id);
     assert.equal(sends.length, 1);
     assert.equal(sends[0].to, '+14155551234');
-    assert.match(sends[0].body, /^Test Host: Tomorrow Night is tomorrow at Test Hall\./);
+    assert.match(sends[0].body, /^Test Host: Your event is tomorrow\. Details:/);
     assert.match(sends[0].body, /\/t\/[0-9a-f]{32} Reply STOP to opt out\.$/);
     assert.notEqual(sends[0].body, readyPreview.messageBody, 'each recipient receives a private link');
     assert.match(sends[0].statusCallback, /\/api\/webhooks\/twilio\/status\/[0-9a-f-]{36}$/);
@@ -3214,7 +3216,8 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     await waitForSmsBatch(batch.id);
     assert.equal(sends.length, 1);
     assert.equal(sends[0].to, '+14155550199');
-    assert.match(sends[0].body, /^Test Host: New event - Follow Update Night/);
+    assert.match(sends[0].body, /^Test Host: New event! Details & RSVP:/);
+    assert.ok(sends[0].body.includes(`/s/e/${event.id}`));
     assert.match(sends[0].body, /Reply STOP to opt out\.$/);
     const delivery = (await pool.query(
       'SELECT host_follow_id,rsvp_id FROM sms_notification_recipients WHERE batch_id=$1', [batch.id]
@@ -4689,14 +4692,14 @@ test('Stripe-hosted SMS checkout credits only a verified paid pack and is idempo
       body: JSON.stringify({ packKey: 'standard', amountCents: 1, credits: 999999 })
     });
     assert.equal(checkoutResponse.status, 201);
-    assert.deepEqual(await checkoutResponse.json(), {
-      checkoutUrl: 'https://checkout.stripe.com/c/pay/integration'
-    });
+    const checkoutBody = await checkoutResponse.json();
+    assert.equal(checkoutBody.checkoutUrl, 'https://checkout.stripe.com/c/pay/integration');
+    assert.equal(checkoutBody.sessionId, 'cs_live_integration12345678');
     assert.equal(createdInput.pack.key, 'standard');
     assert.equal(createdInput.pack.credits, 500);
     assert.equal(createdInput.pack.amountCents, 3500);
     assert.equal(createdInput.organizerEmail, 'host@example.test');
-    assert.equal(createdInput.successUrl, 'http://127.0.0.1/settings/messaging?checkout=success');
+    assert.equal(createdInput.successUrl, 'http://127.0.0.1/settings/messaging?checkout=success&session_id={CHECKOUT_SESSION_ID}');
     assert.equal(createdInput.cancelUrl, 'http://127.0.0.1/settings/messaging?checkout=cancelled');
 
     const purchase = (await pool.query(
@@ -13551,4 +13554,20 @@ require('../support/thank-you-credits-cases')({
   postEventRequest, previewPostEventDraft, seedApprovedPostEventBatch,
   signInAccount, followSignInLink, lastDevEmail, resetRateLimits,
   settlePostEventThankYouWork
+});
+
+require('../support/sms-admin-cases')({
+  test, assert, pool, createEvent, createAdminOperator, signInAdminOperator, signSession,
+  get baseUrl() { return baseUrl; },
+  get organizerId() { return organizerId; }
+});
+
+require('../support/sms-welcome-cases')({
+  test, assert, pool, getOrganizerId: () => organizerId, createEvent, createRsvp,
+  getBaseUrl: () => baseUrl, signSession, addVerifiedEmailIdentity
+});
+
+require('../support/sms-provider-cost-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl
 });

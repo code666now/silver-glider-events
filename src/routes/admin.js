@@ -11,6 +11,20 @@ const sms = require('../lib/sms');
 const router = express.Router();
 router.use('/api/admin', requireAdmin);
 
+// The welcome campaign's spending is business-sensitive, not a support tool.
+router.get('/api/admin/sms-welcome-costs', requireSuperAdmin, async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    const { getWelcomeCampaignSummary } = require('../lib/sms-welcome');
+    const { getWelcomeSmsCostSummary } = require('../lib/sms-costs');
+    const [campaign, costs] = await Promise.all([
+      getWelcomeCampaignSummary(pool),
+      getWelcomeSmsCostSummary(pool)
+    ]);
+    res.json({ campaign, costs });
+  } catch (error) { next(error); }
+});
+
 const smsTestLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   rules: [
