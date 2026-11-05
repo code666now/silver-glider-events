@@ -170,7 +170,7 @@ test('publication review and hidden controls keep explicit accessible semantics'
   assert.match(view, /<dialog class="publish-event-dialog"[^>]+aria-labelledby="publish-event-title"[^>]+aria-describedby="publish-event-copy"/);
   assert.match(view, /\.publish-event-dialog:not\(\[open\]\),\.publish-event-dialog \[hidden\] \{ display:none !important; \}/);
   assert.match(view, /Publishing does not send invitations or notify followers/);
-  assert.match(client, /data\.canBrowsePastGuests \|\| data\.canInvite/);
+  assert.match(client, /!data\.canInvite && \(!\(data\.canBrowsePastGuests\)/);
   assert.match(client, /eventData\.status === 'cancelled' \|\| eventData\.status === 'draft'/);
 });
 
@@ -181,6 +181,6 @@ test('same-day drafts still load past guests and filtered empty states stay trut
   h.run(`peopleGroup = 'all'; $('familiar-people-source').value = '4'; renderPeople();`);
   assert.equal(h.node('familiar-people-empty').textContent, 'No past guests match this filter.');
   const initialization = client.slice(client.indexOf('async function initializeManagePage()'), client.indexOf('\ninitializeMobileManage();'));
-  assert.match(initialization, /eventData\.status === 'published' && eventData\.lifecycle_phase === 'tonight'\s*\? \[\]\s*:\s*\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\)\]/);
+  assert.match(initialization, /eventData\.status === 'published' && eventData\.lifecycle_phase === 'tonight'\s*\? \[loadPeople\(\), loadContacts\(\)\]\s*:\s*\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\), loadContacts\(\)\]/);
   assert.doesNotMatch(initialization, /:\s*eventData\.lifecycle_phase === 'tonight'/);
 });

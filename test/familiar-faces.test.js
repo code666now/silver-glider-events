@@ -135,7 +135,7 @@ test('SMS lifecycle copy is untouched by the photo opportunity', () => {
   assert.doesNotMatch(smsLifecycle, /Add (?:your |a )?photo|friends recognize/);
 });
 
-test('"Your crowd" groups filter the picker, and a public event can invite a whole group in one tap', () => {
+test('"Your crowd" groups filter the picker and add a whole public-event group to the shared review', () => {
   const routes = read('src/routes/events.js');
   const manage = read('public/js/manage.js');
   const view = read('src/views/event-manage.html');
@@ -154,9 +154,16 @@ test('"Your crowd" groups filter the picker, and a public event can invite a who
   assert.match(routes, /PEOPLE_GROUP_KEYS\.includes\(requestedGroup\)/);
   assert.match(routes, /LIMIT 501/, 'a group invitation still respects the 500 cap');
 
-  // Public events get one tap; private events start with nobody selected.
-  assert.match(manage, /peopleState\.canInvite && eventData\?\.status === 'published'[\s\S]*eventData\.visibility === 'public' && count > 0 && !peopleSelection\.size && !peopleBulk/);
-  assert.match(manage, /group: bulk\.group[\s\S]*search: peopleSearch/);
+  // Public events can add a group without losing another tab's selection.
+  // That action only resolves people: delivery still needs the shared review.
+  assert.match(manage, /peopleState\.canInvite && eventData\?\.status === 'published'[\s\S]*eventData\.visibility === 'public' && count > 0/);
+  const bulkHandler = manage.slice(manage.indexOf("$('familiar-people-bulk-btn').addEventListener"), manage.indexOf("$('familiar-people-source').addEventListener"));
+  assert.match(bulkHandler, /guest-import\/past-selection/);
+  assert.match(bulkHandler, /group: peopleGroup[\s\S]*search: peopleSearch/);
+  assert.match(bulkHandler, /if \(!peopleSelection\.has\(personSelectionKey\(face\)\)\) peopleSelection\.set/);
+  assert.doesNotMatch(bulkHandler, /peopleSelection\.clear\(|guest-import\/send|people\/invite/);
+  assert.match(manage, /guestImport\?\.openInvitations\(\{ faceIds:[\s\S]*contactIds:/);
+  assert.match(manage, /textContent = 'Review Invitations'/);
   assert.match(routes, /group && target\.visibility !== 'public'/);
   assert.match(view, /id="familiar-people-groups"/);
   assert.match(view, /id="familiar-people-bulk-btn"/);

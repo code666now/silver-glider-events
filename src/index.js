@@ -79,6 +79,7 @@ app.use(require('./routes/flyer-intake'));
 app.use(require('./routes/admin-done-for-you'));
 app.use('/admin-editor', require('./routes/admin-editor'));
 app.use(require('./routes/events'));
+app.use(require('./routes/guest-import'));
 app.use(require('./routes/post-event'));
 app.use(require('./routes/contributors'));
 app.use(require('./routes/uploads'));

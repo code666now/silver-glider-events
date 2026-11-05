@@ -44,13 +44,16 @@ test('phone event management uses one task hub and the original action controls'
   }
 });
 
-test('Invite Familiar Faces opens the shared picker as a phone Guests task', () => {
+test('Invite guests keeps From past events on the shared phone Guests picker', () => {
   const view = read('src/views/event-manage.html');
   const client = read('public/js/manage.js');
 
   assert.match(view, /id="familiar-people" role="region" aria-labelledby="familiar-people-title" tabindex="-1" hidden/);
   assert.match(view, /id="familiar-people-title"[^>]*>Invite your people</);
-  assert.match(client, /\$\('invite-previous-guests'\)\.addEventListener\('click',[\s\S]*mobileManageLayout\.matches[\s\S]*setMobileManageView\('guests', \{ focus: false, historyMode: 'push' \}\)/);
+  assert.match(client, /async function openPastGuestPicker\(\)[\s\S]*mobileManageLayout\.matches[\s\S]*setMobileManageView\('guests', \{ focus: false, historyMode: 'push' \}\)/);
+  assert.match(client, /onPastGuests: openPastGuestPicker/);
+  assert.match(client, /guestImport\?\.openInvitations/);
+  assert.match(client, /guestImport\?\.openImport\('upload'/);
   assert.match(client, /requestAnimationFrame\(\(\) => window\.requestAnimationFrame\(openPicker\)\)/);
   assert.match(client, /mobileManageLayout\.matches \? familiarPeople : \$\('search'\)/);
 });

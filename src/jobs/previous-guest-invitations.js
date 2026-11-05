@@ -36,6 +36,12 @@ async function finalizeBatch(batchId) {
 }
 
 async function processPreviousGuestInvitationBatch(batchId) {
+  const source = (await pool.query(
+    `SELECT source_kind FROM previous_guest_invitation_batches WHERE id=$1`, [batchId]
+  )).rows[0];
+  if (source?.source_kind === 'import') {
+    return require('./imported-guest-invitations').processImportedGuestInvitationBatch(batchId);
+  }
   const { rows: batchRows } = await pool.query(
     `SELECT b.id AS invitation_batch_id, b.source_event_title, e.*, o.id AS host_id,
             COALESCE(o.org_name, o.name, 'Silver Glider Events') AS organizer_label
@@ -145,10 +151,11 @@ async function runPreviousGuestInvitationPass() {
       `SELECT DISTINCT b.id
          FROM previous_guest_invitation_batches b
          JOIN message_log ml ON ml.previous_guest_invitation_batch_id=b.id
-        WHERE b.status IN ('pending','processing','partial_failed')
-          AND ml.status <> 'sent'
-          AND ml.attempt_count < $1
-          AND (ml.last_attempt_at IS NULL OR ml.last_attempt_at < NOW() - INTERVAL '2 minutes')
+        WHERE b.status='import_pending'
+           OR (b.status IN ('pending','processing','partial_failed')
+             AND ml.status <> 'sent'
+             AND ml.attempt_count < $1
+             AND (ml.last_attempt_at IS NULL OR ml.last_attempt_at < NOW() - INTERVAL '2 minutes'))
         ORDER BY b.id LIMIT 25`,
       [MAX_ATTEMPTS]
     );

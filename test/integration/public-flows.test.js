@@ -139,9 +139,11 @@ function resetRateLimits() {
   uploadRoutes.setAdminHostUploadsForTests();
   postEventRoutes._resetRateLimitsForTests();
   require('../../src/routes/contributors').resetRateLimitsForTests();
+  require('../../src/routes/guest-import').resetRateLimitsForTests();
 }
 
 async function resetDatabase() {
+  await pool.query('TRUNCATE guest_import_budget, guest_import_budget_config RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
@@ -8141,6 +8143,16 @@ test('ordinary account history becomes deletion warnings instead of eligibility 
   );
 
   const operator = await createAdminOperator('delete-history-operator@example.test', 'super_admin');
+  await pool.query(`INSERT INTO host_invitation_contacts(organizer_id,email,name)
+    VALUES ($1,'private-list@example.test','Private List'),($2,'delete-blocked@example.test','Host supplied contact')`,
+  [target.id, organizerId]);
+  const provenImport = (await pool.query(
+    `INSERT INTO message_log(event_id,recipient,recipient_user_id,recipient_name,message_type,channel,status,
+       import_delivery_state,import_render_payload)
+     VALUES ($1,'proven-alias@example.test',$2,'Known Recipient','previous_guest_invite','email','pending',
+       'pending',$3::jsonb) RETURNING id`,
+    [externalEvent.id, target.user_id, JSON.stringify({ to: 'proven-alias@example.test', html: 'Known Recipient' })]
+  )).rows[0];
   const adminSession = await signInAdminOperator(operator.email);
   const impact = await fetch(`${baseUrl}/api/admin/accounts/${target.user_id}`, {
     headers: { cookie: adminSession }
@@ -8204,6 +8216,12 @@ test('ordinary account history becomes deletion warnings instead of eligibility 
   assert.equal(retainedMessage.recipient, 'delete-blocked@example.test',
     'an unrelated delivery snapshot with the same email remains untouched');
   assert.equal(retainedMessage.recipient_user_id, null);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM host_invitation_contacts WHERE organizer_id=$1', [target.id])).rows[0].count, 0,
+    'pseudonymizing an organizer also removes their private contact collection');
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM host_invitation_contacts WHERE organizer_id=$1', [organizerId])).rows[0].count, 1,
+    'another host’s unlinked address-book entry is never deleted by arbitrary email matching');
+  const redactedImport = (await pool.query('SELECT recipient_user_id,recipient_name,import_render_payload,import_delivery_state,attempt_count FROM message_log WHERE id=$1', [provenImport.id])).rows[0];
+  assert.deepEqual(redactedImport, { recipient_user_id: null, recipient_name: null, import_render_payload: null, import_delivery_state: 'skipped', attempt_count: 3 });
   assert.equal((await pool.query(
     'SELECT COUNT(*)::int AS count FROM follower_optouts WHERE organizer_id=$1 AND LOWER(email)=$2',
     [organizerId, 'delete-blocked@example.test']
@@ -13584,4 +13602,9 @@ require('../support/draft-reminder-cases')({
 require('../support/draft-manage-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer
+});
+
+require('../support/guest-import-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, mailer, addVerifiedEmailIdentity
 });

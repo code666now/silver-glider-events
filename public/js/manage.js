@@ -332,7 +332,7 @@ function initializeMobileManage() {
     else window.location.assign('/events?view=hosting');
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && ($('post-event-thank-dialog')?.open || $('publish-event-dialog').open)) return;
+    if (event.key === 'Escape' && ($('post-event-thank-dialog')?.open || $('publish-event-dialog').open || $('guest-import-dialog')?.open)) return;
     if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
       event.preventDefault();
       const current = mobileManageHistoryEntry();
@@ -1234,7 +1234,7 @@ function renderLifecycleCard() {
       : 'One last push for anyone still deciding before doors.';
     setPromotionActionVisible('share-event', true);
     setPromotionActionVisible('download-qr', false);
-    setPromotionActionVisible('invite-previous-guests', false);
+    renderPeopleAction();
     setPromotionActionVisible('sms-audience', false);
     setPromotionActionVisible('announce', false);
     $('share-event').querySelector('.promotion-action-title').textContent = 'Last call';
@@ -1260,7 +1260,7 @@ function renderLifecycleCard() {
     ? 'Share the RSVP link so guests can opt in to the reminder.'
     : 'Send or post your event link.';
   if (eventData.sms_reminder_enabled && smsPreviewState) renderSmsAction(smsPreviewState);
-  if (peopleState?.canInvite) renderPeopleAction();
+  renderPeopleAction();
   if (followerPreviewState) renderFollowerAction(followerPreviewState);
   $('line-feature').style.display = eventData.visibility === 'public' && eventData.status === 'published' ? '' : 'none';
   updateMobileManageSummaries();
@@ -1286,12 +1286,67 @@ let peopleGroup = 'all';
 let peopleBulk = null;
 let peopleConfirming = false;
 let peopleRequest = 0;
+let peopleTab = 'familiar';
+let contactsState = { contacts: [], total: 0, matchingTotal: 0, eligibleCount: 0, hasMore: false };
+let contactsRequest = 0;
+let contactsSearch = '';
+let contactsSearchTimer;
+
+function personSelectionKey(person) { return person.selectionKey || person.id; }
+function canSelectPeople() { return eventData?.status === 'published' && !eventData.is_past && !eventData.archived_at && !eventData.secret_show_enabled && !isPostEventEligible(); }
+
+function setPeopleTab(tab, { focus = false } = {}) {
+  peopleTab = tab === 'contacts' ? 'contacts' : 'familiar';
+  for (const name of ['familiar', 'contacts']) {
+    const selected = peopleTab === name;
+    $(`people-tab-${name}`).setAttribute('aria-selected', String(selected));
+    $(`people-tab-${name}`).tabIndex = selected ? 0 : -1;
+    $(`people-panel-${name}`).hidden = !selected;
+  }
+  $('familiar-people-source-label').hidden = peopleTab !== 'familiar';
+  if (focus) $(`people-tab-${peopleTab}`).focus();
+  if (peopleTab === 'contacts') loadContacts().catch(showContactsError);
+  renderPeopleBar();
+}
+
+function showContactsError(error) {
+  $('people-contacts-error').hidden = false;
+  $('people-contacts-error').textContent = error.message || 'Could not load your contacts. Try again.';
+}
+
+function renderContacts() {
+  $('people-contacts-count').textContent = contactsState.total;
+  $('people-contacts-grid').innerHTML = contactsState.contacts.map(contact => {
+    const selected = peopleSelection.has(personSelectionKey(contact));
+    return `<button type="button" class="people-contact${selected ? ' is-selected' : ''}" data-contact-id="${escapeHtml(contact.id)}" aria-pressed="${selected}"${contact.eligible ? '' : ' disabled'}><span class="people-contact-check" aria-hidden="true">✓</span><span><strong>${escapeHtml(contact.name || contact.email)}</strong>${contact.name ? `<small>${escapeHtml(contact.email)}</small>` : ''}${!contact.eligible ? `<small class="people-contact-reason">${escapeHtml(contact.reason || 'Not eligible for this event')}</small>` : ''}</span></button>`;
+  }).join('');
+  $('people-contacts-empty').hidden = contactsState.contacts.length > 0;
+  $('people-contacts-empty').textContent = contactsSearch ? 'No contacts match that search.' : 'Bring your people. Import a CSV or paste emails to get started.';
+  $('people-contacts-all').hidden = !contactsState.eligibleCount;
+  $('people-contacts-all').textContent = `Select all eligible (${contactsState.eligibleCount})`;
+  $('people-contacts-more').hidden = !contactsState.hasMore;
+  $('people-contacts-context').textContent = contactsSearch ? `${contactsState.matchingTotal} matching contacts` : 'Your private contacts, ready for this event and the next.';
+  renderPeopleBar();
+}
+
+async function loadContacts({ append = false } = {}) {
+  if (!canSelectPeople()) return;
+  const request = ++contactsRequest;
+  const params = new URLSearchParams();
+  if (contactsSearch) params.set('search', contactsSearch);
+  if (append) params.set('offset', contactsState.contacts.length);
+  const data = await api(`/api/events/${eventId}/guest-import/contacts?${params}`);
+  if (request !== contactsRequest) return;
+  $('people-contacts-error').hidden = true;
+  contactsState = append ? { ...data, contacts: [...contactsState.contacts, ...data.contacts] } : data;
+  renderContacts();
+}
 
 function renderPeople() {
   const canInvite = peopleState.canInvite && eventData?.status === 'published';
   $('familiar-people-title').textContent = canInvite ? 'Invite your people' : 'People from your past events';
   $('familiar-people-intro').textContent = canInvite
-    ? 'From your past events. Tap faces to select them.'
+    ? 'Choose Familiar Faces or your contacts. Nothing sends until you review and confirm.'
     : 'These are past guests, not RSVPs for this event. Publish your event before inviting them.';
   const cards = peopleState.people.map(face => {
     if (!canInvite) return `<article class="familiar-face-card is-readonly">
@@ -1299,7 +1354,7 @@ function renderPeople() {
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
     </article>`;
-    const selected = peopleSelection.has(face.id);
+    const selected = peopleSelection.has(personSelectionKey(face));
     const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.detail ? `, ${face.detail}` : ''}`;
     return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-person="${escapeHtml(face.id)}" data-name="${escapeHtml(face.name)}" data-detail="${escapeHtml(face.detail || '')}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">
       <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
@@ -1321,7 +1376,7 @@ function renderPeople() {
     ? 'No one from your past events matches that search.'
     : peopleGroup !== 'all' || $('familiar-people-source').value
       ? 'No past guests match this filter.'
-      : canInvite ? 'Everyone from your past events is already here.' : 'No eligible past guests to show yet.';
+      : canInvite ? (peopleState.sources?.length ? 'Everyone from your past events is already here.' : 'No past guests yet. Open Contacts to bring your own list.') : 'No eligible past guests to show yet.';
   renderPeopleGroups();
   $('familiar-people-more').hidden = !peopleState.hasMore;
   const unsubscribed = Number(peopleState.unsubscribedCount) || 0;
@@ -1346,50 +1401,39 @@ function renderPeopleGroups() {
   const active = groups.find(group => group.key === peopleGroup);
   const count = active?.count || 0;
   const bulkAvailable = peopleState.canInvite && eventData?.status === 'published'
-    && eventData.visibility === 'public' && count > 0 && !peopleSelection.size && !peopleBulk;
+    && eventData.visibility === 'public' && count > 0;
   $('familiar-people-bulk').hidden = !bulkAvailable;
   if (bulkAvailable) {
-    $('familiar-people-bulk-btn').textContent = `${active.action || 'Invite everyone'} (${count})`;
+    $('familiar-people-bulk-btn').textContent = `Select ${active.label?.toLowerCase() || 'everyone'} (${count})`;
   }
 }
 
 function renderPeopleBar() {
-  if (!peopleState.canInvite || eventData?.status !== 'published') {
+  if (!canSelectPeople()) {
     peopleSelection.clear();
     peopleBulk = null;
     peopleConfirming = false;
   }
-  const count = peopleBulk ? peopleBulk.count : peopleSelection.size;
+  const count = peopleSelection.size;
   $('familiar-people-bar').hidden = count === 0;
   if (!count) peopleConfirming = false;
-  $('familiar-people-bar').classList.toggle('is-confirming', peopleConfirming);
-  const people = `${count} ${count === 1 ? 'person' : 'people'}`;
-  if (peopleConfirming) {
-    $('familiar-people-count').textContent = `Invite ${people} to ${eventData.title}?`;
-    $('familiar-people-hint').textContent = 'Each gets one email with an RSVP button. They can unsubscribe anytime.';
-    $('familiar-people-secondary').textContent = 'Back';
-    $('familiar-people-send').textContent = `Send ${count} ${count === 1 ? 'invitation' : 'invitations'}`;
-  } else {
-    $('familiar-people-count').textContent = `${count} selected`;
-    $('familiar-people-hint').textContent = 'Tap faces to add or remove them.';
-    $('familiar-people-secondary').textContent = 'Clear';
-    $('familiar-people-send').textContent = `Invite ${people}`;
-  }
+  $('familiar-people-bar').classList.remove('is-confirming');
+  $('familiar-people-count').textContent = `${count} selected`;
+  $('familiar-people-hint').textContent = 'Selections stay with you across both tabs. Each person is counted once.';
+  $('familiar-people-secondary').textContent = 'Clear';
+  $('familiar-people-send').textContent = 'Review Invitations';
   syncFamiliarMobileChrome();
 }
 
 function renderPeopleAction() {
   const button = $('invite-previous-guests');
-  const available = eventData?.status === 'published' && peopleState.canInvite
-    && (peopleState.total > 0 || peopleState.plusOnes.length > 0 || Boolean(peopleSearch));
+  const available = eventData?.status === 'published' && !eventData.is_past
+    && !eventData.archived_at && !eventData.secret_show_enabled && !isPostEventEligible();
+  button.hidden = !available;
   button.style.display = available ? '' : 'none';
   button.disabled = !available;
-  $('invite-previous-guests-title').textContent = eventData?.duplicated_from_id
-    ? 'Review who to invite'
-    : 'Invite Familiar Faces';
-  $('invite-previous-guests-copy').textContent = eventData?.duplicated_from_id
-    ? 'Your past guests are here to choose from. Nothing has been sent.'
-    : 'Choose people from your past events.';
+  $('invite-previous-guests-title').textContent = 'Invite guests';
+  $('invite-previous-guests-copy').textContent = 'Choose past guests or bring your own list.';
 }
 
 async function loadPeople({ append = false } = {}) {
@@ -1406,7 +1450,8 @@ async function loadPeople({ append = false } = {}) {
   } else {
     peopleState = data;
   }
-  $('familiar-people').hidden = !(data.canBrowsePastGuests || data.canInvite) || (!data.sources.length && !peopleSearch);
+  $('familiar-people').hidden = !data.canInvite && (!(data.canBrowsePastGuests) || (!data.sources.length && !peopleSearch));
+  $('people-source-tabs').hidden = !data.canInvite;
   const select = $('familiar-people-source');
   if (select.options.length === 1 && data.sources.length) {
     select.insertAdjacentHTML('beforeend', data.sources.map(source =>
@@ -1434,9 +1479,12 @@ $('familiar-people-grid').addEventListener('click', async event => {
   if (!card) return;
   // Update the tapped card in place (no grid re-render), so keyboard focus
   // stays on it and quick taps never land on replaced elements.
-  const selected = !peopleSelection.has(card.dataset.person);
-  if (selected) peopleSelection.set(card.dataset.person, card.dataset.name);
-  else peopleSelection.delete(card.dataset.person);
+  const face = peopleState.people.find(person => person.id === card.dataset.person);
+  if (!face) return;
+  const key = personSelectionKey(face);
+  const selected = !peopleSelection.has(key);
+  if (selected) peopleSelection.set(key, { ...face, source: 'face' });
+  else peopleSelection.delete(key);
   card.classList.toggle('is-selected', selected);
   card.setAttribute('aria-pressed', String(selected));
   card.setAttribute('aria-label', `${selected ? 'Remove' : 'Select'} ${card.dataset.name}${card.dataset.detail ? `, ${card.dataset.detail}` : ''}`);
@@ -1454,74 +1502,46 @@ $('familiar-people-groups').addEventListener('click', event => {
   loadPeople().catch(error => toast(error.message));
 });
 
-$('familiar-people-bulk-btn').addEventListener('click', () => {
+$('familiar-people-bulk-btn').addEventListener('click', async () => {
   if (!peopleState.canInvite || eventData?.status !== 'published') return;
   const active = (peopleState.groups || []).find(group => group.key === peopleGroup);
   if (!active?.count) return;
-  peopleSelection.clear();
-  peopleBulk = { group: peopleGroup, count: active.count, label: active.label };
-  peopleConfirming = true;
-  renderPeople();
-  $('familiar-people-send').focus();
+  const button = $('familiar-people-bulk-btn');
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const data = await api(`/api/events/${eventId}/guest-import/past-selection`, { method: 'POST', body: { group: peopleGroup, sourceEventId: $('familiar-people-source').value ? Number($('familiar-people-source').value) : null, search: peopleSearch } });
+    for (const face of data.people) if (!peopleSelection.has(personSelectionKey(face))) peopleSelection.set(personSelectionKey(face), { ...face, source: 'face' });
+    renderPeople(); renderContacts(); $('familiar-people-send').focus();
+  } catch (error) { toast(error.message || 'Could not select this group.'); }
+  finally { button.disabled = false; }
 });
 
 $('familiar-people-source').addEventListener('change', () => loadPeople().catch(error => toast(error.message)));
 $('familiar-people-more').addEventListener('click', () => loadPeople({ append: true }).catch(error => toast(error.message)));
 
 $('familiar-people-secondary').addEventListener('click', () => {
-  if (peopleBulk) {
-    peopleBulk = null;
-    peopleConfirming = false;
-    renderPeople();
-  } else if (peopleConfirming) {
-    peopleConfirming = false;
-    renderPeopleBar();
-  } else {
-    peopleSelection.clear();
-    renderPeople();
-  }
+  peopleSelection.clear(); peopleBulk = null; peopleConfirming = false;
+  renderPeople(); renderContacts();
 });
 
-$('familiar-people-send').addEventListener('click', async () => {
-  if (!peopleState.canInvite || eventData?.status !== 'published') return;
-  const button = $('familiar-people-send');
-  if (!peopleConfirming) {
-    peopleConfirming = true;
-    renderPeopleBar();
-    button.focus();
-    return;
-  }
-  if (button.dataset.busy === 'true') return;
-  button.dataset.busy = 'true';
-  button.disabled = true;
-  button.textContent = 'Sending…';
-  try {
-    const source = $('familiar-people-source').value;
-    const bulk = peopleBulk ? { ...peopleBulk } : null;
-    const data = await api(`/api/events/${eventId}/familiar-faces/people/invite`, {
-      method: 'POST',
-      body: bulk
-        ? { group: bulk.group, sourceEventId: source ? Number(source) : null, search: peopleSearch }
-        : { faceIds: [...peopleSelection.keys()] }
-    });
-    peopleSelection.clear();
-    peopleBulk = null;
-    if (bulk) peopleGroup = 'all';
-    peopleConfirming = false;
-    toast(`${data.queued} ${data.queued === 1 ? 'invitation is' : 'invitations are'} on the way`);
-    await Promise.allSettled([loadGuests(peopleSearch), loadPeople()]);
-  } catch (error) {
-    toast(error.message || 'Could not send invitations');
-    await loadPeople().catch(() => {});
-  } finally {
-    delete button.dataset.busy;
-    button.disabled = false;
-    renderPeopleBar();
-  }
+$('familiar-people-send').addEventListener('click', () => {
+  if (!canSelectPeople() || !peopleSelection.size) return;
+  const selected = [...peopleSelection.values()];
+  guestImport?.openInvitations({ faceIds: selected.filter(person => person.source === 'face').map(person => person.id), contactIds: selected.filter(person => person.source === 'contact').map(person => person.id) }, $('familiar-people-send'));
 });
 
-$('invite-previous-guests').addEventListener('click', () => {
+async function openPastGuestPicker() {
+  if (!peopleState.canInvite) {
+    try { await loadPeople(); }
+    catch (error) { toast(error.message || 'Could not load past guests. Try again.'); return; }
+  }
   const familiarPeople = $('familiar-people');
+  familiarPeople.hidden = false;
+  if (!peopleState.people.length && !peopleState.plusOnes.length) {
+    $('familiar-people-empty').hidden = false;
+    $('familiar-people-empty').textContent = 'No eligible past guests yet. Open Contacts to bring your own list.';
+  }
   const openPicker = () => {
     familiarPeople.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -1537,6 +1557,76 @@ $('invite-previous-guests').addEventListener('click', () => {
     return;
   }
   openPicker();
+}
+
+const guestImport = window.SGGuestImport?.create({
+  eventId,
+  api,
+  canOpen: () => !$('invite-previous-guests').disabled,
+  onPastGuests: openPastGuestPicker,
+  onQueued: selection => {
+    const faceIds = new Set((selection?.faceIds || []).map(String));
+    const contactIds = new Set((selection?.contactIds || []).map(String));
+    for (const [key, person] of peopleSelection) if (person.source === 'face' ? faceIds.has(String(person.id)) : contactIds.has(String(person.id))) peopleSelection.delete(key);
+    peopleBulk = null; peopleConfirming = false;
+    return Promise.allSettled([loadGuests(peopleSearch), loadPeople(), loadContacts()]);
+  },
+  onSelectionRemove: key => { peopleSelection.delete(key); renderPeople(); renderContacts(); },
+  onImported: async result => {
+    const selected = new Set(result.selectedContactIds.map(String));
+    for (const contact of result.contacts) {
+      if (selected.has(String(contact.id)) && contact.eligible && !peopleSelection.has(personSelectionKey(contact))) peopleSelection.set(personSelectionKey(contact), { ...contact, source: 'contact' });
+    }
+    await loadContacts().catch(showContactsError); renderPeople(); setPeopleTab('contacts');
+    toast('Contacts added. Review your selected people when you’re ready to invite.');
+  }
+});
+$('invite-previous-guests').addEventListener('click', () => {
+  if ($('invite-previous-guests').disabled) return;
+  openPastGuestPicker();
+});
+
+for (const tab of ['familiar', 'contacts']) {
+  $(`people-tab-${tab}`).addEventListener('click', () => setPeopleTab(tab));
+  $(`people-tab-${tab}`).addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    setPeopleTab(event.key === 'Home' ? 'familiar' : event.key === 'End' ? 'contacts' : tab === 'familiar' ? 'contacts' : 'familiar', { focus: true });
+  });
+}
+$('people-contacts-csv').addEventListener('click', () => guestImport?.openImport('upload', $('people-contacts-csv')));
+$('people-contacts-paste').addEventListener('click', () => guestImport?.openImport('paste', $('people-contacts-paste')));
+$('people-contacts-search').addEventListener('input', event => {
+  contactsSearch = event.target.value.trim();
+  clearTimeout(contactsSearchTimer);
+  contactsSearchTimer = setTimeout(() => loadContacts().catch(showContactsError), 200);
+});
+$('people-contacts-more').addEventListener('click', () => loadContacts({ append: true }).catch(showContactsError));
+$('people-contacts-grid').addEventListener('click', event => {
+  const button = event.target.closest('[data-contact-id]');
+  if (!button || !canSelectPeople()) return;
+  const contact = contactsState.contacts.find(item => String(item.id) === button.dataset.contactId);
+  if (!contact?.eligible) return;
+  const key = personSelectionKey(contact);
+  const selected = !peopleSelection.has(key);
+  if (selected) peopleSelection.set(key, { ...contact, source: 'contact' });
+  else peopleSelection.delete(key);
+  button.classList.toggle('is-selected', selected);
+  button.setAttribute('aria-pressed', String(selected));
+  renderPeopleBar(); renderPeople();
+});
+$('people-contacts-all').addEventListener('click', async () => {
+  const button = $('people-contacts-all');
+  if (button.disabled || !canSelectPeople()) return;
+  button.disabled = true;
+  try {
+    const params = new URLSearchParams({ all: '1' });
+    if (contactsSearch) params.set('search', contactsSearch);
+    const data = await api(`/api/events/${eventId}/guest-import/contacts?${params}`);
+    for (const contact of data.contacts) if (contact.eligible && !peopleSelection.has(personSelectionKey(contact))) peopleSelection.set(personSelectionKey(contact), { ...contact, source: 'contact' });
+    renderContacts(); renderPeople();
+  } catch (error) { showContactsError(error); }
+  finally { button.disabled = false; }
 });
 
 function renderSmsAction(preview) {
@@ -1829,8 +1919,8 @@ async function initializeManagePage() {
           ...(postEventExperience ? [loadPostEventExperience()] : [])
         ]
       : eventData.status === 'published' && eventData.lifecycle_phase === 'tonight'
-        ? []
-        : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];
+        ? [loadPeople(), loadContacts()]
+        : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview(), loadContacts()];
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
     if (guests.status === 'rejected') {
       $('manage-guest-section').setAttribute('aria-busy', 'false');

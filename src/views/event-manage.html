@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/event-change-dialog.css">
   <link rel="stylesheet" href="/css/familiar-faces.css">
+  <link rel="stylesheet" href="/css/guest-import.css">
   <link rel="stylesheet" href="/css/post-event.css">
   <link rel="stylesheet" href="/css/sms-notifications.css">
   <link rel="stylesheet" href="/css/welcome-texts.css">
@@ -791,7 +792,7 @@
         </button>
         <button class="promotion-action" id="invite-previous-guests" type="button" style="display:none" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 18a4 4 0 0 0-8 0M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19 8v6m-3-3h6"/></svg></span>
-          <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite Familiar Faces</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Choose people from your past events.</span></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title" id="invite-previous-guests-title">Invite guests</strong><span class="promotion-action-description" id="invite-previous-guests-copy">Choose past guests or bring your own list.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
         <p class="promotion-group-label promotion-action-section-label" id="reach-guests-label">Reach your guests</p>
@@ -937,8 +938,13 @@
             <p class="sg-label" id="familiar-people-title" style="margin:0 0 7px">Invite your people</p>
             <p class="familiar-people-intro" id="familiar-people-intro">From your past events. Tap faces to select them.</p>
           </div>
-          <label class="familiar-people-source"><span class="sr-only">Show people from</span><select class="sg-input" id="familiar-people-source"><option value="">All past events</option></select></label>
+          <label class="familiar-people-source" id="familiar-people-source-label"><span class="sr-only">Show people from</span><select class="sg-input" id="familiar-people-source"><option value="">All past events</option></select></label>
         </div>
+        <div class="guest-import-tabs people-source-tabs" id="people-source-tabs" role="tablist" aria-label="People to invite" hidden>
+          <button id="people-tab-familiar" type="button" role="tab" aria-selected="true" aria-controls="people-panel-familiar" tabindex="0">Familiar Faces</button>
+          <button id="people-tab-contacts" type="button" role="tab" aria-selected="false" aria-controls="people-panel-contacts" tabindex="-1">Contacts <span id="people-contacts-count">0</span></button>
+        </div>
+        <div id="people-panel-familiar" role="tabpanel" aria-labelledby="people-tab-familiar">
         <div class="familiar-people-groups" id="familiar-people-groups" role="group" aria-label="Your crowd"></div>
         <div class="familiar-people-bulk" id="familiar-people-bulk" hidden>
           <button class="sg-btn sg-btn-primary" id="familiar-people-bulk-btn" type="button"></button>
@@ -947,11 +953,21 @@
         <p class="familiar-faces-empty" id="familiar-people-empty" hidden></p>
         <div class="familiar-people-more"><button class="sg-btn sg-btn-ghost" id="familiar-people-more" type="button" hidden>Show more</button></div>
         <p class="familiar-people-note" id="familiar-people-note" hidden></p>
+        </div>
+        <div id="people-panel-contacts" role="tabpanel" aria-labelledby="people-tab-contacts" hidden>
+          <div class="people-contacts-tools"><label class="sr-only" for="people-contacts-search">Search your contacts</label><input class="sg-input" id="people-contacts-search" type="search" placeholder="Search your contacts" maxlength="120"><button class="sg-btn sg-btn-ghost" id="people-contacts-csv" type="button">Import CSV</button><button class="sg-btn sg-btn-ghost" id="people-contacts-paste" type="button">Paste Emails</button></div>
+          <div class="people-contacts-selection"><p id="people-contacts-context">Your private contacts, ready for this event and the next.</p><button class="guest-import-text-button" id="people-contacts-all" type="button" hidden>Select all eligible</button></div>
+          <div class="people-contacts-grid" id="people-contacts-grid" aria-live="polite"></div>
+          <p class="familiar-faces-empty" id="people-contacts-empty">Bring your people. Import a CSV or paste emails to get started.</p>
+          <p class="guest-import-error" id="people-contacts-error" role="alert" hidden></p>
+          <button class="sg-btn sg-btn-ghost" id="people-contacts-more" type="button" hidden>Show more contacts</button>
+          <p class="guest-import-helper">Contacts stay private to you. Adding them does not create an RSVP, a follow, or email/text subscriptions.</p>
+        </div>
         <div class="familiar-faces-selection" id="familiar-people-bar" hidden>
           <div class="familiar-faces-selection-copy"><strong id="familiar-people-count">0 selected</strong><span id="familiar-people-hint">Tap faces to add or remove them.</span></div>
           <div class="familiar-faces-selection-actions">
             <button class="sg-btn sg-btn-ghost" id="familiar-people-secondary" type="button">Clear</button>
-            <button class="sg-btn sg-btn-primary" id="familiar-people-send" type="button">Invite</button>
+            <button class="sg-btn sg-btn-primary" id="familiar-people-send" type="button">Review Invitations</button>
           </div>
         </div>
       </div>
@@ -1088,12 +1104,52 @@
       </footer>
     </form>
   </dialog>
+  <dialog class="guest-import-dialog" id="guest-import-dialog" aria-labelledby="guest-import-title" aria-describedby="guest-import-intro">
+    <div class="guest-import-shell">
+      <header class="guest-import-head">
+        <div><p class="guest-import-kicker" id="guest-import-kicker">Bring your people</p><h2 id="guest-import-title" tabindex="-1">Invite guests</h2><p id="guest-import-intro">Choose people you know. Nothing sends until you confirm.</p></div>
+        <button class="guest-import-close" id="guest-import-close" type="button" aria-label="Close invitations">×</button>
+      </header>
+      <div class="guest-import-body" id="guest-import-body">
+        <section id="guest-import-input" hidden>
+          <div class="guest-import-tabs" role="group" aria-label="How to add your list"><button id="guest-import-paste-tab" type="button" aria-pressed="true">Paste list</button><button id="guest-import-upload-tab" type="button" aria-pressed="false">Upload CSV</button></div>
+          <div id="guest-import-paste-panel"><label for="guest-import-text">Names and emails</label><textarea class="sg-input" id="guest-import-text" rows="7" maxlength="65536" spellcheck="false" autocomplete="off" placeholder="Alex Rivera &lt;alex@example.com&gt;&#10;Sam &lt;sam@example.com&gt;"></textarea><p class="guest-import-helper">Paste spreadsheet cells or emails separated by commas, spaces, semicolons, or new lines. Names are optional.</p></div>
+          <div class="guest-import-upload" id="guest-import-upload-panel" hidden><label for="guest-import-file">Choose a CSV file</label><input id="guest-import-file" type="file" accept=".csv,text/csv,text/tab-separated-values"><p class="guest-import-helper" id="guest-import-file-note">UTF-8 CSV · Up to 100 people · 64 KB maximum</p></div>
+          <p class="guest-import-note">Email invitations only. Importing does not RSVP anyone or subscribe them to future emails or texts.</p>
+        </section>
+        <section id="guest-import-mapping" hidden>
+          <p class="guest-import-note">Tell us which columns to use. Other columns will be ignored.</p>
+          <label class="guest-import-checkbox"><input type="checkbox" id="guest-import-has-header">The first row contains column names</label>
+          <div class="guest-import-map-fields"><label>Email column<select class="sg-input" id="guest-import-email-column"></select></label><label>Name column <span>(optional)</span><select class="sg-input" id="guest-import-name-column"></select></label></div>
+          <div class="guest-import-map-sample" id="guest-import-map-sample"></div>
+        </section>
+        <section id="guest-import-review" hidden>
+          <p class="guest-import-summary" id="guest-import-summary" role="status"></p>
+          <div class="guest-import-review-tools"><p class="guest-import-helper">Correct a detail or remove a row. Only ready people receive an invitation.</p><button class="guest-import-text-button" id="guest-import-change-columns" type="button" hidden>Change columns</button></div>
+          <div class="guest-import-rows" id="guest-import-rows"></div>
+          <p class="guest-import-helper" id="guest-import-limit"></p>
+        </section>
+        <section id="guest-import-preview" hidden>
+          <p class="guest-import-subject"><span>Subject</span><strong id="guest-import-subject"></strong></p>
+          <p class="guest-import-helper">Names are personalized when available. Links are inactive in this preview.</p>
+          <iframe id="guest-import-email-preview" class="guest-import-email-preview" title="Invitation email preview" sandbox="" referrerpolicy="no-referrer"></iframe>
+          <label class="guest-import-checkbox guest-import-permission"><input id="guest-import-permission" type="checkbox"><span>I have permission to invite these people. No purchased lists.</span></label>
+          <p class="guest-import-note">Each person gets one invitation for this event, with an unsubscribe option. No automatic follow or text signup.</p>
+        </section>
+        <section id="guest-import-status" hidden><div class="guest-import-status-mark" id="guest-import-status-mark" aria-hidden="true">…</div><h3 id="guest-import-status-title">Invitations queued</h3><p id="guest-import-status-copy" role="status"></p><p class="guest-import-note">Email-provider acceptance is not the same as inbox delivery. Invitations do not count as RSVPs.</p><button class="guest-import-text-button" id="guest-import-check-status" type="button">Refresh status</button></section>
+        <p class="guest-import-error" id="guest-import-error" tabindex="-1" role="alert" hidden></p>
+      </div>
+      <footer class="guest-import-foot" id="guest-import-foot"><button class="sg-btn sg-btn-ghost" id="guest-import-back" type="button">Back</button><button class="sg-btn sg-btn-primary" id="guest-import-next" type="button">Review list</button></footer>
+    </div>
+  </dialog>
   <script src="/js/api.js"></script>
   <script src="/js/event-change-dialog.js"></script>
   <script src="/js/event-lifecycle.js"></script>
   <script src="/js/thank-you-credits.js"></script>
   <script src="/js/post-event.js"></script>
   <script src="/js/welcome-texts.js"></script>
+  <script src="/js/guest-list-parser.js"></script>
+  <script src="/js/guest-import.js"></script>
   <script src="/js/manage.js"></script>
 </body>
 </html>

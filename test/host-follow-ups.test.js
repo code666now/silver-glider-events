@@ -176,7 +176,7 @@ test('Do this again reuses draft duplication and dates-first editing with no aut
   assert.match(manage, /lifecycle-next-event'\)\.addEventListener\('click',[^\n]*repeat: true/);
   assert.match(manage, /api\(`\/api\/events\/\$\{eventId\}\/duplicate`, \{ method: 'POST' \}\)/);
   assert.match(manage, /repeat \? 'details&repeat=1' : 'appearance'/);
-  assert.match(manage, /Your past guests are here to choose from\. Nothing has been sent\./);
+  assert.match(manage, /Guests and messages were not copied\. Choose whom to invite with Familiar Faces; review before anything is sent\./);
   assert.match(read('src/views/event-manage.html'), /Do this again/);
   const duplicateBody = manage.slice(manage.indexOf('async function duplicateEvent'), manage.indexOf("$('duplicate').addEventListener"));
   assert.doesNotMatch(duplicateBody, /invitations|announce|\/send/);

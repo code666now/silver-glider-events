@@ -1223,6 +1223,10 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
 
     const deletedPlaceholder = `deleted+${userId}@example.invalid`;
 
+    // Organizer rows are pseudonymized rather than removed, so the FK cascade
+    // alone cannot erase this host's private imported address book.
+    await client.query('DELETE FROM host_invitation_contacts WHERE organizer_id=$1', [organizerId]);
+
     const access = await invalidateAccountAccess(client, userId, organizerId);
     await forfeitSmsCreditBalance(client, {
       organizerId,
@@ -1261,7 +1265,11 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
     await client.query(
       `UPDATE message_log
           SET recipient='deleted+' || $1::text || '+message-' || id::text || '@example.invalid',
-              recipient_name=NULL,recipient_user_id=NULL
+              recipient_name=NULL,recipient_user_id=NULL,import_render_payload=NULL,
+              status=CASE WHEN import_delivery_state='pending' THEN 'failed' ELSE status END,
+              attempt_count=CASE WHEN import_delivery_state='pending' THEN 3 ELSE attempt_count END,
+              error=CASE WHEN import_delivery_state='pending' THEN 'recipient_deleted' ELSE error END,
+              import_delivery_state=CASE WHEN import_delivery_state='pending' THEN 'skipped' ELSE import_delivery_state END
         WHERE recipient_user_id=$1`,
       [userId]
     );

@@ -28,9 +28,10 @@ test('upcoming events invite past guests as faces inside Familiar Faces, not a o
   const styles = read('public/css/familiar-faces.css');
   const promotion = view.slice(view.indexOf('<section class="promotion-card"'), view.indexOf('<div class="guest-head">'));
 
-  // The promotion row stays and opens the same in-page picker on every screen size.
+  // The promotion action keeps the same in-page past-guest picker.
   assert.match(promotion, /id="invite-previous-guests"/);
-  assert.match(view, /Invite Familiar Faces/);
+  assert.match(view, /id="invite-previous-guests-title">Invite guests</);
+  assert.match(view, /id="people-tab-familiar"[\s\S]*Familiar Faces[\s\S]*id="people-tab-contacts"/);
   assert.ok(promotion.indexOf('download-qr') < promotion.indexOf('invite-previous-guests'));
   assert.ok(promotion.indexOf('invite-previous-guests') < promotion.indexOf('announce'));
   assert.doesNotMatch(view, /previous-guests-dialog|previous-guest-invites\.css/);
@@ -41,12 +42,12 @@ test('upcoming events invite past guests as faces inside Familiar Faces, not a o
   assert.match(section, /id="familiar-people-grid"/);
   assert.match(section, /id="familiar-people-source"[\s\S]*All past events/);
   assert.match(client, /familiar-faces\/people\?/);
-  assert.match(client, /familiar-faces\/people\/invite/);
+  assert.match(client, /guestImport\?\.openInvitations/);
   assert.match(client, /setMobileManageView\('guests', \{ focus: false, historyMode: 'push' \}\)/);
   // Nothing is pre-selected; there's a review step before sending.
   assert.match(client, /const peopleSelection = new Map\(\)/);
   assert.doesNotMatch(section, /checked/);
-  assert.match(client, /Invite \$\{people\} to \$\{eventData\.title\}\?/);
+  assert.match(client, /Review Invitations/);
   // One search box filters both grids.
   assert.match(client, /peopleSearch = query;\s*\n\s*loadPeople\(\)/);
   // +1s are shown with a share action, never selectable.

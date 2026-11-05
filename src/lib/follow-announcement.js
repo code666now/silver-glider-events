@@ -59,7 +59,8 @@ async function eligibleEmailRecipients(queryable, organizerId, eventId) {
                       OR ((c.user_id IS NULL OR ml.recipient_user_id IS NULL)
                           AND LOWER(ml.recipient)=c.email))
                  AND ml.message_type IN ('announcement','previous_guest_invite')
-                 AND ml.status IN ('pending','sent')
+                 AND (ml.status IN ('pending','sent')
+                      OR (ml.message_type='previous_guest_invite' AND ml.import_delivery_state IS NOT NULL))
             )
       ORDER BY c.email`,
     [organizerId, eventId, FOLLOW_EMAIL_CONSENT_VERSION,

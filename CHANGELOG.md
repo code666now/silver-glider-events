@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.197
+
+### Bring your people: Contacts and shared invitations
+
+* Add **Familiar Faces** and **Contacts** tabs inside **Invite your people**, keeping existing history filters and RSVP classifications. Selections survive tab/filter changes and share one **Review Invitations** action.
+* Import UTF-8 CSV/spreadsheet cells or paste email lists, recognize full/first/last names, map ambiguous columns, correct or remove rows, then explicitly save reviewed contacts. Eligible contacts are selected automatically; existing selections remain. Contacts stay private to their host and persist across events without duplicate records.
+* Review a combined deduplicated audience and the real invitation email, confirm permission, then send through the existing invitation queue. Provider-accepted invitations appear in Invited; pending, failed, and skipped results remain explicit. Imports never create accounts, RSVPs, attendance, follows, or subscriptions.
+* Recheck ownership, opt-outs, event privacy and eligibility before approval and delivery. Preserve reliable host-owned RSVP identity links across email aliases; keep arbitrary imported addresses separate from account claims. Freeze approved content and idempotency keys, bound retries, protect rolling quotas, and prevent overlap with in-flight follower announcements.
+* Limit each import to 100 rows/64 KB, combined selections to 500 people and contact-origin invitations to 100 per approval, 200 per host and 2,000 globally per rolling 24 hours. Existing face-only invitations do not consume the contact allowance.
+* Add migration 081 without backfill or automatic sends. Account deletion clears the host's private Contacts and trusted recipient delivery snapshots. Public Standard/Flyer presentation, shared media, RSVP counts, reminders, wallets and thank-you deliveries are unchanged.
+
+### Verification
+
+* All **962 automated tests** and static checks pass (292 JavaScript / 462 project files), including 14 invitation integration cases and account-deletion coverage. `git diff --check` passes.
+* Five actual-controller Chrome journeys pass at 1440px/390px and 320×440: persistent/repeated imports, overlapping selections, both tabs, CSV mapping, editing invalid rows, explicit confirmation, repeat-click protection, error recovery and accepted/pending states. The real sandboxed email preview is visibly rendered; screenshots were reviewed. Physical Safari/iOS remains manual. No real messages or production records are created for QA.
+
 ## 1.0.196
 
 Released November 4, 2026. Built, reviewed, and deployed by Codex.

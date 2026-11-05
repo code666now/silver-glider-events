@@ -28,6 +28,7 @@ const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outboun
 const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
+const { invitationSelectionKey } = require('../lib/invitation-selection-key');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -634,8 +635,11 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
               LOWER(ml.recipient) AS email, ml.recipient_name
          FROM message_log ml
          JOIN events source ON source.id=ml.event_id
+         LEFT JOIN previous_guest_invitation_batches invitation_batch
+           ON invitation_batch.id=ml.previous_guest_invitation_batch_id
         WHERE source.id=$1 AND source.organizer_id=$2
           AND ml.id=ANY($3::int[]) AND ml.message_type='previous_guest_invite'
+          AND COALESCE(invitation_batch.source_kind,'past_guest') <> 'import'
           AND ml.status IN ('pending','sent') AND NULLIF(TRIM(ml.recipient),'') IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM follower_optouts fo
@@ -735,25 +739,31 @@ async function familiarFaceRows(eventId, organizerId) {
     `SELECT DISTINCT ON (
               COALESCE('user:' || ml.recipient_user_id::text, 'email:' || LOWER(TRIM(ml.recipient)))
             ) ml.id, ml.recipient_user_id AS user_id,
-            ml.recipient, ml.recipient_name,
+            ml.recipient, ml.recipient_name, invitation_batch.source_kind,
             ml.created_at, identity.avatar_url,
             NOT EXISTS (
               SELECT 1 FROM follower_optouts fo
                WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(ml.recipient)
             ) AS host_email_allowed
        FROM message_log ml
+       LEFT JOIN previous_guest_invitation_batches invitation_batch
+         ON invitation_batch.id=ml.previous_guest_invitation_batch_id
        LEFT JOIN LATERAL (
          SELECT o.avatar_url
            FROM rsvps linked
            JOIN events linked_event ON linked_event.id=linked.event_id AND linked_event.organizer_id=$2
            JOIN organizers o ON o.id=linked.account_id
-          WHERE ((ml.recipient_user_id IS NOT NULL AND linked.user_id=ml.recipient_user_id)
+          WHERE COALESCE(invitation_batch.source_kind,'past_event') <> 'import'
+            AND ((ml.recipient_user_id IS NOT NULL AND linked.user_id=ml.recipient_user_id)
                  OR ((ml.recipient_user_id IS NULL OR linked.user_id IS NULL)
                      AND LOWER(linked.email)=LOWER(ml.recipient)))
           ORDER BY linked.id DESC LIMIT 1
        ) identity ON TRUE
       WHERE ml.event_id=$1 AND ml.message_type='previous_guest_invite'
         AND ml.status IN ('pending','sent')
+        -- Imports have their own truthful queue status. Only provider-accepted
+        -- invitations join this list, never unsent contacts or claimed RSVPs.
+        AND (COALESCE(invitation_batch.source_kind,'past_event') <> 'import' OR ml.status='sent')
         AND NOT EXISTS (
           -- Once someone answers, their invite card goes away. Match on the
           -- account or the email, either one: a person invited at one email
@@ -857,7 +867,8 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         status: 'Invited',
         avatarUrl: safeAvatarUrl(invitation.avatar_url),
         avatarEmoji: attendeeAvatar(`email:${String(invitation.recipient || '').trim().toLowerCase() || `invite:${invitation.id}`}`),
-        canInvite: Boolean(invitation.host_email_allowed && String(invitation.recipient || '').trim()),
+        canInvite: Boolean(invitation.source_kind !== 'import' && invitation.host_email_allowed && String(invitation.recipient || '').trim()),
+        note: invitation.source_kind === 'import' ? 'Available in Contacts' : null,
         searchText: `${name} ${invitation.recipient || ''}`.toLowerCase(),
         sortTime: invitation.created_at
       });
@@ -1093,6 +1104,13 @@ function connectedToTarget(emailExpression, userIdExpression = 'NULL') {
 
 const PAST_RSVPS = `
   SELECT r.id, r.user_id, LOWER(TRIM(r.email)) AS email, r.first_name, r.last_name, r.account_id,
+         (SELECT MIN(proof.user_id) FROM rsvps verified
+            JOIN events proof_event ON proof_event.id=verified.event_id AND proof_event.organizer_id=$1
+            JOIN organizers proof ON proof.id=verified.account_id
+           WHERE (verified.user_id IS NULL OR proof.user_id=verified.user_id)
+             AND ((r.user_id IS NOT NULL AND proof.user_id=r.user_id)
+                  OR (r.user_id IS NULL AND verified.id=r.id))
+          HAVING COUNT(DISTINCT proof.user_id)=1) AS proven_user_id,
          COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))) AS person_key,
          e.id AS event_id, e.title AS event_title, e.event_date
     FROM rsvps r JOIN events e ON e.id=r.event_id
@@ -1149,6 +1167,7 @@ const ELIGIBLE_PEOPLE_CTE = `
              (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC) FILTER (WHERE event_id=$3))[1],
              (ARRAY_AGG(event_title ORDER BY event_date DESC, id DESC))[1]) AS context_title,
            (ARRAY_AGG(account_id ORDER BY event_date DESC, id DESC) FILTER (WHERE account_id IS NOT NULL))[1] AS account_id,
+           (ARRAY_AGG(proven_user_id ORDER BY event_date DESC, id DESC) FILTER (WHERE proven_user_id IS NOT NULL))[1] AS proven_user_id,
            MAX(event_date) AS last_event_date,
            (ARRAY_AGG(event_id ORDER BY event_date ASC, event_id ASC))[1] AS first_event_id,
            COUNT(DISTINCT event_id)::int AS event_count,
@@ -1252,6 +1271,7 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
         const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Guest';
         return {
           id: familiarFaceKey('rsvp', row.rsvp_id),
+          selectionKey: invitationSelectionKey(req.organizer.id, row.email, row.proven_user_id),
           name,
           detail: candidateDetail(row, sourceEventId),
           eventCount: row.event_count,
@@ -1555,6 +1575,17 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
       `UPDATE events SET announced_at=NOW(),announced_count=0,announced_text_count=$2 WHERE id=$1`,
       [event.id, includeTexts ? preview.textCount : 0]
     );
+    // Reserve this audience under the same event lock used by invitation
+    // approval. An in-flight follower email must not also receive an invite.
+    for (const recipient of preview._emails) {
+      const reservation = await client.query(
+        `INSERT INTO message_log
+           (event_id,recipient,recipient_user_id,message_type,channel,status)
+         VALUES ($1,$2,$3,'announcement','email','pending') RETURNING id`,
+        [event.id, recipient.email, recipient.user_id]
+      );
+      recipient.announcementLogId = reservation.rows[0].id;
+    }
     await client.query('COMMIT');
     if (smsBatch) queueSmsBatch(smsBatch.id);
 
@@ -1575,17 +1606,13 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
         if (!delivery.allowed) throw new Error(HOST_ACCOUNT_INACTIVE);
         sent++;
         await pool.query(
-          `INSERT INTO message_log
-             (event_id, recipient, recipient_user_id, message_type, channel, status, sent_at)
-           VALUES ($1,$2,$3,'announcement','email','sent',NOW())`,
-          [event.id, r.email, r.user_id]
+          `UPDATE message_log SET status='sent',sent_at=NOW() WHERE id=$1`,
+          [r.announcementLogId]
         );
       } catch (err) {
         await pool.query(
-          `INSERT INTO message_log
-             (event_id, recipient, recipient_user_id, message_type, channel, status, error)
-           VALUES ($1,$2,$3,'announcement','email','failed',$4)`,
-          [event.id, r.email, r.user_id, err.message]
+          `UPDATE message_log SET status='failed',error=$2 WHERE id=$1`,
+          [r.announcementLogId, err.message]
         ).catch(() => {});
       }
     }
@@ -1637,4 +1664,42 @@ router.put('/api/settings', async (req, res, next) => {
   }
 });
 
+// Reuse the existing classification and eligibility rules for the combined
+// Contacts / Familiar Faces review. Only owned, real historical RSVPs qualify.
+async function resolveGuestImportPastFaces(queryable, { eventId, organizerId, faceIds = [], group, sourceEventId, search = '' }) {
+  const { target, canInvite } = await loadInviteTarget(queryable, { eventId, organizerId });
+  if (!target || !canInvite) return [];
+  let ids = parseFamiliarFaceIds(faceIds).rsvpIds;
+  if (ids.length > 500) throw new (require('../lib/guest-import').GuestImportError)(400, 'selection_limit', 'Choose no more than 500 people at a time.');
+  if (group) {
+    if (!PEOPLE_GROUP_KEYS.includes(group) || target.visibility !== 'public') return [];
+    const lastEvent = await lastHostedEvent(queryable, { organizerId, targetEventId: target.id });
+    const term = String(search || '').trim().slice(0, 120);
+    const pattern = term ? `%${term.replace(/[\\%_]/g, ch => `\\${ch}`)}%` : '';
+    const { rows } = await queryable.query(
+      `${ELIGIBLE_PEOPLE_CTE}
+       SELECT p.rsvp_id FROM eligible p WHERE (${peopleGroupPredicate(group)})
+       ORDER BY p.event_count DESC, p.last_event_date DESC, p.rsvp_id DESC LIMIT 501`,
+      [organizerId, target.id, Number.parseInt(sourceEventId, 10) || null, pattern, lastEvent?.id || null]
+    );
+    if (rows.length > 500) throw new (require('../lib/guest-import').GuestImportError)(400, 'selection_limit', 'Choose no more than 500 people at a time.');
+    ids = rows.map(row => row.rsvp_id);
+  }
+  if (!ids.length) return [];
+  const { rows } = await queryable.query(
+    `SELECT past.* FROM (${PAST_RSVPS}) past WHERE past.id=ANY($3::int[])
+       AND NOT EXISTS (SELECT 1 FROM follower_optouts fo WHERE fo.organizer_id=$1 AND LOWER(fo.email)=past.email)
+       AND NOT ${connectedToTarget('past.email', 'past.user_id')}
+     ORDER BY past.event_date DESC, past.id DESC`, [organizerId, target.id, ids]
+  );
+  const people = new Map();
+  for (const row of rows) if (!people.has(row.person_key)) people.set(row.person_key, {
+    ...row, id: familiarFaceKey('rsvp', row.id),
+    name: `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Guest',
+    selectionKey: invitationSelectionKey(organizerId, row.email, row.proven_user_id)
+  });
+  return [...people.values()];
+}
+
 module.exports = router;
+module.exports.resolveGuestImportPastFaces = resolveGuestImportPastFaces;

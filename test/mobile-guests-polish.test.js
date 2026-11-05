@@ -26,12 +26,21 @@ test('phone guest faces stay compact, readable, thumb friendly, and zoom safe', 
   assert.match(client, /aria-label="\$\{escapeHtml\(selectionLabel\)\}"/);
 });
 
-test('phone invite picker uses one short row before restoring the confirmation disclosure', () => {
+test('phone invite picker keeps one short selection row and moves confirmation into the shared review', () => {
   const styles = read('public/css/familiar-faces.css');
   const client = read('public/js/manage.js');
+  const view = read('src/views/event-manage.html');
+  const reviewClient = read('public/js/guest-import.js');
+  const reviewStyles = read('public/css/guest-import.css');
 
-  assert.match(client, /classList\.toggle\('is-confirming', peopleConfirming\)/);
-  assert.match(client, /Each gets one email with an RSVP button\. They can unsubscribe anytime\./);
+  assert.match(client, /classList\.remove\('is-confirming'\)/);
+  assert.match(client, /textContent = 'Review Invitations'/);
+  assert.match(client, /guestImport\?\.openInvitations\(/);
+  assert.match(view, /Each person gets one invitation for this event, with an unsubscribe option\. No automatic follow or text signup\./);
+  assert.match(view, /id="guest-import-permission" type="checkbox"/);
+  assert.match(reviewClient, /step === 'preview' && review\?\.canSend && get\('permission'\)\.checked && !submission/);
+  assert.match(reviewStyles, /@media \(max-width:600px\)[\s\S]*\.guest-import-dialog \{[^}]*max-height:94dvh/);
+  assert.match(reviewStyles, /\.guest-import-foot \.sg-btn \{ min-height:48px; \}/);
   assert.match(styles, /#familiar-people-bar:not\(\.is-confirming\) \{ flex-direction:row;align-items:center/);
   assert.match(styles, /#familiar-people-bar:not\(\.is-confirming\) \.familiar-faces-selection-copy span \{ display:none; \}/);
   assert.match(styles, /#familiar-people-secondary \{ min-height:44px/);

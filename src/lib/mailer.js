@@ -1582,6 +1582,46 @@ async function sendPreviousGuestInvitation({ to, event, recipientName, organizer
   });
 }
 
+// Imported names are not past attendance, account identities, or permission to
+// follow a host. This neutral invitation opens the ordinary event RSVP flow.
+function buildImportedGuestInvitationEmail({ to, event, recipientName, organizerLabel, unsubscribeUrl }) {
+  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const firstName = String(recipientName || '').trim().split(/\s+/)[0];
+  const greeting = firstName ? `Hi ${firstName}. ` : '';
+  const theme = eventEmailTheme(event);
+  const eventUrl = `${baseUrl}/e/${encodeURIComponent(event.slug)}`;
+  const reason = `${organizerLabel} invited you to this event. This invitation does not subscribe you to future updates. Replies are not monitored.`;
+  return {
+    to,
+    from: hostFrom(organizerLabel),
+    subject: `${organizerLabel} invited you: ${event.title}`,
+    headers: oneClickHeaders(unsubscribeUrl),
+    html: rsvpConfirmationLayout({
+      event, theme, kicker: `An invitation from ${organizerLabel}`,
+      sub: `${greeting}${organizerLabel} would love to see you there.`,
+      bodyHtml: `${confirmationDetailsCard(event, { canViewExactLocation: false })}${confirmationMapLink(event, theme, { canViewExactLocation: false })}`,
+      cta: 'View event', ctaUrl: eventUrl,
+      footerHtml: policyFooter({
+        reason, hostLabel: organizerLabel, includeAddress: true,
+        links: [
+          { label: `Unsubscribe from ${organizerLabel}`, url: unsubscribeUrl },
+          { label: 'Manage email settings', url: hostEmailSettingsUrl(unsubscribeUrl) },
+          { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+        ]
+      }),
+      showEventIdentity: false, footerActionLabel: '', footerActionUrl: ''
+    }),
+    text: `${greeting}${organizerLabel} invited you to ${event.title}.\n\nView event: ${eventUrl}\n\n${reason}\nUnsubscribe: ${unsubscribeUrl}`
+  };
+}
+
+async function sendImportedGuestInvitation({ payload, idempotencyKey }) {
+  if (!payload?.to || !payload?.html || !payload?.headers?.['List-Unsubscribe'] || !idempotencyKey) {
+    throw new Error('Imported invitation requires a reviewed payload and idempotency key');
+  }
+  return send({ ...payload, idempotencyKey, timeoutMs: 15000 });
+}
+
 function photoRequestArtwork(event) {
   const source = isFlyerEvent(event) ? event.flyer_image_url : event.cover_image_url;
   const imageUrl = emailSafeImageUrl(source);
@@ -1663,6 +1703,7 @@ module.exports = {
   sendHostProfileNudge, sendFirstEventNudge, sendPhotoRequest, sendCommerceLaunch, sendOptionalHostEmail,
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
+  buildImportedGuestInvitationEmail, sendImportedGuestInvitation,
   renderEventReminderEmail, renderEventAnnouncementEmail, renderSecurityEmailLayout: securityLayout,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, renderEmailCodeBlock: signInCodeBlock, rsvpConfirmationSubject
