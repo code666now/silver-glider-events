@@ -18,7 +18,8 @@
     Object.freeze({ key: 'static', label: 'TV static', group: 'effect' }),
     Object.freeze({ key: 'liquid-stardust', label: 'Liquid Stardust', group: 'effect' }),
     Object.freeze({ key: 'color-static', label: 'Color Static', group: 'effect' }),
-    Object.freeze({ key: 'saloon', label: 'After Hours Saloon', group: 'effect' })
+    Object.freeze({ key: 'saloon', label: 'After Hours Saloon', group: 'effect' }),
+    Object.freeze({ key: 'golden-tide', label: 'Golden Tide', group: 'effect' })
   ]);
   const byKey = new Map(options.map(option => [option.key, option]));
   const keys = Object.freeze(options.map(option => option.key));

@@ -2569,6 +2569,29 @@ test('serves Standard and Flyer events through their isolated templates', async 
   assert.doesNotMatch(hostHtml, /\{\{[A-Z0-9_]+\}\}/);
 });
 
+test('Golden Tide saves through the owner API and renders in Standard, Flyer and host cards', async () => {
+  const event = await createEvent({ cover_image_url: null });
+  const response = await fetch(`${baseUrl}/api/events/${event.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: `sge_session=${signSession(organizerId)}` },
+    body: JSON.stringify({ background_theme: 'golden-tide' })
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).event.background_theme, 'golden-tide');
+  await createEvent({ slug: 'golden-flyer', presentation_mode: 'flyer', background_theme: 'golden-tide',
+    flyer_image_url: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/flyers/test.jpg' });
+  for (const slug of ['standard-night', 'golden-flyer']) {
+    const html = await (await fetch(`${baseUrl}/e/${slug}`)).text();
+    assert.match(html, /class="event-bg bg-theme fx-golden-tide"/);
+    assert.match(html, /data-effect-theme="golden-tide" autoplay muted loop playsinline/);
+    assert.match(html, /video\/upload\/du_20,f_mp4/);
+    assert.match(html, /w_800,c_limit,fl_progressive\/sg-events\/effects\/golden-tide.mp4/);
+    assert.match(html, /w_1280,c_limit,fl_progressive\/sg-events\/effects\/golden-tide.mp4/);
+  }
+  const hostHtml = await (await fetch(`${baseUrl}/h/test-host`)).text();
+  assert.match(hostHtml, /sg-events\/effects\/golden-tide\.jpg/);
+});
+
 test('Flyer designer credits normalize, render only on Flyer pages, and survive editing and duplication', async () => {
   const organizerCookie = `sge_session=${signSession(organizerId)}`;
   const createdResponse = await fetch(`${baseUrl}/api/events`, {

@@ -29,6 +29,7 @@ const EVENT_THEME_ACCENTS = Object.freeze({
   static: '#8C91A6',
   'liquid-stardust': '#8557D6',
   'color-static': '#D94C9B',
+  'golden-tide': '#C8A86B',
   saloon: '#B9773F'
 });
 
@@ -116,6 +117,7 @@ const EMAIL_EFFECT_POSTERS = Object.freeze({
   'liquid-stardust': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/liquid-stardust.jpg',
   'color-static': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/color-static.jpg',
   'last-guest': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/the-last-guest.jpg',
+  'golden-tide': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/golden-tide.jpg',
   disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/disco.jpg',
   fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/fog.jpg',
   saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/backgrounds/after-hours-saloon.png'

@@ -12,7 +12,7 @@ test('all editors use one ordered background catalog with contextual artwork mat
   const ownerRenderer = source('src/lib/event-owner-editor.js');
   const catalog = require('../public/js/event-backgrounds');
   assert.deepEqual(catalog.backgroundKeys, ['adaptive', 'midnight', 'aurora', 'sunset', 'ocean', 'plaster']);
-  assert.deepEqual(catalog.effectKeys, ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon']);
+  assert.deepEqual(catalog.effectKeys, ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'golden-tide']);
   assert.equal(catalog.label('adaptive', 'standard'), 'Match Photo');
   assert.equal(catalog.label('adaptive', 'flyer'), 'Match Flyer');
   assert.match(form, /const EventBackgrounds = window\.SGEventBackgrounds/);
@@ -52,7 +52,7 @@ test('seasonal video effects are accepted and render from dedicated assets', () 
   assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
   assert.match(publicRoute, /'color-static': 'sg-events\/effects\/color-static'/);
   assert.match(publicRoute, /'last-guest': 'sg-events\/effects\/the-last-guest'/);
-  assert.match(source('public/js/public-event.js'), /\['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog'\]/);
+  assert.match(source('public/js/public-event.js'), /\['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'golden-tide'\]/);
 
   for (const view of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
     const css = source(view);
@@ -90,8 +90,8 @@ test('new video backgrounds crossfade their end-to-start seam in both live views
   assert.match(seamlessLoop, /cloneNode\(true\)/);
   assert.match(seamlessLoop, /remaining <= leadSeconds/);
   assert.match(seamlessLoop, /is-seamless-active/);
-  assert.match(publicClient, /\['liquid-stardust', 'color-static'\][\s\S]*SGSeamlessVideoLoop/);
-  assert.match(ownerClient, /new Set\(\['liquid-stardust', 'color-static'\]\)[\s\S]*SGSeamlessVideoLoop/);
+  assert.match(publicClient, /\['liquid-stardust', 'color-static', 'golden-tide'\][\s\S]*SGSeamlessVideoLoop/);
+  assert.match(ownerClient, /new Set\(\['liquid-stardust', 'color-static', 'golden-tide'\]\)[\s\S]*SGSeamlessVideoLoop/);
   assert.match(standardTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
   assert.match(flyerTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
 });
@@ -105,6 +105,28 @@ test('After Hours Saloon remains accepted and renders from its dedicated asset',
   assert.match(standardView, /sg-events\/backgrounds\/after-hours-saloon\.png/);
   assert.match(standardView, /\.event-bg\.fx-saloon/);
   assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-saloon/);
+});
+
+test('Golden Tide is selectable with video, poster and isolated readability treatment everywhere', () => {
+  const catalog = require('../public/js/event-backgrounds');
+  assert.equal(catalog.label('golden-tide'), 'Golden Tide');
+  assert.ok(catalog.effectKeys.includes('golden-tide'));
+  for (const file of ['src/routes/public.js', 'public/js/event-owner-editor.js']) {
+    assert.match(source(file), /'golden-tide': 'sg-events\/effects\/golden-tide'/);
+  }
+  for (const file of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
+    assert.match(source(file), /\.event-bg\.fx-golden-tide/);
+    assert.match(source(file), /\.event-bg\.fx-golden-tide ~ \.fx-veil/);
+    assert.match(source(file), /sg-events\/effects\/golden-tide\.jpg/);
+    assert.match(source(file), /prefers-reduced-motion: reduce/);
+  }
+  assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-golden-tide/);
+  assert.match(source('public/css/event-owner-editor.css'), /\.owner-theme-golden-tide/);
+  assert.match(source('src/routes/public.js'), /theme === 'golden-tide' \? 'du_20,' : ''/);
+  assert.match(source('public/js/event-owner-editor.js'), /seamlessVideoEffects\.has\(theme\) && !constrainedGoldenTide/);
+  for (const file of ['src/routes/public-hosts.js', 'src/lib/mailer.js']) {
+    assert.match(source(file), /sg-events\/effects\/golden-tide\.jpg/);
+  }
 });
 
 test('After Hours Saloon readability overrides stay isolated to that effect', () => {

@@ -1,8 +1,14 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 4, 2026 (Contacts and unified invitations, v1.0.197)
+**Last updated:** November 5, 2026 (Golden Tide release, v1.0.198)
 
-## Current release — Contacts and unified invitations (v1.0.197)
+## Current release — Golden Tide background (v1.0.198)
+
+User supplied `5793857-hd_1920_1080_25fps.mp4`, asked for a named background effect, and then explicitly authorized deployment. **Golden Tide** adds the new `golden-tide` key to the shared catalog, owner preview, Standard/Flyer public rendering, picker posters, Host Page fallback cards and email fallback artwork. The new Cloudinary asset `sg-events/effects/golden-tide` was uploaded with `overwrite:false`; source is 75.32s / 1920×1080, no audio. Playback delivers only the first 20s at 800px mobile / 1280px desktop, with existing native mobile looping and desktop crossfade. A theme-scoped dark teal veil keeps the bright water readable; reduced motion/autoplay failure retains the poster. Source file and existing Cloudinary assets/events remain unchanged. No migration or real messages. Existing events only change if their host explicitly selects and saves the new background.
+
+Verification: `npm run check` passed 964/964 tests against the dedicated local `sge_test` database; static checks passed. Added owner-save/public Standard+Flyer/host-card integration coverage and catalog/poster/readability checks. `/private/tmp/sge-golden-tide-browser.cjs` passes 10 Chrome cases at 1440/390px across Standard/Flyer, motion/reduced-motion and owner picker selection/switch-away; screenshots `/private/tmp/golden-tide-*.png` inspected. This harness uses actual templates/styles, the actual playback function and owner controller with synthetic data, not real events. Physical iOS/Safari remains untested. Optimized Cloudinary URLs verified 200. Follow the standard commit/tag/push, uncommitted generated `.git-sha`, explicit Railway `--path-as-root`, matching health/assets and old-deployment removal checks.
+
+## Previous release — Contacts and unified invitations (v1.0.197)
 
 Extends `4718cd6` / v1.0.196. User approved CSV invitations, then supplied a unified implementation prompt extending this into persistent Contacts beside Familiar Faces, one shared selection/review, mobile/desktop tests and deployment. Do not send real invitations, SMS, publish events or resend thank-yous during QA.
 

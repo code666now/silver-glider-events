@@ -224,7 +224,7 @@ mountStaticEffect();
 // poster frame underneath if autoplay is blocked, the video fails, or the user
 // has requested reduced motion.
 function mountVideoEffect() {
-  if (!['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog'].includes(EVENT.bgEffect)) return;
+  if (!['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'golden-tide'].includes(EVENT.bgEffect)) return;
   const video = document.querySelector('.fx-video-media');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
   const saveData = navigator.connection && navigator.connection.saveData;
@@ -242,7 +242,7 @@ function mountVideoEffect() {
   const constrainedPlayback = matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
     (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4);
   if (constrainedPlayback) video.loop = true;
-  const seamlessLoop = !constrainedPlayback && ['liquid-stardust', 'color-static'].includes(EVENT.bgEffect)
+  const seamlessLoop = !constrainedPlayback && ['liquid-stardust', 'color-static', 'golden-tide'].includes(EVENT.bgEffect)
     ? window.SGSeamlessVideoLoop?.attach(video)
     : null;
   const reveal = () => video.classList.add('is-playing');

@@ -80,6 +80,7 @@
 }
 
 .event-bg.fx-static,
+.event-bg.fx-golden-tide,
 .event-bg.fx-paper,
 .event-bg.fx-halloween,
 .event-bg.fx-liquid-stardust,
@@ -136,6 +137,16 @@
 .event-bg.fx-last-guest {
   background-color: #0c0b09;
   background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/the-last-guest.jpg");
+}
+.event-bg.fx-golden-tide {
+  background-color: #172c2b;
+  background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/golden-tide.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.event-bg.fx-golden-tide ~ .fx-veil {
+  background: linear-gradient(rgba(5,19,20,.72), rgba(5,19,20,.82));
 }
 .event-bg.fx-disco {
   background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/disco.jpg");

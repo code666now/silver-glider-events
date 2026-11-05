@@ -24,6 +24,7 @@ function eventCardVisual(event) {
     'liquid-stardust': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/liquid-stardust.jpg',
     'color-static': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/color-static.jpg',
     'last-guest': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/the-last-guest.jpg',
+    'golden-tide': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/golden-tide.jpg',
     disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/disco.jpg',
     fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_900/sg-events/effects/fog.jpg',
     saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_900/sg-events/backgrounds/after-hours-saloon.png'

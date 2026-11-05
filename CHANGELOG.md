@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.198
+
+### Golden Tide background effect
+
+* Add **Golden Tide**, a silent ocean-wave video effect, to the shared background picker and live owner preview for Standard and Flyer events.
+* Serve a compact 20-second loop at 800px on phones and 1280px on desktop. Capable desktops crossfade the loop; constrained devices use native looping. Preserve poster fallbacks for reduced motion, data saving and blocked autoplay.
+* Apply a theme-specific dark teal veil for readable text over the sunlit water. Add matching picker, Host Page and email fallback posters.
+* Use a new Cloudinary asset without replacing existing media or changing any event's selected background. No migration, guest-list changes or messaging sends.
+
+### Verification
+
+* All **964 automated tests** and static checks pass. Tests cover owner save, Standard/Flyer public rendering, Host Page fallback and the shared picker.
+* Ten local Chrome checks pass at 1440px/390px for playback, reduced motion, owner selection and switching away. Screenshots reviewed; physical iOS/Safari remains manual.
+
 ## 1.0.197
 
 ### Bring your people: Contacts and shared invitations

@@ -54,7 +54,7 @@
 
     /* ── Background effects — replace the gradient ── */
     .event-bg.fx-static, .event-bg.fx-paper, .event-bg.fx-halloween, .event-bg.fx-liquid-stardust, .event-bg.fx-color-static, .event-bg.fx-last-guest,
-    .event-bg.fx-disco, .event-bg.fx-fog, .event-bg.fx-saloon {
+    .event-bg.fx-disco, .event-bg.fx-fog, .event-bg.fx-saloon, .event-bg.fx-golden-tide {
       animation: none;
       background-image: none;
       filter: none;
@@ -75,7 +75,7 @@
       background-repeat: no-repeat;
     }
     /* Video loops retain their first frame as a no-motion/autoplay fallback. */
-    .event-bg.fx-halloween, .event-bg.fx-liquid-stardust, .event-bg.fx-color-static, .event-bg.fx-last-guest, .event-bg.fx-disco, .event-bg.fx-fog {
+    .event-bg.fx-halloween, .event-bg.fx-liquid-stardust, .event-bg.fx-color-static, .event-bg.fx-last-guest, .event-bg.fx-disco, .event-bg.fx-fog, .event-bg.fx-golden-tide {
       background-color: #100d18;
       background-size: cover;
       background-position: center;
@@ -96,6 +96,14 @@
     .event-bg.fx-last-guest {
       background-color: #0c0b09;
       background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/the-last-guest.jpg");
+    }
+    .event-bg.fx-golden-tide {
+      background-color: #172c2b;
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/golden-tide.jpg");
+    }
+    /* Sunlit water needs a stronger veil than the darker effects. */
+    .event-bg.fx-golden-tide ~ .fx-veil {
+      background: linear-gradient(rgba(5,19,20,.72), rgba(5,19,20,.82));
     }
     .event-bg.fx-disco {
       background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/disco.jpg");

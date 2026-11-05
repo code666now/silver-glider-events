@@ -440,6 +440,14 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-size: cover;
   background-position: center;
 }
+.sg-swatch.fx-golden-tide {
+  background-color: #172c2b;
+  background-image:
+    linear-gradient(rgba(9,24,23,.12), rgba(9,24,23,.36)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/golden-tide.jpg");
+  background-size: cover;
+  background-position: center;
+}
 .sg-swatch.fx-disco {
   background-color: #170d2d;
   background-image:

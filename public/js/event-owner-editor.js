@@ -43,10 +43,11 @@
     'liquid-stardust': 'sg-events/effects/liquid-stardust',
     'color-static': 'sg-events/effects/color-static',
     'last-guest': 'sg-events/effects/the-last-guest',
+    'golden-tide': 'sg-events/effects/golden-tide',
     disco: 'sg-events/effects/disco',
     fog: 'sg-events/effects/fog'
   };
-  const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static']);
+  const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static', 'golden-tide']);
   const photoCategories = [
     ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
     ['🍂 Fall', 'autumn leaves cozy harvest warm'],
@@ -893,9 +894,11 @@
   }
 
   function videoEffectUrl(publicId, format) {
+    const goldenTide = publicId === videoEffects['golden-tide'];
+    const width = goldenTide && matchMedia('(max-width: 900px)').matches ? 800 : 1280;
     const transform = format === 'jpg'
       ? 'so_0,f_jpg,q_auto,w_1600'
-      : 'f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive';
+      : `${goldenTide ? 'du_20,' : ''}f_mp4,vc_h264,q_auto:eco,w_${width},c_limit,fl_progressive`;
     return `https://res.cloudinary.com/dhvavjgnw/video/upload/${transform}/${publicId}.${format}`;
   }
 
@@ -932,7 +935,11 @@
       video.classList.remove('is-playing');
       return;
     }
-    const seamlessLoop = seamlessVideoEffects.has(theme)
+    const constrainedGoldenTide = theme === 'golden-tide' && (
+      matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
+      (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4)
+    );
+    const seamlessLoop = seamlessVideoEffects.has(theme) && !constrainedGoldenTide
       ? window.SGSeamlessVideoLoop?.attach(video)
       : null;
 
