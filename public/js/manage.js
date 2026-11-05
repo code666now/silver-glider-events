@@ -737,8 +737,11 @@ function familiarInitials(name) {
 
 function familiarAvatar(face) {
   const photo = sgSafeHttpUrl(face.avatarUrl);
+  const badge = photo && face.avatarBadge === '👰'
+    ? '<i class="familiar-face-badge" aria-hidden="true">👰</i>'
+    : '';
   return photo
-    ? `<img src="${escapeHtml(photo)}" alt="" loading="lazy">`
+    ? `<img src="${escapeHtml(photo)}" alt="" loading="lazy">${badge}`
     : `<span class="familiar-face-emoji" aria-hidden="true">${escapeHtml(face.avatarEmoji || familiarInitials(face.name))}</span>`;
 }
 

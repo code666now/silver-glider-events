@@ -7,6 +7,8 @@ const {
   canAppearInPublicListings,
   cleanComment,
   ATTENDEE_AVATARS,
+  attendeeAvatar,
+  eventGuestAvatar,
   normalizeGuestExperienceSettings,
   parseNamedGuest,
   publicGuestNames,
@@ -79,11 +81,13 @@ test('public guest list exposes first names only', () => {
   assert.equal(names.every(({ avatarEmoji }) => ATTENDEE_AVATARS.includes(avatarEmoji)), true);
   assert.ok(ATTENDEE_AVATARS.includes('😎'));
   assert.ok(ATTENDEE_AVATARS.includes('🤠'));
-  assert.ok(ATTENDEE_AVATARS.includes('🎃'));
+  assert.ok(ATTENDEE_AVATARS.includes('🐳'));
   assert.ok(ATTENDEE_AVATARS.includes('👽'));
-  assert.ok(ATTENDEE_AVATARS.includes('🧟'));
+  assert.ok(ATTENDEE_AVATARS.includes('🐟'));
   assert.ok(ATTENDEE_AVATARS.includes('🥷'));
-  assert.ok(ATTENDEE_AVATARS.includes('👻'));
+  assert.ok(ATTENDEE_AVATARS.includes('🐬'));
+  assert.ok(ATTENDEE_AVATARS.includes('🦭'));
+  assert.ok(ATTENDEE_AVATARS.includes('🦀'));
   assert.ok(ATTENDEE_AVATARS.includes('👨‍🎤'));
   assert.equal(ATTENDEE_AVATARS.includes('🕴️'), false);
   assert.equal(ATTENDEE_AVATARS.includes('🤓'), false);
@@ -93,7 +97,19 @@ test('public guest list exposes first names only', () => {
   }
 });
 
-test('a 17-person list gives priority characters two appearances without clustering', () => {
+test('both avatar paths use the year-round mix without Halloween or random brides', () => {
+  const cycle = Array.from({ length: ATTENDEE_AVATARS.length }, (_, index) => attendeeAvatar(index));
+  assert.deepEqual(new Set(cycle), new Set(ATTENDEE_AVATARS));
+  for (const excluded of ['🎃', '🧟', '👻', '👰']) {
+    assert.equal(ATTENDEE_AVATARS.includes(excluded), false);
+    assert.equal(cycle.includes(excluded), false);
+  }
+  for (let index = 0; index < 100; index++) {
+    assert.ok(ATTENDEE_AVATARS.includes(attendeeAvatar(`email:guest-${index}@example.test`)));
+  }
+});
+
+test('a 17-person list shows every year-round character without clustering', () => {
   const rows = Array.from({ length: 17 }, (_, index) => ({
     id: index + 1,
     first_name: `Guest ${index + 1}`,
@@ -106,10 +122,42 @@ test('a 17-person list gives priority characters two appearances without cluster
     if (avatarUrl) continue;
     counts.set(avatarEmoji, (counts.get(avatarEmoji) || 0) + 1);
   }
-  for (const featured of ['👽', '🎃', '👨‍🎤', '🥷', '😎']) {
-    assert.equal(counts.get(featured), 2);
+  for (const featured of ATTENDEE_AVATARS) {
+    assert.ok(counts.get(featured) >= 1);
   }
   assert.equal(Math.max(...counts.values()), 2);
+});
+
+test('event choices preserve photos, restrict badges and never affect plus ones', () => {
+  const photo = 'https://res.cloudinary.com/example/image/upload/profile.jpg';
+  const names = publicGuestNames([
+    { first_name: 'Bride', event_avatar_emoji: '👰', avatar_url: photo, guest_first_name: 'Friend' },
+    { first_name: 'Ocean', event_avatar_emoji: '🐬', avatar_url: photo },
+    { first_name: 'NoPhoto', event_avatar_emoji: '👰' },
+    { first_name: 'Unsafe', event_avatar_emoji: '<script>bad</script>' }
+  ]);
+  assert.equal(names[0].avatarUrl, photo);
+  assert.equal(names[0].avatarBadge, '👰');
+  assert.notEqual(names[1].avatarEmoji, '👰');
+  assert.equal(names[2].avatarUrl, photo);
+  assert.equal(names[2].avatarBadge, null);
+  assert.equal(names[2].avatarEmoji, '🐬');
+  assert.equal(names[3].avatarEmoji, '👰');
+  assert.equal(names[3].avatarBadge, null);
+  assert.ok(ATTENDEE_AVATARS.includes(names[4].avatarEmoji));
+  for (const bad of ['🎃', '🧟', '👻', '<img>', '', null, undefined]) assert.equal(eventGuestAvatar(bad), null);
+});
+
+test('assigning one event emoji does not reshuffle other attendees or their guests', () => {
+  const rows = [
+    { first_name: 'First', guest_first_name: 'Companion' },
+    { first_name: 'Second' },
+    { first_name: 'Third' }
+  ];
+  const before = publicGuestNames(rows);
+  const after = publicGuestNames(rows.map((row, index) => index === 0 ? { ...row, event_avatar_emoji: '👰' } : row));
+  assert.equal(after[0].avatarEmoji, '👰');
+  assert.deepEqual(after.slice(1), before.slice(1));
 });
 
 test('named guest validation is server-controlled by the event setting', () => {

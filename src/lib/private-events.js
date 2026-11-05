@@ -1,9 +1,15 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤠', '😁', '😄', '🎃', '👽', '🧟', '🥷', '👻', '👨‍🎤'];
+const ATTENDEE_AVATARS = ['🙂', '😎', '😊', '🤠', '😁', '😄', '🐳', '👽', '🐟', '🥷', '🐬', '👨‍🎤', '🦭', '🦀'];
 const ATTENDEE_AVATAR_CYCLE = [
-  '👽', '😊', '🎃', '🤠', '👨‍🎤', '😁', '🥷', '😄', '😎', '🧟', '👻',
-  '👽', '🎃', '👨‍🎤', '🥷', '😎', '🙂'
+  '🐳', '😊', '🐬', '🤠', '🦭', '😁', '🦀', '😄', '🐟', '👽', '🥷',
+  '👨‍🎤', '😎', '🙂'
 ];
+
+// Cosmetic event preferences, never identity, attendance or permission grants.
+// Bride is opt-in for an exact recipient/event, not a random default.
+function eventGuestAvatar(value) {
+  return value === '👰' || ATTENDEE_AVATARS.includes(value) ? value : null;
+}
 
 function isTrue(value) {
   return value === true || value === 'true';
@@ -83,14 +89,19 @@ function publicGuestNames(rows = []) {
     const attendee = String(row.first_name || '').trim().slice(0, 80);
     const guest = String(row.guest_first_name || '').trim().slice(0, 80);
     const avatarUrl = safeAvatarUrl(row.avatar_url);
+    const eventAvatar = eventGuestAvatar(row.event_avatar_emoji);
+    // Keep the existing sequence for everyone else when one guest gets a
+    // special choice. An override still occupies that attendee's slot.
+    const fallbackAvatar = attendee
+      ? (avatarUrl ? attendeeAvatar(`${row.id || ''}:${attendee}`) : attendeeAvatar(fallbackIndex++))
+      : null;
     if (attendee) names.push({
       firstName: attendee,
       isGuest: false,
       identityId: row.account_id || null,
       avatarUrl,
-      avatarEmoji: avatarUrl
-        ? attendeeAvatar(`${row.id || ''}:${attendee}`)
-        : attendeeAvatar(fallbackIndex++)
+      avatarBadge: avatarUrl && eventAvatar === '👰' ? eventAvatar : null,
+      avatarEmoji: eventAvatar || fallbackAvatar
     });
     if (guest) names.push({
       firstName: guest,
@@ -136,6 +147,7 @@ function readCookie(req, name) {
 module.exports = {
   ATTENDEE_AVATARS,
   attendeeAvatar,
+  eventGuestAvatar,
   attendeeCookieName,
   canAppearInPublicListings,
   cleanComment,

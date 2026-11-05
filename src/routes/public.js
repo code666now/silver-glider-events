@@ -287,7 +287,7 @@ function renderGuestList(event, rows, { ownerPreview = false, viewerIdentityId =
   const visibleLimit = 8;
   const avatarContents = entry => `<span aria-hidden="true">${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
     ? `<img src="${esc(entry.avatarUrl)}" alt="" loading="lazy" decoding="async" onerror="this.remove()">`
-    : ''}`;
+    : ''}${entry.avatarBadge ? `<i class="guest-avatar-badge" aria-hidden="true">${esc(entry.avatarBadge)}</i>` : ''}`;
   const avatar = entry => Number(entry.identityId) === Number(viewerIdentityId) && viewerIdentityId
     ? `<a class="guest-avatar guest-avatar-edit" href="/add-photo?event=${encodeURIComponent(event.slug)}" aria-label="Change your photo">${avatarContents(entry)}<b aria-hidden="true">✎</b></a>`
     : `<span class="guest-avatar" aria-hidden="true">${avatarContents(entry)}</span>`;
@@ -801,8 +801,11 @@ router.get('/e/:slug', async (req, res, next) => {
     let publicGuestRows = [];
     if (rsvpEnabled && (event.show_guest_list || ownerPreview)) {
       publicGuestRows = (await pool.query(
-        `SELECT r.id, r.account_id, r.first_name, r.guest_first_name, o.avatar_url
+        `SELECT r.id, r.account_id, r.first_name, r.guest_first_name, o.avatar_url,
+                guest_avatar.emoji AS event_avatar_emoji
            FROM rsvps r LEFT JOIN organizers o ON o.id=r.account_id
+           LEFT JOIN event_guest_avatar_overrides guest_avatar
+             ON guest_avatar.event_id=r.event_id AND guest_avatar.recipient_email=LOWER(BTRIM(r.email))
           WHERE r.event_id=$1 AND r.status='confirmed'
           ORDER BY r.created_at ASC, r.id ASC`,
         [event.id]

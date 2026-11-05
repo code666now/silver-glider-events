@@ -1,8 +1,18 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 5, 2026 (Golden Tide release, v1.0.198)
+**Last updated:** November 5, 2026 (year-round RSVP faces, v1.0.199)
 
-## Current release — Golden Tide background (v1.0.198)
+## Current release — Year-round RSVP faces (v1.0.199)
+
+Replaces Halloween fallback emojis with the year-round pool including whale, fish, dolphin, seal and crab in both public RSVP and Familiar Faces paths. Migration `082_event_guest_avatars.sql` adds private host-owned cosmetic preferences keyed by exact event and normalized recipient email. Only confirmed RSVP queries join these preferences, and only emoji/badge values leave the server. No broad name matching, identity grant, automatic RSVP, invitation, subscription, SMS or email. Event deletion cascades its cosmetic preferences; this is not a new global identity/address-book lookup.
+
+Profile photos remain primary. An explicit bride override uses a small lower-left badge with a photo, or a full emoji without one; dolphin and other choices remain photo fallbacks. Both Standard and Flyer CSS and the management grid preserve circular photos. Preferences never decorate another event, unanswered invitations, declined guests, plus-ones or generic past-event invitation pickers. Public hidden-list/first-name-only protections are unchanged. Assigning an override still consumes its fallback slot, preserving other attendees' current sequence.
+
+Release operation: apply only the user-authorized dolphin choice to the previously verified current RSVP through a bounded transaction rechecking event/host/RSVP identity. The requested future bride choice remains **pending an exact recipient email**, since no matching RSVP/invitation/contact was found; do not guess by name. No real messages or test RSVPs. Migration alone writes no preferences. Use the normal version/commit/tag/push, uncommitted `.git-sha`, explicit Railway `up . --path-as-root`, matching health/assets and old-worker removal checks.
+
+Verification: final `npm run check` passed **979/979** tests and static checks (294 JavaScript / 465 project files); `git diff --check` passed. Six new integration cases cover exact scope, future RSVP activation, photo badges, guest-list privacy, past-picker isolation, unchanged message counts and schema constraints. `/private/tmp/sge-event-avatar-browser.cjs` passes six isolated Chrome cases (Standard/Flyer/manage at 390px/1440px), with screenshots visually reviewed. Physical iOS/Safari remains manual. `/private/tmp/sge-avatar-production-check.cjs` checks both origins' health/version/SHA and exact changed public asset bytes.
+
+## Previous release — Golden Tide background (v1.0.198)
 
 User supplied `5793857-hd_1920_1080_25fps.mp4`, asked for a named background effect, and then explicitly authorized deployment. **Golden Tide** adds the new `golden-tide` key to the shared catalog, owner preview, Standard/Flyer public rendering, picker posters, Host Page fallback cards and email fallback artwork. The new Cloudinary asset `sg-events/effects/golden-tide` was uploaded with `overwrite:false`; source is 75.32s / 1920×1080, no audio. Playback delivers only the first 20s at 800px mobile / 1280px desktop, with existing native mobile looping and desktop crossfade. A theme-scoped dark teal veil keeps the bright water readable; reduced motion/autoplay failure retains the poster. Source file and existing Cloudinary assets/events remain unchanged. No migration or real messages. Existing events only change if their host explicitly selects and saves the new background.
 

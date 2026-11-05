@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.199
+
+### Year-round RSVP faces
+
+* Replace the Halloween defaults with a year-round mix including whale, fish, dolphin, seal and crab across public RSVP lists and Familiar Faces.
+* Add private, exact-event/recipient emoji preferences for confirmed RSVPs. No name matching, automatic attendance, account changes, invitations or messages.
+* Preserve uploaded photos; an explicit event-only bride choice adds a small badge instead of replacing the photo. Preferences do not carry into other events, unanswered invitations, declined guests or the past-guest picker.
+* Keep other guests' fallback sequence unchanged when assigning one person a special choice. Preserve hidden guest-list settings and first-name-only public display.
+
+### Verification
+
+* All 979 automated tests and static checks pass, including exact-event/recipient isolation, future RSVP behavior, photos, privacy, no message side effects and migration constraints.
+* Six isolated Chrome checks pass across Standard, Flyer and management at 390px/1440px; screenshots reviewed. Physical iOS/Safari remains manual.
+
 ## 1.0.198
 
 ### Golden Tide background effect

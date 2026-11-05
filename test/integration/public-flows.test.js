@@ -13631,3 +13631,8 @@ require('../support/guest-import-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer, addVerifiedEmailIdentity
 });
+
+require('../support/event-guest-avatar-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, mailer
+});

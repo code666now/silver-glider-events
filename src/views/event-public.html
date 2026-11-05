@@ -721,14 +721,19 @@
       flex: 0 0 auto;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      overflow: visible;
       border-radius: 50%;
       background: rgba(255,255,255,.07);
       border: 1px solid var(--sg-border-soft);
       font-size: 28px;
       line-height: 1;
     }
-    .guest-avatar img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover; }
+    .guest-avatar img { position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;border-radius:inherit; }
+    .guest-avatar-badge {
+      position:absolute;left:0;bottom:0;z-index:1;display:grid;place-items:center;width:40%;height:40%;min-width:20px;min-height:20px;
+      box-sizing:border-box;border:2px solid #111;border-radius:50%;background:#171818;
+      font:400 .58em/1 "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;pointer-events:none;
+    }
     .guest-avatar-edit { cursor:pointer;text-decoration:none;transition:transform .16s ease,border-color .16s ease; }
     @media (hover: hover) { .guest-avatar-edit:hover { transform:translateY(-2px);border-color:var(--accent); } }
     .guest-avatar-edit:focus-visible { outline:2px solid var(--accent);outline-offset:3px; }

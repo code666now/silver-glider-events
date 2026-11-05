@@ -7,7 +7,7 @@ const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../l
 const { familiarFacesToCsv } = require('../lib/csv');
 const { sendEventAnnouncement, sendLineupClaimOutcome } = require('../lib/mailer');
 const { signOptout } = require('../lib/followers');
-const { attendeeAvatar, canAppearInPublicListings, safeAvatarUrl } = require('../lib/private-events');
+const { attendeeAvatar, eventGuestAvatar, canAppearInPublicListings, safeAvatarUrl } = require('../lib/private-events');
 const {
   EventEditorError,
   createEventInTransaction,
@@ -709,7 +709,7 @@ async function familiarFaceRows(eventId, organizerId) {
             r.id, r.user_id, r.first_name, r.last_name, r.email, r.guest_first_name, r.guest_last_name, r.guest_email,
             r.phone, r.wants_reminders, r.organizer_optin,
             (r.sms_optin AND r.sms_opted_out_at IS NULL) AS texts_ok,
-            r.created_at, o.avatar_url,
+            r.created_at, o.avatar_url, guest_avatar.emoji AS event_avatar_emoji,
             (SELECT COUNT(DISTINCT seen.event_id) FROM rsvps seen
                JOIN events seen_event ON seen_event.id=seen.event_id
                JOIN events target_event ON target_event.id=$1
@@ -730,6 +730,8 @@ async function familiarFaceRows(eventId, organizerId) {
             ) AS host_email_allowed
       FROM rsvps r
        LEFT JOIN organizers o ON o.id=r.account_id
+       LEFT JOIN event_guest_avatar_overrides guest_avatar
+         ON guest_avatar.event_id=r.event_id AND guest_avatar.recipient_email=LOWER(BTRIM(r.email))
       WHERE r.event_id=$1 AND r.status='confirmed'
       ORDER BY COALESCE('user:' || r.user_id::text, 'email:' || LOWER(TRIM(r.email))),
                r.created_at DESC, r.id DESC`,
@@ -827,6 +829,8 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
       const name = `${rsvp.first_name || ''} ${rsvp.last_name || ''}`.trim() || 'Guest';
       const hasEmail = Boolean(String(rsvp.email || '').trim());
       const visits = Number(rsvp.visit_count) || 1;
+      const eventAvatar = eventGuestAvatar(rsvp.event_avatar_emoji);
+      const avatarUrl = safeAvatarUrl(rsvp.avatar_url);
       faces.push({
         id: familiarFaceKey('rsvp', rsvp.id),
         group: 'going',
@@ -838,8 +842,9 @@ router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
         // Why a face can't be selected for an invitation, so the picker never
         // looks broken.
         note: !hasEmail ? 'No email' : (!rsvp.host_email_allowed ? 'Unsubscribed' : null),
-        avatarUrl: safeAvatarUrl(rsvp.avatar_url),
-        avatarEmoji: attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
+        avatarUrl,
+        avatarBadge: avatarUrl && eventAvatar === '👰' ? eventAvatar : null,
+        avatarEmoji: eventAvatar || attendeeAvatar(`email:${String(rsvp.email || '').trim().toLowerCase() || `rsvp:${rsvp.id}`}`),
         canInvite: Boolean(rsvp.host_email_allowed && hasEmail),
         searchText: `${name} ${rsvp.email || ''}`.toLowerCase(),
         sortTime: rsvp.created_at
