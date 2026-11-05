@@ -30,6 +30,20 @@
     .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
     .toolbar > [hidden] { display:none !important; }
     .toolbar .sg-btn, .more-menu summary { padding: 10px 20px; font-size: 13px; }
+    .publish-event-dialog { width:min(540px,calc(100% - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:0;border:1px solid rgba(28,197,190,.3);border-radius:26px;background:#111113;color:var(--sg-text);overflow:auto; }
+    .publish-event-dialog::backdrop { background:rgba(0,0,0,.72);backdrop-filter:blur(8px); }
+    .publish-event-dialog:not([open]),.publish-event-dialog [hidden] { display:none !important; }
+    .publish-event-dialog form { position:relative;padding:34px; }
+    .publish-event-dialog h2 { margin:0 44px 24px 0;font-size:30px; }
+    .publish-event-summary { padding:20px;border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.025);overflow-wrap:anywhere; }
+    .publish-event-summary strong { display:block;font-size:19px; }
+    .publish-event-summary p,.publish-event-copy { color:var(--sg-text-dim);font-size:14px;line-height:1.6;margin:12px 0 0; }
+    .publish-event-actions { display:flex;gap:12px;justify-content:flex-end;margin-top:26px; }
+    .publish-event-actions .sg-btn { min-height:48px; }
+    .publish-event-error { color:var(--sg-danger);font-size:14px;line-height:1.5;margin:20px 0 12px; }
+    .publish-event-edit { display:inline-flex;align-items:center;min-height:44px;color:var(--sg-accent);font-weight:700;font-size:14px; }
+    .publish-event-dialog :focus-visible { outline:2px solid var(--sg-accent);outline-offset:4px; }
+    .familiar-face-card.is-readonly { cursor:default; }
     .host-page-success-dialog {
       width:min(520px,calc(100% - 32px));max-width:none;margin:auto;padding:0;
       overflow:hidden;border:1px solid rgba(28,197,190,.3);border-radius:28px;
@@ -495,6 +509,11 @@
       .manage-mobile-returning[hidden] { display:none; }
       .manage-mobile-share { gap:10px;margin-top:18px; }
       .manage-mobile-share[hidden] { display:none; }
+      #manage-mobile-publish[hidden] { display:none; }
+      .publish-event-dialog form { padding:30px 22px calc(24px + env(safe-area-inset-bottom)); }
+      .publish-event-dialog h2 { font-size:26px; }
+      .publish-event-actions { display:grid;grid-template-columns:1fr 1fr; }
+      .publish-event-actions .sg-btn { min-width:0;padding:12px 14px;font-size:14px; }
       .manage-mobile-share svg { width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
       .manage-mobile-task-list { display:grid;gap:14px; }
       .manage-mobile-edit-slot:empty { display:none; }
@@ -671,6 +690,7 @@
       <div class="manage-mobile-hub-intro">
         <p class="manage-mobile-headcount" id="manage-mobile-headcount" aria-live="polite">Choose an area. Your event stays live while you work.</p>
         <p class="manage-mobile-returning" id="manage-mobile-returning" hidden></p>
+        <button class="sg-btn sg-btn-primary sg-btn-block manage-mobile-share" id="manage-mobile-publish" type="button" hidden disabled>Publish event</button>
         <button class="sg-btn sg-btn-primary sg-btn-block manage-mobile-share" id="manage-mobile-share" type="button" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0 4 4m-4-4L8 7"/><path d="M5 11v9h14v-9"/></svg>
           Share event
@@ -734,6 +754,7 @@
     <div class="notification-status" id="notification-status" role="status" hidden></div>
 
     <div class="toolbar" aria-label="Event actions">
+      <button class="sg-btn sg-btn-primary" id="publish-event" type="button" hidden disabled>Publish event</button>
       <button class="sg-btn sg-btn-primary" id="copy-link" disabled>Share event link</button>
       <a class="sg-btn sg-btn-ghost" id="view-link" target="_blank" aria-disabled="true" tabindex="-1">View page</a>
       <a class="sg-btn sg-btn-ghost" id="edit-link" aria-disabled="true" tabindex="-1">
@@ -941,6 +962,26 @@
       <p style="color:var(--sg-text-faint);font-size:12px;margin-top:10px">Removes this event and its entire guest list. Prefer archiving? Swipe the event left on My Events — guest data is kept.</p>
     </div>
   </div>
+
+  <dialog class="publish-event-dialog" id="publish-event-dialog" aria-labelledby="publish-event-title" aria-describedby="publish-event-copy">
+    <form id="publish-event-form">
+      <button class="host-page-success-close" id="publish-event-close" type="button" aria-label="Close publishing review">×</button>
+      <p class="host-page-success-eyebrow">Ready to share</p>
+      <h2 id="publish-event-title" tabindex="-1">Publish your event?</h2>
+      <div class="publish-event-summary">
+        <strong id="publish-event-name"></strong>
+        <p id="publish-event-details"></p>
+        <p id="publish-event-visibility"></p>
+      </div>
+      <p class="publish-event-copy" id="publish-event-copy">Your saved event page will become available to guests. Publishing does not send invitations or notify followers; you choose whom to contact afterward.</p>
+      <p class="publish-event-error" id="publish-event-error" role="alert" tabindex="-1" hidden></p>
+      <a class="publish-event-edit" id="publish-event-edit" hidden>Edit event details →</a>
+      <div class="publish-event-actions">
+        <button class="sg-btn sg-btn-ghost" id="publish-event-cancel" type="button">Keep draft</button>
+        <button class="sg-btn sg-btn-primary" id="publish-event-confirm" type="submit">Publish event</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog class="host-page-success-dialog" id="host-page-success-dialog" aria-labelledby="host-page-success-title" aria-describedby="host-page-success-copy">
     <div class="host-page-success-dialog-inner">

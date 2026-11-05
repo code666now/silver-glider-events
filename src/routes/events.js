@@ -1048,9 +1048,10 @@ router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
 });
 
 // ---- "Invite your people" ---------------------------------------------
-// On an upcoming event, Familiar Faces offers everyone who RSVP'd to one of
-// the host's past published events: one face per email, newest context first,
-// searchable, and invitable without leaving the event. Consent rules match the
+// On an upcoming draft or published event, Familiar Faces offers everyone who
+// RSVP'd to one of the host's past published events: one face per person,
+// newest context first and searchable. Drafts can only browse; invitations
+// still require an explicitly published target. Consent rules match the
 // other invitation paths: confirmed primary RSVPs with an email, never
 // unsubscribed people, never named +1s, never anyone already RSVP'd, declined,
 // or invited here.
@@ -1064,9 +1065,10 @@ async function loadInviteTarget(queryable, { eventId, organizerId, lock = false 
     [eventId, organizerId]
   );
   const target = rows[0] || null;
-  const canInvite = Boolean(target && target.status === 'published' && !target.is_past &&
+  const canBrowsePastGuests = Boolean(target && ['draft', 'published'].includes(target.status) && !target.is_past &&
     !target.archived_at && !target.secret_show_enabled);
-  return { target, canInvite };
+  const canInvite = canBrowsePastGuests && target.status === 'published';
+  return { target, canBrowsePastGuests, canInvite };
 }
 
 // SQL condition: the canonical person (with normalized-email fallback for
@@ -1171,10 +1173,11 @@ function candidateDetail(row, sourceEventId) {
 // GET /api/events/:id/familiar-faces/people?search=&sourceEventId=&offset=
 router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
   try {
-    const { target, canInvite } = await loadInviteTarget(pool, { eventId: req.params.id, organizerId: req.organizer.id });
+    const { target, canBrowsePastGuests, canInvite } = await loadInviteTarget(pool, { eventId: req.params.id, organizerId: req.organizer.id });
     if (!target) return res.status(404).json({ error: 'Event not found' });
-    const empty = { canInvite: false, sources: [], people: [], plusOnes: [], total: 0, hasMore: false, unsubscribedCount: 0 };
-    if (!canInvite) return res.json(empty);
+    res.setHeader('Cache-Control', 'private, no-store');
+    const empty = { canBrowsePastGuests: false, canInvite: false, sources: [], people: [], plusOnes: [], total: 0, hasMore: false, unsubscribedCount: 0 };
+    if (!canBrowsePastGuests) return res.json(empty);
 
     const search = String(req.query.search || '').trim().slice(0, 120);
     const pattern = search ? `%${search.replace(/[\\%_]/g, ch => `\\${ch}`)}%` : '';
@@ -1241,9 +1244,9 @@ router.get('/api/events/:id/familiar-faces/people', async (req, res, next) => {
       [req.organizer.id, target.id]
     );
 
-    res.setHeader('Cache-Control', 'private, no-store');
     res.json({
-      canInvite: true,
+      canBrowsePastGuests,
+      canInvite,
       sources: sources.map(source => ({ id: source.id, title: source.title, eventDate: source.event_date })),
       people: people.map(row => {
         const name = `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Guest';

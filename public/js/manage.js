@@ -35,6 +35,8 @@ let activeMobileManageView = 'home';
 let mobilePreviewMarker = null;
 let mobileEditMarker = null;
 let postEventDeepLinkHandled = false;
+let publishBusy = false;
+let publishReturnFocus = null;
 
 function mobileManageHistoryEntry() {
   const entry = history.state?.[mobileManageHistoryKey];
@@ -180,7 +182,9 @@ function updateMobileManageSummaries() {
     count.textContent = capacity ? `${going} of ${capacity}` : String(going);
     headcount.append(count, isPostEventEligible() ? ' RSVP’d going' : ' going');
   } else {
-    headcount.textContent = isPostEventEligible()
+    headcount.textContent = eventData.status === 'draft'
+      ? 'Your draft is private. Publish when you’re ready to share it.'
+      : isPostEventEligible()
       ? 'No one RSVP’d going to this event.'
       : 'No RSVPs yet. Share your link to get the first one.';
   }
@@ -203,7 +207,9 @@ function updateMobileManageSummaries() {
   const guestCount = Number.isFinite(connected) && connected > 0 ? connected : rsvps;
   $('manage-mobile-summary-guests').textContent = guestCount
     ? `${guestCount} ${guestCount === 1 ? 'person' : 'people'} connected`
-    : 'No RSVPs or invitations yet';
+    : peopleState.canBrowsePastGuests && (peopleState.total > 0 || peopleState.plusOnes.length > 0)
+      ? 'Browse people from your past events'
+      : 'No RSVPs or invitations yet';
   const lifecycleVariant = currentLifecycleVariant();
   const lifecycleCopy = {
     'new-event': ['Promote', eventData.visibility === 'private' ? 'Share the private link or QR code' : 'Share the link and start building your audience'],
@@ -236,8 +242,10 @@ function syncMobileManageAvailability() {
   });
   $('manage-mobile-task-promote').hidden = Boolean(eventData) && !mobileManageViewAvailable('promote');
   $('manage-mobile-task-photos').hidden = !eventData || !mobileManageViewAvailable('photos');
-  $('manage-mobile-share').hidden = currentLifecycleVariant() === 'ended';
+  $('manage-mobile-share').hidden = eventData?.status !== 'published' || currentLifecycleVariant() === 'ended';
   $('manage-mobile-share').disabled = !ready || $('share-event').disabled;
+  $('manage-mobile-publish').hidden = eventData?.status !== 'draft';
+  $('manage-mobile-publish').disabled = !ready || publishBusy;
   updateMobileManageSummaries();
 
   if (mobileManageLayout.matches && activeMobileManageView !== 'home' && !mobileManageViewAvailable(activeMobileManageView)) {
@@ -297,7 +305,7 @@ function syncMobileManageLayout() {
     $('manage-mobile-screen-intro').hidden = true;
     $('manage-shell').dataset.mobileView = 'home';
     activeMobileManageView = 'home';
-    viewLink.textContent = 'View page';
+    viewLink.textContent = eventData?.status === 'draft' ? 'Preview' : 'View page';
     if (mobilePreviewMarker?.parentNode) mobilePreviewMarker.parentNode.insertBefore(viewLink, mobilePreviewMarker.nextSibling);
     if (mobileEditMarker?.parentNode) mobileEditMarker.parentNode.insertBefore($('edit-link'), mobileEditMarker.nextSibling);
     $('more-menu').removeAttribute('open');
@@ -324,7 +332,7 @@ function initializeMobileManage() {
     else window.location.assign('/events?view=hosting');
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && $('post-event-thank-dialog')?.open) return;
+    if (event.key === 'Escape' && ($('post-event-thank-dialog')?.open || $('publish-event-dialog').open)) return;
     if (event.key === 'Escape' && mobileManageLayout.matches && activeMobileManageView !== 'home') {
       event.preventDefault();
       const current = mobileManageHistoryEntry();
@@ -439,8 +447,92 @@ function setManageReady() {
     $(id).removeAttribute('tabindex');
   });
   $('more-menu').querySelector('summary').removeAttribute('aria-disabled');
+  syncPublicationActions();
   syncMobileManageAvailability();
 }
+
+function syncPublicationActions() {
+  const draft = eventData?.status === 'draft';
+  const published = eventData?.status === 'published';
+  $('publish-event').hidden = !draft;
+  $('publish-event').disabled = !mobileManageReady() || publishBusy;
+  $('copy-link').hidden = !published || isPostEventEligible();
+  $('copy-link').disabled = !published;
+  $('share-event').disabled = !published;
+  $('download-qr').disabled = !published;
+  $('view-link').textContent = draft || mobileManageLayout.matches ? 'Preview' : 'View page';
+}
+
+function closePublishDialog() {
+  if (!publishBusy) $('publish-event-dialog').close();
+}
+
+function openPublishDialog(trigger) {
+  if (!mobileManageReady() || eventData.status !== 'draft' || publishBusy) return;
+  publishReturnFocus = trigger;
+  $('publish-event-name').textContent = eventData.title;
+  const timeParts = /^(\d{2}):(\d{2})/.exec(eventData.start_time || '');
+  const hour = timeParts ? Number(timeParts[1]) : 0;
+  const startTime = timeParts ? `${hour % 12 || 12}:${timeParts[2]} ${hour >= 12 ? 'PM' : 'AM'}` : '';
+  const timing = [startTime, eventData.timezone?.replace(/_/g, ' ')].filter(Boolean).join(' · ');
+  $('publish-event-details').textContent = [$('meta').textContent, timing].filter(Boolean).join(' · ');
+  $('publish-event-visibility').textContent = eventData.secret_show_enabled
+    ? 'Secret Show: guests will need your access code.'
+    : eventData.visibility === 'private'
+      ? 'Private — Link Only: only people with the link can open your event.'
+      : 'Public: your event will be visible on your public Host Page.';
+  $('publish-event-error').hidden = true;
+  $('publish-event-edit').hidden = true;
+  $('publish-event-edit').href = `/events/${encodeURIComponent(eventData.id)}/edit`;
+  $('publish-event-dialog').showModal();
+  $('publish-event-title').focus();
+}
+
+$('publish-event').addEventListener('click', () => openPublishDialog($('publish-event')));
+$('manage-mobile-publish').addEventListener('click', () => openPublishDialog($('manage-mobile-publish')));
+$('publish-event-cancel').addEventListener('click', closePublishDialog);
+$('publish-event-close').addEventListener('click', closePublishDialog);
+$('publish-event-dialog').addEventListener('cancel', event => {
+  if (publishBusy) event.preventDefault();
+});
+$('publish-event-dialog').addEventListener('close', () => {
+  publishReturnFocus?.focus({ preventScroll: true });
+});
+$('publish-event-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (publishBusy || !$('publish-event-dialog').open || eventData?.status !== 'draft') return;
+  publishBusy = true;
+  const button = $('publish-event-confirm');
+  button.disabled = true;
+  button.textContent = 'Publishing…';
+  $('publish-event-form').setAttribute('aria-busy', 'true');
+  $('publish-event-cancel').disabled = true;
+  $('publish-event-close').disabled = true;
+  $('publish-event-error').hidden = true;
+  $('publish-event-edit').hidden = true;
+  syncPublicationActions();
+  syncMobileManageAvailability();
+  try {
+    const result = await api(`/api/events/${eventId}/publish`, { method: 'POST' });
+    if (result?.event?.status !== 'published') throw new Error('Publication could not be confirmed. Refresh the page to check your event.');
+    // Reuse the existing publication success journey; no invitations are sent here.
+    eventData = result.event;
+    window.location.replace(`/events/${encodeURIComponent(eventId)}/manage?created=1`);
+  } catch (error) {
+    $('publish-event-error').textContent = error.message || 'Publication could not be confirmed. Refresh the page to check your event.';
+    $('publish-event-error').hidden = false;
+    $('publish-event-edit').hidden = false;
+    $('publish-event-error').focus();
+    publishBusy = false;
+    button.disabled = false;
+    button.textContent = 'Publish event';
+    $('publish-event-cancel').disabled = false;
+    $('publish-event-close').disabled = false;
+    $('publish-event-form').removeAttribute('aria-busy');
+    syncPublicationActions();
+    syncMobileManageAvailability();
+  }
+});
 
 function showManageLoadError() {
   $('manage-load-error').hidden = false;
@@ -525,6 +617,7 @@ async function loadEvent() {
 
   $('view-link').href = eventUrl();
   $('edit-link').href = `/events/${encodeURIComponent(event.id)}/edit`;
+  syncPublicationActions();
 
   if (event.status === 'cancelled') {
     $('cancel-event').style.display = 'none';
@@ -765,7 +858,9 @@ async function loadGuests(search = '') {
   const data = await api(`/api/events/${eventId}/familiar-faces${search ? `?search=${encodeURIComponent(search)}` : ''}`);
   familiarFaceState = data;
   $('familiar-faces-summary').textContent = familiarFacesSummary(data);
-  $('no-guests').textContent = search ? 'No people match that search.' : 'No faces yet. Share the event link to receive RSVPs.';
+  $('no-guests').textContent = search ? 'No people match that search.'
+    : eventData?.status === 'draft' ? 'No RSVPs for this draft yet. Publish before sharing or inviting.'
+      : 'No faces yet. Share the event link to receive RSVPs.';
   $('export-csv').disabled = Number(data.totalCount) === 0;
   $('search').disabled = false;
   $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
@@ -922,6 +1017,7 @@ $('familiar-invite-form').addEventListener('submit', event => event.preventDefau
 $('copy-link').addEventListener('click', () => $('share-event').click());
 
 $('share-event').addEventListener('click', async () => {
+  if (eventData?.status !== 'published') return;
   const shareData = { title: eventData.title, url: eventUrl() };
   try {
     if (navigator.share) {
@@ -1000,6 +1096,7 @@ $('photo-grid').addEventListener('click', async event => {
 });
 
 $('download-qr').addEventListener('click', async () => {
+  if (eventData?.status !== 'published') return;
   const button = $('download-qr');
   button.disabled = true;
   try {
@@ -1103,8 +1200,9 @@ function renderReminderReceipt() {
 function renderLifecycleCard() {
   if (!eventData) return;
   const card = $('line-card');
-  if (eventData.status === 'cancelled') {
+  if (eventData.status === 'cancelled' || eventData.status === 'draft') {
     card.style.display = 'none';
+    syncPublicationActions();
     return;
   }
 
@@ -1180,7 +1278,7 @@ function shortEventDate(value) {
 // shared search box filters both grids; tapping selects; the bar reviews and
 // sends. Nothing is pre-selected.
 const peopleSelection = new Map();
-let peopleState = { canInvite: false, people: [], plusOnes: [], total: 0, hasMore: false, sources: [] };
+let peopleState = { canBrowsePastGuests: false, canInvite: false, people: [], plusOnes: [], total: 0, hasMore: false, sources: [] };
 let peopleSearch = '';
 let peopleGroup = 'all';
 // A whole group being invited in one tap ("Invite everyone (87)"), which the
@@ -1190,7 +1288,17 @@ let peopleConfirming = false;
 let peopleRequest = 0;
 
 function renderPeople() {
+  const canInvite = peopleState.canInvite && eventData?.status === 'published';
+  $('familiar-people-title').textContent = canInvite ? 'Invite your people' : 'People from your past events';
+  $('familiar-people-intro').textContent = canInvite
+    ? 'From your past events. Tap faces to select them.'
+    : 'These are past guests, not RSVPs for this event. Publish your event before inviting them.';
   const cards = peopleState.people.map(face => {
+    if (!canInvite) return `<article class="familiar-face-card is-readonly">
+      <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
+      <span class="familiar-face-name">${escapeHtml(face.name)}</span>
+      <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
+    </article>`;
     const selected = peopleSelection.has(face.id);
     const selectionLabel = `${selected ? 'Remove' : 'Select'} ${face.name}${face.detail ? `, ${face.detail}` : ''}`;
     return `<button class="familiar-face-card${selected ? ' is-selected' : ''}" type="button" data-person="${escapeHtml(face.id)}" data-name="${escapeHtml(face.name)}" data-detail="${escapeHtml(face.detail || '')}" aria-pressed="${selected}" aria-label="${escapeHtml(selectionLabel)}">
@@ -1204,14 +1312,16 @@ function renderPeople() {
       <span class="familiar-face-avatar">${familiarAvatar(face)}</span>
       <span class="familiar-face-name">${escapeHtml(face.name)}</span>
       <span class="familiar-face-status">${escapeHtml(face.detail)}</span>
-      <button class="familiar-face-share" type="button" data-share-person="${escapeHtml(face.name)}">Share link</button>
+      ${canInvite ? `<button class="familiar-face-share" type="button" data-share-person="${escapeHtml(face.name)}">Share link</button>` : ''}
     </article>`);
   $('familiar-people-grid').innerHTML = [...cards, ...plusOnes].join('');
   const empty = !cards.length && !plusOnes.length;
   $('familiar-people-empty').hidden = !empty;
   $('familiar-people-empty').textContent = peopleSearch
     ? 'No one from your past events matches that search.'
-    : 'Everyone from your past events is already here.';
+    : peopleGroup !== 'all' || $('familiar-people-source').value
+      ? 'No past guests match this filter.'
+      : canInvite ? 'Everyone from your past events is already here.' : 'No eligible past guests to show yet.';
   renderPeopleGroups();
   $('familiar-people-more').hidden = !peopleState.hasMore;
   const unsubscribed = Number(peopleState.unsubscribedCount) || 0;
@@ -1235,7 +1345,8 @@ function renderPeopleGroups() {
   // A private event starts with nobody selected, so the host picks.
   const active = groups.find(group => group.key === peopleGroup);
   const count = active?.count || 0;
-  const bulkAvailable = eventData?.visibility === 'public' && count > 0 && !peopleSelection.size && !peopleBulk;
+  const bulkAvailable = peopleState.canInvite && eventData?.status === 'published'
+    && eventData.visibility === 'public' && count > 0 && !peopleSelection.size && !peopleBulk;
   $('familiar-people-bulk').hidden = !bulkAvailable;
   if (bulkAvailable) {
     $('familiar-people-bulk-btn').textContent = `${active.action || 'Invite everyone'} (${count})`;
@@ -1243,6 +1354,11 @@ function renderPeopleGroups() {
 }
 
 function renderPeopleBar() {
+  if (!peopleState.canInvite || eventData?.status !== 'published') {
+    peopleSelection.clear();
+    peopleBulk = null;
+    peopleConfirming = false;
+  }
   const count = peopleBulk ? peopleBulk.count : peopleSelection.size;
   $('familiar-people-bar').hidden = count === 0;
   if (!count) peopleConfirming = false;
@@ -1264,7 +1380,8 @@ function renderPeopleBar() {
 
 function renderPeopleAction() {
   const button = $('invite-previous-guests');
-  const available = peopleState.canInvite && (peopleState.total > 0 || peopleState.plusOnes.length > 0 || Boolean(peopleSearch));
+  const available = eventData?.status === 'published' && peopleState.canInvite
+    && (peopleState.total > 0 || peopleState.plusOnes.length > 0 || Boolean(peopleSearch));
   button.style.display = available ? '' : 'none';
   button.disabled = !available;
   $('invite-previous-guests-title').textContent = eventData?.duplicated_from_id
@@ -1289,7 +1406,7 @@ async function loadPeople({ append = false } = {}) {
   } else {
     peopleState = data;
   }
-  $('familiar-people').hidden = !data.canInvite || (!data.sources.length && !peopleSearch);
+  $('familiar-people').hidden = !(data.canBrowsePastGuests || data.canInvite) || (!data.sources.length && !peopleSearch);
   const select = $('familiar-people-source');
   if (select.options.length === 1 && data.sources.length) {
     select.insertAdjacentHTML('beforeend', data.sources.map(source =>
@@ -1298,9 +1415,11 @@ async function loadPeople({ append = false } = {}) {
   }
   renderPeople();
   renderPeopleAction();
+  updateMobileManageSummaries();
 }
 
 $('familiar-people-grid').addEventListener('click', async event => {
+  if (!peopleState.canInvite || eventData?.status !== 'published') return;
   const share = event.target.closest('[data-share-person]');
   if (share) {
     try {
@@ -1336,6 +1455,7 @@ $('familiar-people-groups').addEventListener('click', event => {
 });
 
 $('familiar-people-bulk-btn').addEventListener('click', () => {
+  if (!peopleState.canInvite || eventData?.status !== 'published') return;
   const active = (peopleState.groups || []).find(group => group.key === peopleGroup);
   if (!active?.count) return;
   peopleSelection.clear();
@@ -1363,6 +1483,7 @@ $('familiar-people-secondary').addEventListener('click', () => {
 });
 
 $('familiar-people-send').addEventListener('click', async () => {
+  if (!peopleState.canInvite || eventData?.status !== 'published') return;
   const button = $('familiar-people-send');
   if (!peopleConfirming) {
     peopleConfirming = true;
@@ -1678,7 +1799,7 @@ $('search').addEventListener('input', e => {
     const query = e.target.value.trim();
     loadGuests(query);
     // One search box filters both grids: people connected here and your people.
-    if (peopleState.canInvite) {
+    if (peopleState.canBrowsePastGuests || peopleState.canInvite) {
       peopleSearch = query;
       loadPeople().catch(() => {});
     }
@@ -1707,7 +1828,7 @@ async function initializeManagePage() {
           ...(eventData.collect_photos_enabled ? [loadPhotoCollection()] : []),
           ...(postEventExperience ? [loadPostEventExperience()] : [])
         ]
-      : eventData.lifecycle_phase === 'tonight'
+      : eventData.status === 'published' && eventData.lifecycle_phase === 'tonight'
         ? []
         : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview()];
     const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);

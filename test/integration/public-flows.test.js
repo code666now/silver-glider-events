@@ -13580,3 +13580,8 @@ require('../support/draft-reminder-cases')({
   signInAccount, createAdminOperator, signInAdminOperator,
   createDoneForYouClient, openDoneForYouEditor, resetRateLimits
 });
+
+require('../support/draft-manage-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, mailer
+});

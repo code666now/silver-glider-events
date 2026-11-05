@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.196
+
+Released November 4, 2026. Built, reviewed, and deployed by Codex.
+
+### Publish from Manage and see past guests while drafting
+
+* Give saved drafts a prominent **Publish event** action directly on desktop and mobile Manage. Review the saved event, timing and visibility, then explicitly publish through the existing validated endpoint. Keep publishing in the page editor too; after publication Manage switches to sharing.
+* Show **People from your past events** on eligible drafts as a separate read-only list. Keep those people out of current-event RSVP counts, preserve search/filtering, and require publication plus a separate invitation review before sending anything.
+* Hide unavailable draft sharing/promotion actions, explain the private-draft state, preserve saved drafts on validation errors, prevent repeated publication requests, and retain ownership, unsubscribe and invitation checks.
+* No migration, automatic publication, guest send, media replacement, or changes to existing public Standard/Flyer pages, reminder jobs, wallets or thank-you batches.
+
+### Verification
+
+* All **926 automated tests** and static checks pass (282 JavaScript / 450 project files); `git diff --check` passes. Six new SQL integration cases protect read-only draft history, ownership, exclusions, filtering/paging, publication validation/idempotency and invitation lock races; nine frontend tests cover the new controls and states.
+* Seven actual-controller Chrome journeys with mocked APIs pass at 1440px/390px, including both publishing entry points, no-send cancel/browse, repeat-click protection, error/retry, history navigation and reviewed invitations. Same-day drafts and a 320×440 confirmation viewport are covered. Screenshots were visually reviewed; physical Safari/iOS remains manual. No real messages or production records are created for QA.
+
 ## 1.0.195
 
 Released November 4, 2026. Built, reviewed, and deployed by Codex.

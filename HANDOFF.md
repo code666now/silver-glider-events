@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 4, 2026 (saved draft reminders, v1.0.195)
+**Last updated:** November 4, 2026 (draft publishing and past guests, v1.0.196)
 
-## Current release — Continue your saved draft (v1.0.195)
+## Current release — Publish from Manage and browse past guests (v1.0.196)
+
+Extends `dd91b72` / v1.0.195. User reported no Publish on draft Manage and hidden Familiar Faces from other events. They explicitly clarified that both Manage and the existing page editor should publish, then approved code, tests and deployment. Do not publish their draft, invite real guests, send SMS/email, or resend any thank-you during QA.
+
+- **Manage:** draft-specific primary **Publish event**, secondary **Preview** and existing **Edit** path. A native accessible dialog reviews the saved title/date/time/timezone/visibility and requires explicit confirmation. Uses the existing owner-only, row-locked `/api/events/:id/publish` with normal validation and idempotency; no second publisher. Busy controls block repeats; errors offer the existing editor. Success reuses the published welcome journey and replaces the old draft-history entry. Existing page-editor publication is unchanged.
+- **Draft history:** `loadInviteTarget` now separates `canBrowsePastGuests` from `canInvite`. An owned upcoming, unarchived, non-Secret draft may read existing eligible past published RSVP history. Only published targets may invite, and POST still rechecks under its event lock. Same-host ownership, verified-only avatars, deduplication, opt-outs, search/source/group filters and paging remain; no recipient email is exposed in history DTOs. GET never creates invitations or attendance.
+- **Presentation:** read-only draft history is labeled **People from your past events** and explicitly separated from this event's RSVP list/counts. No selected cards, bulk invite or +1 share actions until published. Same-day drafts load history even when their date-derived lifecycle says tonight. Draft sharing/QR/promotion are hidden, with honest empty-state copy. After publication invitations still require separate selection/review/send. No automatic follower announcements.
+- **Boundary:** no migration/dependency, live Standard/Flyer layout, Cloudinary asset, RSVP/count, Host Page/discovery, provider/email/worker, gift/wallet or thank-you changes. Publishing an event remains the host's deliberate action; scheduled reminders retain their existing rules. All production smoke checks are read-only. One local `sge_test` process at a time; no production database access or fixtures.
+
+**Verification/release:** final `npm run check` passes **926/926** tests and static checks (282 JavaScript / 450 project files); `git diff --check` passes. Six dedicated SQL cases and nine behavioral frontend tests cover the boundaries above. `/private/tmp/sge-publish-manage-browser.cjs` passes seven actual-view/controller Chrome journeys with mocked APIs at 1440px/390px, plus 320×440 same-day-draft review: both publishing paths, Cancel/Escape/focus, duplicate protection, server-error/unconfirmed-response recovery, safe Back/Forward, separate current/past guests and explicit reviewed invitations. No unexpected writes, page errors or horizontal overflow. Screenshots `/private/tmp/sge-publish-{draft,past-guests,confirm,live,error,owner}-{1440,390}.png` and short-modal screenshot were visually reviewed. External fonts were blocked in QA; physical Safari/iOS remains manual. Follow normal commit/tag/push, generated uncommitted `.git-sha`, explicit Railway `--path-as-root`, matching health/assets and previous-deployment removal verification. Existing wallet and versioned thank-you rollback restrictions remain.
+
+## Previous release — Continue your saved draft (v1.0.195)
 
 Extends `34c4612` / v1.0.194. User approved one gentle abandoned-draft reminder, code, end-to-end tests and deployment, emphasizing that the host should return to their specific saved draft with its details prefilled. No real emails, SMS, production fixtures, or past thank-you resends may be used for QA.
 

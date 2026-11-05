@@ -155,7 +155,7 @@ test('"Your crowd" groups filter the picker, and a public event can invite a who
   assert.match(routes, /LIMIT 501/, 'a group invitation still respects the 500 cap');
 
   // Public events get one tap; private events start with nobody selected.
-  assert.match(manage, /eventData\?\.visibility === 'public' && count > 0 && !peopleSelection\.size && !peopleBulk/);
+  assert.match(manage, /peopleState\.canInvite && eventData\?\.status === 'published'[\s\S]*eventData\.visibility === 'public' && count > 0 && !peopleSelection\.size && !peopleBulk/);
   assert.match(manage, /group: bulk\.group[\s\S]*search: peopleSearch/);
   assert.match(routes, /group && target\.visibility !== 'public'/);
   assert.match(view, /id="familiar-people-groups"/);

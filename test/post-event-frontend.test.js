@@ -215,7 +215,7 @@ test('ended-event manage UI extends Recap with one private draw and an exact san
   assert.match(manage, /get\('postEvent'\)[\s\S]*'thank-you'/);
   assert.match(manage, /setMobileManageView\('promote'/);
   assert.match(manage, /const eventEnded = isPostEventEligible\(\)/);
-  assert.match(manage, /event\.key === 'Escape' && \$\('post-event-thank-dialog'\)\?\.open\) return/);
+  assert.match(manage, /event\.key === 'Escape' && \(\$\('post-event-thank-dialog'\)\?\.open \|\| \$\('publish-event-dialog'\)\.open\)\) return/);
 });
 
 test('past events reuse Familiar Faces cards while separating identifiable returning, new and additional guests', () => {
