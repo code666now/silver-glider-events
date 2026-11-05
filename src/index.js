@@ -285,6 +285,7 @@ async function start() {
   require('./jobs/reminders').startReminderCron();
   require('./jobs/host-recap').startHostRecapCron();
   require('./jobs/host-follow-ups').startHostFollowUpCron();
+  require('./jobs/draft-reminders').startDraftReminderCron();
   require('./jobs/host-onboarding').startHostOnboardingCron();
   require('./jobs/event-notifications').startEventNotificationCron();
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();

@@ -145,8 +145,10 @@ async function resetDatabase() {
   await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
-  await pool.query("DELETE FROM email_optins WHERE scope='host_followups'");
-  await pool.query("DELETE FROM email_optouts WHERE scope='host_followups'");
+  // Preferences intentionally survive real account deletion, so resetting the
+  // isolated test database must also clear these independent address records.
+  await pool.query('DELETE FROM email_optins');
+  await pool.query('DELETE FROM email_optouts');
   organizerId = (await pool.query(
     `INSERT INTO organizers (email, name, org_name, public_slug)
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
@@ -13570,4 +13572,11 @@ require('../support/sms-welcome-cases')({
 require('../support/sms-provider-cost-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl
+});
+
+require('../support/draft-reminder-cases')({
+  test, assert, pool, createEvent, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, addVerifiedEmailIdentity,
+  signInAccount, createAdminOperator, signInAdminOperator,
+  createDoneForYouClient, openDoneForYouEditor, resetRateLimits
 });

@@ -27,6 +27,7 @@ const { queueSmsBatch } = require('../jobs/sms-notifications');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
+const { recordDraftHostActivity } = require('../lib/draft-reminders');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -209,6 +210,9 @@ router.post('/api/events', async (req, res, next) => {
           organizerId: req.organizer.id,
           body: req.body
         });
+        // Only an explicit customer save enrolls a draft. Administrative and
+        // system writes use the shared editor without this activity hook.
+        await recordDraftHostActivity(client, result.event.id, req.organizer.id);
         const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
         await client.query('COMMIT');
         await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(effectiveOrganizer), invites });
@@ -390,6 +394,9 @@ router.put('/api/events/:id', async (req, res, next) => {
       eventId: req.params.id,
       body: req.body
     });
+    if (result.changedFields.length > 0) {
+      await recordDraftHostActivity(client, result.event.id, req.organizer.id);
+    }
     const invites = await syncLineupClaims(client, { event: result.event, body: req.body });
     await client.query('COMMIT');
     await deliverLineupClaimInvites(pool, { event: result.event, hostLabel: hostLabelFor(req.organizer), invites });
@@ -440,8 +447,10 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       const slug = makeEventSlug({ title: e.title, status: 'draft', visibility: e.visibility });
+      const client = await pool.connect();
       try {
-        const { rows } = await pool.query(
+        await client.query('BEGIN');
+        const { rows } = await client.query(
           `INSERT INTO events (organizer_id, slug, title, description, cover_image_url, cover_fit_mode, presentation_mode, flyer_image_url,
                                flyer_designer_name, flyer_designer_instagram_handle, event_date,
                                start_time, end_time, timezone, venue_name, venue_address, category,
@@ -469,10 +478,15 @@ router.post('/api/events/:id/duplicate', async (req, res, next) => {
            e.show_guest_list === true, e.allow_guests === true, e.comments_enabled === true,
            e.artwork_accent_color || null, e.hide_address_until_rsvp === true]
         );
+        await recordDraftHostActivity(client, rows[0].id, req.organizer.id);
+        await client.query('COMMIT');
         return res.status(201).json({ event: rows[0] });
       } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         if (err.code === '23505' && attempt < 2) continue;
         throw err;
+      } finally {
+        client.release();
       }
     }
   } catch (err) { next(err); }

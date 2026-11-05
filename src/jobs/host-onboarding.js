@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { sendHostProfileNudge, sendFirstEventNudge } = require('../lib/mailer');
 const { emailOptedOut, emailPreferenceUrls } = require('../lib/email-preferences');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { draftNudgeSuppressionSql } = require('../lib/draft-reminders');
 
 const EMAIL_SCOPE = 'host_onboarding';
 const MAX_PER_PASS = 25;
@@ -30,6 +31,7 @@ async function pendingProfileNudges(limit = MAX_PER_PASS) {
       WHERE host.host_page_created_at IS NOT NULL
         AND host.host_page_created_at <= NOW() - INTERVAL '24 hours'
         AND host.host_profile_nudge_sent_at IS NULL
+        ${draftNudgeSuppressionSql('host')}
         AND NULLIF(BTRIM(host.logo_url),'') IS NULL
         AND NULLIF(BTRIM(host.bio),'') IS NULL
         AND NULLIF(BTRIM(host.instagram_handle),'') IS NULL
@@ -64,6 +66,7 @@ async function pendingFirstEventNudges(limit = MAX_PER_PASS) {
         AND host.host_page_created_at <= NOW() - INTERVAL '72 hours'
         AND host.first_event_nudge_sent_at IS NULL
         AND host.first_event_published_at IS NULL
+        ${draftNudgeSuppressionSql('host', { firstEvent: true })}
         AND (
           (
             host.host_profile_nudge_sent_at IS NULL
@@ -98,6 +101,7 @@ async function eligibleProfileNudge(organizerId) {
         AND host.host_page_created_at IS NOT NULL
         AND host.host_page_created_at <= NOW() - INTERVAL '24 hours'
         AND host.host_profile_nudge_sent_at IS NULL
+        ${draftNudgeSuppressionSql('host')}
         AND NULLIF(BTRIM(host.logo_url),'') IS NULL
         AND NULLIF(BTRIM(host.bio),'') IS NULL
         AND NULLIF(BTRIM(host.instagram_handle),'') IS NULL
@@ -126,6 +130,7 @@ async function eligibleFirstEventNudge(organizerId) {
         AND host.host_page_created_at <= NOW() - INTERVAL '72 hours'
         AND host.first_event_nudge_sent_at IS NULL
         AND host.first_event_published_at IS NULL
+        ${draftNudgeSuppressionSql('host', { firstEvent: true })}
         AND (
           (
             host.host_profile_nudge_sent_at IS NULL

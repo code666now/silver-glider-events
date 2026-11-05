@@ -45,9 +45,10 @@
   </main>
   <script>
     const status = document.getElementById('email-settings-status');
-    document.querySelectorAll('.email-settings-row input').forEach(input => input.addEventListener('change', async () => {
+    const settingsInputs = document.querySelectorAll('.email-settings-row input');
+    settingsInputs.forEach(input => input.addEventListener('change', async () => {
       const enabled = input.checked;
-      input.disabled = true;
+      settingsInputs.forEach(setting => { setting.disabled = true; });
       status.classList.remove('is-error');
       status.textContent = 'Saving…';
       try {
@@ -58,13 +59,17 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || 'Your setting could not be saved.');
+        if (typeof data.draftsEnabled === 'boolean') {
+          const draftInput = document.querySelector('[data-email-scope="host_drafts"]');
+          if (draftInput) draftInput.checked = data.draftsEnabled;
+        }
         status.textContent = enabled ? 'Emails turned on.' : 'Emails turned off.';
       } catch (error) {
         input.checked = !enabled;
         status.classList.add('is-error');
         status.textContent = error.message || 'Your setting could not be saved.';
       } finally {
-        input.disabled = false;
+        settingsInputs.forEach(setting => { setting.disabled = false; });
       }
     }));
   </script>

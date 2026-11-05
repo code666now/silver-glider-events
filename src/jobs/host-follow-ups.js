@@ -4,6 +4,7 @@ const { sendOptionalHostEmail } = require('../lib/mailer');
 const { withActiveHostAccount } = require('../lib/outbound-account-status');
 const { emailOptedOut, emailPreferenceUrls } = require('../lib/email-preferences');
 const { eventEndAtSql } = require('../lib/post-event');
+const { draftNudgeSuppressionSql } = require('../lib/draft-reminders');
 const {
   FOLLOW_UP_SCOPE, FOLLOW_UP_MAX_ATTEMPTS, followUpSnapshot, buildHostFollowUpEmail
 } = require('../lib/host-follow-up');
@@ -37,6 +38,7 @@ function eligibleFollowUpSql({ eventOnly = false } = {}) {
        ORDER BY d.updated_at DESC,d.id DESC LIMIT 1
     ) draft ON TRUE
     WHERE e.status='published' AND NOW() >= (${eventEndAtSql('e')})
+      ${draftNudgeSuppressionSql('host')}
       AND e.host_recap_delivered_at IS NOT NULL
       AND e.host_recap_delivered_at >= (
         SELECT applied_at FROM schema_migrations WHERE filename='074_host_follow_ups.sql'

@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.195
+
+Released November 4, 2026. Built, reviewed, and deployed by Codex.
+
+### Return to your saved event draft
+
+* Add one gentle email after about 24 hours without a saved edit. **Continue my event** opens that host's exact private draft, with saved title, date, time, location and artwork restored through the existing authenticated editor.
+* Start prospectively with new or meaningfully saved drafts; do not email old untouched drafts. Skip published, archived, deleted, stale, past-start or admin-prepared events. Limit to one reminder per draft and one per host every seven days.
+* Coordinate existing host setup and next-event nudges so they do not stack. Add a clearly labeled optional draft-reminder preference; respect existing explicit host-nudge opt-outs and include unsubscribe controls.
+* Preserve send-time ownership/state checks, bounded retries, stable provider keys and a frozen email. Concurrent saves/publication serialize with the final handoff. No public event, guest notification, SMS wallet or thank-you behavior changes.
+
+### Verification
+
+* All **910 automated tests** and static checks pass (280 JavaScript / 448 project files); `git diff --check` passes.
+* Focused integration coverage includes saved-state restoration, sign-in and ownership, actual customer/admin routes, normalized no-op saves, timing, inherited opt-outs, deletion-safe cooldowns, retries and a deterministic concurrent-edit race. Providers are mocked; no real messages or production records are created for QA.
+* Real editor/controller browser checks pass at 1440px and 390px: exact saved fields/artwork, mobile summaries, no horizontal overflow or page errors, and zero mutation requests. The reminder email and preference success/error states were also visually reviewed at both sizes. Physical Safari/iOS and actual inbox clients remain manual checks.
+
 ## 1.0.194
 
 Released November 4, 2026. Built, reviewed, and deployed by Codex.

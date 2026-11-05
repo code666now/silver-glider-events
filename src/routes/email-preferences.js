@@ -56,6 +56,15 @@ router.get('/email-settings', async (req, res, next) => {
         <span><strong>${esc(followups.label)}</strong><small>${esc(followups.description)}</small></span>
       </label>`;
     }
+    if (['host_onboarding', 'host_followups', 'host_recaps'].includes(data.scope)) {
+      const drafts = EMAIL_PREFERENCE_SCOPES.host_drafts;
+      const draftsEnabled = !await emailOptedOut(pool, data.email, 'host_drafts');
+      const draftsToken = signEmailPreference(data.email, 'host_drafts');
+      additionalSettings += `<label class="email-settings-row email-settings-additional" for="host-drafts-enabled">
+        <input id="host-drafts-enabled" type="checkbox" data-email-scope="host_drafts" data-email-token="${esc(draftsToken)}" ${draftsEnabled ? 'checked' : ''}>
+        <span><strong>${esc(drafts.label)}</strong><small>${esc(drafts.description)}</small></span>
+      </label>`;
+    }
     res.send(renderSettings({
       token: req.query.token,
       enabled,
@@ -74,7 +83,11 @@ router.post('/api/email-settings', async (req, res, next) => {
       return res.status(400).json({ error: 'That email-settings link is invalid.' });
     }
     await setEmailPreference(pool, data.email, data.scope, req.body.enabled);
-    res.json({ ok: true, enabled: req.body.enabled });
+    const result = { ok: true, enabled: req.body.enabled };
+    if (['host_onboarding', 'host_followups', 'host_drafts'].includes(data.scope)) {
+      result.draftsEnabled = !await emailOptedOut(pool, data.email, 'host_drafts');
+    }
+    res.json(result);
   } catch (error) { next(error); }
 });
 
