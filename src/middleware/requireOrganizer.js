@@ -2,12 +2,13 @@ const pool = require('../config/db');
 const {
   loadSessionAccount, setSessionCookie, clearSessionCookie, MAX_AGE_SECONDS
 } = require('../lib/session');
+const { requireLegalAcceptance, legalGateExempt, safeLegalNext } = require('../lib/legal-acceptance');
 
 function reject(req, res) {
-  if (req.path.startsWith('/api/') || req.baseUrl.startsWith('/api/')) {
+  if (req.path.startsWith('/api/') || (req.baseUrl || '').startsWith('/api/')) {
     return res.status(401).json({ error: 'Not signed in' });
   }
-  return res.redirect('/login');
+  return res.redirect(`/login?next=${encodeURIComponent(safeLegalNext(req.originalUrl))}`);
 }
 
 function sameOriginMutation(req) {
@@ -46,7 +47,7 @@ async function resolveSession(req) {
   return loadSessionAccount(pool, req);
 }
 
-async function requireOrganizer(req, res, next) {
+async function resolveOrganizer(req, res, next, { gate = true, refresh = true } = {}) {
   try {
     const resolved = await resolveSession(req);
     if (!resolved.account) {
@@ -60,15 +61,28 @@ async function requireOrganizer(req, res, next) {
     // Sliding refresh: once past the halfway mark, re-issue a fresh 30-day cookie
     // so active users never get bounced back to the magic-link screen.
     const remaining = resolved.session.exp - Math.floor(Date.now() / 1000);
-    if (remaining < MAX_AGE_SECONDS / 2) setSessionCookie(res, resolved.account.id);
+    if (refresh && remaining < MAX_AGE_SECONDS / 2) setSessionCookie(res, resolved.account.id);
 
     req.organizer = resolved.account;
+    if (gate && !legalGateExempt(req) && await requireLegalAcceptance(req, res, resolved.account)) return;
     next();
   } catch (err) {
     next(err);
   }
 }
 
+function requireOrganizer(req, res, next) {
+  return resolveOrganizer(req, res, next);
+}
+
+// A review form's CSRF token is bound to this exact session cookie. Do not
+// refresh the cookie while rendering/submitting it, or a tab could invalidate
+// its own token. This bypass never grants app access or records agreement.
+function authenticationOnly(req, res, next) {
+  return resolveOrganizer(req, res, next, { gate: false, refresh: false });
+}
+
 module.exports = requireOrganizer;
 module.exports.resolveSession = resolveSession;
 module.exports.sameOriginMutation = sameOriginMutation;
+module.exports.authenticationOnly = authenticationOnly;

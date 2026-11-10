@@ -7,6 +7,7 @@ const migrate = require('./db/migrate');
 const pool = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const { renderLegalPage } = require('./lib/legal-pages');
+const { registerLegalPolicyVersions, legalAcceptanceState, acceptanceRedirect } = require('./lib/legal-acceptance');
 const { esc } = require('./lib/public-html');
 const { inspectCriticalPublicAssets } = require('./lib/critical-assets');
 const { version: APP_VERSION } = require('../package.json');
@@ -73,6 +74,7 @@ app.use(require('./middleware/securityTraffic'));
 
 // Routes
 app.use(require('./routes/auth'));
+app.use(require('./routes/legal-acceptance'));
 app.use(require('./routes/admin-auth'));
 app.use(require('./routes/admin-operators'));
 app.use(require('./routes/flyer-intake'));
@@ -114,8 +116,25 @@ app.get('/flyer', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
   return sendHtmlFile(res, path.join(VIEWS, 'flyer-intake.html'));
 });
-app.get('/privacy', (req, res) => res.type('html').send(renderLegalPage('privacy')));
-app.get('/terms', (req, res) => res.type('html').send(renderLegalPage('terms')));
+function legalDocumentPage(kind) {
+  return async (req, res, next) => {
+    try {
+      if (req.query.version == null) return res.type('html').send(renderLegalPage(kind));
+      const version = req.query.version;
+      if (typeof version !== 'string' || !/^[a-zA-Z0-9._-]{1,80}$/.test(version)) {
+        return res.status(404).send('Legal document version not found');
+      }
+      const { rows } = await pool.query(
+        'SELECT content FROM legal_policy_versions WHERE kind=$1 AND version=$2', [kind, version]
+      );
+      if (!rows.length) return res.status(404).send('Legal document version not found');
+      res.setHeader('Cache-Control', 'public, max-age=3600, immutable');
+      return res.type('html').send(renderLegalPage(kind, { version, text: rows[0].content }));
+    } catch (error) { next(error); }
+  };
+}
+app.get('/privacy', legalDocumentPage('privacy'));
+app.get('/terms', legalDocumentPage('terms'));
 app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
 app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
 app.get('/account/verify-change', (req, res) => {
@@ -125,8 +144,14 @@ app.get('/account/verify-change', (req, res) => {
   sendHtmlFile(res, path.join(VIEWS, 'account-verify-change.html'));
 });
 // Skip the email screen if there's already a valid session
-app.get('/login', (req, res) => {
-  if (req.sessionAccount) return res.redirect(safeNext(req.query.next) || '/dashboard');
+app.get('/login', async (req, res, next) => {
+  if (req.sessionAccount) {
+    try {
+      const destination = safeNext(req.query.next) || '/dashboard';
+      const state = await legalAcceptanceState(pool, req.sessionAccount);
+      return res.redirect(state.required ? acceptanceRedirect(destination) : destination);
+    } catch (error) { return next(error); }
+  }
   if (req.sessionStale) clearSessionCookie(res);
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -282,6 +307,7 @@ async function start() {
     throw new Error('RESEND_API_KEY is required in production');
   }
   await migrate();
+  await registerLegalPolicyVersions(pool);
   const server = app.listen(PORT, () => console.log(`Silver Glider Events on :${PORT}`));
   require('./jobs/reminders').startReminderCron();
   require('./jobs/host-recap').startHostRecapCron();

@@ -36,6 +36,7 @@ const { esc, fmtDate, render404 } = require('../lib/public-html');
 const { eventEndAtSql } = require('../lib/post-event');
 const { canInviteFriend, friendShareAvailable, nextPublicEvent, renderEventReturn } = require('../lib/event-return');
 const { renderOwnerEditor } = require('../lib/event-owner-editor');
+const { requestLegalAcceptanceState, requireLegalAcceptance } = require('../lib/legal-acceptance');
 const { readFlyerPreviewAccess } = require('../lib/flyer-preview-access');
 const { cleanInstagramHandle } = require('../lib/host-profile');
 const { isManagedVibePhotoUrl } = require('../lib/cloudinary');
@@ -761,6 +762,16 @@ router.get('/e/:slug', async (req, res, next) => {
     const event = await loadEventBySlug(req.params.slug, { includeDraft: ownerDraft });
     if (!event) return res.status(404).send(render404());
     const ownerPreview = organizerViewer(req, event);
+    // Public viewing and RSVP stay available. Entering the owner's private
+    // draft/editor is an app action and must use the same durable review gate.
+    const ownerLegalReview = ownerPreview
+      ? await requestLegalAcceptanceState(req, req.sessionAccount)
+      : null;
+    const ownerNeedsReview = ownerLegalReview?.required === true;
+    if (ownerNeedsReview && (ownerDraft || req.query.edit)) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.redirect(303, `/account/review?next=${encodeURIComponent(req.originalUrl)}`);
+    }
     const rsvpEnabled = event.status === 'published' && !isSilverGliderTickets(event);
     const invitationToken = typeof req.query.invite === 'string' ? req.query.invite.trim() : '';
     const rsvpToken = typeof req.query.rsvp === 'string' ? req.query.rsvp.trim() : '';
@@ -1017,7 +1028,9 @@ router.get('/e/:slug', async (req, res, next) => {
     const ownerEditorHtml = flyerCompletion
       ? renderFlyerPreviewTools(flyerPreview)
       : ownerPreview
-        ? renderOwnerEditor(event)
+        ? ownerNeedsReview
+          ? `<a class="owner-edit-trigger" href="/account/review?next=${encodeURIComponent(`/e/${encodeURIComponent(event.slug)}?edit=appearance`)}"><span>Edit event</span></a>`
+          : renderOwnerEditor(event)
         : flyerPreview ? renderFlyerPreviewTools(flyerPreview) : '';
     const ownerEditorStyles = flyerCompletion
       ? '<link rel="stylesheet" href="/css/flyer-preview.css">'
@@ -1026,7 +1039,7 @@ router.get('/e/:slug', async (req, res, next) => {
         : flyerPreview ? '<link rel="stylesheet" href="/css/flyer-preview.css">' : '';
     const ownerEditorScripts = flyerCompletion
       ? '<script src="/js/flyer-preview.js"></script>'
-      : ownerPreview
+      : ownerPreview && !ownerNeedsReview
         ? '<script src="/js/event-change-dialog.js"></script>\n  <script src="/js/date-time-controls.js"></script>\n  <script src="/js/event-owner-editor.js"></script>'
         : flyerPreview ? '<script src="/js/flyer-preview.js"></script>' : '';
 
@@ -1122,7 +1135,8 @@ router.get('/api/public/events/:slug/comments', async (req, res, next) => {
       return res.status(404).json({ error: 'Event wall not found' });
     }
     if (secretShowLocked(req, event)) return rejectLockedSecret(res);
-    const canModerate = organizerViewer(req, event);
+    const isOwner = organizerViewer(req, event);
+    const canModerate = isOwner && !(await requestLegalAcceptanceState(req, req.sessionAccount)).required;
     if (!event.comments_enabled && !canModerate) {
       return res.status(404).json({ error: 'Event wall not found' });
     }
@@ -1195,8 +1209,13 @@ router.delete('/api/public/events/:slug/comments/:id', async (req, res, next) =>
     if (!rows.length) return res.status(404).json({ error: 'Comment not found' });
 
     const attendee = await confirmedAttendee(req, event);
-    const allowed = organizerViewer(req, event) || attendee?.id === rows[0].rsvp_id;
+    const ownsComment = attendee?.id === rows[0].rsvp_id;
+    const isOwner = organizerViewer(req, event);
+    const allowed = isOwner || ownsComment;
     if (!allowed) return res.status(403).json({ error: 'You cannot delete this comment' });
+    // Removing one's own RSVP comment remains a guest privacy action. Only
+    // moderation of someone else's comment invokes the account app boundary.
+    if (!ownsComment && isOwner && await requireLegalAcceptance(req, res, req.sessionAccount)) return;
     await pool.query('DELETE FROM event_comments WHERE id=$1 AND event_id=$2', [commentId, event.id]);
     res.json({ ok: true });
   } catch (err) { next(err); }

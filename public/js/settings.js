@@ -944,12 +944,16 @@ settingsElement('identity-dialog').addEventListener('click', event => {
   if (outside) closeIdentityDialog();
 });
 
-api('/api/auth/me').then(({ organizer }) => {
+api('/api/auth/me').then(({ organizer, legalAcceptance }) => {
   populateSettings(organizer);
   showSettings();
   loadAccountIdentities();
-  if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
-  loadSmsCredits().then(showCheckoutReturn);
+  // Credential recovery and privacy controls must remain reachable before
+  // agreement. Do not let optional background app calls redirect this page.
+  if (!legalAcceptance?.required) {
+    if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
+    loadSmsCredits().then(showCheckoutReturn);
+  }
 }).catch(showSettingsError);
 
 settingsElement('name').addEventListener('input', updateAccountDirty);

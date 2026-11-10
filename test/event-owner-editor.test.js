@@ -7,6 +7,27 @@ function read(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
+test('owner editing requires both ownership and completed policy review without changing guest viewing', () => {
+  const route = read('src/routes/public.js');
+  const htmlExpression = route.match(/const ownerEditorHtml = ([\s\S]*?);\n    const ownerEditorStyles/)[1];
+  const scriptsExpression = route.match(/const ownerEditorScripts = ([\s\S]*?);\n\n    const activePublicTemplate/)[1];
+  const evaluate = expression => new Function('flyerCompletion', 'flyerPreview', 'ownerPreview', 'ownerNeedsReview',
+    'renderFlyerPreviewTools', 'renderOwnerEditor', 'event', `return (${expression});`);
+  const render = (expression, { owner = false, review = false, flyer = null } = {}) => evaluate(expression)(
+    flyer?.status === 'published', flyer, owner, review, () => 'flyer-tools', () => 'owner-editor', { slug: 'sample-event' }
+  );
+
+  assert.equal(render(htmlExpression), '');
+  assert.equal(render(htmlExpression, { review: true }), '');
+  assert.equal(render(scriptsExpression, { review: true }), '');
+  assert.equal(render(htmlExpression, { owner: true }), 'owner-editor');
+  assert.match(render(scriptsExpression, { owner: true }), /event-owner-editor\.js/);
+  assert.match(render(htmlExpression, { owner: true, review: true }), /href="\/account\/review\?next=/);
+  assert.doesNotMatch(render(htmlExpression, { owner: true, review: true }), /owner-editor/);
+  assert.equal(render(scriptsExpression, { owner: true, review: true }), '');
+  assert.equal(render(htmlExpression, { owner: true, review: true, flyer: { status: 'published' } }), 'flyer-tools');
+});
+
 test('public event pages provide an owner-only progressive live editing shell', () => {
   const route = read('src/routes/public.js');
   const renderer = read('src/lib/event-owner-editor.js');
@@ -14,12 +35,14 @@ test('public event pages provide an owner-only progressive live editing shell', 
 
   assert.match(route, /const ownerPreview = organizerViewer\(req, event\)/);
   assert.match(route, /const flyerCompletion = flyerPreview\?\.status === 'published'/);
-  assert.match(route, /:\s*ownerPreview\s*\?\s*renderOwnerEditor\(event\)/);
+  assert.match(route, /const ownerLegalReview = ownerPreview\s*\? await requestLegalAcceptanceState\(req, req\.sessionAccount\)\s*: null/);
+  assert.match(route, /const ownerNeedsReview = ownerLegalReview\?\.required === true/);
+  assert.match(route, /:\s*ownerPreview\s*\?\s*ownerNeedsReview\s*\?\s*`<a class="owner-edit-trigger" href="\/account\/review\?next=[\s\S]*?: renderOwnerEditor\(event\)/);
   assert.match(route, /flyerPreview \? renderFlyerPreviewTools\(flyerPreview\) : ''/);
   assert.match(route, /const ownerEditorStyles = flyerCompletion/);
   assert.match(route, /:\s*ownerPreview\s*\?\s*'<link rel="stylesheet" href="\/css\/event-owner-editor\.css">/);
   assert.match(route, /const ownerEditorScripts = flyerCompletion/);
-  assert.match(route, /:\s*ownerPreview\s*\?\s*'<script src="\/js\/event-change-dialog\.js"><\/script>/);
+  assert.match(route, /:\s*ownerPreview && !ownerNeedsReview\s*\?\s*'<script src="\/js\/event-change-dialog\.js"><\/script>/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_STYLES\}\}\/g, ownerEditorStyles\)/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_HTML\}\}\/g, ownerEditorHtml\)/);
   assert.match(route, /replace\(\/\{\{OWNER_EDITOR_SCRIPTS\}\}\/g, ownerEditorScripts\)/);

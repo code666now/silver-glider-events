@@ -5,6 +5,7 @@
 // standalone .test.js: parallel files would truncate each other's SQL fixtures.
 module.exports = function registerContributorCases(h) {
   const { test, assert, pool, mailer } = h;
+  const { recordLegalAcceptance } = require('../../src/lib/legal-acceptance');
   const APPROVAL_VERSION = 'contributor-spotlight-v1';
   const FOLLOW_VERSION = 'contributor-follow-v1';
   const invitePath = eventId => `/api/events/${eventId}/contributors`;
@@ -384,6 +385,8 @@ module.exports = function registerContributorCases(h) {
     const current = await fixture();
     const email = 'unverified-contributor@example.test';
     const unverified = await h.postEventGuest(current.event.id, email, { verified: false });
+    // Isolate contributor email ownership from the independent legal gate.
+    await recordLegalAcceptance(pool, { id: unverified.accountId, user_id: unverified.userId });
     const cookie = `sge_session=${require('../../src/lib/session').signSession(unverified.accountId)}`;
     const contributor = await approve(await invite(current, { email }));
     assert.equal((await follow(contributor, cookie)).status, 403);

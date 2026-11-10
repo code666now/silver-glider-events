@@ -4,6 +4,7 @@ module.exports = function registerDraftManageCases({
   test, assert, pool, createEvent, createRsvp, getOrganizerId, getBaseUrl,
   signSession, mailer
 }) {
+  const { recordLegalAcceptance } = require('../../src/lib/legal-acceptance');
   let serial = 0;
   const ownerCookie = () => `sge_session=${signSession(getOrganizerId())}`;
   async function request(path, { method = 'GET', body, cookie = ownerCookie() } = {}) {
@@ -55,6 +56,7 @@ module.exports = function registerDraftManageCases({
       `INSERT INTO organizers (email,name,avatar_url) VALUES ($1,'Different host',$2) RETURNING id`,
       ['other-draft@example.test', 'https://res.cloudinary.com/integration-cloud/image/upload/v1/other-avatar.jpg']
     )).rows[0];
+    await recordLegalAcceptance(pool, stranger); // Keep ownership assertions independent of onboarding.
     const foreign = await event({ event_date: '2020-04-01' });
     await pool.query('UPDATE events SET organizer_id=$2 WHERE id=$1', [foreign.id, stranger.id]);
     await createRsvp(foreign.id, { first_name: 'Foreign', email: 'foreign-draft@example.test' });

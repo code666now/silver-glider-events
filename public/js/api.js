@@ -20,11 +20,12 @@ function sgAdminEditorRecoveryPath() {
 }
 
 async function api(path, opts = {}) {
+  const { redirectOnLegalReview = true, ...requestOptions } = opts;
   const res = await fetch(sgRequestPath(path), {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'same-origin',
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined
+    ...requestOptions,
+    body: requestOptions.body ? JSON.stringify(requestOptions.body) : undefined
   });
   if (res.status === 401) {
     if (sgIsAdminEditorPath()) {
@@ -40,6 +41,12 @@ async function api(path, opts = {}) {
     throw new Error('Not signed in');
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.error === 'legal_acceptance_required' && redirectOnLegalReview && !sgIsAdminPath()) {
+    // Keep an existing tab or direct API action on the same account-level
+    // review path as a fresh sign-in. Never replay the interrupted mutation.
+    const returnTo = `${location.pathname}${location.search}${location.hash || ''}`;
+    window.location.assign(`/account/review?next=${encodeURIComponent(returnTo)}`);
+  }
   if (!res.ok) {
     const error = new Error(data.message || data.error || 'Request failed');
     error.code = data.error || 'request_failed';
@@ -599,7 +606,7 @@ function fillMenuSheet(sheet, organizer) {
 
 function loadMenuArtworkUrls() {
   if (!menuArtworkUrlsPromise) {
-    menuArtworkUrlsPromise = api('/api/events').then(({ events }) => (events || []).map(ev => sgSafeHttpUrl(
+    menuArtworkUrlsPromise = api('/api/events', { redirectOnLegalReview: false }).then(({ events }) => (events || []).map(ev => sgSafeHttpUrl(
       ev.presentation_mode === 'flyer'
         ? (ev.flyer_image_url || ev.cover_image_url)
         : (ev.cover_image_url || ev.flyer_image_url)

@@ -4,6 +4,9 @@ const { sendMagicLink, sendVerificationCode, sendAccountVerificationCode } = req
 const { setSessionCookie, clearSessionCookie } = require('../lib/session');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const requirePhotoAccess = require('../middleware/requirePhotoAccess');
+const {
+  legalAcceptanceState, requestLegalAcceptanceState, acceptanceRedirect
+} = require('../lib/legal-acceptance');
 const { findPublicHost, followHost } = require('../lib/host-follows');
 const { linkOwnedRsvpForEvent, linkVerifiedRsvps } = require('../lib/account-rsvps');
 const { attendeeCookieName, readCookie } = require('../lib/private-events');
@@ -474,6 +477,7 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
           [account.id, locked.phone_e164]
         );
         const namedAccount = await fillMissingDisplayNameFromRsvp(client, account);
+        const legalState = await legalAcceptanceState(client, namedAccount);
         await client.query('UPDATE phone_auth_challenges SET used_at=NOW() WHERE id=$1', [locked.id]);
         await client.query('COMMIT');
         clearPhoneAuthCookie(res);
@@ -482,11 +486,10 @@ router.post('/api/auth/phone/verify', async (req, res, next) => {
         setIdentityStepUpCookie(res, account.id);
         res.setHeader('Cache-Control', 'private, no-store');
         const destination = phoneSignInNext(locked.return_path) || '/dashboard';
+        const afterName = hasDisplayName(namedAccount.name) ? destination : nameOnboardingRedirect(destination);
         return res.json({
           ok: true,
-          redirect: hasDisplayName(namedAccount.name)
-            ? destination
-            : nameOnboardingRedirect(destination)
+          redirect: legalState.required ? acceptanceRedirect(afterName) : afterName
         });
       } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1165,6 +1168,7 @@ async function completeChallenge(client, req, pending, {
     kind: 'account',
     redirect: safeNext(pending.return_path) || null,
     needsDisplayName: !hasDisplayName(organizer.name),
+    needsLegalAcceptance: (await legalAcceptanceState(client, organizer)).required,
     afterCommit: res => {
       clearPhotoAccessCookie(res);
       if (pending.intent === 'bind_phone') clearPhoneAuthCookie(res);
@@ -1355,9 +1359,10 @@ router.post('/auth/verify', async (req, res, next) => {
     clearSignInRequestCookie(res);
     const fallback = outcome.kind === 'guest' ? '/' : '/dashboard';
     const destination = outcome.redirect || legacyNext || fallback;
-    res.redirect(303, outcome.needsDisplayName
+    const afterName = outcome.needsDisplayName
       ? nameOnboardingRedirect(destination)
-      : destination);
+      : destination;
+    res.redirect(303, outcome.needsLegalAcceptance ? acceptanceRedirect(afterName) : afterName);
   } catch (err) {
     if (err instanceof CanonicalIdentityError &&
         [
@@ -1416,13 +1421,12 @@ router.post('/api/auth/verify-code', async (req, res, next) => {
     res.setHeader('Cache-Control', 'private, no-store');
     const fallback = outcome.kind === 'account' ? '/dashboard' : null;
     const destination = outcome.redirect || fallback;
+    const afterName = outcome.needsDisplayName && destination ? nameOnboardingRedirect(destination) : destination;
     res.json({
       ok: true,
       kind: outcome.kind,
       firstName: outcome.firstName || null,
-      redirect: outcome.needsDisplayName && destination
-        ? nameOnboardingRedirect(destination)
-        : destination
+      redirect: outcome.needsLegalAcceptance ? acceptanceRedirect(afterName) : afterName
     });
   } catch (err) {
     if (err instanceof CanonicalIdentityError &&
@@ -1566,19 +1570,24 @@ router.post('/api/auth/logout-all', requireOrganizer, async (req, res, next) => 
   }
 });
 
-router.get('/api/auth/me', requireOrganizer, (req, res) => {
+router.get('/api/auth/me', requireOrganizer.authenticationOnly, async (req, res, next) => {
   const {
     id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
     bio, website_url, instagram_handle, instagram_url, contact_email,
     plan, is_admin, sms_credits, created_at, updated_at
   } = req.organizer;
-  res.json({
-    organizer: {
-      id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
-      bio, website_url, instagram_handle, instagram_url, contact_email,
-      plan, is_admin, sms_credits, created_at, updated_at
-    }
-  });
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const legalAcceptance = await requestLegalAcceptanceState(req, req.organizer);
+    res.json({
+      legalAcceptance,
+      organizer: {
+        id, email, name, avatar_url, org_name, public_slug, logo_url, header_image_url,
+        bio, website_url, instagram_handle, instagram_url, contact_email,
+        plan, is_admin, sms_credits, created_at, updated_at
+      }
+    });
+  } catch (error) { next(error); }
 });
 
 router.get('/api/me/identities', requireOrganizer, async (req, res, next) => {

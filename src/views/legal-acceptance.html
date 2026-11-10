@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <title>Review policies — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/legal-acceptance.css">
+  <script src="/js/legal-acceptance.js" defer></script>
+</head>
+<body class="legal-review-page">
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
+
+  <main class="legal-review-shell" aria-labelledby="legal-review-intro">
+    <div class="legal-review-card">
+      <p class="legal-review-intro" id="legal-review-intro">Please review our <a href="{{TERMS_URL}}" target="_blank" rel="noopener" aria-label="Terms of Service (opens in a new tab)">Terms of Service</a> and <a href="{{PRIVACY_URL}}" target="_blank" rel="noopener" aria-label="Privacy Policy (opens in a new tab)">Privacy Policy</a> to continue.</p>
+
+      <form class="legal-review-form" id="legal-review-form" action="/legal/accept" method="post">
+        <input type="hidden" name="csrfToken" value="{{CSRF_TOKEN}}">
+        <input type="hidden" name="termsVersion" value="{{TERMS_VERSION}}">
+        <input type="hidden" name="privacyVersion" value="{{PRIVACY_VERSION}}">
+        <input type="hidden" name="wordingVersion" value="{{WORDING_VERSION}}">
+        <input type="hidden" name="next" value="{{NEXT_URL}}">
+
+        <label class="legal-review-consent" for="legal-review-accepted">
+          <input type="checkbox" id="legal-review-accepted" name="accepted" value="true" required aria-describedby="legal-review-error">
+          <span>I agree to the <a href="{{TERMS_URL}}" target="_blank" rel="noopener" aria-label="Terms of Service (opens in a new tab)">Terms of Service</a> and acknowledge the <a href="{{PRIVACY_URL}}" target="_blank" rel="noopener" aria-label="Privacy Policy (opens in a new tab)">Privacy Policy</a>.</span>
+        </label>
+
+        <p class="legal-review-error" id="legal-review-error" role="alert" tabindex="-1" {{ERROR_HIDDEN}}>{{ERROR_MESSAGE}}</p>
+
+        <button class="sg-btn sg-btn-primary legal-review-submit" id="legal-review-submit" type="submit">
+          <span class="legal-review-spinner" aria-hidden="true" hidden></span>
+          <span data-legal-review-submit-label>Agree and continue</span>
+        </button>
+        <span class="legal-review-sr-only" id="legal-review-status" role="status" aria-live="polite" aria-atomic="true"></span>
+      </form>
+
+      <form class="legal-review-signout-form" action="/legal/logout" method="post">
+        <input type="hidden" name="csrfToken" value="{{LOGOUT_TOKEN}}">
+        <input type="hidden" name="next" value="{{NEXT_URL}}">
+        <button class="legal-review-signout" type="submit">Sign out</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

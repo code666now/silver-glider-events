@@ -9,6 +9,7 @@ module.exports = function registerDraftReminderCases({
   // helpers only after the integration harness has configured its test env.
   const { createEventInTransaction, updateEventInTransaction } = require('../../src/lib/event-editor');
   const { setEmailPreference } = require('../../src/lib/email-preferences');
+  const { recordLegalAcceptance } = require('../../src/lib/legal-acceptance');
   let serial = 0;
   const hoursAgo = hours => new Date(Date.now() - hours * 60 * 60 * 1000);
   const ownerCookie = () => `sge_session=${signSession(getOrganizerId())}`;
@@ -171,6 +172,7 @@ module.exports = function registerDraftReminderCases({
     assert.equal(actual.start_time.slice(0, 5), '19:30');
     assert.equal(Number(actual.id), Number(event.id));
     const other = (await pool.query("INSERT INTO organizers(email,name) VALUES ('draft-other-owner@example.test','Other') RETURNING id")).rows[0];
+    await recordLegalAcceptance(pool, other); // An onboarded non-owner must still get 404.
     const wrongCookie = `sge_session=${signSession(other.id)}`;
     assert.equal((await request(destination, { cookie: wrongCookie })).status, 404);
     assert.equal((await request(`/api/events/${event.id}`, { cookie: wrongCookie })).status, 404);

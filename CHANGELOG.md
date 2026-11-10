@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.200
+
+### One-time account policy review
+
+* Add the approved title-free review screen: **Please review our Terms of Service and Privacy Policy to continue.** An unchecked agreement checkbox leads to **Agree and continue**, with **Sign out** available. Policies open separately without losing the saved destination.
+* Ask once per canonical account, not once per login or device. Existing users without a receipt see it at their next protected app visit. Store exact policy/wording versions, but require a separate explicit review-revision change before asking accepted accounts again.
+* Preserve email-code, email-link and phone sign-in, missing-name onboarding, and the intended event, draft or dashboard. Protect private pages and APIs server-side, including owner editing and comment moderation; do not replay an interrupted mutation after agreement.
+* Keep public browsing, RSVP/guest verification, scoped photo and invitation flows, dedicated administration, sign-out, account recovery and privacy opt-outs available. Terms acceptance does not grant email or text permission, create an RSVP or send messages.
+* Add migration **083** with immutable legal-document snapshots and append-only, server-timestamped acceptance evidence. Deployment registers the current documents, never backfills agreement for existing users, and does not alter policy wording.
+* Use a real server-rendered form that works without JavaScript, session-bound CSRF proof, strict version checks, idempotent saves, accessible mobile/desktop states, and honest retry messages. Back/forward restoration checks the server without resubmitting agreement.
+
+### Verification
+
+* All **1,021 automated tests** and static checks pass. Coverage includes explicit acceptance, identity/session isolation, immutable evidence, concurrent retries, safe return paths, policy changes without automatic repeat review, guest/privacy exemptions and authentication continuation.
+* Eleven isolated Chrome checks pass at desktop, 390px mobile, 320px narrow and keyboard-height sizes, including JavaScript-disabled submission, keyboard access, errors, reduced motion and back/forward recovery. Screenshots reviewed; physical iOS/Safari remains manual. No production acceptance or real email/SMS sends are used for QA.
+
 ## 1.0.199
 
 ### Year-round RSVP faces

@@ -169,12 +169,12 @@ function renderDocument(kind, text) {
   };
 }
 
-function renderLegalPage(kind) {
+function renderLegalPage(kind, { text, version } = {}) {
   const doc = documents[kind];
   if (!doc) throw new Error('Unknown legal document');
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/+$/, '');
-  const canonical = `${baseUrl}${doc.path}`;
-  const rendered = renderDocument(kind, doc.text);
+  const canonical = `${baseUrl}${doc.path}${version ? `?version=${encodeURIComponent(version)}` : ''}`;
+  const rendered = renderDocument(kind, typeof text === 'string' ? text : doc.text);
   const schema = JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'WebPage',

@@ -142,13 +142,14 @@ test('returning RSVP state and owner preview preserve their distinct action cont
   assert.doesNotMatch(dockSync, /activeRsvpState === 'returning-rsvp-state'/);
 
   // Owner recognition is no longer excluded up front. An owner who really has
-  // an RSVP can see its status while the owner editor remains independently
-  // mounted; only an unanswered owner candidate is reduced back to preview.
+  // an RSVP can see its status independently of the owner editor's policy gate;
+  // only an unanswered owner candidate is reduced back to preview.
   const candidateLine = eventPage.match(/const recognizedGuestCandidate =[\s\S]*?: null;/)?.[0] || '';
   assert.ok(candidateLine, 'event page should resolve a returning-guest candidate');
   assert.doesNotMatch(candidateLine, /!ownerPreview/);
   assert.match(eventPage, /const flyerCompletion = flyerPreview\?\.status === 'published'/);
-  assert.match(eventPage, /:\s*ownerPreview\s*\?\s*renderOwnerEditor\(event\)/);
+  assert.match(eventPage, /const ownerLegalReview = ownerPreview\s*\? await requestLegalAcceptanceState\(req, req\.sessionAccount\)\s*: null/);
+  assert.match(eventPage, /:\s*ownerPreview\s*\?\s*ownerNeedsReview\s*\?\s*`<a class="owner-edit-trigger" href="\/account\/review\?next=[\s\S]*?: renderOwnerEditor\(event\)/);
   assert.match(eventPage, /returningGuest: returningGuestJson/);
 });
 

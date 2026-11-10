@@ -3,6 +3,7 @@ module.exports = function registerGuestImportCases({
   test, assert, pool, createEvent, createRsvp, getOrganizerId, getBaseUrl,
   signSession, mailer, addVerifiedEmailIdentity
 }) {
+  const { recordLegalAcceptance } = require('../../src/lib/legal-acceptance');
   const lib = require('../../src/lib/guest-import');
   const routes = require('../../src/routes/guest-import');
   const { processImportedGuestInvitationBatch } = require('../../src/jobs/imported-guest-invitations');
@@ -109,6 +110,7 @@ module.exports = function registerGuestImportCases({
     assert.equal((await response.json()).code, 'email_verification_required');
     await verifyHost();
     const stranger = (await pool.query("INSERT INTO organizers(email,name) VALUES ('other-import@example.test','Other') RETURNING id")).rows[0];
+    await recordLegalAcceptance(pool, stranger);
     assert.equal((await request(event, 'preview', { rows }, { ownerId: stranger.id })).status, 404);
     assert.equal((await request(event, 'preview', { rows }, { headers: { 'sec-fetch-site': 'cross-site', origin: 'https://evil.example' } })).status, 403);
     for (const update of ["status='draft'", "status='cancelled'", "status='published',archived_at=NOW()", "archived_at=NULL,visibility='private',secret_show_enabled=TRUE", "secret_show_enabled=FALSE,event_date='2020-01-01'"]) {
@@ -316,6 +318,7 @@ module.exports = function registerGuestImportCases({
     assert.equal(mailer.devOutbox.length, outbox);
     assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM message_log')).rows[0].count, 0);
     const other = (await pool.query("INSERT INTO organizers(email,name) VALUES ('other-contacts@example.test','Other') RETURNING id")).rows[0];
+    await recordLegalAcceptance(pool, other);
     assert.equal((await request(next, 'contacts', undefined, { ownerId: other.id })).status, 404);
     assert.equal((await request(next, 'preview', { contactIds: ['999999999'] })).status, 400);
   });

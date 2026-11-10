@@ -27,6 +27,10 @@ const { commerceClient } = require('../../src/lib/commerce-client');
 const { hashCode } = require('../../src/lib/secret-show');
 const { attendeeAvatar } = require('../../src/lib/private-events');
 const { signSession } = require('../../src/lib/session');
+const {
+  registerLegalPolicyVersions,
+  recordLegalAcceptance
+} = require('../../src/lib/legal-acceptance');
 const { parseAdminSession } = require('../../src/lib/admin-session');
 const {
   AdminEditorWorkspaceError,
@@ -99,8 +103,41 @@ function testImageBlob() {
   return new Blob([PNG.sync.write(image)], { type: 'image/png' });
 }
 
-// Opening a sign-in link renders a Continue page and must not use it up; the
-// Continue button's POST signs in. Returns the POST response.
+// Older feature tests use fully onboarded synthetic accounts. Complete the
+// real legal form instead of bypassing the production gate; dedicated legal
+// tests use raw auth endpoints and deliberately never call this helper.
+async function completeFixtureLegalReview(cookie, destination) {
+  if (!destination?.startsWith('/account/review?')) return destination;
+  const page = await fetch(`${baseUrl}${destination}`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  const formHtml = html.match(/<form\b[^>]*action="\/legal\/accept"[^>]*>[\s\S]*?<\/form>/)?.[0];
+  assert.ok(formHtml);
+  const fields = new URLSearchParams({ accepted: 'true' });
+  const decode = value => value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  for (const tag of formHtml.matchAll(/<input\b[^>]*type="hidden"[^>]*>/g)) {
+    const name = tag[0].match(/name="([^"]*)"/)?.[1];
+    const value = tag[0].match(/value="([^"]*)"/)?.[1];
+    if (name) fields.set(name, decode(value || ''));
+  }
+  const accepted = await fetch(`${baseUrl}/legal/accept`, {
+    method: 'POST', redirect: 'manual',
+    headers: { cookie, origin: baseUrl, 'content-type': 'application/x-www-form-urlencoded' },
+    body: fields
+  });
+  assert.equal(accepted.status, 303);
+  return accepted.headers.get('location');
+}
+
+async function acceptedAccountFixture(organizerId) {
+  const account = (await pool.query('SELECT id,user_id FROM organizers WHERE id=$1', [organizerId])).rows[0];
+  assert.ok(account);
+  await recordLegalAcceptance(pool, account);
+}
+
+// Opening a sign-in link renders Continue without consuming it. Finish that
+// POST and the explicit legal step for this fully onboarded fixture, retaining
+// the actual authentication cookies and the original post-onboarding target.
 async function followSignInLink(link, { cookie = '', next = '' } = {}) {
   const token = tokenFromLink(link);
   const view = await fetch(`${baseUrl}/auth/verify?token=${token}${next ? `&next=${encodeURIComponent(next)}` : ''}`, {
@@ -110,12 +147,18 @@ async function followSignInLink(link, { cookie = '', next = '' } = {}) {
   assert.match(await view.text(), /<form method="POST" action="\/auth\/verify">/);
   const form = new URLSearchParams({ token });
   if (next) form.set('next', next);
-  return fetch(`${baseUrl}/auth/verify`, {
+  const response = await fetch(`${baseUrl}/auth/verify`, {
     method: 'POST',
     redirect: 'manual',
     headers: { 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
     body: form
   });
+  const destination = response.headers.get('location');
+  if (!destination?.startsWith('/account/review?')) return response;
+  const afterReview = await completeFixtureLegalReview(responseCookie(response, 'sge_session'), destination);
+  const headers = new Headers(response.headers);
+  headers.set('location', afterReview);
+  return new Response(await response.arrayBuffer(), { status: response.status, headers });
 }
 
 function resetRateLimits() {
@@ -156,6 +199,9 @@ async function resetDatabase() {
      VALUES ('host@example.test', 'Test Host', 'Test Host', 'test-host')
      RETURNING id`
   )).rows[0].id;
+  // Most existing cases exercise an already-onboarded host. Acceptance is
+  // explicit fixture state, never a production backfill or test-only bypass.
+  await recordLegalAcceptance(pool, { id: organizerId, user_id: organizerId });
 }
 
 async function createEvent(overrides = {}) {
@@ -287,8 +333,14 @@ async function signInAccount(email, next = '/settings/account') {
     body: JSON.stringify({ code })
   });
   assert.equal(completed.status, 200);
+  const body = await completed.json();
+  for (const key of ['next', 'redirect']) {
+    if (body[key]?.startsWith('/account/review?')) {
+      body[key] = await completeFixtureLegalReview(responseCookie(completed, 'sge_session'), body[key]);
+    }
+  }
   return {
-    body: await completed.json(),
+    body,
     sessionCookie: responseCookie(completed, 'sge_session'),
     stepUpCookie: responseCookie(completed, 'sge_identity_step_up')
   };
@@ -475,6 +527,7 @@ async function waitUntilOutboundLockHeld(userId) {
 
 test.before(async () => {
   await migrate();
+  await registerLegalPolicyVersions(pool);
   await resetDatabase();
   server = await new Promise(resolve => {
     const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
@@ -812,7 +865,7 @@ test('serves each protected settings destination from the responsive settings sh
   for (const pathname of ['/settings', '/settings/account', '/settings/messaging', '/settings/host-page']) {
     const signedOut = await fetch(`${baseUrl}${pathname}`, { redirect: 'manual' });
     assert.equal(signedOut.status, 302);
-    assert.equal(signedOut.headers.get('location'), '/login');
+    assert.equal(signedOut.headers.get('location'), `/login?next=${encodeURIComponent(pathname)}`);
 
     const signedIn = await fetch(`${baseUrl}${pathname}`, { headers: { cookie } });
     assert.equal(signedIn.status, 200);
@@ -1233,6 +1286,7 @@ test('minimal creation makes an owner-only draft without exposing guest actions'
   const otherOrganizer = (await pool.query(
     `INSERT INTO organizers (email, name) VALUES ('other-owner@example.test','Other Owner') RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(otherOrganizer.id);
   const wrongOwner = await fetch(`${baseUrl}/e/${event.slug}`, {
     headers: { cookie: `sge_session=${signSession(otherOrganizer.id)}` }
   });
@@ -2144,6 +2198,7 @@ test('hosts can delete Done For You events while preserving flyer submission his
      VALUES ('other-delete-host@example.test','Other Host','Other Host','other-delete-host')
      RETURNING id`
   )).rows[0].id;
+  await acceptedAccountFixture(otherOrganizerId);
 
   const notOwner = await fetch(`${baseUrl}/api/events/${event.id}`, {
     method: 'DELETE',
@@ -2371,6 +2426,7 @@ test('personal RSVP photos require verified identity or attendee ownership and s
     [avatarUrl, logoUrl]
   );
   const accountId = accounts[0].id;
+  await acceptedAccountFixture(accountId);
   const accountCookie = `sge_session=${signSession(accountId)}`;
 
   await pool.query(
@@ -3057,9 +3113,11 @@ test('completes logged-in and magic-link Host follows without creating Host Page
     body: JSON.stringify({ code: rememberedCode })
   });
   assert.equal(rememberedVerified.status, 200);
-  assert.equal((await rememberedVerified.json()).redirect, '/h/second-host?followed=1');
+  const rememberedDestination = (await rememberedVerified.json()).redirect;
+  assert.equal(rememberedDestination, '/account/review?next=%2Fh%2Fsecond-host%3Ffollowed%3D1');
   const rememberedAccountCookie = responseCookie(rememberedVerified, 'sge_session');
   assert.ok(rememberedAccountCookie);
+  assert.equal(await completeFixtureLegalReview(rememberedAccountCookie, rememberedDestination), '/h/second-host?followed=1');
   const rememberedIdentity = (await pool.query(
     `SELECT id FROM organizers WHERE email='riley-remembered@example.test'`
   )).rows[0];
@@ -3090,6 +3148,7 @@ test('Follow stores independent email and text preferences even when the host ha
     `INSERT INTO organizers (email,name)
      VALUES ('preference-follower@example.test','Preference Follower') RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(follower.id);
   const followerUserId = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [follower.id]
   )).rows[0].user_id;
@@ -3148,6 +3207,7 @@ test('Follow stores independent email and text preferences even when the host ha
     `INSERT INTO organizers (email,name)
      VALUES ('unverified-text-follower@example.test','Unverified Text Follower') RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(unverified.id);
   const rejected = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json', cookie: `sge_session=${signSession(unverified.id)}` },
@@ -3163,6 +3223,7 @@ test('Follow includes email, offers optional paid texts, and sends one audited h
     `INSERT INTO organizers (email,name)
      VALUES ('follow-updates@example.test','Follow Updates') RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(follower.id);
   const followerUserId = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [follower.id]
   )).rows[0].user_id;
@@ -3605,6 +3666,7 @@ test('host invitation onboarding preserves existing hosts and reuses settings to
      VALUES ('host-page-onboarding@example.test','Profile Keeper')
      RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(noSlugAccount.id);
   const noSlugCookie = `sge_session=${signSession(noSlugAccount.id)}`;
   const setupToken = 'setup-host-123456789012';
   await pool.query(
@@ -4325,7 +4387,7 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
   assert.equal((await photoMe.json()).scope, 'photo');
   const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: guestCookie }, redirect: 'manual' });
   assert.equal(dashboard.status, 302);
-  assert.equal(dashboard.headers.get('location'), '/login');
+  assert.equal(dashboard.headers.get('location'), '/login?next=%2Fdashboard');
   const accountApi = await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: guestCookie } });
   assert.equal(accountApi.status, 401);
 
@@ -4377,6 +4439,7 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
      VALUES ('going-guest@example.test','Going Guest','https://res.cloudinary.com/demo/image/upload/v1/going-guest.jpg')
      RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(guest.id);
   guest.user_id = (await pool.query(
     'SELECT user_id FROM organizers WHERE id=$1', [guest.id]
   )).rows[0].user_id;
@@ -4384,6 +4447,7 @@ test('signed-in guests see RSVP events in Going and can edit only their own publ
     `INSERT INTO organizers (email, name)
      VALUES ('other-guest@example.test','Other Guest') RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(other.id);
   const event = await createEvent({
     slug: 'going-list-night',
     title: 'Going List Night',
@@ -4594,6 +4658,7 @@ test('host SMS credit checkout fulfills once and verified refund webhooks adjust
     const otherId = (await pool.query(
       "INSERT INTO organizers (email,name) VALUES ('credit-other@example.test','Credit Other') RETURNING id"
     )).rows[0].id;
+    await acceptedAccountFixture(otherId);
     const forbiddenCapture = await fetch(`${baseUrl}/api/sms-credits/orders/${orderId}/capture`, {
       method: 'POST', headers: { cookie: `sge_session=${signSession(otherId)}` }
     });
@@ -5428,8 +5493,9 @@ test('a 6-digit code signs in only the browser that asked for it and locks after
   assert.equal(ok.status, 200);
   const okBody = await ok.json();
   assert.equal(okBody.kind, 'account');
-  assert.equal(okBody.redirect, '/onboarding/name?next=%2Fevents%2Fnew');
+  assert.equal(okBody.redirect, '/account/review?next=%2Fonboarding%2Fname%3Fnext%3D%252Fevents%252Fnew');
   const sessionCookie = responseCookie(ok, 'sge_session');
+  assert.equal(await completeFixtureLegalReview(sessionCookie, okBody.redirect), '/onboarding/name?next=%2Fevents%2Fnew');
   const dashboard = await fetch(`${baseUrl}/dashboard`, { headers: { cookie: sessionCookie }, redirect: 'manual' });
   assert.equal(dashboard.status, 200);
 
@@ -5554,7 +5620,7 @@ test('expired and superseded email codes fail while the latest resent code creat
     ok: true,
     kind: 'account',
     firstName: null,
-    redirect: '/onboarding/name?next=%2Fevents'
+    redirect: '/account/review?next=%2Fonboarding%2Fname%3Fnext%3D%252Fevents'
   });
   const sessionCookie = responseCookie(latestVerify, 'sge_session');
   assert.ok(sessionCookie);
@@ -6503,6 +6569,7 @@ test('upcoming events offer every past guest once as a face and invite them with
 
   const pastTarget = await (await fetch(`${baseUrl}/api/events/${summer.id}/familiar-faces/people`, { headers: { cookie } })).json();
   assert.equal(pastTarget.canInvite, false);
+  await acceptedAccountFixture(otherHost.id);
   const strangers = await fetch(`${baseUrl}/api/events/${target.id}/familiar-faces/people`, {
     headers: { cookie: `sge_session=${signSession(otherHost.id)}` }
   });
@@ -6716,7 +6783,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
   assert.equal(edit.headers.get('location'), `/events/new?id=${event.id}&advanced=1`);
 
   const signedOut = await fetch(`${baseUrl}/events/${event.id}`, { redirect: 'manual' });
-  assert.equal(signedOut.headers.get('location'), '/login');
+  assert.equal(signedOut.headers.get('location'), `/login?next=${encodeURIComponent(`/events/${event.id}`)}`);
 
   const notAnId = await fetch(`${baseUrl}/events/not-an-id`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(notAnId.status, 404);
@@ -7620,6 +7687,7 @@ test('a Super Admin can reset a joined host invitation without changing the join
      VALUES ('fresh-invitation-recipient@example.test','Fresh Recipient',NOW())
      RETURNING id`
   )).rows[0];
+  await acceptedAccountFixture(newRecipient.id);
   const claimed = await fetch(
     `${baseUrl}/api/host-invitations/${resetInvitation.token}/accept`,
     {
@@ -7852,7 +7920,7 @@ test('admin suspension is audited, revokes access, preserves public property, an
     headers: { cookie: oldTargetCookie }, redirect: 'manual'
   });
   assert.equal(blockedDashboard.status, 302);
-  assert.equal(blockedDashboard.headers.get('location'), '/login');
+  assert.equal(blockedDashboard.headers.get('location'), '/login?next=%2Fdashboard');
   assert.match(blockedDashboard.headers.get('set-cookie') || '', /sge_session=;/);
   assert.equal((await fetch(`${baseUrl}/api/auth/me`, { headers: { cookie: oldTargetCookie } })).status, 401);
   assert.equal((await fetch(`${baseUrl}/api/me`, {
@@ -10154,6 +10222,9 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   // The prepared account owns this event, but that must not let it skip the
   // Done For You preview and recipient-approval lifecycle. This is the exact
   // path an existing promoter can reach while testing their own submission.
+  // This synthetic promoter already completed account policy review; the
+  // assertion below must exercise recipient approval, not the earlier gate.
+  await recordLegalAcceptance(pool, { id: preparedBody.client.userId, user_id: preparedBody.client.userId });
   const ownerPublish = await fetch(`${baseUrl}/api/events/${createdBody.event.id}/publish`, {
     method: 'POST',
     headers: {
@@ -12715,6 +12786,8 @@ test('an artist can claim a lineup spot, or take their name off the event', asyn
   const unverifiedArtist = (await pool.query(
     'SELECT id,user_id FROM organizers WHERE id=$1', [unverifiedArtistRow.id]
   )).rows[0];
+  // Policy agreement cannot substitute for verified ownership of this inbox.
+  await recordLegalAcceptance(pool, unverifiedArtist);
   await pool.query(
     `INSERT INTO user_identities
        (user_id,identity_type,value,normalized_value,verification_scope,verification_source,is_primary)
@@ -13635,4 +13708,10 @@ require('../support/guest-import-cases')({
 require('../support/event-guest-avatar-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer
+});
+
+require('../support/legal-acceptance-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, mailer, signInAccount, followSignInLink,
+  lastDevEmail, responseCookie, resetRateLimits, attachVerifiedPhoneIdentity
 });
