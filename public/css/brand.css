@@ -11,7 +11,7 @@
   --sg-accent-press: #0FA39D;
   --sg-text: #f0f0f0;
   --sg-text-dim: #999999;
-  --sg-text-faint: #787878;
+  --sg-text-faint: #858585; /* 4.5:1 or better on every dark surface (WCAG AA) */
   --sg-danger: #e05252;
   --sg-radius-card: 24px;
   --sg-radius-input: 12px;
@@ -150,7 +150,7 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-global-footer p {
   margin: 0;
-  color: #414141;
+  color: var(--sg-text-faint);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: .02em;
@@ -609,3 +609,14 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-code-link:focus-visible { color: var(--sg-text); }@media (hover: hover) { .sg-code-link:hover { color: var(--sg-text); } }
 .sg-code-link[disabled] { opacity: .5; cursor: default; }
+
+/* Hidden until a keyboard user Tabs to it, then it sits over the top corner. */
+.sg-skip-link {
+  position: fixed; top: 12px; left: 12px; z-index: 1000;
+  padding: 10px 16px; border-radius: var(--sg-radius-input);
+  background: var(--sg-accent); color: #0a0a0a;
+  font: 700 14px var(--sg-font-body); text-decoration: none;
+  transform: translateY(-200%);
+}
+.sg-skip-link:focus { transform: none; outline: 2px solid var(--sg-text); outline-offset: 2px; }
+main[tabindex="-1"]:focus { outline: none; }

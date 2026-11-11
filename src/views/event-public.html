@@ -956,7 +956,7 @@
 <body>
   <div class="event-bg bg-theme {{BODY_CLASS}}" aria-hidden="true">{{FX_MEDIA}}</div>
   {{FX_VEIL}}
-  <div class="layout">
+  <main class="layout" id="main-content" tabindex="-1">
     <div class="col-media">{{HERO}}{{PHOTO_CREDIT}}</div>
     <div class="col-details">
   <div class="wrap">
@@ -1005,7 +1005,7 @@
       </div>
 
       <div id="rsvp-form-box">
-        <p id="rsvp-error" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:14px"></p>
+        <p id="rsvp-error" role="alert" style="display:none;color:var(--sg-danger);font-size:14px;margin-bottom:14px"></p>
         <form id="rsvp-form">
           <div class="rsvp-form-head">
             <div class="rsvp-form-heading">
@@ -1062,7 +1062,7 @@
     <p class="powered-by">Powered by <a href="/">Silver Glider</a></p>
   </div>
     </div><!-- /col-details -->
-  </div><!-- /layout -->
+  </main><!-- /layout -->
 
   <div class="mobile-rsvp-dock" id="mobile-rsvp-dock" hidden>
     {{STANDARD_MOBILE_ACTION_HTML}}

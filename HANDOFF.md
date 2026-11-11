@@ -413,6 +413,16 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - Two cards with different emails and no shared account are still two people; that's for the later "Same person?" merge, never name matching. `rsvps_event_email_uq` already rules out duplicates at one email.
 - CSV: one row per person (including a separate row for each named +1, immediately after the person who brought them), human headers, times in the event's time zone, a UTF-8 BOM for Excel, and `csvEscape` prefixes cells starting with `= + - @` (tab/return too) with an apostrophe so guest-typed names can't run as formulas. Values that are only a number (a `+1…` phone) are left alone. Export stays available when any group has people, including invitation-only or declined-only lists.
 
+### Accessibility — rules to keep (Claude)
+
+- **WCAG 2.2 AA is the target.** `test/accessibility.test.js` pins the rules below; an axe-core scan of home, login, event page, guest RSVP page, follow page, dashboard, create, manage, events and profile was clean at phone and desktop sizes when this landed.
+- **`--sg-text-faint` is `#858585`**, the lightest grey that still reaches 4.5:1 on `--sg-bg`, `--sg-surface` and `--sg-card`. Don't darken it again or introduce another grey for small text; the footer © line uses the same token.
+- **Every page has one `<main>`.** Signed-in pages put `<main id="main-content" tabindex="-1">` directly after `<nav id="nav"></nav>`; the public event page's `.layout` is the `<main>`. `renderNav()` adds a "Skip to content" link as the first Tab stop that focuses it. A new signed-in page needs the same `<main>`.
+- **Errors a person needs to hear get `role="alert"`** (`#rsvp-error`, `#returning-rsvp-error`, `#feedback-error`, the event form's `#error`). A message that appears silently is invisible to a screen reader.
+- **Pop-ups keep Tab inside and Escape returns focus.** Prefer a native `<dialog>` with `showModal()` (the Share and Familiar invite dialogs), which does this for free. The Feedback form is a custom modal, so it traps Tab itself.
+- **Re-rendering must not drop focus.** The Familiar Faces grid is rebuilt with `innerHTML` on every tap, so `renderFamiliarFaces()` puts focus back on the same face and keeps an opened "Can't make it" group open. A control that hides itself (Invite, Cancel) must move focus somewhere sensible first. The selected count is a `role="status"` so it is read out.
+- The account menu is a real ARIA menu (arrow keys, Home/End, Escape); keep `role="menu"` only while that keyboard support stays.
+
 ### Host recap — rules to keep (Claude)
 
 - **One recap per event, ever.** `events.host_recap_sent_at` (migration `059`) is claimed with a conditional UPDATE *before* the email is sent, so concurrent passes can never both send. A failed send releases the claim, and the 10am–1pm event-local window lets it retry the same morning.

@@ -9,7 +9,7 @@ function source(relativePath) {
 
 test('public event sections follow the guest-first vertical hierarchy', () => {
   const view = source('src/views/event-public.html');
-  const layout = view.slice(view.indexOf('<div class="layout">'));
+  const layout = view.slice(view.indexOf('<main class="layout"'));
   const markers = [
     '{{HERO}}',
     '{{CATEGORY}}',
@@ -258,7 +258,7 @@ test('past events replace RSVP with photos when available and reject new submiss
 
 test('secondary text and form focus use readable shared contrast tokens', () => {
   const brand = source('public/css/brand.css');
-  assert.match(brand, /--sg-text-faint: #787878/);
+  assert.match(brand, /--sg-text-faint: #858585/);
   assert.match(brand, /\.sg-input:focus[\s\S]*outline: 2px solid rgba\(28, 197, 190, 0\.32\)/);
 });
 
