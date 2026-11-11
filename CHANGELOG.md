@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.201
+
+Released November 11, 2026.
+
+### Keyboard and screen-reader accessibility
+
+* Merge PR #22 (`claude/a11y-fixes`) with a merge commit. Add a first-Tab **Skip to content** link and main landmarks on the dashboard, event list, Manage and Standard event page.
+* Keep forward and reverse Tab inside the Feedback pop-up; Escape returns focus to its trigger. Announce RSVP, Feedback and event-form errors.
+* Preserve Familiar Faces focus after selecting with Enter or Space, retain expanded groups, focus the first face when starting invitations, restore focus on Cancel, and announce selection counts.
+* Improve faint-text and footer contrast on the shared dark surfaces. No database migrations, dependency changes, automatic invitations or messaging changes.
+
+### Verification
+
+* Local `npm run check` passes **1,026/1,026** tests, with zero failures or skips; static checks pass for 302 JavaScript and 476 project files. The dedicated `sge_test` database had no competing test processes or connections before this run.
+* Real browser checks against the merged views/controllers with isolated synthetic data pass: first-Tab skip link and main focus; Feedback forward/reverse Tab wrap and Escape focus restoration; Familiar Faces Enter/Space selection, retained focus, updated count and Cancel restoration. The guest selection also passes at 390px. No guest invitations or feedback were sent.
+
 ## 1.0.200
 
 ### One-time account policy review

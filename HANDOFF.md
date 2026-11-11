@@ -1,8 +1,20 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 10, 2026 (one-time account policy review, v1.0.200)
+**Last updated:** November 11, 2026 (keyboard and screen-reader accessibility, v1.0.201)
 
-## Current release — One-time account policy review (v1.0.200)
+## Current release — Keyboard and screen-reader accessibility (v1.0.201)
+
+User explicitly requested merging PR #22 (`claude/a11y-fixes`) with **Create a merge commit**, then pulling main, running the full checks with exclusive use of `sge_test`, releasing the next version, generating `.git-sha` after the release commit, deploying to Railway, verifying health, and only then pushing main and the tag. PR merge commit: `ae941ca` (parents `0f22d2c` and `4d0e69c`).
+
+- First-Tab teal **Skip to content** focuses the new main landmark; Feedback traps Tab/Shift+Tab and restores focus on Escape.
+- Familiar Faces keeps keyboard focus across rerenders, retains expanded declined groups, focuses the first face on invitation selection, restores focus on Cancel, and exposes selected counts as live status.
+- Form errors use alert roles; faint text and footer contrast use `#858585`. Keep the accessibility rules below. These are targeted improvements, not blanket WCAG certification.
+- No migration, new dependency, recipient change or automatic send. Production QA must not submit feedback, publish events, accept agreement for the user or send invitations. The first-login policy gate remains unchanged.
+- Release upload must use `railway up . --path-as-root --service silver-glider-events`; keep generated `.git-sha` uncommitted. Verify both production health endpoints and deployed assets before pushing the release commit/tag.
+
+**Verification:** local full `npm run check` passes **1,026/1,026**, zero failures/skips, after confirming no other test process or `sge_test` connection. Static checks pass (302 JavaScript / 476 project files); `git diff --check` passes. Browser keyboard checks use actual merged HTML/JS/CSS with synthetic GET-only data from `/private/tmp/sge-a11y-fixture.cjs`: skip link first Tab/main focus, Feedback Tab/Shift+Tab wrapping and Escape trigger restoration, invitation start/Enter/Space/count/focus/Cancel, plus 390px guest selection all pass. No production fixtures, feedback or messages were created. Authenticated production keyboard verification requires a signed-in user browser session; do not bypass authentication or accept policy review for the user.
+
+## Previous release — One-time account policy review (v1.0.200)
 
 The user approved coding, testing and deployment after choosing **no title** and the exact introductory sentence **“Please review our Terms of Service and Privacy Policy to continue.”** The checkbox says **“I agree to the Terms of Service and acknowledge the Privacy Policy.”** and starts unchecked; the actions are **Agree and continue** and **Sign out**. This is account agreement evidence, not a claim of blanket legal compliance or marketing permission. Existing Terms and Privacy text is unchanged.
 
