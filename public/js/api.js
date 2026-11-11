@@ -304,6 +304,23 @@ function sgLoadAdminAccess() {
   return sgAdminAccessPromise;
 }
 
+// A keyboard user's first Tab offers to jump past the menu to the page itself.
+function addSkipLink() {
+  const main = document.getElementById('main-content') || document.querySelector('main');
+  if (!main || document.querySelector('.sg-skip-link')) return;
+  if (!main.id) main.id = 'main-content';
+  if (!main.hasAttribute('tabindex')) main.tabIndex = -1;
+  const skip = document.createElement('a');
+  skip.className = 'sg-skip-link';
+  skip.href = `#${main.id}`;
+  skip.textContent = 'Skip to content';
+  skip.addEventListener('click', event => {
+    event.preventDefault();
+    main.focus();
+  });
+  document.body.prepend(skip);
+}
+
 function renderNav(active) {
   const el = document.getElementById('nav');
   if (!el) return;
@@ -321,6 +338,7 @@ function renderNav(active) {
     ['following', '/following', 'Following']
   ];
   el.className = 'sg-nav';
+  addSkipLink();
   // On phones, signed-in pages keep Feedback and the legal links inside this menu
   // instead of a floating pill and a footer below every screen.
   document.body.classList.add('sg-app-page');
@@ -742,7 +760,7 @@ function mountFeedbackBubble() {
             <label for="feedback-message">Message</label>
             <textarea class="sg-textarea" id="feedback-message" maxlength="4000" required placeholder="What happened, or what would make this better?"></textarea>
           </div>
-          <p class="feedback-form-error" id="feedback-error"></p>
+          <p class="feedback-form-error" id="feedback-error" role="alert"></p>
           <button class="sg-btn sg-btn-primary sg-btn-block" id="feedback-submit" type="submit">Submit feedback</button>
         </form>
       </div>
@@ -793,7 +811,18 @@ function mountFeedbackBubble() {
   document.getElementById('feedback-close').addEventListener('click', closeFeedback);
   modal.addEventListener('click', e => { if (e.target === modal) closeFeedback(); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && modal.classList.contains('open')) closeFeedback();
+    if (!modal.classList.contains('open')) return;
+    if (e.key === 'Escape') return closeFeedback();
+    // Keep Tab inside the form while it is open, like the Share dialog.
+    if (e.key !== 'Tab') return;
+    const focusable = [...modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(el => !el.disabled && el.getClientRects().length);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!modal.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
 
   document.getElementById('feedback-form').addEventListener('submit', async e => {

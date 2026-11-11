@@ -787,6 +787,12 @@ const PAST_FAMILIAR_GROUPS = [
 
 function renderFamiliarFaces() {
   const grid = $('familiar-faces-grid');
+  // The grid is rebuilt on every change, so a keyboard user who just pressed
+  // a card would land at the top of the page. Put them back on the same face.
+  const focusedFace = grid.contains(document.activeElement)
+    ? document.activeElement.closest('[data-familiar-face]')?.dataset.familiarFace
+    : '';
+  const openGroups = new Set([...grid.querySelectorAll('details[open]')].map(group => group.dataset.group));
   // Each section brings its own grid, so the outer one stops being a grid.
   grid.classList.add('is-grouped');
   const groups = isPostEventEligible() ? PAST_FAMILIAR_GROUPS : FAMILIAR_GROUPS;
@@ -796,9 +802,13 @@ function renderFamiliarFaces() {
     const heading = `${escapeHtml(group.title)} <span class="familiar-faces-group-count">${faces.length}</span>`;
     const cards = `<div class="familiar-faces-grid familiar-faces-group-grid">${faces.map(familiarFaceCard).join('')}</div>`;
     return group.collapsed
-      ? `<details class="familiar-faces-group is-${group.key}"><summary class="familiar-faces-group-title">${heading}</summary>${cards}</details>`
+      ? `<details class="familiar-faces-group is-${group.key}" data-group="${group.key}"${openGroups.has(group.key) ? ' open' : ''}><summary class="familiar-faces-group-title">${heading}</summary>${cards}</details>`
       : `<section class="familiar-faces-group is-${group.key}"><h3 class="familiar-faces-group-title">${heading}</h3>${cards}</section>`;
   }).join('');
+  if (focusedFace) {
+    [...grid.querySelectorAll('[data-familiar-face]')]
+      .find(card => card.dataset.familiarFace === focusedFace)?.focus();
+  }
   $('no-guests').hidden = familiarFaceState.faces.length > 0;
 }
 
@@ -846,6 +856,8 @@ function startFamiliarSelection(initialFaceId = '') {
   $('familiar-faces-start').hidden = true;
   $('familiar-faces-selection').hidden = false;
   updateFamiliarSelection();
+  // The Invite button just hid itself; start the keyboard on the first face.
+  if (!initialFaceId) $('familiar-faces-grid').querySelector('[data-familiar-face]')?.focus();
 }
 
 function stopFamiliarSelection() {
@@ -855,6 +867,10 @@ function stopFamiliarSelection() {
   $('familiar-faces-start').hidden = !(familiarFaceState.canStartInvitation && familiarFaceState.selectableCount > 0);
   renderFamiliarFaces();
   syncFamiliarMobileChrome();
+  // Cancel just hid itself; hand focus back to where selecting began.
+  const start = $('familiar-invite-start');
+  if (!$('familiar-faces-start').hidden && start) start.focus();
+  else $('search')?.focus();
 }
 
 async function loadGuests(search = '') {
