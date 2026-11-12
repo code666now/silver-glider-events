@@ -127,6 +127,7 @@ a { color: var(--sg-accent); text-decoration: none; }
   min-height: 44px !important;
   display: inline-flex !important;
   align-items: center !important;
+  justify-content: center !important; /* short labels like Terms sit centred in their 44px tap area */
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;

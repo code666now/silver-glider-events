@@ -135,6 +135,7 @@ function legalDocumentPage(kind) {
 }
 app.get('/privacy', legalDocumentPage('privacy'));
 app.get('/terms', legalDocumentPage('terms'));
+app.get('/accessibility', (req, res) => res.type('html').send(renderLegalPage('accessibility')));
 app.get('/privacy-policy', (req, res) => res.redirect(301, '/privacy'));
 app.get('/terms-and-conditions', (req, res) => res.redirect(301, '/terms'));
 app.get('/account/verify-change', (req, res) => {

@@ -76,3 +76,22 @@ test('Familiar Faces keeps keyboard focus and announces the selection', () => {
   assert.match(html, /<strong id="familiar-selected-count" role="status">/);
   assert.match(html, /<strong id="familiar-people-count" role="status">/);
 });
+
+test('the Accessibility statement is public and linked wherever Terms is', () => {
+  assert.match(read('src/index.js'), /app\.get\('\/accessibility', \(req, res\) => res\.type\('html'\)\.send\(renderLegalPage\('accessibility'\)\)\);/);
+  const { renderLegalPage } = require('../src/lib/legal-pages');
+  const html = renderLegalPage('accessibility');
+  assert.match(html, /<h1>Accessibility<\/h1>/);
+  assert.match(html, /WCAG\) 2\.2 at level AA/);
+  assert.match(html, /<a href="mailto:support@silverglidertickets\.com">support@silverglidertickets\.com<\/a>/);
+  assert.match(html, /<h2 id="tell-us-what-is-not-working">/);
+  assert.equal((html.match(/<li>/g) || []).length - 6, 7, 'the seven "done so far" items render as a list beside the six contents links');
+
+  // Every place that links Terms also links Accessibility right after it.
+  for (const file of ['public/js/legal-footer.js', 'public/js/api.js', 'src/views/index.html', 'src/views/dashboard.html', 'src/views/invitation-unavailable.html', 'src/views/secret-show.html']) {
+    const source = read(file);
+    const terms = (source.match(/href="\/terms"/g) || []).length;
+    assert.ok(terms > 0, `${file} should link Terms`);
+    assert.equal((source.match(/href="\/accessibility"/g) || []).length, terms, `${file} links Terms ${terms}× but Accessibility a different number of times`);
+  }
+});

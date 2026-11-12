@@ -1,0 +1,22 @@
+Our commitment
+Silver Glider Events is for everyone who throws a show or goes to one. Every guest and every host should be able to find an event, RSVP and manage their night, whether they use a keyboard, a screen reader, voice control, screen magnification or a phone.
+The standard we follow
+We aim to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA, the standard published by the World Wide Web Consortium.
+What we have done so far:
+Every page can be used with a keyboard alone, and you can always see where you are.
+Pages are organised with headings and landmarks, and signed-in pages include a Skip to content link.
+Form fields are labelled, and errors are announced to screen readers.
+Text meets WCAG AA contrast against our dark backgrounds.
+Pages reflow on small screens and when text is enlarged.
+Animations stop when your device asks for reduced motion.
+We check changes with automated accessibility tests and keyboard-only walkthroughs.
+Known limitations
+Event flyers and artwork are images uploaded by hosts. The date, time and location of every event are also shown as text on the page, so they are available to screen readers even when a flyer is not described.
+Some parts of the platform have not yet been fully reviewed. We are working through them and fix problems as we find them.
+Content from hosts
+Event descriptions, images and links are added by hosts and other third parties. We encourage hosts to write clear descriptions and not to put important details only in an image.
+Tell us what is not working
+If something on Silver Glider Events is hard to use, we want to hear about it. Email support@silverglidertickets.com with the page address and what happened.
+We reply within five business days. If we cannot fix the problem right away, we will help you get the information or complete the task another way.
+Last reviewed
+November 11, 2026.
