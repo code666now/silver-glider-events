@@ -77,6 +77,10 @@ We reserve the right to remove Content, cancel listings, suspend accounts, or ta
 10. Content; Intellectual Property
 You retain ownership of the Content you submit. By posting Content, you grant Silver Glider a worldwide, non-exclusive, royalty-free license to use, reproduce, display, and distribute such Content solely for operating, improving, and marketing the Platform and Events.
 Silver Glider owns all rights in and to the Platform, including software, branding, and design.
+By submitting Content, including event flyers, photographs, logos, banners, and profile images, you represent and warrant that you own the Content or have obtained all rights, licenses, permissions, and consents necessary to upload, display, and share it through the Platform.
+You are responsible for the Content you submit and for ensuring that its use does not violate applicable laws or the rights of others, including copyright, trademark, privacy, and publicity rights.
+Silver Glider may review, restrict, disable access to, or remove Content that we reasonably believe violates these Terms, infringes the rights of others, or presents a legal or safety concern.
+Users and rights holders may report potentially infringing or prohibited Content through our designated reporting channels. We may investigate complaints and take appropriate action, including removal of Content and suspension of accounts. We maintain a policy for terminating repeat copyright infringers in appropriate circumstances.
 11. Termination; Suspension; Refusal of Service
 Silver Glider may, at any time and in its sole discretion:
 refuse service;

@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.202
+
+Released November 11, 2026.
+
+### Section 10 Content responsibilities
+
+* Append the user's four approved paragraphs to **10. Content; Intellectual Property**: rights and permissions for submitted media, responsibility for lawful Content, review/removal authority, and infringement reporting and repeat-infringer policy. Preserve all existing Terms text verbatim.
+* Register Terms document version **2026-11-11** with its reviewed content hash. Retain the immutable **2026-11-10** archive and prior acceptance receipts. Privacy Policy, review wording and the once-per-account review requirement remain unchanged; no automatic reacceptance or notifications.
+
+### Verification
+
+* `npm run check` passes **1,031/1,031** tests with zero failures or skips; static checks pass (304 JavaScript / 478 project files). The dedicated local test database was idle before the exclusive run.
+* New regression coverage verifies exact append-only text preservation, Section 10 rendering, the new document version, unchanged Privacy/review wording, retained prior Terms/receipts, no repeated review and no messaging side effects.
+
 ## 1.0.201
 
 Released November 11, 2026.

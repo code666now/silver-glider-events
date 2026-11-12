@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 11, 2026 (keyboard and screen-reader accessibility, v1.0.201)
+**Last updated:** November 11, 2026 (Section 10 Content responsibilities, v1.0.202)
 
-## Current release — Keyboard and screen-reader accessibility (v1.0.201)
+## Current release — Section 10 Content responsibilities (v1.0.202)
+
+User supplied four exact paragraphs and requested adding them to Section 10 without replacing its existing wording, then testing and deploying. `src/legal/terms.txt` appends those paragraphs after the existing ownership/platform-rights text and before Section 11; all original text is preserved.
+
+- Terms version is now **2026-11-11** with SHA-256 `ee858d05eaee1bb3fcee272f433a43c06e75d2590d75beed494fc089d711171b`. Startup registers this new immutable snapshot; it must not overwrite the **2026-11-10** document or existing receipts.
+- Privacy and review wording remain **2026-11-10**; `REQUIRED_LEGAL_REVIEW_VERSION` stays `account-review-v1`. Prior accepted accounts are not prompted again. New first-time reviews link to the updated Terms and record the current version.
+- No migrations, changes to upload/reporting workflows, messages, invitations, or production agreement records. This publishes supplied policy wording; it does not claim to implement or audit its operational/legal requirements.
+- Release uses the post-commit generated `.git-sha`, `railway up . --path-as-root --service silver-glider-events`, production health/content/archive verification, then main/tag push.
+
+**Verification:** full `npm run check` passes **1,031/1,031**, zero failures/skips, with exclusive local `sge_test` access; static checks pass (304 JavaScript / 478 project files). Three focused unit cases and one integration case pin the exact addition, all original bytes, rendered Section 10 location, Terms revision, unchanged privacy/wording, immutable prior November 10 snapshot/receipt, no reacceptance, and no messaging effects. `/private/tmp/sge-terms-production-check.cjs` compares the live current/new archived Terms article exactly with the renderer, the older archive with release `5c39213`, both Privacy views unchanged, and health/version/SHA on both production origins; it performs GET requests only.
+
+## Previous release — Keyboard and screen-reader accessibility (v1.0.201)
 
 User explicitly requested merging PR #22 (`claude/a11y-fixes`) with **Create a merge commit**, then pulling main, running the full checks with exclusive use of `sge_test`, releasing the next version, generating `.git-sha` after the release commit, deploying to Railway, verifying health, and only then pushing main and the tag. PR merge commit: `ae941ca` (parents `0f22d2c` and `4d0e69c`).
 

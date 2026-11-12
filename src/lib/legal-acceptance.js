@@ -8,13 +8,13 @@ const { readSessionCookie } = require('./session');
 // Bump REQUIRED_LEGAL_REVIEW_VERSION only after an explicit reacceptance decision.
 const REQUIRED_LEGAL_REVIEW_VERSION = 'account-review-v1';
 const CURRENT_LEGAL_VERSIONS = Object.freeze({
-  terms: '2026-11-10', privacy: '2026-11-10', wording: '2026-11-10'
+  terms: '2026-11-11', privacy: '2026-11-10', wording: '2026-11-10'
 });
 const REVIEW_INTRO = 'Please review our Terms of Service and Privacy Policy to continue.';
 const REVIEW_WORDING = 'I agree to the Terms of Service and acknowledge the Privacy Policy.';
 const REVIEW_BUTTON = 'Agree and continue';
 const EXPECTED_DOCUMENT_HASHES = Object.freeze({
-  terms: '722b81ed46916e177e397fbc8b8db3e90ce1b0c7d20e0c055e996e3083ad9d49',
+  terms: 'ee858d05eaee1bb3fcee272f433a43c06e75d2590d75beed494fc089d711171b',
   privacy: 'bb1155ad1cb8120a26372b09f8f2b384a2b66d952853b15e2f257f708e5430ea'
 });
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');

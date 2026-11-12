@@ -213,6 +213,58 @@ module.exports = function registerLegalAcceptanceCases({
     assert.deepEqual((await acceptances())[0], original);
   });
 
+  test('the Section 10 update preserves the actual November 10 Terms snapshot and existing acceptance receipt', async () => {
+    const {
+      legalDocumentSnapshots, registerLegalPolicyVersions, recordLegalAcceptance
+    } = require('../../src/lib/legal-acceptance');
+    const {
+      PREVIOUS_TERMS_VERSION, PREVIOUS_TERMS_HASH, CURRENT_TERMS_VERSION,
+      ADDED_PARAGRAPHS, ADDED_TEXT
+    } = require('./terms-content-update-fixture');
+    const cookie = await unaccepted();
+    const currentTerms = legalDocumentSnapshots().find(document => document.kind === 'terms');
+    const previousContent = currentTerms.content.replace(ADDED_TEXT, '');
+    assert.equal(crypto.createHash('sha256').update(previousContent).digest('hex'), PREVIOUS_TERMS_HASH);
+    await pool.query(`INSERT INTO legal_policy_versions(kind,version,content,content_sha256)
+      VALUES('terms',$1,$2,$3) ON CONFLICT(kind,version) DO NOTHING`,
+    [PREVIOUS_TERMS_VERSION, previousContent, PREVIOUS_TERMS_HASH]);
+    await pool.query(`INSERT INTO user_legal_acceptances(user_id,review_version,terms_version,privacy_version,wording_version)
+      VALUES($1,$2,$3,$4,$5)`, [getOrganizerId(), REQUIRED_LEGAL_REVIEW_VERSION,
+      PREVIOUS_TERMS_VERSION, CURRENT_LEGAL_VERSIONS.privacy, CURRENT_LEGAL_VERSIONS.wording]);
+    const originalReceipt = (await acceptances())[0];
+    const originalSnapshot = (await pool.query(
+      "SELECT * FROM legal_policy_versions WHERE kind='terms' AND version=$1", [PREVIOUS_TERMS_VERSION]
+    )).rows[0];
+    const before = await effects();
+    const outboxBefore = mailer.devOutbox.length;
+
+    await registerLegalPolicyVersions(pool);
+    await registerLegalPolicyVersions(pool);
+    const historicalResponse = await request(`/terms?version=${PREVIOUS_TERMS_VERSION}`);
+    assert.equal(historicalResponse.status, 200);
+    const historicalHtml = await historicalResponse.text();
+    for (const paragraph of ADDED_PARAGRAPHS) assert.equal(historicalHtml.includes(paragraph), false);
+    for (const url of ['/terms', `/terms?version=${CURRENT_TERMS_VERSION}`]) {
+      const response = await request(url);
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      for (const paragraph of ADDED_PARAGRAPHS) assert.ok(html.includes(`<p>${paragraph}</p>`));
+    }
+
+    const revisit = await request('/account/review?next=%2Fdashboard', { headers: { cookie } });
+    assert.equal(revisit.status, 303);
+    assert.equal(revisit.headers.get('location'), '/dashboard');
+    assert.equal((await request('/dashboard', { headers: { cookie } })).status, 200);
+    const repeated = await recordLegalAcceptance(pool, { id: getOrganizerId() });
+    assert.equal(repeated.created, false);
+    assert.deepEqual((await acceptances())[0], originalReceipt);
+    assert.deepEqual((await pool.query(
+      "SELECT * FROM legal_policy_versions WHERE kind='terms' AND version=$1", [PREVIOUS_TERMS_VERSION]
+    )).rows[0], originalSnapshot);
+    assert.deepEqual(await effects(), before);
+    assert.equal(mailer.devOutbox.length, outboxBefore);
+  });
+
   test('legal acceptance save failure stays on the review screen with retry and records no false acceptance', async () => {
     const cookie = await unaccepted();
     const { fields } = await review(cookie, '/events');
