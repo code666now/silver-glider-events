@@ -14,8 +14,24 @@ const documents = {
     description: 'How Silver Glider Entertainment Inc. collects, uses, and protects data across Silver Glider Events.',
     path: '/privacy',
     text: fs.readFileSync(path.join(legalDir, 'privacy.txt'), 'utf8')
+  },
+  // A statement, not an agreement: it is never versioned or accepted.
+  accessibility: {
+    title: 'Accessibility',
+    description: 'How Silver Glider Events works for everyone, and how to tell us when it does not.',
+    path: '/accessibility',
+    text: fs.readFileSync(path.join(legalDir, 'accessibility.txt'), 'utf8')
   }
 };
+
+const accessibilitySections = new Set([
+  'Our commitment',
+  'The standard we follow',
+  'Known limitations',
+  'Content from hosts',
+  'Tell us what is not working',
+  'Last reviewed'
+]);
 
 const privacySections = new Set([
   'Owner and Data Controller',
@@ -90,7 +106,8 @@ const listLengths = new Map([
   ['Among the types of Personal Data that Silver Glider Events collects, by itself or through third parties, there are:', 10],
   ['The Data concerning the User is collected to allow Silver Glider Entertainment Inc. to provide the Platform, comply with its legal obligations, respond to enforcement requests, protect its rights and interests, detect any malicious or fraudulent activity, as well as the following:', 8],
   ['The Owner may process Personal Data relating to Users if one of the following applies:', 4],
-  ['Users have the right to:', 8]
+  ['Users have the right to:', 8],
+  ['What we have done so far:', 7]
 ]);
 
 function esc(value) {
@@ -121,6 +138,7 @@ function classify(kind, line) {
     if (/^\d+\.\d+\s/.test(line)) return 'subsection';
     return 'paragraph';
   }
+  if (kind === 'accessibility') return accessibilitySections.has(line) ? 'section' : 'paragraph';
   if (privacySections.has(line)) return 'section';
   if (privacySubsections.has(line) || definitionLabels.has(line)) return 'subsection';
   return 'paragraph';

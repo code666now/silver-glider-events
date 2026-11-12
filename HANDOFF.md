@@ -445,6 +445,7 @@ This repository is a continuation of the same Silver Glider Events project, not 
 - **Pop-ups keep Tab inside and Escape returns focus.** Prefer a native `<dialog>` with `showModal()` (the Share and Familiar invite dialogs), which does this for free. The Feedback form is a custom modal, so it traps Tab itself.
 - **Re-rendering must not drop focus.** The Familiar Faces grid is rebuilt with `innerHTML` on every tap, so `renderFamiliarFaces()` puts focus back on the same face and keeps an opened "Can't make it" group open. A control that hides itself (Invite, Cancel) must move focus somewhere sensible first. The selected count is a `role="status"` so it is read out.
 - The account menu is a real ARIA menu (arrow keys, Home/End, Escape); keep `role="menu"` only while that keyboard support stays.
+- **`/accessibility` is the public accessibility statement** (`src/legal/accessibility.txt`, rendered by `renderLegalPage('accessibility')`). It is a statement, not an agreement: never versioned or added to policy acceptance. It promises a reply within five business days at support@silverglidertickets.com. Update its "Last reviewed" date after a real review. Every place that links Terms links Accessibility right after it (tested).
 
 ### Host recap — rules to keep (Claude)
 

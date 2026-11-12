@@ -198,7 +198,7 @@ function sgAccountMenuMarkup(idPrefix = 'sg-account', { includePrimaryLinks = fa
         <div class="sg-account-popover-group sg-account-popover-signout">
           <button class="sg-account-menu-row sg-account-menu-signout" type="button" role="menuitem">${menuIcon('signout')}<span>Sign out</span></button>
         </div>
-        <p class="sg-account-menu-legal"><a href="/privacy" role="menuitem">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms" role="menuitem">Terms</a></p>
+        <p class="sg-account-menu-legal"><a href="/privacy" role="menuitem">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms" role="menuitem">Terms</a><span aria-hidden="true">·</span><a href="/accessibility" role="menuitem">Accessibility</a></p>
       </div>
     </div>`;
 }
@@ -348,7 +348,7 @@ function renderNav(active) {
       ${links.map(([key, href, label]) =>
         `<a href="${href}" class="${key === active ? 'active' : ''}">${label}</a>`).join('')}
       <button class="sg-nav-feedback" type="button">Send feedback</button>
-      <p class="sg-nav-legal"><a href="/privacy">Privacy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
+      <p class="sg-nav-legal"><a href="/privacy">Privacy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a><span aria-hidden="true">·</span><a href="/accessibility">Accessibility</a></p>
     </div>
     <div class="sg-nav-actions">
       ${sgAccountMenuMarkup('sg-app-account')}
@@ -580,7 +580,7 @@ function buildMenuSheet() {
       <div class="sg-menu-group">
         <button class="sg-menu-row" type="button" data-menu-signout>${menuIcon('signout')}<span>Sign out</span></button>
       </div>
-      <p class="sg-menu-legal"><a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a></p>
+      <p class="sg-menu-legal"><a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span><a href="/terms">Terms</a><span aria-hidden="true">·</span><a href="/accessibility">Accessibility</a></p>
     </div>`;
   document.body.appendChild(sheet);
   sgApplyAdminAccess(sgAdminAccess === true);

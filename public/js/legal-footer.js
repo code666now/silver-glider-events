@@ -19,6 +19,8 @@
         <a class="sg-legal-link" href="/privacy">Privacy Policy</a>
         <span aria-hidden="true">·</span>
         <a class="sg-legal-link" href="/terms">Terms</a>
+        <span aria-hidden="true">·</span>
+        <a class="sg-legal-link" href="/accessibility">Accessibility</a>
       </nav>
       ${eventPageMount ? '' : `<p>© ${new Date().getFullYear()} Silver Glider Entertainment Inc.</p>`}`;
     (eventPageMount || document.body).appendChild(footer);
