@@ -1,8 +1,21 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 11, 2026 (Section 10 Content responsibilities, v1.0.202)
+**Last updated:** November 11, 2026 (public Accessibility statement, v1.0.203)
 
-## Current release — Section 10 Content responsibilities (v1.0.202)
+## Current release — Public Accessibility statement (v1.0.203)
+
+User requested merging PR #23 (`claude/accessibility-page`) using **Create a merge commit**, full checks with exclusive `sge_test` use, the next version, deployment with a post-release-commit `.git-sha`, health verification, then pushing main and the tag. Merge commit **`1af5f0a`** has parents `fd3b85f` and `48bb0d2`.
+
+- `/accessibility` publicly renders `src/legal/accessibility.txt` through the existing legal-page template. The support email is `support@silverglidertickets.com`. This is a statement, not a versioned agreement; keep it outside policy acceptance and preserve all Terms/Privacy snapshots and receipts.
+- Footer and menu implementations now link Accessibility after Terms, including homepage, dashboard, public event/shared footer, account menu, mobile menu, invitation-unavailable and Secret Show. Short shared footer links are centered inside their touch targets.
+- No migrations, dependencies, authentication, automatic sends or event changes. QA is read-only: no feedback, invitations, agreement acceptance, publication or email/SMS sends.
+- Independent review found no code blockers. The statement contains broad existing accessibility claims; the pre-existing Secret Show footer has low-contrast colors. Publication does not certify whole-platform WCAG compliance; a complete audit and that existing contrast issue remain separate follow-up work.
+
+**Verification:** `npm run check` passes **1,032/1,032**, zero failures/skips; static checks pass (304 JavaScript / 479 project files). No competing test run or local `sge_test` connections were present before the exclusive run. `/private/tmp/sge-accessibility-production-check.cjs` performs only unauthenticated GETs to verify both production health versions/SHAs, the exact Accessibility article and support mailto, three deployed assets and homepage footer links. Production browser checks must cover the page, homepage/event/dashboard footer spacing at phone size, and account/mobile menus; do not claim physical iOS testing from a responsive browser viewport.
+
+**Release:** commit/tag version 1.0.203, generate `.git-sha` after that commit and leave it uncommitted, deploy with explicit `railway up . --path-as-root --service silver-glider-events`, verify production, then push main and the tag. Check the prior deployment is removed.
+
+## Previous release — Section 10 Content responsibilities (v1.0.202)
 
 User supplied four exact paragraphs and requested adding them to Section 10 without replacing its existing wording, then testing and deploying. `src/legal/terms.txt` appends those paragraphs after the existing ownership/platform-rights text and before Section 11; all original text is preserved.
 

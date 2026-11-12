@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.203
+
+Released November 11, 2026.
+
+### Public Accessibility statement
+
+* Merge PR #23 (`claude/accessibility-page`) with a merge commit. Add the public `/accessibility` statement with known limitations and a support link to `support@silverglidertickets.com`.
+* Link **Accessibility** after **Privacy Policy** and **Terms** in shared, homepage, dashboard, invitation-unavailable and Secret Show footers, plus account and mobile menus. Center short footer labels within their touch targets for even spacing.
+* Keep the statement separate from policy acceptance: no Terms/Privacy changes, new agreement requirement, migration, dependency or messaging changes. Publication is not a certification of full WCAG conformance.
+
+### Verification
+
+* `npm run check` passes **1,032/1,032** tests with zero failures or skips; static checks pass (304 JavaScript / 479 project files). No other test run or connection was using the dedicated local `sge_test` database before this run.
+* Regression coverage verifies public routing, rendered headings/list, the support email link and Accessibility links wherever the existing footer/menu implementations link Terms.
+
 ## 1.0.202
 
 Released November 11, 2026.
