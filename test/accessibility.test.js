@@ -28,6 +28,62 @@ test('faint text reaches 4.5:1 on every dark surface, footer included', () => {
   assert.match(footer.slice(0, footer.indexOf('}')), /color:\s*var\(--sg-text-faint\)/);
 });
 
+test('Secret Show helper and legal links reach 4.5:1 on their own dark background', () => {
+  const html = read('src/views/secret-show.html');
+  const brand = read('public/css/brand.css');
+  const rule = selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = html.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
+    assert.ok(match, `Secret Show needs a scoped ${selector} rule`);
+    return match[1];
+  };
+  const token = name => brand.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))[1];
+  const background = rule('body').match(/background:[\s\S]*?(#[0-9a-fA-F]{6})\s*;/)[1];
+  // A deliberately brighter surface budget leaves room for the atmospheric
+  // gradients/noise. Browser QA also checks the actual decorated background.
+  const surfaces = [background, '#303030'];
+  for (const selector of ['.secret-micro', '.secret-legal']) {
+    const styles = rule(selector);
+    assert.match(styles, /(?:^|;)\s*color:\s*var\(--sg-text-dim\)\s*;/, `${selector} uses the readable shared token`);
+    for (const surface of surfaces) {
+      assert.ok(contrast(token('sg-text-dim'), surface) >= 4.5, `${selector} on ${surface} is below 4.5:1`);
+    }
+    assert.doesNotMatch(styles, /(?:^|;)\s*opacity\s*:/, `${selector} must not fade its accessible text colour`);
+  }
+  const links = rule('.secret-legal a');
+  assert.match(links, /(?:^|;)\s*color:\s*inherit\s*;/, 'legal links cannot override the readable footer colour');
+  assert.doesNotMatch(links, /(?:^|;)\s*opacity\s*:/);
+  assert.match(rule('.secret-legal a:hover'), /color:\s*var\(--sg-text\)/);
+  for (const surface of surfaces) {
+    assert.ok(contrast(token('sg-text'), surface) >= 4.5, `hover text on ${surface} is below 4.5:1`);
+    assert.ok(contrast(token('sg-accent'), surface) >= 3, `focus outline on ${surface} is below 3:1`);
+  }
+});
+
+test('Secret Show legal links keep readable sizing, phone targets and keyboard focus', () => {
+  const html = read('src/views/secret-show.html');
+  const styles = selector => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return html.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`))[1];
+  };
+  for (const selector of ['.secret-micro', '.secret-legal']) {
+    assert.ok(Number(styles(selector).match(/font-size:\s*([\d.]+)px/)[1]) >= 12, `${selector} text is at least 12px`);
+    assert.ok(Number(styles(selector).match(/line-height:\s*([\d.]+)/)[1]) >= 1.5, `${selector} has readable line spacing`);
+  }
+  const footer = styles('.secret-legal');
+  assert.match(footer, /display:\s*flex/);
+  assert.match(footer, /flex-wrap:\s*wrap/);
+  assert.match(footer, /justify-content:\s*center/);
+  assert.match(footer, /align-items:\s*center/);
+  assert.ok(Number(footer.match(/gap:\s*([\d.]+)px/)[1]) >= 8, 'legal links retain even separation');
+  const links = styles('.secret-legal a');
+  assert.ok(Number(links.match(/min-height:\s*([\d.]+)px/)[1]) >= 44, 'each legal link has a 44px-tall touch target');
+  assert.ok(Number(links.match(/min-width:\s*([\d.]+)px/)[1]) >= 44, 'short legal labels retain a 44px-wide touch target');
+  const focus = styles('.secret-legal a:focus-visible');
+  assert.match(focus, /outline:\s*2px solid var\(--sg-accent\)/);
+  assert.match(focus, /outline-offset:\s*3px/);
+});
+
 test('signed-in pages and the event page mark their main content', () => {
   for (const view of ['dashboard', 'events', 'event-manage']) {
     const html = read(`src/views/${view}.html`);

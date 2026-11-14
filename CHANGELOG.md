@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.204
+
+Released November 14, 2026.
+
+### Secret Show text readability
+
+* Replace the Secret Show gate's low-contrast footer and access-code helper colors with the shared readable `--sg-text-dim` token. Increase both to 12px with comfortable line spacing; preserve the dark atmospheric design and all wording.
+* Give Privacy Policy, Terms and Accessibility links centered, minimum 44px touch targets, responsive wrapping and a visible teal keyboard-focus outline.
+* Add scoped contrast, sizing, touch-target and focus regression coverage so the Secret Show's independent styles cannot silently regress behind the shared footer checks.
+* No changes to access-code verification, authentication, event data, messages, dependencies or database schema.
+
+### Verification
+
+* `npm run check` passes **1,034/1,034** tests with zero failures or skips; static checks pass (304 JavaScript / 479 project files). The dedicated local `sge_test` database had no competing test processes or connections before the run.
+* Desktop, 390px phone and 320px narrow-browser checks pass with readable footer/helper text, visible keyboard focus and no horizontal overflow. Local synthetic code entry still enables/disables Unlock normally; no code was submitted and no messages were sent. Physical iOS/Safari remains manual.
+
 ## 1.0.203
 
 Released November 11, 2026.

@@ -1,8 +1,21 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 11, 2026 (public Accessibility statement, v1.0.203)
+**Last updated:** November 14, 2026 (Secret Show text readability, v1.0.204)
 
-## Current release — Public Accessibility statement (v1.0.203)
+## Current release — Secret Show text readability (v1.0.204)
+
+User approved fixing and deploying the Secret Show gate's faint footer and helper text. Keep the scope limited to presentation; the access-code controller, routes, verification and wording are unchanged.
+
+- `src/views/secret-show.html` now uses shared `--sg-text-dim` (`#999999`) for the helper and footer, at 12px with readable line spacing. Footer links inherit it, have minimum 44×44px targets, center/wrap safely and show an explicit teal focus outline. The atmospheric background is preserved.
+- Two new tests in `test/accessibility.test.js` pin the scoped contrast, inherited link color, sizing, spacing, targets and focus rules. Contrast is 6.96:1 on the base `#090a0a` and 4.63:1 on the deliberately brighter `#303030` test budget; the latter is a regression budget, not a measured maximum of the animated background.
+- Actual-view browser QA passes at desktop, 390px and 320px: all links remain visible, evenly spaced and keyboard reachable, with no horizontal overflow. Synthetic local code entry still enables/disables Unlock; no submissions. `/private/tmp/sge-secret-text-fixture.cjs` serves the real view/assets with no app/DB and blocks API/form submissions. Physical iOS/Safari remains manual.
+- No migration, dependency, authentication, policy, event, email or SMS changes. This resolves the identified Secret Show text issue; it is not whole-platform WCAG certification.
+
+**Verification:** full `npm run check` passes **1,034/1,034**, zero failures/skips; static checks pass (304 JavaScript / 479 project files), and `git diff --check` is clean. No competing test process or `sge_test` connection was present before the exclusive run. Independent review found no blockers. `/private/tmp/sge-secret-text-production-check.cjs` performs only unauthenticated GETs to compare both health versions/SHAs, the locked gate HTML and unchanged brand/controller assets exactly with the release files.
+
+**Release:** generate `.git-sha` after the 1.0.204 release commit, keep it uncommitted, deploy with explicit `railway up . --path-as-root --service silver-glider-events`, verify both health endpoints and the unauthenticated Secret Show gate, then push main and the tag. Check prior deployment removal.
+
+## Previous release — Public Accessibility statement (v1.0.203)
 
 User requested merging PR #23 (`claude/accessibility-page`) using **Create a merge commit**, full checks with exclusive `sge_test` use, the next version, deployment with a post-release-commit `.git-sha`, health verification, then pushing main and the tag. Merge commit **`1af5f0a`** has parents `fd3b85f` and `48bb0d2`.
 
