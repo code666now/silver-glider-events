@@ -203,12 +203,37 @@ async function deleteManagedPublicId(value) {
   return true;
 }
 
+// Emergency moderation: move a managed image out of public delivery (type
+// 'private' needs a signed URL, so the old public address stops working) or
+// back again. The file itself is kept, so a mistaken removal can be undone.
+// invalidate clears the CDN copy of the original and every resized version.
+async function setManagedImageDelivery(value, delivery) {
+  const publicId = String(value || '').replace(/^\/+|\/+$/g, '');
+  if (!isManagedPublicId(publicId)) throw new Error('Not a managed Silver Glider image');
+  if (!configured) throw new Error('Image storage is not configured');
+  const toType = delivery === 'private' ? 'private' : 'upload';
+  const fromType = toType === 'private' ? 'upload' : 'private';
+  try {
+    await cloudinary.uploader.rename(publicId, publicId, {
+      resource_type: 'image', type: fromType, to_type: toType, invalidate: true, overwrite: false
+    });
+  } catch (error) {
+    // A retry after a partly-finished move: if the file is already where we
+    // want it, the move is done.
+    const already = await cloudinary.api.resource(publicId, { resource_type: 'image', type: toType })
+      .then(() => true, () => false);
+    if (!already) throw error;
+  }
+  return true;
+}
+
 async function deleteManagedImageUrl(value) {
   const publicId = managedPublicIdFromUrl(value);
   return deleteManagedPublicId(publicId);
 }
 
 module.exports = {
+  setManagedImageDelivery,
   uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar,
   uploadEventPhoto, uploadVibePhoto, deleteEventPhoto, deleteManagedImageUrl, deleteManagedPublicId,
   isManagedFlyerUrl, isManagedVibePhotoUrl, isManagedPublicId, managedPublicIdFromUrl, configured

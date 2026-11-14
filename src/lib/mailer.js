@@ -612,6 +612,77 @@ async function sendAdminFlyerNotification({
   });
 }
 
+// Internal heads-up for the admin team: a new event went live, or an event
+// whose image was removed got a new one. Publishing never waits on this.
+async function sendAdminEventAlert({
+  to,
+  kind,
+  event,
+  organizer,
+  publishedEventCount,
+  publicUrl,
+  adminUrl,
+  idempotencyKey = null
+}) {
+  if (!resend && process.env.NODE_ENV === 'production') {
+    throw new Error('Admin event alert email delivery is unavailable');
+  }
+  if (kind !== 'first_published' && kind !== 'image_replaced') throw new Error('Unknown admin event alert kind');
+  const admin = safeHttpUrl(adminUrl);
+  const page = safeHttpUrl(publicUrl);
+  if (!admin || !page) throw new Error('Valid admin and public URLs are required');
+  const clean = (value, fallback = '') => String(value || '').trim().replace(/\s+/g, ' ').slice(0, 180) || fallback;
+  const title = clean(event?.title, 'Untitled event');
+  const when = [clean(event?.dateLabel), clean(event?.timeLabel)].filter(Boolean).join(' · ');
+  const count = Math.max(0, Number(publishedEventCount) || 0);
+  const firstTime = count <= 1;
+  const hostLabel = clean(organizer?.name, 'Host');
+  const replaced = kind === 'image_replaced';
+  const image = emailSafeImageUrl(event?.imageUrl);
+  const row = (label, value) => value
+    ? `<tr><td style="padding:10px 0;border-top:1px solid #1f1f1f;color:#7d7d7d;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;width:120px;vertical-align:top">${esc(label)}</td><td style="padding:10px 0;border-top:1px solid #1f1f1f;color:#f0f0f0;font-size:15px;line-height:1.5">${value}</td></tr>`
+    : '';
+  const bodyHtml = `
+    ${image ? `<img src="${esc(image)}" width="584" alt="${esc(title)} artwork" style="display:block;width:100%;max-width:584px;height:auto;border:0;border-radius:14px;margin:0 0 26px">` : ''}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 8px">
+      ${row('Event', esc(title))}
+      ${row('When', esc(when))}
+      ${row('Organizer', `${esc(hostLabel)}${organizer?.email ? `<br><a href="mailto:${esc(organizer.email)}" style="color:#1CC5BE;text-decoration:none">${esc(organizer.email)}</a>` : ''}`)}
+      ${row('History', firstTime
+        ? '<strong style="color:#1CC5BE">First-time organizer</strong> · 1 published event'
+        : `Returning organizer · ${count} published events`)}
+      ${row('Public page', `<a href="${esc(page)}" style="color:#1CC5BE;text-decoration:none">${esc(page)}</a>`)}
+    </table>`;
+  const text = [
+    replaced ? 'New image on an event that had one removed — Review' : 'New Event Published — Review',
+    '',
+    `Event: ${title}`,
+    when ? `When: ${when}` : '',
+    `Organizer: ${hostLabel}${organizer?.email ? ` <${organizer.email}>` : ''}`,
+    firstTime ? 'First-time organizer · 1 published event' : `Returning organizer · ${count} published events`,
+    `Public page: ${page}`,
+    `Review in Admin: ${admin}`
+  ].filter(line => line !== '').join('\n');
+  return send({
+    to,
+    subject: replaced ? `Image replaced — review: ${title}` : `New event published — review: ${title}`,
+    html: layout({
+      kicker: replaced ? 'Image replaced — Review' : 'New Event Published — Review',
+      headline: title,
+      sub: replaced
+        ? 'An image on this event was removed earlier. The organizer just added a new one.'
+        : 'This event is live now. Take a look and act from Admin if anything is wrong.',
+      bodyHtml,
+      cta: 'Review in Admin',
+      ctaUrl: admin,
+      compact: true,
+      footerHtml: '<p style="color:#555;font-size:12px;line-height:1.7;margin:0">Sent to the Silver Glider admin team. Super Admins can remove an image or hide the event from Admin → Events.</p>'
+    }),
+    text,
+    idempotencyKey
+  });
+}
+
 function signInCodeBlock(code) {
   const digits = String(code || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -1697,7 +1768,7 @@ async function sendCommerceLaunch({ to, isTest = false, unsubscribeUrl, manageUr
 
 module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
-  sendAdminIdentityChangeVerification, sendAdminFlyerNotification,
+  sendAdminIdentityChangeVerification, sendAdminFlyerNotification, sendAdminEventAlert,
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
   buildHostRecapEmail, sendHostRecap, buildPostEventThankYouEmail, sendPostEventThankYou,

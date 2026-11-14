@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const pool = require('../config/db');
+const { organizerModerationNotice } = require('../lib/event-moderation');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { makeEventSlug } = require('../lib/slug');
 const { cleanHostName, ensureHostProfile, normalizeHostProfile } = require('../lib/host-profile');
@@ -377,7 +378,10 @@ router.get('/api/events/:id', async (req, res, next) => {
     for (const claim of claims) {
       lineup[claim.slot] = { email: claim.email, status: claim.status, artistName: claim.artist_name };
     }
-    res.json({ ...result, event: { ...result.event, lineup } });
+    const moderation = result.event?.id
+      ? await organizerModerationNotice(client, result.event.id)
+      : { hidden: false, imageRemoved: false };
+    res.json({ ...result, event: { ...result.event, lineup, moderation } });
   } catch (err) {
     handleEventEditorError(err, res, next);
   } finally {

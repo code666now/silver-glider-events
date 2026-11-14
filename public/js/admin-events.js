@@ -32,6 +32,7 @@ const adminEvents = {
   dialogHost: document.getElementById('event-detail-host'),
   dialogGrid: document.getElementById('event-detail-grid'),
   dialogActions: document.getElementById('event-detail-actions'),
+  safety: document.getElementById('event-safety'),
   editorNote: document.getElementById('event-editor-note')
 };
 
@@ -42,6 +43,8 @@ const adminEventState = {
   request: null,
   searchTimer: null,
   canManageDoneForYou: false,
+  canModerate: false,
+  openEventId: null,
   trigger: null
 };
 const adminEventMobileFilters = window.matchMedia('(max-width: 680px)');
@@ -67,6 +70,7 @@ function adminEventTime(value) {
 }
 
 function adminEventStatus(event) {
+  if (event.status === 'hidden') return { label: 'Hidden', tone: 'cancelled' };
   if (event.status === 'cancelled') return { label: 'Cancelled', tone: 'cancelled' };
   if (event.status === 'draft') return { label: 'Draft', tone: 'draft' };
   return { label: event.is_past ? 'Published' : 'Live', tone: 'live' };
@@ -184,6 +188,7 @@ async function adminEventLoad() {
     adminEventState.events = data.events || [];
     adminEventState.pagination = data.pagination;
     adminEventState.canManageDoneForYou = session?.capabilities?.manageDoneForYou === true;
+    adminEventState.canModerate = session?.capabilities?.moderateEvents === true;
     adminEventRenderHosts(data.hosts || []);
     adminEventRenderRows(adminEventState.events);
     adminEventRenderPagination(data.pagination || { page: 1, per_page: 25, total: 0 });
@@ -191,6 +196,13 @@ async function adminEventLoad() {
     adminEvents.clear.hidden = !adminEventHasFilters();
     adminEvents.empty.hidden = adminEventState.events.length > 0;
     adminEvents.list.hidden = adminEventState.events.length === 0;
+    // A link from a new-event alert email opens that event's details.
+    if (adminEventState.openEventId) {
+      const openId = adminEventState.openEventId;
+      adminEventState.openEventId = null;
+      const row = adminEvents.rows.querySelector(`[data-event-id="${openId}"]`);
+      if (row) adminEventOpenDetail(openId, row);
+    }
   } catch (error) {
     if (error.name === 'AbortError') return;
     adminEvents.errorMessage.textContent = error.message || 'Try again in a moment.';
@@ -255,6 +267,14 @@ function adminEventOpenDetail(id, trigger) {
       adminEventContinueSetup(event, eventObject.currentTarget);
     });
   }
+  adminEvents.safety.hidden = event.status === 'draft';
+  adminEvents.safety.innerHTML = '';
+  if (event.status !== 'draft' && window.adminEventSafety) {
+    window.adminEventSafety.render(adminEvents.safety, event.id, {
+      canModerate: adminEventState.canModerate,
+      onChange: () => adminEventLoad()
+    });
+  }
   adminEvents.dialog.showModal();
 }
 
@@ -301,6 +321,11 @@ function adminEventReadUrl() {
     control.value = value;
   }
   adminEventState.page = Math.max(1, Number(params.get('page')) || 1);
+  const linkedEvent = Number(params.get('event'));
+  if (Number.isSafeInteger(linkedEvent) && linkedEvent > 0) {
+    adminEventState.openEventId = linkedEvent;
+    if (!adminEvents.search.value) adminEvents.search.value = String(linkedEvent);
+  }
   adminEventUpdateMoreFilters();
   const hasMoreFilters = [adminEvents.timing, adminEvents.visibility, adminEvents.admission,
     adminEvents.archived].some(control => control.value);

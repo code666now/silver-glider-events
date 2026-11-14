@@ -254,7 +254,7 @@ async function loadEventBySlug(slug, { includeDraft = false } = {}) {
             COALESCE((SELECT COUNT(*) FROM event_comments WHERE event_id=e.id), 0)::int AS comment_count,
             o.org_name, o.name AS organizer_name, o.public_slug AS organizer_public_slug, o.logo_url AS organizer_logo_url
        FROM events e JOIN organizers o ON o.id = e.organizer_id
-      WHERE e.slug=$1 AND ($2::boolean OR e.status <> 'draft')`,
+      WHERE e.slug=$1 AND e.status <> 'hidden' AND ($2::boolean OR e.status <> 'draft')`,
     [slug, includeDraft]
   );
   return rows[0] || null;
@@ -265,7 +265,7 @@ async function loadEventAccessEnvelope(slug, { includeDraft = false } = {}) {
     `SELECT id, slug, organizer_id, visibility, status,
             secret_show_enabled, secret_show_version
        FROM events
-      WHERE slug=$1 AND ($2::boolean OR status <> 'draft')`,
+      WHERE slug=$1 AND status <> 'hidden' AND ($2::boolean OR status <> 'draft')`,
     [slug, includeDraft]
   );
   return rows[0] || null;
@@ -1778,7 +1778,7 @@ router.get('/r/:token/calendar.ics', async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT e.*
          FROM rsvps r JOIN events e ON e.id=r.event_id
-        WHERE r.manage_token=$1 AND r.status='confirmed'`,
+        WHERE r.manage_token=$1 AND r.status='confirmed' AND e.status <> 'hidden'`,
       [req.params.token]
     );
     if (!rows.length) return res.status(404).send('Not found');
@@ -1812,7 +1812,7 @@ router.get('/r/:token/event', async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT e.id AS event_id, e.slug
          FROM rsvps r JOIN events e ON e.id=r.event_id
-        WHERE r.manage_token=$1`,
+        WHERE r.manage_token=$1 AND e.status <> 'hidden'`,
       [req.params.token]
     );
     if (!rows.length) return res.status(404).send(render404());
@@ -1857,7 +1857,7 @@ router.get('/t/:token', async (req, res, next) => {
          JOIN rsvps r ON r.id=sr.rsvp_id
          JOIN events e ON e.id=r.event_id
         WHERE sr.access_token=$1 AND sr.access_token_expires_at > NOW()
-          AND r.status='confirmed'
+          AND r.status='confirmed' AND e.status <> 'hidden'
         FOR UPDATE OF sr,r`,
       [token]
     );
@@ -1893,7 +1893,7 @@ router.get('/r/:token', async (req, res, next) => {
       `SELECT r.id AS rsvp_id, r.first_name, r.status AS rsvp_status, r.wants_reminders,
               e.id AS event_id, e.*
          FROM rsvps r JOIN events e ON e.id = r.event_id
-        WHERE r.manage_token=$1`,
+        WHERE r.manage_token=$1 AND e.status <> 'hidden'`,
       [req.params.token]
     );
     if (!rows.length) return res.status(404).send(render404());

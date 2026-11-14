@@ -42,7 +42,8 @@ async function processImportedGuestInvitationBatch(batchId) {
   const batch = (await pool.query(
     `SELECT b.*,e.organizer_id FROM previous_guest_invitation_batches b
       JOIN events e ON e.id=b.target_event_id
-      WHERE b.id=$1 AND b.source_kind='import' AND b.status='import_pending'`, [batchId]
+      WHERE b.id=$1 AND b.source_kind='import' AND b.status='import_pending'
+        AND e.status <> 'hidden'`, [batchId]
   )).rows[0];
   if (!batch) return null;
   // Provider idempotency expires. Old/ambiguous requests must never be blindly

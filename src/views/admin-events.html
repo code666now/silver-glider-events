@@ -42,6 +42,7 @@
           <option value="published">Live</option>
           <option value="draft">Draft</option>
           <option value="cancelled">Cancelled</option>
+          <option value="hidden">Hidden</option>
         </select>
       </label>
       <details class="admin-events-more" id="event-more-filters" open>
@@ -139,6 +140,7 @@
       <div class="admin-event-detail-body">
         <div class="admin-event-detail-grid" id="event-detail-grid"></div>
         <p class="admin-event-editor-note" id="event-editor-note" hidden></p>
+        <section class="admin-event-safety" id="event-safety" aria-labelledby="admin-safety-title" hidden></section>
       </div>
       <footer class="admin-event-detail-actions" id="event-detail-actions"></footer>
     </article>
@@ -146,6 +148,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-event-safety.js"></script>
   <script src="/js/admin-events.js"></script>
 </body>
 </html>

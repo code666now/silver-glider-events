@@ -48,7 +48,8 @@ async function processPreviousGuestInvitationBatch(batchId) {
        FROM previous_guest_invitation_batches b
        JOIN events e ON e.id=b.target_event_id
        JOIN organizers o ON o.id=e.organizer_id
-      WHERE b.id=$1 AND b.status IN ('pending','processing','partial_failed')`,
+      WHERE b.id=$1 AND b.status IN ('pending','processing','partial_failed')
+        AND e.status <> 'hidden'`,
     [batchId]
   );
   if (!batchRows.length) return null;

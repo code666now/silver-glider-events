@@ -87,6 +87,12 @@
       }
     }
     const next = safeAdminNext(candidateNext);
+    // The admin cookie is SameSite=Strict, so a link opened from an email
+    // arrives here without it even when the admin is signed in. This request
+    // starts on our own page, so the cookie is sent: pass straight through.
+    fetch('/api/admin/auth/me', { credentials: 'same-origin', cache: 'no-store' })
+      .then(response => { if (response.ok) location.replace(next); })
+      .catch(() => {});
     const emailState = document.getElementById('email-state');
     const codeState = document.getElementById('code-state');
     const email = document.getElementById('admin-email');
