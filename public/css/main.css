@@ -1209,3 +1209,16 @@
 @media (max-width: 879px) and (prefers-reduced-motion: reduce) {
   .sg-menu-sheet:not([hidden]) { transition: none; }
 }
+
+/* Silver Glider's own action on an organizer's event: plain, calm, visible. */
+.manage-moderation-notice {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(224, 82, 82, 0.35);
+  border-radius: var(--sg-radius-input);
+  background: rgba(224, 82, 82, 0.07);
+  color: var(--sg-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.manage-moderation-notice[hidden] { display: none; }

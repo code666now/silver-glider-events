@@ -80,6 +80,7 @@ app.use(require('./routes/admin-operators'));
 app.use(require('./routes/flyer-intake'));
 app.use(require('./routes/admin-done-for-you'));
 app.use('/admin-editor', require('./routes/admin-editor'));
+app.use('/api/events/:eventRef', require('./middleware/blockHiddenEventChanges'));
 app.use(require('./routes/events'));
 app.use(require('./routes/guest-import'));
 app.use(require('./routes/post-event'));
@@ -319,6 +320,7 @@ async function start() {
   require('./jobs/previous-guest-invitations').startPreviousGuestInvitationCron();
   require('./jobs/post-event-thank-yous').startPostEventThankYouCron();
   require('./jobs/flyer-admin-notifications').startFlyerAdminNotificationCron();
+  require('./jobs/event-admin-alerts').startEventAdminAlertCron();
   require('./jobs/flyer-publication-notifications').startFlyerPublicationNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
   require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();

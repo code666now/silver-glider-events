@@ -7020,7 +7020,8 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
       suspendAccounts: true,
       deleteAccounts: true,
       manageFlyerIntake: true,
-      manageOperators: true
+      manageOperators: true,
+      moderateEvents: true
     }
   });
 
@@ -13714,4 +13715,249 @@ require('../support/legal-acceptance-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer, signInAccount, followSignInLink,
   lastDevEmail, responseCookie, resetRateLimits, attachVerifiedPhoneIdentity
+});
+
+// Emergency moderation V1 ----------------------------------------------------
+
+const eventModeration = require('../../src/lib/event-moderation');
+const eventAdminAlerts = require('../../src/jobs/event-admin-alerts');
+
+async function moderationCall(method, path, { cookie, body } = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    redirect: 'manual',
+    headers: { 'content-type': 'application/json', origin: baseUrl, ...(cookie ? { cookie } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  return { status: response.status, data };
+}
+
+test('first publication alerts every active Super Admin and Support admin exactly once', async () => {
+  await createAdminOperator('owner@example.test', 'super_admin');
+  await createAdminOperator('assistant@example.test', 'support');
+  await createAdminOperator('former@example.test', 'support', 'disabled');
+  const sent = [];
+  eventAdminAlerts.setEventAdminAlertSenderForTests(async message => { sent.push(message); return { id: `msg-${sent.length}` }; });
+  try {
+    const draft = await createEvent({ slug: 'alert-night', title: 'Alert <Night>', status: 'draft' });
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS c FROM event_admin_alerts')).rows[0].c, 0, 'drafts raise nothing');
+
+    const cookie = `sge_session=${signSession(organizerId)}`;
+    const published = await moderationCall('POST', `/api/events/${draft.id}/publish`, { cookie });
+    assert.equal(published.status, 200, 'publishing is never delayed or gated');
+    await moderationCall('PUT', `/api/events/${draft.id}`, { cookie, body: { title: 'Alert Night, edited' } });
+    await pool.query(`UPDATE events SET status='cancelled' WHERE id=$1`, [draft.id]);
+    await pool.query(`UPDATE events SET status='published' WHERE id=$1`, [draft.id]);
+    const alerts = (await pool.query('SELECT kind FROM event_admin_alerts WHERE event_id=$1', [draft.id])).rows;
+    assert.deepEqual(alerts.map(row => row.kind), ['first_published']);
+
+    await eventAdminAlerts.runEventAdminAlertPass();
+    assert.deepEqual(sent.map(message => message.to).sort(), ['assistant@example.test', 'owner@example.test']);
+    const message = sent[0];
+    assert.equal(message.kind, 'first_published');
+    assert.equal(message.event.title, 'Alert Night, edited');
+    assert.equal(message.publishedEventCount, 1);
+    assert.match(message.publicUrl, /\/e\/alert-night$/);
+    assert.match(message.adminUrl, new RegExp(`/admin/events\\?event=${draft.id}$`));
+    assert.match(message.idempotencyKey, /^event-admin-alert-\d+-\d+-v1$/);
+
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), [], 'a second pass sends nothing');
+    assert.equal(sent.length, 2);
+  } finally {
+    eventAdminAlerts.setEventAdminAlertSenderForTests();
+  }
+});
+
+test('admin alert deliveries retry failures and abandon removed admins', async () => {
+  const owner = await createAdminOperator('owner@example.test', 'super_admin');
+  await createAdminOperator('assistant@example.test', 'support');
+  let failOwner = true;
+  eventAdminAlerts.setEventAdminAlertSenderForTests(async message => {
+    if (message.to === 'owner@example.test' && failOwner) throw new Error('provider down');
+    return { id: 'ok' };
+  });
+  try {
+    await createEvent({ slug: 'retry-night' });
+    const first = await eventAdminAlerts.runEventAdminAlertPass();
+    assert.deepEqual(first.map(result => result.status).sort(), ['failed', 'sent']);
+    const failed = (await pool.query(`SELECT * FROM event_admin_alert_deliveries WHERE status='failed'`)).rows[0];
+    assert.equal(failed.error, 'provider down');
+    assert.ok(new Date(failed.next_attempt_at) > new Date(), 'retry waits for backoff');
+
+    await pool.query(`UPDATE event_admin_alert_deliveries SET next_attempt_at=NOW() WHERE id=$1`, [failed.id]);
+    await pool.query(`UPDATE admin_operators SET status='disabled' WHERE id=$1`, [owner.id]);
+    failOwner = false;
+    const second = await eventAdminAlerts.runEventAdminAlertPass();
+    assert.deepEqual(second.map(result => result.status), ['abandoned']);
+  } finally {
+    eventAdminAlerts.setEventAdminAlertSenderForTests();
+  }
+});
+
+test('the admin alert email shows the event, organizer history and both links', async () => {
+  await mailer.sendAdminEventAlert({
+    to: 'owner@example.test',
+    kind: 'first_published',
+    event: { title: 'Night & <Day>', dateLabel: 'Sat, Aug 10, 2030', timeLabel: '7:30 PM', imageUrl: 'https://res.cloudinary.com/demo/image/upload/flyer.jpg' },
+    organizer: { name: 'Test Host', email: 'host@example.test' },
+    publishedEventCount: 1,
+    publicUrl: 'https://silvergliderevents.com/e/night-day',
+    adminUrl: 'https://silvergliderevents.com/admin/events?event=7',
+    idempotencyKey: 'event-admin-alert-1-1-v1'
+  });
+  const email = lastDevEmail('owner@example.test');
+  assert.equal(email.subject, 'New event published — review: Night & <Day>');
+  assert.match(email.html, /Night &amp; &lt;Day&gt;/);
+  assert.match(email.html, /First-time organizer<\/strong> · 1 published event/);
+  assert.match(email.html, /host@example\.test/);
+  assert.match(email.html, /https:\/\/silvergliderevents\.com\/e\/night-day/);
+  assert.match(email.html, /Review in Admin/);
+  assert.match(email.text, /admin\/events\?event=7/);
+  assert.equal(email.idempotencyKey, 'event-admin-alert-1-1-v1');
+
+  await mailer.sendAdminEventAlert({
+    to: 'owner@example.test',
+    kind: 'image_replaced',
+    event: { title: 'Night', dateLabel: 'Sat', timeLabel: '', imageUrl: null },
+    organizer: { name: 'Test Host', email: 'host@example.test' },
+    publishedEventCount: 4,
+    publicUrl: 'https://silvergliderevents.com/e/night',
+    adminUrl: 'https://silvergliderevents.com/admin/events?event=8'
+  });
+  const replaced = lastDevEmail('owner@example.test');
+  assert.equal(replaced.subject, 'Image replaced — review: Night');
+  assert.match(replaced.html, /Returning organizer · 4 published events/);
+});
+
+test('only Super Admins can moderate, with confirmation and a reason; Support can view', async () => {
+  await createAdminOperator('owner@example.test', 'super_admin');
+  await createAdminOperator('assistant@example.test', 'support');
+  const event = await createEvent({ slug: 'guarded-night' });
+  const owner = await signInAdminOperator('owner@example.test');
+  const support = await signInAdminOperator('assistant@example.test');
+  const organizer = `sge_session=${signSession(organizerId)}`;
+  const hidePath = `/api/admin/events/${event.id}/hide`;
+
+  assert.equal((await moderationCall('GET', `/api/admin/events/${event.id}/moderation`)).status, 401);
+  assert.equal((await moderationCall('GET', `/api/admin/events/${event.id}/moderation`, { cookie: support })).status, 200);
+  assert.equal((await moderationCall('POST', hidePath, { cookie: support, body: { reason: 'Report', confirm: true } })).status, 403);
+  assert.equal((await moderationCall('POST', `/api/admin/events/${event.id}/images/remove`, { cookie: support, body: { field: 'cover_image_url', reason: 'Report', confirm: true } })).status, 403);
+  assert.equal((await moderationCall('POST', hidePath, { cookie: organizer, body: { reason: 'Report', confirm: true } })).status, 401);
+  assert.equal((await moderationCall('POST', hidePath, { cookie: owner, body: { reason: 'Report' } })).status, 400);
+  assert.equal((await moderationCall('POST', hidePath, { cookie: owner, body: { reason: 'no', confirm: true } })).status, 400);
+  assert.equal((await pool.query('SELECT status FROM events WHERE id=$1', [event.id])).rows[0].status, 'published');
+
+  const me = await moderationCall('GET', '/api/admin/auth/me', { cookie: support });
+  assert.equal(me.data.capabilities.moderateEvents, false);
+  assert.equal((await moderationCall('GET', '/api/admin/auth/me', { cookie: owner })).data.capabilities.moderateEvents, true);
+});
+
+test('hiding an event takes it off every public path, freezes it for the organizer and is reversible', async () => {
+  await createAdminOperator('owner@example.test', 'super_admin');
+  const owner = await signInAdminOperator('owner@example.test');
+  const organizer = `sge_session=${signSession(organizerId)}`;
+  const event = await createEvent({ slug: 'hidden-night', title: 'Hidden Night' });
+  const rsvp = await createRsvp(event.id);
+  const rsvpToken = (await pool.query('SELECT manage_token FROM rsvps WHERE id=$1', [rsvp.id])).rows[0].manage_token;
+
+  const hidden = await moderationCall('POST', `/api/admin/events/${event.id}/hide`, { cookie: owner, body: { reason: 'Reported as unsafe', confirm: true } });
+  assert.equal(hidden.status, 200);
+  assert.equal(hidden.data.status, 'hidden');
+  assert.equal((await moderationCall('POST', `/api/admin/events/${event.id}/hide`, { cookie: owner, body: { reason: 'Again please', confirm: true } })).status, 409);
+
+  assert.equal((await fetch(`${baseUrl}/e/hidden-night`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/e/hidden-night/calendar.ics`)).status, 404);
+  if (rsvpToken) assert.equal((await fetch(`${baseUrl}/r/${rsvpToken}`)).status, 404);
+  const host = await (await fetch(`${baseUrl}/h/test-host`)).text();
+  assert.doesNotMatch(host, /Hidden Night/);
+
+  const view = await moderationCall('GET', `/api/events/${event.id}`, { cookie: organizer });
+  assert.equal(view.status, 200, 'the organizer can still see their event');
+  assert.equal(view.data.event.moderation.hidden, true);
+  assert.doesNotMatch(JSON.stringify(view.data), /Reported as unsafe/, 'the reason never reaches the organizer');
+  for (const [method, path, body] of [
+    ['PUT', `/api/events/${event.id}`, { title: 'Back again' }],
+    ['POST', `/api/events/${event.id}/publish`, {}],
+    ['POST', `/api/events/${event.id}/duplicate`, {}],
+    ['DELETE', `/api/events/${event.id}`, undefined]
+  ]) {
+    const blocked = await moderationCall(method, path, { cookie: organizer, body });
+    assert.equal(blocked.status, 409, `${method} ${path}`);
+    assert.equal(blocked.data.error, 'event_hidden');
+  }
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS c FROM rsvps WHERE event_id=$1', [event.id])).rows[0].c, 1, 'RSVPs stay');
+
+  const unhidden = await moderationCall('POST', `/api/admin/events/${event.id}/unhide`, { cookie: owner, body: { confirm: true } });
+  assert.equal(unhidden.status, 200);
+  assert.equal(unhidden.data.status, 'published');
+  assert.equal((await fetch(`${baseUrl}/e/hidden-night`)).status, 200);
+  const actions = (await pool.query('SELECT action, reason FROM event_moderation_actions WHERE event_id=$1 ORDER BY id', [event.id])).rows;
+  assert.deepEqual(actions.map(row => row.action), ['hide_event', 'unhide_event']);
+  assert.equal(actions[0].reason, 'Reported as unsafe');
+});
+
+test('removing a Cloudinary image clears every event sharing it, makes it private and restores without overwriting', async () => {
+  await createAdminOperator('owner@example.test', 'super_admin');
+  const owner = await signInAdminOperator('owner@example.test');
+  const organizer = `sge_session=${signSession(organizerId)}`;
+  const shared = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sge/events/shared.jpg';
+  const resized = 'https://res.cloudinary.com/integration-cloud/image/upload/w_800/v1/sge/events/shared.jpg';
+  const original = await createEvent({ slug: 'image-night', cover_image_url: shared });
+  const copy = await createEvent({ slug: 'image-night-copy', flyer_image_url: resized, cover_image_url: null });
+  const unrelated = await createEvent({ slug: 'other-night', cover_image_url: 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sge/events/other.jpg' });
+
+  const deliveries = [];
+  let failNext = true;
+  eventModeration.setModerationStorageForTests({
+    publicIdFromUrl: url => (String(url).match(/\/sge\/events\/([a-z]+)\.jpg$/) || [])[1] ? `sge/events/${url.match(/\/sge\/events\/([a-z]+)\.jpg$/)[1]}` : null,
+    setDelivery: async (publicId, type) => {
+      deliveries.push([publicId, type]);
+      if (failNext) { failNext = false; throw new Error('cloudinary timeout'); }
+    }
+  });
+  try {
+    const removed = await moderationCall('POST', `/api/admin/events/${original.id}/images/remove`, {
+      cookie: owner, body: { field: 'cover_image_url', reason: 'Copyright report', confirm: true }
+    });
+    assert.equal(removed.status, 200);
+    assert.equal(removed.data.affectedEvents, 2);
+    assert.equal(removed.data.storageState, 'failed', 'the page is cleared even when storage fails');
+    const after = (await pool.query('SELECT id, cover_image_url, flyer_image_url FROM events WHERE id = ANY($1) ORDER BY id', [[original.id, copy.id, unrelated.id]])).rows;
+    assert.equal(after[0].cover_image_url, null);
+    assert.equal(after[1].flyer_image_url, null);
+    assert.ok(after[2].cover_image_url, 'unrelated images stay');
+    assert.doesNotMatch(await (await fetch(`${baseUrl}/e/image-night`)).text(), /shared\.jpg/);
+
+    const retried = await moderationCall('POST', `/api/admin/image-removals/${removed.data.removalId}/retry`, { cookie: owner, body: {} });
+    assert.equal(retried.status, 200);
+    assert.equal((await pool.query('SELECT storage_state FROM event_image_removals WHERE id=$1', [removed.data.removalId])).rows[0].storage_state, 'private');
+    assert.equal((await moderationCall('POST', `/api/admin/events/${original.id}/images/remove`, {
+      cookie: owner, body: { field: 'cover_image_url', reason: 'Again', confirm: true }
+    })).status, 409, 'an empty field has nothing to remove');
+
+    const notice = await moderationCall('GET', `/api/events/${copy.id}`, { cookie: organizer });
+    assert.equal(notice.data.event.moderation.imageRemoved, true);
+
+    const replacement = 'https://res.cloudinary.com/integration-cloud/image/upload/v1/sge/events/fresh.jpg';
+    const replacedPut = await moderationCall('PUT', `/api/events/${original.id}`, { cookie: organizer, body: { cover_image_url: replacement } });
+    assert.equal(replacedPut.status, 200, JSON.stringify(replacedPut.data));
+    const replacedAlerts = (await pool.query(`SELECT event_id, dedupe_key FROM event_admin_alerts WHERE kind='image_replaced'`)).rows;
+    assert.deepEqual(replacedAlerts, [{ event_id: original.id, dedupe_key: replacement }]);
+
+    const restored = await moderationCall('POST', `/api/admin/image-removals/${removed.data.removalId}/restore`, { cookie: owner, body: { confirm: true } });
+    assert.equal(restored.status, 200);
+    const final = (await pool.query('SELECT id, cover_image_url, flyer_image_url FROM events WHERE id = ANY($1) ORDER BY id', [[original.id, copy.id]])).rows;
+    assert.equal(final[0].cover_image_url, replacement, 'never overwrites the organizer replacement');
+    assert.equal(final[1].flyer_image_url, resized, 'restored exactly where it was, with its own link');
+    assert.equal((await pool.query(`SELECT COUNT(*)::int AS c FROM event_admin_alerts WHERE kind='image_replaced'`)).rows[0].c, 1, 'restoring raises no alert');
+    assert.deepEqual(deliveries, [['sge/events/shared', 'private'], ['sge/events/shared', 'private'], ['sge/events/shared', 'public']]);
+    assert.equal((await moderationCall('POST', `/api/admin/image-removals/${removed.data.removalId}/restore`, { cookie: owner, body: { confirm: true } })).status, 409);
+
+    const state = await moderationCall('GET', `/api/admin/events/${original.id}/moderation`, { cookie: owner });
+    assert.deepEqual(state.data.history.map(item => item.action).sort(), ['remove_image', 'restore_image', 'retry_image']);
+  } finally {
+    eventModeration.setModerationStorageForTests();
+  }
 });

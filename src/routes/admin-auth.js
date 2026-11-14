@@ -311,7 +311,8 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
     suspendAccounts: true,
     deleteAccounts: dedicatedSuperAdmin,
     manageFlyerIntake: dedicatedSuperAdmin,
-    manageOperators: dedicatedSuperAdmin
+    manageOperators: dedicatedSuperAdmin,
+    moderateEvents: dedicatedSuperAdmin
   };
   res.json({
     operator: {

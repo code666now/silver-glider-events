@@ -634,3 +634,16 @@ After that, evaluate graduating Collect Photos Beta, lightweight host conversion
 - Use `apply_patch` for code and file edits. Run `git diff --check` and `npm run check`; integration tests must use the dedicated local `sge_test` database.
 - Production releases update `package.json`, `package-lock.json`, `CHANGELOG.md`, and a matching annotated Git tag. Update `.git-sha` to the release commit before `railway up . --path-as-root --service silver-glider-events`, leave `.git-sha` uncommitted, and verify both production health URLs and the critical public image URLs.
 - Railway deployment and GitHub backup are separate operations. Push only tested commits and tags; never treat a GitHub push result as proof of production deployment.
+
+## Emergency moderation V1 (Claude)
+
+Lightweight on purpose: nothing gates or delays publishing.
+
+- **New-event alerts.** A database trigger (migration 084) raises one `event_admin_alerts` row when an event is first published (via `first_published_at`), so every publish path is covered. `src/jobs/event-admin-alerts.js` fans it out each minute to every **active Super Admin and Support** operator and sends through Resend with retries. Recipients come from Admin → Team, never hard-coded.
+- **Image replaced alert.** If an event has an image under an active removal and the organizer adds a new one, admins get one "Image replaced" email. Restoring never raises one.
+- **Remove image** (Super Admin, reason + confirm): clears that file from every event that uses it (duplicates share URLs), then moves the Cloudinary asset to `private` delivery. If Cloudinary fails, the page is still cleared and Admin shows Retry. Restore makes it public again and puts it back only where the field is still empty.
+- **Hide event** (Super Admin, reason + confirm): status `hidden`. Every public query already filters on `published`, so it falls out everywhere; the few `<> 'draft'` lookups, guest email jobs and organizer mutations (`blockHiddenEventChanges`, 409) are guarded explicitly. RSVPs and records stay. Unhide restores the previous status.
+- **Organizer** sees a short notice on the manage page, never the reason.
+- **Audit:** `event_moderation_actions`. Admin UI: Admin → Events → event → Safety (`public/js/admin-event-safety.js`). Email links go to `/admin/events?event=ID`; the admin login page passes a signed-in admin straight through (the Strict cookie is missing on email clicks).
+- **Not covered yet:** guest-uploaded post-event photos, reports/approval, DMCA agent, Terms changes.
+- **Rule:** any new query that shows events publicly must filter `status='published'` (or explicitly exclude `hidden`).

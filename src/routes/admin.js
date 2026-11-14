@@ -7,6 +7,7 @@ const { normalizeHostProfile } = require('../lib/host-profile');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 const sms = require('../lib/sms');
+const moderation = require('../lib/event-moderation');
 
 const router = express.Router();
 router.use('/api/admin', requireAdmin);
@@ -39,7 +40,7 @@ function positiveId(value) {
 }
 
 const ADMIN_EVENT_FILTERS = Object.freeze({
-  status: new Set(['', 'published', 'draft', 'cancelled']),
+  status: new Set(['', 'published', 'draft', 'cancelled', 'hidden']),
   timing: new Set(['', 'upcoming', 'past']),
   visibility: new Set(['', 'public', 'private', 'secret']),
   admission: new Set(['', 'free_rsvp', 'external_tickets', 'silver_glider_tickets']),
@@ -383,6 +384,74 @@ router.get('/api/admin/events', async (req, res, next) => {
       }
     });
   } catch (err) { next(err); }
+});
+
+// Emergency moderation. Any admin can see an event's images and history;
+// only Super Admins can act, and every action needs a reason, an explicit
+// confirmation, and can be reversed.
+function moderationFailure(res, next, error) {
+  if (error instanceof moderation.ModerationError) {
+    return res.status(error.status).json({ error: error.code, message: error.message });
+  }
+  return next(error);
+}
+
+function requireConfirmation(req, res) {
+  if (req.body?.confirm === true) return true;
+  res.status(400).json({ error: 'confirmation_required', message: 'Confirm this action to continue.' });
+  return false;
+}
+
+router.get('/api/admin/events/:id/moderation', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await moderation.moderationState(req.params.id));
+  } catch (error) { moderationFailure(res, next, error); }
+});
+
+router.post('/api/admin/events/:id/images/remove', requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!requireConfirmation(req, res)) return;
+    res.json(await moderation.removeImage({
+      eventId: req.params.id, field: req.body?.field, reason: req.body?.reason,
+      operatorId: actorIds(req).actorAdminOperatorId
+    }));
+  } catch (error) { moderationFailure(res, next, error); }
+});
+
+router.post('/api/admin/image-removals/:id/retry', requireSuperAdmin, async (req, res, next) => {
+  try {
+    res.json(await moderation.retryImageRemoval({
+      removalId: req.params.id, operatorId: actorIds(req).actorAdminOperatorId
+    }));
+  } catch (error) { moderationFailure(res, next, error); }
+});
+
+router.post('/api/admin/image-removals/:id/restore', requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!requireConfirmation(req, res)) return;
+    res.json(await moderation.restoreImage({
+      removalId: req.params.id, operatorId: actorIds(req).actorAdminOperatorId
+    }));
+  } catch (error) { moderationFailure(res, next, error); }
+});
+
+router.post('/api/admin/events/:id/hide', requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!requireConfirmation(req, res)) return;
+    res.json(await moderation.hideEvent({
+      eventId: req.params.id, reason: req.body?.reason, operatorId: actorIds(req).actorAdminOperatorId
+    }));
+  } catch (error) { moderationFailure(res, next, error); }
+});
+
+router.post('/api/admin/events/:id/unhide', requireSuperAdmin, async (req, res, next) => {
+  try {
+    if (!requireConfirmation(req, res)) return;
+    res.json(await moderation.unhideEvent({
+      eventId: req.params.id, reason: req.body?.reason, operatorId: actorIds(req).actorAdminOperatorId
+    }));
+  } catch (error) { moderationFailure(res, next, error); }
 });
 
 // PATCH /api/admin/events/:id/collect-photos — isolated event-level beta flag.

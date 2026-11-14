@@ -89,7 +89,8 @@ async function processPostEventThankYouBatch(batchId) {
        JOIN organizers o ON o.id=batch.organizer_id AND o.id=e.organizer_id
       WHERE batch.id=$1
         AND batch.status IN ('pending','processing','partial_failed')
-        AND (batch.status <> 'partial_failed' OR batch.completed_at IS NULL)`,
+        AND (batch.status <> 'partial_failed' OR batch.completed_at IS NULL)
+        AND e.status <> 'hidden'`,
     [batchId]
   );
   if (!batchRows.length) return null;

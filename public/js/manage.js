@@ -575,7 +575,19 @@ async function loadEvent() {
   }
 
   const badge = $('status-badge');
-  if (event.status === 'cancelled') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Cancelled'; }
+  // Silver Glider's own actions are explained in plain words, never the reason.
+  const moderation = event.moderation || {};
+  const notice = $('moderation-notice');
+  if (notice) {
+    notice.textContent = moderation.hidden
+      ? 'Silver Glider has hidden this event, so guests can’t see it right now. Questions? Email support@silverglidertickets.com.'
+      : moderation.imageRemoved
+        ? 'An image on this event was removed by Silver Glider. You can add a new one when you edit the event. Questions? Email support@silverglidertickets.com.'
+        : '';
+    notice.hidden = !notice.textContent;
+  }
+  if (event.status === 'hidden') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Hidden'; }
+  else if (event.status === 'cancelled') { badge.className = 'sg-badge sg-badge-danger'; badge.textContent = 'Cancelled'; }
   else if (event.status === 'draft') { badge.className = 'sg-badge'; badge.textContent = 'Draft'; }
   else if (event.lifecycle_phase === 'tonight') { badge.className = 'sg-badge sg-badge-accent'; badge.textContent = 'Tonight'; }
   else if (event.lifecycle_phase === 'ended') { badge.className = 'sg-badge'; badge.textContent = 'Ended'; }

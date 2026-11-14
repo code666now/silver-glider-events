@@ -470,6 +470,7 @@
       const badges = [
         ev.status === 'cancelled' ? '<span class="sg-badge sg-badge-danger">Cancelled</span>' : '',
         ev.status === 'draft' ? '<span class="sg-badge">Draft</span>' : '',
+        ev.status === 'hidden' ? '<span class="sg-badge sg-badge-danger">Hidden</span>' : '',
         ev.secret_show_enabled
           ? '<span class="sg-badge">Secret Show</span>'
           : ev.visibility === 'private' ? '<span class="sg-badge">Private</span>' : ''
