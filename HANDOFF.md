@@ -1,8 +1,21 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 14, 2026 (Secret Show text readability, v1.0.204)
+**Last updated:** November 14, 2026 (Emergency moderation V1, v1.0.205)
 
-## Current release — Secret Show text readability (v1.0.204)
+## Current release — Emergency moderation V1 (v1.0.205)
+
+User requested PR #24 (`claude/emergency-moderation`) as 1.0.205 using a merge commit, full checks, production deployment, admin-alert/image/hide verification on iPhone Safari and test-event cleanup. After the review disclosed the limitations below, the user explicitly repeated **deploy**; this release preserves PR behavior unchanged. Merge commit `7712bb0` joins main `ddef147` and PR head `70806cb`.
+
+- Migration `084_event_moderation.sql` runs at boot. First-publication alerts are prospective, fan out to active Super Admin/Support operators and run every minute. Super Admin Safety controls remove/restore managed images and hide/unhide events. Preserve the v204 accessibility changes.
+- **Known limitations:** Cloudinary private delivery does not protect transformed derivatives by default; Hide can race in-flight owner writes and does not stop already-queued SMS; overlapping Retry/Restore can leave provider/database state inconsistent. Also follow up mutable alert retry payloads/24-hour provider idempotency, broad first-page-only admin event deep links, and moderation internals exposed through event-list DTOs. These findings supersede optimistic guarantees in the original PR handoff below. Do not represent removal as proven universal internet removal.
+- QA must use one fresh, uniquely named, future **Private link only** event, standard layout, no guests/lineup and a fresh unique Cloudinary image. Never reuse real event artwork. Publication sends the explicitly requested operator alerts, not guest invitations; verify acceptance separately from actual inbox delivery. Run Remove/Restore sequentially, never Retry during Restore; unhide before cleanup. Physical iPhone Safari and inbox checks require user participation. Dedicated Super Admin login must use the normal sign-in flow.
+- **Rollback:** prefer a forward fix. Pre205 routes/workers do not understand hidden status; rolling back after moderation has been used can expose hidden events. Do not remove migration tables or audit evidence.
+
+**Verification:** full `npm run check` passes **1,043/1,043**, zero failures/skips; static checks pass (309 JavaScript / 485 project files). No competing test process or local `sge_test` connection was present before the exclusive run. `/private/tmp/sge-moderation-production-check.cjs` checks both production health endpoints and exact public asset bytes; its filtered boot-log and environment modes expose only counts and `RESEND_API_KEY` presence, never raw logs or secret values.
+
+**Release:** commit/tag 1.0.205, generate uncommitted `.git-sha` after the release commit, deploy explicit `railway up . --path-as-root --service silver-glider-events`, verify health/SHA, migration 084, alert cron, key presence and prior deployment removal, then push main and tag. Do not claim live inbox/device/moderation checks until actually completed.
+
+## Previous release — Secret Show text readability (v1.0.204)
 
 User approved fixing and deploying the Secret Show gate's faint footer and helper text. Keep the scope limited to presentation; the access-code controller, routes, verification and wording are unchanged.
 

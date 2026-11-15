@@ -2,6 +2,23 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.205
+
+Released November 14, 2026.
+
+### Emergency moderation V1
+
+* Merge PR #24 (`claude/emergency-moderation`) with a merge commit, retaining the v1.0.204 Secret Show accessibility fix.
+* Queue first-publication review emails for active Super Admin and Support operators. Add Super Admin image removal/restoration and event hiding/unhiding in Admin → Events → Safety.
+* Apply boot migration `084_event_moderation.sql` for hidden events, moderation records and first-publication alert delivery. Historical publications are not backfilled.
+
+### Verification and known limitations
+
+* `npm run check` passes **1,043/1,043** tests, with zero failures or skips; static checks pass (309 JavaScript / 485 project files). No competing test run or `sge_test` connection was present before the exclusive run.
+* Released as requested without changing PR behavior after review: Cloudinary private assets can still have publicly accessible transformed derivatives; hiding is not fully serialized with in-flight organizer mutations and does not stop already-queued SMS; concurrent image Retry/Restore can disagree with provider state.
+* Other follow-ups: alert retry payload/idempotency handling, exact-event admin deep links beyond the first search page, and internal moderation fields in event-list responses. Passing automated tests does not resolve these limitations or establish physical iPhone Safari/inbox delivery verification.
+* Prefer forward fixes. Do not blindly roll back to a pre-moderation release after hiding events: older public routes do not understand the hidden status.
+
 ## 1.0.204
 
 Released November 14, 2026.
