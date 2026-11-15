@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.207
+
+Released November 14, 2026.
+
+### Additional moderation-alert inboxes
+
+* Allow explicitly configured alert-only inboxes to receive future first-publication and moderated-image-replacement emails alongside active Super Admin and Support operators. Receiving an alert never creates an account or grants admin access.
+* Validate and deduplicate the additional destinations, preserve one copy when an address also belongs to an admin, and recheck eligibility before retries. Keep stable private idempotency keys and never replay completed or previously fanned-out alerts.
+* Invalid optional configuration leaves existing admin alerts working. Removed or invalid additional destinations fail closed; correcting the list does not resend abandoned deliveries.
+* No schema, public-page, image, guest-list, guest-email, SMS or policy changes. The production addition is managed through Railway configuration, not hard-coded recipient addresses.
+
+### Verification
+
+* `npm run check` passes **1,059/1,059** tests with zero failures or skips; static checks pass (313 JavaScript / 489 project files). No competing test run or local `sge_test` connection was present before the exclusive checks.
+* Added five helper tests and six integration cases covering normalization/validation, duplicate prevention, no privilege grants, removed/unlinked recipients, historical non-replay, image alerts and continued admin delivery with invalid optional configuration. All email delivery tests use synthetic recipients and mock senders.
+
 ## 1.0.206
 
 Released November 14, 2026.

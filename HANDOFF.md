@@ -1,8 +1,22 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 14, 2026 (Children's Privacy, v1.0.206)
+**Last updated:** November 14, 2026 (Additional moderation-alert inboxes, v1.0.207)
 
-## Current release — Children's Privacy (v1.0.206)
+## Current release — Additional moderation-alert inboxes (v1.0.207)
+
+User requested an additional email destination for moderation alerts. Keep it **alerts-only**: do not add an operator, grant Support/Super Admin access, or change authentication. The existing `Review in Admin` link still requires an independently authorized admin session.
+
+- Optional `EVENT_ADMIN_ALERT_EXTRA_EMAILS` accepts up to 20 unique comma/newline-separated email destinations. Normalize and validate the list; never print addresses from invalid configuration. Configuration is deployment-managed, not hard-coded in source.
+- Existing active Super Admin/Support recipients are inserted first. Additional recipients use the existing nullable operator ID, a stable hashed-email idempotency key and the existing unique `(alert_id, recipient)` constraint. No migration is needed.
+- Eligibility is rechecked on each delivery pass/retry. Unlinked admin deliveries cannot masquerade as alert-only rows. Invalid optional configuration preserves existing admin sends and fails closed for extras; removal/invalid configuration abandons queued extra deliveries and later correction does not replay them.
+- Scope is the existing moderation stream: every event's first publication plus image replacements after moderation, not drafts, guest invitations, SMS or marketing. Do not reset fanout markers, replay sent alerts, publish test events, or send verification emails for this configuration change.
+- Read-only preflight confirmed the primary inbox remains an active Super Admin, the requested additional address has no operator account, no extra recipients were configured and the unfanned alert backlog was zero. Keep the additional address only in Railway configuration.
+
+**Verification:** `npm run check` passes **1,059/1,059**, zero failures/skips; static checks pass (313 JavaScript / 489 project files). Five helper tests and six integration cases cover validation, deduplication, no account/permission creation, retry eligibility, unlinked-admin protection, no historical replay, both alert kinds and invalid-config isolation. Focused checks and independent review also passed. No live test emails or events were created.
+
+**Release:** run the exclusive local test suite, commit/tag 1.0.207, set only the approved `EVENT_ADMIN_ALERT_EXTRA_EMAILS` value with `--skip-deploys`, regenerate uncommitted `.git-sha` after the release commit, and deploy using `railway up . --path-as-root --service silver-glider-events`. Verify production health/SHA, exact worker/helper bytes, both recipient paths, unchanged admin privileges and prior worker removal, then push main/tag. Read-only verification does not establish actual inbox delivery until a future real event is published.
+
+## Previous release — Children's Privacy (v1.0.206)
 
 User requested adding exactly four supplied paragraphs as **13. Children's Privacy**, preserving all existing policy text, then approved deployment. The section appears before Contact and is included in the explicit Privacy headings/contents list.
 
@@ -663,7 +677,7 @@ After that, evaluate graduating Collect Photos Beta, lightweight host conversion
 
 Lightweight on purpose: nothing gates or delays publishing.
 
-- **New-event alerts.** A database trigger (migration 084) raises one `event_admin_alerts` row when an event is first published (via `first_published_at`), so every publish path is covered. `src/jobs/event-admin-alerts.js` fans it out each minute to every **active Super Admin and Support** operator and sends through Resend with retries. Recipients come from Admin → Team, never hard-coded.
+- **New-event alerts.** A database trigger (migration 084) raises one `event_admin_alerts` row when an event is first published (via `first_published_at`), so every publish path is covered. `src/jobs/event-admin-alerts.js` fans it out each minute to every **active Super Admin and Support** operator and sends through Resend with retries. Since v1.0.207, optional `EVENT_ADMIN_ALERT_EXTRA_EMAILS` adds notification-only inboxes without admin privileges. Recipients come from Admin → Team or explicit deployment configuration, never hard-coded.
 - **Image replaced alert.** If an event has an image under an active removal and the organizer adds a new one, admins get one "Image replaced" email. Restoring never raises one.
 - **Remove image** (Super Admin, reason + confirm): clears that file from every event that uses it (duplicates share URLs), then moves the Cloudinary asset to `private` delivery. If Cloudinary fails, the page is still cleared and Admin shows Retry. Restore makes it public again and puts it back only where the field is still empty.
 - **Hide event** (Super Admin, reason + confirm): status `hidden`. Every public query already filters on `published`, so it falls out everywhere; the few `<> 'draft'` lookups, guest email jobs and organizer mutations (`blockHiddenEventChanges`, 409) are guarded explicitly. RSVPs and records stay. Unhide restores the previous status.

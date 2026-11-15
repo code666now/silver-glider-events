@@ -13796,6 +13796,164 @@ test('admin alert deliveries retry failures and abandon removed admins', async (
   }
 });
 
+async function withExtraEventAlertRecipients(value, callback) {
+  const original = process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS;
+  process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS = value;
+  try {
+    await callback();
+  } finally {
+    if (original === undefined) delete process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS;
+    else process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS = original;
+    eventAdminAlerts.setEventAdminAlertSenderForTests();
+  }
+}
+
+test('extra event alert recipients receive one copy alongside admins without gaining any account or admin role', async () => {
+  await withExtraEventAlertRecipients(' Review@Example.test ,review@example.test\nOWNER@example.test', async () => {
+    const owner = await createAdminOperator('owner@example.test', 'super_admin');
+    await createAdminOperator('assistant@example.test', 'support');
+    const accountsBefore = (await pool.query(`SELECT
+      (SELECT COUNT(*)::int FROM users) AS users,
+      (SELECT COUNT(*)::int FROM organizers) AS organizers,
+      (SELECT COUNT(*)::int FROM admin_operators) AS admins`)).rows[0];
+    const sent = [];
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async message => { sent.push(message); return { id: `extra-${sent.length}` }; });
+
+    const draft = await createEvent({ slug: 'extra-alert-night', status: 'draft' });
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), [], 'a draft sends no alerts');
+    await pool.query("UPDATE events SET status='published' WHERE id=$1", [draft.id]);
+    await eventAdminAlerts.runEventAdminAlertPass();
+    assert.deepEqual(sent.map(message => message.to).sort(), ['assistant@example.test', 'owner@example.test', 'review@example.test']);
+    const deliveries = (await pool.query(`SELECT admin_operator_id,recipient,status,idempotency_key
+      FROM event_admin_alert_deliveries ORDER BY recipient`)).rows;
+    assert.equal(deliveries.length, 3, 'duplicates in config or the admin roster never add a second copy');
+    assert.equal(String(deliveries.find(row => row.recipient === 'owner@example.test').admin_operator_id), String(owner.id));
+    const extra = deliveries.find(row => row.recipient === 'review@example.test');
+    assert.equal(extra.admin_operator_id, null);
+    assert.equal(extra.status, 'sent');
+    assert.equal(extra.idempotency_key, require('../../src/lib/event-alert-recipients').extraEventAlertIdempotencyKey(
+      (await pool.query('SELECT id FROM event_admin_alerts WHERE event_id=$1', [draft.id])).rows[0].id, extra.recipient
+    ));
+    const accountsAfter = (await pool.query(`SELECT
+      (SELECT COUNT(*)::int FROM users) AS users,
+      (SELECT COUNT(*)::int FROM organizers) AS organizers,
+      (SELECT COUNT(*)::int FROM admin_operators) AS admins`)).rows[0];
+    assert.deepEqual(accountsAfter, accountsBefore, 'notification configuration creates no accounts or admin privileges');
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), []);
+    assert.equal(sent.length, 3);
+  });
+});
+
+test('removing an extra event alert recipient before retry abandons delivery and cannot replay it later', async () => {
+  await withExtraEventAlertRecipients('review@example.test', async () => {
+    const attempted = [];
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async message => {
+      attempted.push(message);
+      throw new Error('simulated provider unavailable');
+    });
+    await createEvent({ slug: 'extra-retry-night' });
+    assert.deepEqual((await eventAdminAlerts.runEventAdminAlertPass()).map(row => row.status), ['failed']);
+    const failed = (await pool.query('SELECT * FROM event_admin_alert_deliveries')).rows[0];
+    assert.equal(failed.admin_operator_id, null);
+    assert.ok(failed.next_attempt_at);
+
+    process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS = '';
+    await pool.query('UPDATE event_admin_alert_deliveries SET next_attempt_at=NOW() WHERE id=$1', [failed.id]);
+    assert.deepEqual((await eventAdminAlerts.runEventAdminAlertPass()).map(row => row.status), ['abandoned']);
+    assert.equal(attempted.length, 1, 'removed recipients are not sent a retry');
+    process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS = 'review@example.test';
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), []);
+    assert.equal(attempted.length, 1, 're-adding an address never replays an abandoned alert');
+  });
+});
+
+test('an unlinked admin delivery cannot become an extra recipient delivery even if its address is allowlisted', async () => {
+  await withExtraEventAlertRecipients('owner@example.test', async () => {
+    await createAdminOperator('owner@example.test', 'super_admin');
+    let attempts = 0;
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async () => { attempts += 1; throw new Error('simulated provider unavailable'); });
+    await createEvent({ slug: 'deleted-admin-alert-night' });
+    assert.deepEqual((await eventAdminAlerts.runEventAdminAlertPass()).map(row => row.status), ['failed']);
+    // Operators are retained for immutable audit attribution. Model a legacy
+    // unlinked delivery without deleting an operator or bypassing that guard.
+    await pool.query('UPDATE event_admin_alert_deliveries SET admin_operator_id=NULL,next_attempt_at=NOW()');
+    assert.equal((await pool.query('SELECT admin_operator_id FROM event_admin_alert_deliveries')).rows[0].admin_operator_id, null);
+    assert.deepEqual((await eventAdminAlerts.runEventAdminAlertPass()).map(row => row.status), ['abandoned']);
+    assert.equal(attempts, 1, 'the original admin authorization cannot be replaced with an extra-recipient identity');
+  });
+});
+
+test('adding extra event alert recipients does not backfill already fanned-out or sent alerts', async () => {
+  await withExtraEventAlertRecipients('', async () => {
+    const owner = await createAdminOperator('owner@example.test', 'super_admin');
+    const sent = [];
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async message => { sent.push(message); return { id: `history-${sent.length}` }; });
+    const delivered = await createEvent({ slug: 'already-sent-alert-night' });
+    await eventAdminAlerts.runEventAdminAlertPass();
+    await pool.query("UPDATE admin_operators SET status='disabled' WHERE id=$1", [owner.id]);
+    const emptyFanout = await createEvent({ slug: 'already-fanned-empty-alert-night' });
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), [], 'an alert can complete fanout with no recipients');
+    const before = (await pool.query('SELECT * FROM event_admin_alert_deliveries ORDER BY id')).rows;
+    const fanned = (await pool.query('SELECT id,fanned_out_at FROM event_admin_alerts ORDER BY id')).rows;
+    assert.ok(fanned.every(row => row.fanned_out_at));
+
+    process.env.EVENT_ADMIN_ALERT_EXTRA_EMAILS = 'review@example.test';
+    await pool.query("UPDATE admin_operators SET status='active' WHERE id=$1", [owner.id]);
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), []);
+    assert.deepEqual((await pool.query('SELECT * FROM event_admin_alert_deliveries ORDER BY id')).rows, before);
+    assert.deepEqual((await pool.query('SELECT id,fanned_out_at FROM event_admin_alerts ORDER BY id')).rows, fanned);
+    assert.equal(sent.length, 1, 'neither historical event is emailed to the new address');
+
+    const fresh = await createEvent({ slug: 'fresh-extra-alert-night' });
+    await eventAdminAlerts.runEventAdminAlertPass();
+    assert.deepEqual(sent.slice(1).map(message => message.to).sort(), ['owner@example.test', 'review@example.test']);
+    assert.ok(sent.slice(1).every(message => message.publicUrl.endsWith(`/e/${fresh.slug}`)));
+    assert.equal((await pool.query(`SELECT COUNT(*)::int AS c FROM event_admin_alert_deliveries delivery
+      JOIN event_admin_alerts alert ON alert.id=delivery.alert_id
+      WHERE alert.event_id=ANY($1::int[]) AND delivery.recipient='review@example.test'`, [[delivered.id, emptyFanout.id]])).rows[0].c, 0);
+  });
+});
+
+test('extra recipients receive image-replacement alerts with the same one-copy delivery rules', async () => {
+  await withExtraEventAlertRecipients('review@example.test,REVIEW@example.test', async () => {
+    await createAdminOperator('owner@example.test', 'super_admin');
+    const sent = [];
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async message => { sent.push(message); return { id: `image-${sent.length}` }; });
+    const event = await createEvent({ slug: 'extra-image-alert-night' });
+    await eventAdminAlerts.runEventAdminAlertPass();
+    await pool.query(`INSERT INTO event_admin_alerts(event_id,kind,dedupe_key)
+      VALUES ($1,'image_replaced','https://images.example.test/new-cover.jpg')`, [event.id]);
+    await eventAdminAlerts.runEventAdminAlertPass();
+    const replacements = sent.filter(message => message.kind === 'image_replaced');
+    assert.deepEqual(replacements.map(message => message.to).sort(), ['owner@example.test', 'review@example.test']);
+    assert.notEqual(sent.find(message => message.kind === 'first_published' && message.to === 'review@example.test').idempotencyKey,
+      replacements.find(message => message.to === 'review@example.test').idempotencyKey);
+    assert.deepEqual(await eventAdminAlerts.runEventAdminAlertPass(), []);
+    assert.equal(sent.length, 4);
+  });
+});
+
+test('invalid extra-recipient configuration fails closed without interrupting active admin alerts or logging addresses', async () => {
+  await withExtraEventAlertRecipients('valid@example.test,not an address@example.test', async () => {
+    await createAdminOperator('owner@example.test', 'super_admin');
+    const sent = [];
+    const errors = [];
+    const originalError = console.error;
+    eventAdminAlerts.setEventAdminAlertSenderForTests(async message => { sent.push(message); return { id: 'invalid-config-admin' }; });
+    try {
+      console.error = (...args) => errors.push(args.map(String).join(' '));
+      await createEvent({ slug: 'invalid-extra-alert-night' });
+      await eventAdminAlerts.runEventAdminAlertPass();
+    } finally {
+      console.error = originalError;
+    }
+    assert.deepEqual(sent.map(message => message.to), ['owner@example.test']);
+    assert.ok(errors.length > 0, 'invalid operator configuration is surfaced');
+    assert.ok(errors.every(message => !message.includes('@')), 'logs never contain configured addresses');
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS c FROM event_admin_alert_deliveries')).rows[0].c, 1);
+  });
+});
+
 test('the admin alert email shows the event, organizer history and both links', async () => {
   await mailer.sendAdminEventAlert({
     to: 'owner@example.test',

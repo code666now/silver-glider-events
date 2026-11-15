@@ -2,11 +2,12 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendAdminEventAlert } = require('../lib/mailer');
 const { lockAdminOperatorRosterInTransaction } = require('../lib/admin-operators');
+const { extraEventAlertEmails, extraEventAlertIdempotencyKey } = require('../lib/event-alert-recipients');
 
 // The database raises an alert row whenever an event is first published (or
 // gets a new image after one was removed). This job turns each alert into one
-// email per active Super Admin and Support admin, and retries failures with
-// backoff. Publishing never waits on any of it.
+// email per active Super Admin, Support admin and configured alert-only inbox,
+// and retries failures with backoff. Publishing never waits on any of it.
 const RETRY_BASE_SECONDS = 60;
 const RETRY_MAX_SECONDS = 6 * 60 * 60;
 const MAX_ATTEMPTS = 8;
@@ -24,7 +25,7 @@ function retryDelaySeconds(attempt) {
 }
 
 // Snapshot the recipients for every alert that has not been fanned out yet.
-async function fanOutPendingAlerts() {
+async function fanOutPendingAlerts(extraRecipients) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -47,6 +48,15 @@ async function fanOutPendingAlerts() {
          ON CONFLICT DO NOTHING`,
         [id, RECIPIENT_ROLES]
       );
+      // Insert admins first so overlapping addresses keep their roster-bound
+      // eligibility. Existing fanout markers prevent replaying old alerts.
+      for (const recipient of extraRecipients) {
+        await client.query(
+          `INSERT INTO event_admin_alert_deliveries (alert_id,admin_operator_id,recipient,idempotency_key)
+           VALUES ($1,NULL,$2,$3) ON CONFLICT DO NOTHING`,
+          [id, recipient, extraEventAlertIdempotencyKey(id, recipient)]
+        );
+      }
       await client.query('UPDATE event_admin_alerts SET fanned_out_at=NOW() WHERE id=$1', [id]);
     }
     await client.query('COMMIT');
@@ -99,7 +109,7 @@ async function alertDetails(alertId) {
   return rows[0] || null;
 }
 
-async function processDelivery(id) {
+async function processDelivery(id, extraRecipients) {
   const delivery = await claimDelivery(id);
   if (!delivery) return null;
   const attempt = Number(delivery.attempt_count);
@@ -112,13 +122,22 @@ async function processDelivery(id) {
     [id, attempt, status, fields.error || null, fields.providerId || null, fields.retryAfter || 0]
   );
 
-  const recipientActive = await pool.query(
-    `SELECT 1 FROM admin_operators
-      WHERE id=$1 AND LOWER(BTRIM(email))=$2 AND status='active' AND role = ANY($3::text[])`,
-    [delivery.admin_operator_id, delivery.recipient, RECIPIENT_ROLES]
-  );
-  if (!recipientActive.rows.length) {
-    await finish('abandoned', { error: 'Recipient is no longer an active admin' });
+  let recipientEligible = false;
+  if (delivery.admin_operator_id != null) {
+    const recipientActive = await pool.query(
+      `SELECT 1 FROM admin_operators
+        WHERE id=$1 AND LOWER(BTRIM(email))=$2 AND status='active' AND role = ANY($3::text[])`,
+      [delivery.admin_operator_id, delivery.recipient, RECIPIENT_ROLES]
+    );
+    recipientEligible = recipientActive.rows.length > 0;
+  } else {
+    // A deleted admin also has a NULL foreign key. Only deliveries originally
+    // created for this explicit allowlist may use alert-only authorization.
+    recipientEligible = delivery.idempotency_key === extraEventAlertIdempotencyKey(delivery.alert_id, delivery.recipient)
+      && extraRecipients.includes(delivery.recipient);
+  }
+  if (!recipientEligible) {
+    await finish('abandoned', { error: 'Recipient is no longer eligible for event alerts' });
     return { id, status: 'abandoned' };
   }
   const details = await alertDetails(delivery.alert_id);
@@ -162,7 +181,13 @@ async function runEventAdminAlertPass() {
   if (running) return [];
   running = true;
   try {
-    await fanOutPendingAlerts();
+    let extraRecipients = [];
+    try { extraRecipients = extraEventAlertEmails(); } catch (_) {
+      // A typo in optional destinations must not interrupt the admin alerts.
+      // Never print configured addresses or the invalid input in logs.
+      console.error('[event-admin-alerts] additional recipient configuration invalid; using admin recipients only');
+    }
+    await fanOutPendingAlerts(extraRecipients);
     const { rows } = await pool.query(
       `SELECT id FROM event_admin_alert_deliveries
         WHERE (status IN ('pending','failed') AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()))
@@ -172,7 +197,7 @@ async function runEventAdminAlertPass() {
       [SENDING_LEASE_MINUTES]
     );
     const results = [];
-    for (const row of rows) results.push(await processDelivery(Number(row.id)));
+    for (const row of rows) results.push(await processDelivery(Number(row.id), extraRecipients));
     return results.filter(Boolean);
   } catch (error) {
     console.error('[event-admin-alerts] pass failed:', cleanError(error));
