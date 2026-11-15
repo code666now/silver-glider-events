@@ -2,6 +2,21 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.206
+
+Released November 14, 2026.
+
+### Children's Privacy
+
+* Add **13. Children's Privacy** before Contact using the four user-approved paragraphs verbatim. Preserve every pre-existing policy byte and include the new section in the policy contents navigation.
+* Register Privacy document version **2026-11-14** while preserving the immutable **2026-11-10** archive and existing acceptance receipts. Terms, review wording and the once-per-account review requirement remain unchanged; no automatic reacceptance or notifications.
+* No changes to events, images, guest lists, messaging, dependencies or database schema.
+
+### Verification
+
+* `npm run check` passes **1,048/1,048** tests with zero failures or skips; static checks pass (311 JavaScript / 487 project files). The dedicated local test database was idle before the exclusive run.
+* Regression coverage verifies exact additive text preservation, heading/contents/email-link rendering, the new document snapshot, historical policy access, unchanged receipts, no repeated review and no messaging side effects.
+
 ## 1.0.205
 
 Released November 14, 2026.

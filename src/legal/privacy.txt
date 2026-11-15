@@ -198,6 +198,11 @@ To stop receiving messages, reply STOP at any time.
 For assistance, reply HELP or contact support@silverglidertickets.com.
 Mobile information will not be shared with third parties or affiliates for marketing or promotional purposes.
 Silver Glider Entertainment Inc. reserves the right to modify, suspend, or terminate its SMS program at any time.
+13. Children's Privacy
+Silver Glider Events is intended for users aged 18 and older and is not directed toward children under 13.
+We do not knowingly collect personal information directly from children under 13.
+If we discover that we have collected personal information from a child under 13 without legally sufficient parental consent or another applicable legal basis, we will take appropriate steps to delete that information as required by law.
+If you believe a child under 13 has provided personal information through our Platform, please contact us at support@silverglidertickets.com.
 Contact
 Silver Glider Entertainment Inc.
 490 Post Street, Suite 500

@@ -46,6 +46,7 @@ const privacySections = new Set([
   'Additional Information About Data Collection and Processing',
   'Definitions and Legal References',
   'SMS Messaging Program',
+  "13. Children's Privacy",
   'Contact'
 ]);
 

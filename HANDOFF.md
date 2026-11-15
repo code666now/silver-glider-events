@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 14, 2026 (Emergency moderation V1, v1.0.205)
+**Last updated:** November 14, 2026 (Children's Privacy, v1.0.206)
 
-## Current release — Emergency moderation V1 (v1.0.205)
+## Current release — Children's Privacy (v1.0.206)
+
+User requested adding exactly four supplied paragraphs as **13. Children's Privacy**, preserving all existing policy text, then approved deployment. The section appears before Contact and is included in the explicit Privacy headings/contents list.
+
+- Privacy document version is **2026-11-14**, SHA-256 `b11ba5d803375ed2791dc2e8036eef05ea230ed90c8617e4cc7a10383007c6f4`. Startup registers the immutable snapshot without replacing **2026-11-10** or changing prior receipts.
+- Terms remains **2026-11-11**, review wording remains **2026-11-10**, and `REQUIRED_LEGAL_REVIEW_VERSION` remains `account-review-v1`: no repeated agreement for accepted accounts and no notifications.
+- No migrations, dependencies, event/image/guest-data changes, outgoing messages or new operational/legal enforcement. This release publishes the exact supplied policy copy.
+- `npm run check` passes **1,048/1,048**, zero failures/skips; static checks pass (311 JavaScript / 487 project files). Tests pin every pre-existing policy byte, all four added paragraphs, rendering/email links, current/historical snapshots, unchanged receipts and no message effects. Independent review found no blockers.
+
+**Release:** commit/tag 1.0.206, regenerate uncommitted `.git-sha` after the release commit, deploy explicit `railway up . --path-as-root --service silver-glider-events`, verify both production health/version/SHA and exact current/archived Privacy articles plus unchanged Terms, confirm the previous worker is removed, then push main and the tag. Production verification is read-only; never accept an agreement or send messages on a user's behalf.
+
+## Previous release — Emergency moderation V1 (v1.0.205)
 
 User requested PR #24 (`claude/emergency-moderation`) as 1.0.205 using a merge commit, full checks, production deployment, admin-alert/image/hide verification on iPhone Safari and test-event cleanup. After the review disclosed the limitations below, the user explicitly repeated **deploy**; this release preserves PR behavior unchanged. Merge commit `7712bb0` joins main `ddef147` and PR head `70806cb`.
 

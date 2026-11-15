@@ -265,6 +265,62 @@ module.exports = function registerLegalAcceptanceCases({
     assert.equal(mailer.devOutbox.length, outboxBefore);
   });
 
+  test('Section 13 preserves the original Privacy snapshot and existing receipt without another review or messages', async () => {
+    const {
+      legalDocumentSnapshots, registerLegalPolicyVersions, recordLegalAcceptance
+    } = require('../../src/lib/legal-acceptance');
+    const {
+      PREVIOUS_PRIVACY_VERSION, PREVIOUS_PRIVACY_HASH, CURRENT_PRIVACY_VERSION,
+      ADDED_HEADING, ADDED_PARAGRAPHS, ADDED_TEXT
+    } = require('./privacy-content-update-fixture');
+    const cookie = await unaccepted();
+    const current = legalDocumentSnapshots().find(document => document.kind === 'privacy');
+    const previousContent = current.content.replace(ADDED_TEXT, '');
+    assert.equal(crypto.createHash('sha256').update(previousContent).digest('hex'), PREVIOUS_PRIVACY_HASH);
+    await pool.query(`INSERT INTO legal_policy_versions(kind,version,content,content_sha256)
+      VALUES('privacy',$1,$2,$3) ON CONFLICT(kind,version) DO NOTHING`,
+    [PREVIOUS_PRIVACY_VERSION, previousContent, PREVIOUS_PRIVACY_HASH]);
+    await pool.query(`INSERT INTO user_legal_acceptances(user_id,review_version,terms_version,privacy_version,wording_version)
+      VALUES($1,$2,$3,$4,$5)`, [getOrganizerId(), REQUIRED_LEGAL_REVIEW_VERSION,
+      CURRENT_LEGAL_VERSIONS.terms, PREVIOUS_PRIVACY_VERSION, CURRENT_LEGAL_VERSIONS.wording]);
+    const receipt = (await acceptances())[0];
+    const snapshot = (await pool.query(
+      "SELECT * FROM legal_policy_versions WHERE kind='privacy' AND version=$1", [PREVIOUS_PRIVACY_VERSION]
+    )).rows[0];
+    const before = await effects();
+    const outboxBefore = mailer.devOutbox.length;
+
+    await registerLegalPolicyVersions(pool);
+    await registerLegalPolicyVersions(pool);
+    const historical = await request(`/privacy?version=${PREVIOUS_PRIVACY_VERSION}`);
+    assert.equal(historical.status, 200);
+    const historicalHtml = await historical.text();
+    assert.equal(historicalHtml.includes(ADDED_HEADING), false);
+    assert.ok(historicalHtml.includes('Owner and Data Controller'));
+    for (const url of ['/privacy', `/privacy?version=${CURRENT_PRIVACY_VERSION}`]) {
+      const response = await request(url);
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.ok(html.includes(`<h2 id="13-children-s-privacy">${ADDED_HEADING}</h2>`));
+      for (const paragraph of ADDED_PARAGRAPHS) {
+        const linked = paragraph.replace('support@silverglidertickets.com',
+          '<a href="mailto:support@silverglidertickets.com">support@silverglidertickets.com</a>');
+        assert.ok(html.includes(`<p>${linked}</p>`));
+      }
+    }
+    const revisit = await request('/account/review?next=%2Fdashboard', { headers: { cookie } });
+    assert.equal(revisit.status, 303);
+    assert.equal(revisit.headers.get('location'), '/dashboard');
+    assert.equal((await request('/dashboard', { headers: { cookie } })).status, 200);
+    assert.equal((await recordLegalAcceptance(pool, { id: getOrganizerId() })).created, false);
+    assert.deepEqual((await acceptances())[0], receipt);
+    assert.deepEqual((await pool.query(
+      "SELECT * FROM legal_policy_versions WHERE kind='privacy' AND version=$1", [PREVIOUS_PRIVACY_VERSION]
+    )).rows[0], snapshot);
+    assert.deepEqual(await effects(), before);
+    assert.equal(mailer.devOutbox.length, outboxBefore);
+  });
+
   test('legal acceptance save failure stays on the review screen with retry and records no false acceptance', async () => {
     const cookie = await unaccepted();
     const { fields } = await review(cookie, '/events');
