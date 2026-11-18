@@ -2,6 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+
+const seasonalVideos = [
+  'rain-on-glass', 'gather-and-glow', 'candlelit-christmas',
+  'snow-day', 'midnight-toast', 'starlit-celebration'
+];
 
 function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
@@ -12,12 +18,23 @@ test('all editors use one ordered background catalog with contextual artwork mat
   const ownerRenderer = source('src/lib/event-owner-editor.js');
   const catalog = require('../public/js/event-backgrounds');
   assert.deepEqual(catalog.backgroundKeys, ['adaptive', 'midnight', 'aurora', 'sunset', 'ocean', 'plaster']);
-  assert.deepEqual(catalog.effectKeys, ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'golden-tide']);
+  assert.deepEqual(catalog.effectKeys, ['halloween', 'last-guest', 'disco', 'fog', 'paper', 'static', 'liquid-stardust', 'color-static', 'saloon', 'golden-tide', ...seasonalVideos]);
   assert.equal(catalog.label('adaptive', 'standard'), 'Match Photo');
   assert.equal(catalog.label('adaptive', 'flyer'), 'Match Flyer');
   assert.match(form, /const EventBackgrounds = window\.SGEventBackgrounds/);
   assert.match(ownerRenderer, /EventBackgrounds\.options\.filter/);
   assert.match(ownerRenderer, /data-standard-label="\$\{label\}" data-flyer-label="\$\{flyerLabel \|\| label\}"/);
+});
+
+test('curated background thumbnails are still images, not autoplay media', () => {
+  const catalog = require('../public/js/event-backgrounds');
+  for (const option of catalog.options) {
+    if (['adaptive', 'midnight', 'aurora', 'sunset', 'ocean', 'static'].includes(option.key)) continue;
+    assert.ok(option.thumbnail, `${option.key} has a thumbnail`);
+    assert.match(option.thumbnail, /\.(?:jpg|png|webp)$/);
+    assert.doesNotMatch(option.thumbnail, /\.mp4|\.gif/);
+    assert.ok(Object.isFrozen(option));
+  }
 });
 
 test('Match Photo reuses the artwork palette as an explicit adaptive background', () => {
@@ -52,7 +69,7 @@ test('seasonal video effects are accepted and render from dedicated assets', () 
   assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
   assert.match(publicRoute, /'color-static': 'sg-events\/effects\/color-static'/);
   assert.match(publicRoute, /'last-guest': 'sg-events\/effects\/the-last-guest'/);
-  assert.match(source('public/js/public-event.js'), /\['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'golden-tide'\]/);
+  assert.match(source('public/js/public-event.js'), /\['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'golden-tide',/);
 
   for (const view of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
     const css = source(view);
@@ -90,8 +107,8 @@ test('new video backgrounds crossfade their end-to-start seam in both live views
   assert.match(seamlessLoop, /cloneNode\(true\)/);
   assert.match(seamlessLoop, /remaining <= leadSeconds/);
   assert.match(seamlessLoop, /is-seamless-active/);
-  assert.match(publicClient, /\['liquid-stardust', 'color-static', 'golden-tide'\][\s\S]*SGSeamlessVideoLoop/);
-  assert.match(ownerClient, /new Set\(\['liquid-stardust', 'color-static', 'golden-tide'\]\)[\s\S]*SGSeamlessVideoLoop/);
+  assert.match(publicClient, /\['liquid-stardust', 'color-static', 'golden-tide',[\s\S]*SGSeamlessVideoLoop/);
+  assert.match(ownerClient, /new Set\(\['liquid-stardust', 'color-static', 'golden-tide',[\s\S]*SGSeamlessVideoLoop/);
   assert.match(standardTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
   assert.match(flyerTemplate, /\/js\/seamless-video-loop\.js[\s\S]*\/js\/public-event\.js/);
 });
@@ -122,8 +139,8 @@ test('Golden Tide is selectable with video, poster and isolated readability trea
   }
   assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-golden-tide/);
   assert.match(source('public/css/event-owner-editor.css'), /\.owner-theme-golden-tide/);
-  assert.match(source('src/routes/public.js'), /theme === 'golden-tide' \? 'du_20,' : ''/);
-  assert.match(source('public/js/event-owner-editor.js'), /seamlessVideoEffects\.has\(theme\) && !constrainedGoldenTide/);
+  assert.match(source('src/routes/public.js'), /\['golden-tide',[^\]]+\]\.includes\(theme\) \? 'du_20,' : ''/);
+  assert.match(source('public/js/event-owner-editor.js'), /seamlessVideoEffects\.has\(theme\) && !constrainedAmbientVideo/);
   for (const file of ['src/routes/public-hosts.js', 'src/lib/mailer.js']) {
     assert.match(source(file), /sg-events\/effects\/golden-tide\.jpg/);
   }
@@ -135,6 +152,93 @@ test('After Hours Saloon readability overrides stay isolated to that effect', ()
   assert.match(publicView, /\.fx-veil\.fx-veil-warm/);
   assert.match(publicView, /@media \(max-width: 879px\)/);
   assert.doesNotMatch(publicView, /\.event-bg\.fx-(?:fog|disco|paper) ~ \.layout \.desc/);
+});
+
+test('six curated videos have versioned assets, mobile playback and still fallbacks in every surface', () => {
+  const catalog = require('../public/js/event-backgrounds');
+  const labels = ['Rain on Glass', 'Gather & Glow', 'Candlelit Christmas', 'Snow Day', 'Midnight Toast', 'Starlit Celebration'];
+  for (const [index, key] of seasonalVideos.entries()) {
+    assert.equal(catalog.label(key), labels[index]);
+    assert.ok(catalog.effectKeys.includes(key));
+    for (const file of ['src/routes/public.js', 'public/js/event-owner-editor.js']) {
+      assert.ok(source(file).includes(`'${key}': 'sg-events/effects/${key}-v1'`));
+    }
+    for (const file of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
+      const css = source(file);
+      assert.ok(css.includes(`.event-bg.fx-${key} {`));
+      assert.ok(css.includes(`.event-bg.fx-${key} ~ .fx-veil`));
+      assert.ok(css.includes(`sg-events/effects/${key}-v1.jpg`));
+      assert.match(css, /linear-gradient\(rgba\(5,9,12,\.82\), rgba\(5,9,12,\.9\)\)/);
+      assert.match(css, /--sg-text-faint: #b4b4b4/);
+    }
+    assert.ok(source('public/css/brand.css').includes(`.sg-swatch.fx-${key}`));
+    assert.ok(source('public/css/event-owner-editor.css').includes(`.owner-theme-${key}`));
+    for (const file of ['src/routes/public-hosts.js', 'src/lib/mailer.js']) {
+      assert.ok(source(file).includes(`sg-events/effects/${key}-v1.jpg`));
+    }
+  }
+  assert.match(source('src/routes/public.js'), /w_800,c_limit,fl_progressive/);
+  assert.match(source('src/routes/public.js'), /w_1280,c_limit,fl_progressive/);
+  assert.match(source('public/js/event-owner-editor.js'), /compactAmbientVideo && matchMedia\('\(max-width: 900px\)'\)\.matches \? 800 : 1280/);
+  assert.match(source('public/js/event-owner-editor.js'), /compactAmbientVideo \? 'du_20,' : ''/);
+});
+
+test('new background fallback email artwork never embeds video and respects uploaded artwork', () => {
+  const { renderRsvpConfirmationEmail } = require('../src/lib/mailer');
+  const rsvp = { name: 'Sample Guest', manage_token: 'sample-guest-list-link', wants_reminders: true };
+  for (const key of seasonalVideos) {
+    const event = { title: 'A sample evening', slug: 'sample-evening', background_theme: key, event_date: '2026-12-20', start_time: '19:00', timezone: 'America/Los_Angeles' };
+    const html = renderRsvpConfirmationEmail({ event, rsvp });
+    assert.ok(html.includes(`sg-events/effects/${key}-v1.jpg`));
+    assert.doesNotMatch(html, /<video|\.mp4|\.gif/);
+    const withArtwork = renderRsvpConfirmationEmail({ event: { ...event, cover_image_url: 'https://example.com/sample-art.jpg' }, rsvp });
+    assert.match(withArtwork, /https:\/\/example\.com\/sample-art\.jpg/);
+    assert.ok(!withArtwork.includes(`sg-events/effects/${key}-v1.jpg`));
+  }
+});
+
+function mountVideoFixture(theme, { mobile = false, reducedMotion = false, saveData = false } = {}) {
+  const js = source('public/js/public-event.js');
+  const start = js.indexOf('function mountVideoEffect() {');
+  const end = js.indexOf('\nmountVideoEffect();', start);
+  const state = { plays: 0, pauses: 0, crossfades: 0, removedAutoplay: false };
+  const video = {
+    paused: true, readyState: 0, loop: true,
+    classList: { add() {} },
+    addEventListener() {},
+    removeAttribute(name) { if (name === 'autoplay') state.removedAutoplay = true; },
+    play() { state.plays += 1; return Promise.resolve(); },
+    pause() { state.pauses += 1; }
+  };
+  const context = {
+    EVENT: { bgEffect: theme },
+    navigator: { connection: { saveData }, hardwareConcurrency: 8 },
+    matchMedia(query) { return { matches: query.includes('prefers-reduced-motion') ? reducedMotion : mobile, addEventListener() {} }; },
+    document: { hidden: false, querySelector() { return video; }, addEventListener() {}, removeEventListener() {} },
+    window: { SGSeamlessVideoLoop: { attach() { state.crossfades += 1; return { play: () => video.play(), pause: () => video.pause() }; } } }
+  };
+  vm.runInNewContext(`${js.slice(start, end)}\nmountVideoEffect();`, context);
+  return { state, video };
+}
+
+test('new seasonal videos use desktop crossfade, single-decoder mobile loops and motion/data-saving posters', () => {
+  for (const key of seasonalVideos) {
+    const desktop = mountVideoFixture(key);
+    assert.equal(desktop.state.plays, 1, `${key} desktop plays`);
+    assert.equal(desktop.state.crossfades, 1);
+    assert.equal(desktop.video.muted, true);
+    const phone = mountVideoFixture(key, { mobile: true });
+    assert.equal(phone.state.plays, 1, `${key} mobile plays`);
+    assert.equal(phone.state.crossfades, 0);
+    assert.equal(phone.video.loop, true);
+    for (const preference of [{ reducedMotion: true }, { saveData: true }]) {
+      const still = mountVideoFixture(key, preference);
+      assert.equal(still.state.plays, 0, `${key} preference keeps poster`);
+      assert.equal(still.state.pauses, 1);
+      assert.equal(still.state.crossfades, 0);
+      assert.equal(still.state.removedAutoplay, true);
+    }
+  }
 });
 
 test('TV Static strengthens typography without adding a theme overlay', () => {

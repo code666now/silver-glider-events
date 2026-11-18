@@ -1,13 +1,13 @@
 {
   "name": "silver-glider-events",
-  "version": "1.0.207",
+  "version": "1.0.208",
   "description": "Silver Glider Events — beautiful event pages, RSVPs, reminders",
   "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test",
+    "test": "node --test test/*.test.js test/integration/*.test.js",
     "test:unit": "node --test test/*.test.js",
     "test:integration": "node --test test/integration/*.test.js",
     "reconcile:identity": "node scripts/reconcile-canonical-relationships.js",

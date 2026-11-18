@@ -449,6 +449,54 @@ a { color: var(--sg-accent); text-decoration: none; }
   background-size: cover;
   background-position: center;
 }
+.sg-swatch.fx-rain-on-glass {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/rain-on-glass-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-gather-and-glow {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/gather-and-glow-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-candlelit-christmas {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/candlelit-christmas-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-snow-day {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/snow-day-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-midnight-toast {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/midnight-toast-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
+.sg-swatch.fx-starlit-celebration {
+  background-color: #090b0d;
+  background-image:
+    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/starlit-celebration-v1.jpg");
+  background-size: cover;
+  background-position: center;
+}
 .sg-swatch.fx-disco {
   background-color: #170d2d;
   background-image:

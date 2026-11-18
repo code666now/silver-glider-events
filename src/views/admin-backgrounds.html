@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Backgrounds — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-backgrounds.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="backgrounds">
+  <div class="sg-shell" data-admin-section="backgrounds">
+    <nav id="nav"></nav>
+    <main id="main-content" tabindex="-1">
+      <header class="backgrounds-head">
+        <p class="backgrounds-eyebrow">Super Admin</p>
+        <h1 class="sg-page-title">Backgrounds</h1>
+        <p class="sg-page-sub">Choose which backgrounds hosts can select. Turning one off won’t change events already using it.</p>
+      </header>
+      <p class="backgrounds-summary" id="backgrounds-summary" role="status">Loading backgrounds…</p>
+      <section class="backgrounds-error" id="backgrounds-error" hidden aria-label="Background loading error">
+        <p role="alert" id="backgrounds-error-message">We couldn’t load backgrounds.</p>
+        <button class="sg-btn sg-btn-ghost" id="backgrounds-retry" type="button">Try again</button>
+      </section>
+      <div class="backgrounds-grid" id="backgrounds-grid" aria-busy="true"></div>
+      <p class="backgrounds-note">Changes save automatically. Core defaults are always available so new events have a reliable starting point.</p>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/event-backgrounds.js"></script>
+  <script src="/js/admin-backgrounds.js"></script>
+</body>
+</html>

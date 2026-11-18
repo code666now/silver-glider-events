@@ -620,21 +620,73 @@ $('admission-paid').addEventListener('click', () => setAdmission('external_ticke
 // Background picker — gradients + generative/photo/video effects
 const THEMES = EventBackgrounds.keys;
 const EFFECTS = EventBackgrounds.effectKeys;
+let availableThemeKeys = null;
+let savedBackgroundTheme = null;
+let themeAvailabilityLoading = false;
+function themeIsAvailable(key) {
+  return key === savedBackgroundTheme || availableThemeKeys?.has(key) === true;
+}
+function updateThemeAvailability() {
+  document.querySelectorAll('#theme-picker .sg-swatch').forEach(swatch => {
+    const key = swatch.dataset.theme;
+    swatch.hidden = !themeIsAvailable(key);
+    // Existing swatches have explicit display styles; do not let those override hidden.
+    swatch.style.display = swatch.hidden ? 'none' : '';
+    const currentOnly = key === savedBackgroundTheme && availableThemeKeys && !availableThemeKeys.has(key);
+    swatch.dataset.currentBackground = currentOnly ? 'true' : 'false';
+  });
+  refreshThemeLabels();
+}
+async function loadThemeAvailability() {
+  if (themeAvailabilityLoading) return;
+  themeAvailabilityLoading = true;
+  const status = $('theme-availability-status');
+  const retry = $('theme-availability-retry');
+  const retryFocused = document.activeElement === retry;
+  if (retryFocused) {
+    status.setAttribute('tabindex', '-1');
+    status.focus();
+  }
+  retry.hidden = true;
+  retry.style.display = 'none';
+  status.setAttribute('role', 'status');
+  status.textContent = 'Loading available backgrounds…';
+  try {
+    const data = await api('/api/backgrounds');
+    if (!Array.isArray(data.backgrounds) || data.backgrounds.some(option => typeof option.active !== 'boolean')) throw new Error('Unavailable');
+    availableThemeKeys = new Set(data.backgrounds.filter(option => option.active && THEMES.includes(option.key)).map(option => option.key));
+    if (!availableThemeKeys.size) throw new Error('Unavailable');
+    status.textContent = savedBackgroundTheme && !availableThemeKeys.has(savedBackgroundTheme)
+      ? 'Your current background is no longer offered for new selections. You can keep it or choose another.' : retryFocused ? 'Background choices are ready.' : '';
+  } catch (_) {
+    availableThemeKeys = null;
+    status.setAttribute('role', 'alert');
+    status.textContent = 'We couldn’t load background choices. Your current design is unchanged.';
+    retry.hidden = false;
+    retry.style.display = '';
+  } finally {
+    themeAvailabilityLoading = false;
+    updateThemeAvailability();
+  }
+}
+$('theme-availability-retry').addEventListener('click', loadThemeAvailability);
 function themeLabel(key) {
   return EventBackgrounds.label(key, presentationMode);
 }
 function refreshThemeLabels() {
   document.querySelectorAll('#theme-picker .sg-swatch').forEach(swatch => {
     const label = themeLabel(swatch.dataset.theme);
-    swatch.title = label;
-    swatch.setAttribute('aria-label', `Use ${label} background`);
+    const currentOnly = swatch.dataset.currentBackground === 'true';
+    swatch.title = currentOnly ? `${label} — Current background` : label;
+    swatch.setAttribute('aria-label', `Use ${label} background${currentOnly ? ' (current background)' : ''}`);
     const name = swatch.querySelector('.sg-swatch-name');
-    if (name) name.textContent = label;
+    if (name) name.textContent = currentOnly ? `${label} · Current background` : label;
   });
   const selected = $('background_theme').value;
   $('theme-selected-name').textContent = `Selected: ${themeLabel(selected)}`;
 }
 function setTheme(key, { touched = false } = {}) {
+  if (touched && !themeIsAvailable(key)) return;
   if (touched) backgroundThemeTouched = true;
   $('background_theme').value = key;
   document.querySelectorAll('#theme-picker .sg-swatch').forEach(s => {
@@ -650,6 +702,8 @@ EventBackgrounds.options.forEach(({ key, group }) => {
   sw.type = 'button';
   sw.className = `sg-swatch ${group === 'effect' ? 'fx-' : 'bg-'}${key}`;
   sw.dataset.theme = key;
+  sw.hidden = true;
+  sw.style.display = 'none';
   sw.title = themeLabel(key);
   sw.setAttribute('aria-label', `Use ${themeLabel(key)} background`);
   const name = document.createElement('span');
@@ -660,6 +714,7 @@ EventBackgrounds.options.forEach(({ key, group }) => {
   $(group === 'effect' ? 'effect-picker' : 'gradient-picker').appendChild(sw);
 });
 setTheme('midnight');
+loadThemeAvailability();
 
 // ── Unified location search: venues and normal addresses share one flow ──
 const placeFields = ['venue_city', 'venue_state', 'venue_latitude', 'venue_longitude', 'google_place_id'];
@@ -1716,7 +1771,12 @@ if (editId) {
     if (hasSavedSecretCode) {
       $('secret-code-help').textContent = 'The current code is protected. Leave both fields blank to keep it, or enter a new matching code to replace it.';
     }
-    setTheme(THEMES.includes(event.background_theme) ? event.background_theme : 'midnight');
+    savedBackgroundTheme = THEMES.includes(event.background_theme) ? event.background_theme : 'midnight';
+    setTheme(savedBackgroundTheme);
+    updateThemeAvailability();
+    if (availableThemeKeys && !availableThemeKeys.has(savedBackgroundTheme)) {
+      $('theme-availability-status').textContent = 'Your current background is no longer offered for new selections. You can keep it or choose another.';
+    }
     setPresentationMode(event.presentation_mode === 'flyer' ? 'flyer' : 'standard');
     setCoverFitMode(event.cover_fit_mode || 'auto');
     if (event.flyer_image_url) setFlyer(event.flyer_image_url);
@@ -1772,6 +1832,8 @@ $('event-form').addEventListener('submit', async e => {
     const data = editId
       ? await api(`/api/events/${editId}`, { method: 'PUT', body })
       : await api('/api/events', { method: 'POST', body });
+    savedBackgroundTheme = data.event?.background_theme || body.background_theme;
+    updateThemeAvailability();
     if (adminEditorMode) {
       if (adminEditorFlyerFlow) {
         resetMobileFlowBaseline();
@@ -1790,6 +1852,7 @@ $('event-form').addEventListener('submit', async e => {
     }
     window.location.href = `/events/${data.event.id}/manage${editId ? '' : '?created=1'}`;
   } catch (err) {
+    if (err.code === 'background_unavailable') loadThemeAvailability();
     showError(err.message);
     btn.disabled = false;
     btn.textContent = adminEditorMode

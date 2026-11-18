@@ -75,6 +75,9 @@ function placesApiKey() {
 
 function handleEventEditorError(err, res, next) {
   if (err instanceof EventEditorError) {
+    if (err.code === 'background_unavailable') {
+      return res.status(err.status).json({ error: err.code, message: err.message });
+    }
     return res.status(err.status).json({ error: err.message });
   }
   return next(err);

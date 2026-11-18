@@ -1,8 +1,23 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 14, 2026 (Additional moderation-alert inboxes, v1.0.207)
+**Last updated:** November 18, 2026 (Curated background availability, v1.0.208)
 
-## Current release — Additional moderation-alert inboxes (v1.0.207)
+## Current release — Curated background availability (v1.0.208)
+
+User approved a minimal Super Admin Background Manager, six supplied videos as named curated effects, tests/deployment and deactivating Halloween / The Last Guest. Do not delete assets or alter existing event designs.
+
+- Catalogue remains `public/js/event-backgrounds.js`; rendering is independent of availability. Migration `085_background_availability.sql` seeds all 22 keys active, preserving prior behavior. Match Photo (`adaptive`), Midnight and Plaster are pinned defaults. Missing non-core availability rows fail closed.
+- Dedicated Super Admin page `/admin/backgrounds` and `/api/admin/backgrounds` reuse existing authorization, same-origin checks and audit log. Writes recheck operator status/session/role under a lock and update explicit booleans idempotently. Support/customer sessions cannot change availability.
+- Organizer `/api/backgrounds`, Done For You workspace and flyer preview all use the same state. New inactive selections return `background_unavailable` (409); saved inactive selections remain valid for that event. Row locking serializes new selection with activation changes. Duplication preserves the inherited design. No event rewriting, deletion, scheduling, upload UI or messaging changes.
+- New versioned Cloudinary IDs under `sg-events/effects/`: `rain-on-glass-v1`, `gather-and-glow-v1`, `candlelit-christmas-v1`, `snow-day-v1`, `midnight-toast-v1`, `starlit-celebration-v1`. Sources are silent, max 20 seconds and max 1280px; responsive delivery and still-poster fallback reuse existing behavior. Do not replace existing asset IDs. Existing email output stays unchanged; only new themes gain static poster/accent support.
+- The growth-design-review skill influenced explicit switch labels, confirmed save state, visible statuses, retry focus, readable overlays and still thumbnails. Mocked Chrome QA passed at 1440/390/320px; physical iPhone Safari is not established by viewport emulation.
+- `npm test` is explicitly scoped to `test/*.test.js` and `test/integration/*.test.js`; the unrelated untracked `silver-glider-marketing/` directory remains untouched and is excluded from Railway upload. Keep `.git-sha` uncommitted.
+
+**Verification:** `npm run check` passes **1,073/1,073**, zero failures/skips; static checks pass (319 JavaScript / 498 project files), with an idle local `sge_test` before the exclusive run. The scoped runner no longer counts helper-only files as tests. All 24 new Cloudinary media/poster delivery URLs return 200. Actual-template Standard desktop and Flyer 390px samples show muted playback, correct responsive source/native mobile looping and no overflow.
+
+**Release:** commit/tag 1.0.208, regenerate `.git-sha` after the release commit, deploy `railway up . --path-as-root --service silver-glider-events`, confirm both health/version/SHA endpoints, migration 085, deployed assets and previous worker removal, then push main/tag. Use a normally authenticated Super Admin session to deactivate only Halloween and The Last Guest; reload to verify. Do not bypass admin authentication or create test events/messages in production.
+
+## Previous release — Additional moderation-alert inboxes (v1.0.207)
 
 User requested an additional email destination for moderation alerts. Keep it **alerts-only**: do not add an operator, grant Support/Super Admin access, or change authentication. The existing `Review in Admin` link still requires an independently authorized admin session.
 

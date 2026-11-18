@@ -10,6 +10,7 @@ const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { listBackgroundAvailability, backgroundSelectionAllowed, UNAVAILABLE_MESSAGE } = require('../lib/background-availability');
 const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 const {
   TOKEN_TTL_SECONDS,
@@ -605,6 +606,7 @@ router.get('/api/flyer-preview', async (req, res, next) => {
   try {
     const preview = await readFlyerPreviewAccess(pool, req);
     if (!preview) return previewError(res, 404, 'preview_not_found', 'This preview has expired. Ask Silver Glider for a new link.');
+    const { backgrounds } = await listBackgroundAvailability(pool);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       preview: {
@@ -618,10 +620,12 @@ router.get('/api/flyer-preview', async (req, res, next) => {
         published: preview.status === 'published',
         ...(preview.status === 'published' ? { eventUrl: flyerEventUrl(preview) } : {})
       },
-      looks: EventBackgrounds.options.map(option => ({
+      looks: backgrounds.filter(option => option.active || option.key === preview.background_theme).map(option => ({
         key: option.key,
         label: EventBackgrounds.label(option.key, 'flyer'),
-        group: option.group
+        group: option.group,
+        active: option.active,
+        alwaysAvailable: option.alwaysAvailable
       }))
     });
   } catch (error) { next(error); }
@@ -641,6 +645,18 @@ router.post('/api/flyer-preview/look', async (req, res, next) => {
     if (!preview || !['preview_sent', 'changes_requested'].includes(preview.status) || preview.event_status !== 'draft') {
       await client.query('ROLLBACK');
       return previewError(res, 409, 'preview_not_editable', 'This preview can no longer be changed.');
+    }
+    const currentEvent = (await client.query(
+      `SELECT background_theme FROM events
+        WHERE id=$1 AND status='draft' AND presentation_mode='flyer' FOR UPDATE`, [preview.event_id]
+    )).rows[0];
+    if (!currentEvent) {
+      await client.query('ROLLBACK');
+      return previewError(res, 409, 'preview_not_editable', 'This flyer preview can no longer be changed.');
+    }
+    if (!await backgroundSelectionAllowed(client, backgroundTheme, currentEvent.background_theme)) {
+      await client.query('ROLLBACK');
+      return previewError(res, 409, 'background_unavailable', UNAVAILABLE_MESSAGE);
     }
     const updated = (await client.query(
       `UPDATE events

@@ -8,6 +8,7 @@ const { normalizeHex } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { SMS_CONSENT_VERSION } = require('./sms-consent');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { backgroundSelectionAllowed, UNAVAILABLE_MESSAGE } = require('./background-availability');
 const { eventEndAtSql } = require('./post-event');
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
@@ -453,6 +454,9 @@ function validateCreateEventInput(body) {
 
 async function createEventInTransaction(db, { organizerId, body }) {
   const { out, secretShowEnabled, secretCode } = validateCreateEventInput(body || {});
+  if (!await backgroundSelectionAllowed(db, out.background_theme || 'midnight')) {
+    throw editorError('background_unavailable', UNAVAILABLE_MESSAGE, 409);
+  }
   Object.assign(out, normalizeGuestExperienceSettings(body || {}));
   const secretCodeHash = secretCode ? await hashCode(secretCode) : null;
   const slug = makeEventSlug(out);
@@ -640,6 +644,10 @@ async function updateEventInTransaction(db, { organizerId, eventId, body }) {
   );
   if (!currentRows.length) throw editorError('event_not_found', 'Event not found', 404);
   const current = currentRows[0];
+  if (out.background_theme !== undefined &&
+      !await backgroundSelectionAllowed(db, out.background_theme, current.background_theme)) {
+    throw editorError('background_unavailable', UNAVAILABLE_MESSAGE, 409);
+  }
   const importantChanges = importantEventChanges(current, out);
   const notifyAttendees = isTrue(body?.notify_attendees) && current.status === 'published' && importantChanges.length > 0;
   const effectiveAdmission = out.admission_type || normalizeAdmissionType(current.admission_type) || ADMISSION_TYPES.FREE_RSVP;

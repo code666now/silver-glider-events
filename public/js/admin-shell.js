@@ -8,6 +8,7 @@
     '/admin/done-for-you': 'done-for-you',
     '/admin/hosts': 'hosts',
     '/admin/events': 'events',
+    '/admin/backgrounds': 'backgrounds',
     '/admin/ticketing': 'ticketing',
     '/admin/feedback': 'feedback',
     '/admin/invitations': 'invitations',
@@ -19,6 +20,7 @@
     ['done-for-you', '/admin/done-for-you', 'Done For You'],
     ['hosts', '/admin/hosts', 'Hosts'],
     ['events', '/admin/events', 'Events'],
+    ['backgrounds', '/admin/backgrounds', 'Backgrounds'],
     ['ticketing', '/admin/ticketing', 'Ticketing'],
     ['feedback', '/admin/feedback', 'Feedback'],
     ['invitations', '/admin/invitations', 'Invitations'],
@@ -41,7 +43,7 @@
   sidebar.innerHTML = `
     <span class="admin-sidebar-label">Workspace</span>
     <nav class="admin-sidebar-links">
-      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${key === 'team' || key === 'done-for-you' ? ' hidden' : ''}>${label}</a>`).join('')}
+      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${['team', 'done-for-you', 'backgrounds'].includes(key) ? ' hidden' : ''}>${label}</a>`).join('')}
     </nav>`;
 
   const content = document.createElement('div');
@@ -71,6 +73,11 @@
     const canManageDoneForYou = capabilities.manageDoneForYou === true;
     const doneForYouLink = sidebar.querySelector('[data-admin-link="done-for-you"]');
     if (doneForYouLink) doneForYouLink.hidden = !canManageDoneForYou;
+    const backgroundsLink = sidebar.querySelector('[data-admin-link="backgrounds"]');
+    if (backgroundsLink) backgroundsLink.hidden = capabilities.manageBackgrounds !== true;
+    if (active === 'backgrounds' && backgroundsLink && !backgroundsLink.hidden && window.matchMedia('(max-width: 960px)').matches) {
+      backgroundsLink.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
+    }
     const detail = { data, operator, capabilities: { ...capabilities, manageOperators: canManageOperators, manageDoneForYou: canManageDoneForYou } };
     window.dispatchEvent(new CustomEvent('admin-shell:ready', { detail }));
     return detail;

@@ -218,11 +218,12 @@
     }
   }
 
-  async function showLooks() {
+  async function showLooks(notice = '') {
     try {
-      const data = await load();
-      const options = data.looks.map(option => `<button class="flyer-preview-option${option.key === data.preview.backgroundTheme ? ' is-selected' : ''}" type="button" data-look="${escapeHtml(option.key)}" aria-pressed="${option.key === data.preview.backgroundTheme}"><strong>${escapeHtml(option.label)}</strong><br><small>${option.group === 'effect' ? 'Effect' : 'Background'}</small></button>`).join('');
+      const data = await load(true);
+      const options = data.looks.map(option => `<button class="flyer-preview-option${option.key === data.preview.backgroundTheme ? ' is-selected' : ''}" type="button" data-look="${escapeHtml(option.key)}" aria-pressed="${option.key === data.preview.backgroundTheme}"><strong>${escapeHtml(option.label)}</strong><br><small>${option.active === false && option.key === data.preview.backgroundTheme ? 'Current background' : option.group === 'effect' ? 'Effect' : 'Background'}</small></button>`).join('');
       open(`<h2 id="flyer-preview-dialog-title" tabindex="-1">Change the look</h2><p>Try a background or effect on your real event page. Your flyer and event details stay untouched.</p><div class="flyer-preview-options" role="group" aria-label="Event page looks">${options}</div><p class="flyer-preview-message" id="flyer-preview-message" role="status" aria-live="polite"></p>`);
+      if (notice) message(notice, true);
       body.querySelectorAll('[data-look]').forEach(button => button.addEventListener('click', async () => {
         const optionsRoot = body.querySelector('.flyer-preview-options');
         optionsRoot.setAttribute('aria-busy', 'true');
@@ -234,6 +235,10 @@
           dialog.close();
           window.location.reload();
         } catch (error) {
+          if (error.code === 'background_unavailable') {
+            await showLooks(error.message);
+            return;
+          }
           optionsRoot.removeAttribute('aria-busy');
           body.querySelectorAll('[data-look]').forEach(option => { option.disabled = false; });
           message(error.message, true);

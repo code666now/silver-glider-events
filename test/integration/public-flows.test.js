@@ -190,6 +190,11 @@ async function resetDatabase() {
   await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
+  await pool.query(
+    `INSERT INTO event_background_availability (background_key)
+     SELECT UNNEST($1::text[]) ON CONFLICT (background_key) DO UPDATE SET active=TRUE,updated_by_admin_operator_id=NULL`,
+    [require('../../public/js/event-backgrounds').keys]
+  );
   // Preferences intentionally survive real account deletion, so resetting the
   // isolated test database must also clear these independent address records.
   await pool.query('DELETE FROM email_optins');
@@ -7021,6 +7026,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
       deleteAccounts: true,
       manageFlyerIntake: true,
       manageOperators: true,
+      manageBackgrounds: true,
       moderateEvents: true
     }
   });
@@ -13715,6 +13721,12 @@ require('../support/legal-acceptance-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer, signInAccount, followSignInLink,
   lastDevEmail, responseCookie, resetRateLimits, attachVerifiedPhoneIdentity
+});
+
+require('../support/background-availability-cases')({
+  test, assert, pool, createEvent, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, createAdminOperator, signInAdminOperator,
+  createDoneForYouClient, openDoneForYouEditor, openFlyerPreviewSession, mailer
 });
 
 // Emergency moderation V1 ----------------------------------------------------

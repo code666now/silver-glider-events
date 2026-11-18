@@ -381,6 +381,10 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   cursor: pointer;
 }
 .owner-theme[hidden] { display: none; }
+.owner-theme-availability { margin: 0 0 12px; color: var(--sg-text-dim); font-size: 12px; line-height: 1.6; }
+.owner-theme-retry { min-height: 44px; margin-bottom: 12px; padding: 10px 14px; border: 1px solid var(--sg-border); border-radius: 12px; background: transparent; color: var(--sg-text); cursor: pointer; }
+.owner-theme-retry[hidden] { display: none; }
+.owner-theme-retry:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
 .owner-theme[aria-pressed="true"] { border-color: var(--sg-accent); background: rgba(28,197,190,.09); color: #fff; box-shadow: 0 0 0 1px rgba(28,197,190,.12); }
 .owner-theme-preview { width: 56px; height: 42px; border-radius: 9px; background: #151515 center/cover no-repeat; }
 .owner-theme-midnight,
@@ -430,6 +434,12 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-theme-disco { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/disco.jpg"); }
 .owner-theme-fog { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/fog.jpg"); }
 .owner-theme-golden-tide { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/golden-tide.jpg"); }
+.owner-theme-rain-on-glass { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/rain-on-glass-v1.jpg"); }
+.owner-theme-gather-and-glow { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/gather-and-glow-v1.jpg"); }
+.owner-theme-candlelit-christmas { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/candlelit-christmas-v1.jpg"); }
+.owner-theme-snow-day { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/snow-day-v1.jpg"); }
+.owner-theme-midnight-toast { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/midnight-toast-v1.jpg"); }
+.owner-theme-starlit-celebration { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/starlit-celebration-v1.jpg"); }
 .owner-theme-paper { background-image: url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_300/sg-events/textures/kraft-paper.jpg"); }
 .owner-theme-static { background-image: repeating-radial-gradient(circle,#777 0 1px,#171717 1px 3px); }
 .owner-theme-saloon { background-image: url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_300/sg-events/backgrounds/after-hours-saloon.png"); }

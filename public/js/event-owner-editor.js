@@ -44,10 +44,17 @@
     'color-static': 'sg-events/effects/color-static',
     'last-guest': 'sg-events/effects/the-last-guest',
     'golden-tide': 'sg-events/effects/golden-tide',
+    'rain-on-glass': 'sg-events/effects/rain-on-glass-v1',
+    'gather-and-glow': 'sg-events/effects/gather-and-glow-v1',
+    'candlelit-christmas': 'sg-events/effects/candlelit-christmas-v1',
+    'snow-day': 'sg-events/effects/snow-day-v1',
+    'midnight-toast': 'sg-events/effects/midnight-toast-v1',
+    'starlit-celebration': 'sg-events/effects/starlit-celebration-v1',
     disco: 'sg-events/effects/disco',
     fog: 'sg-events/effects/fog'
   };
-  const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static', 'golden-tide']);
+  const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static', 'golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration']);
+  const compactVideoEffects = new Set(['golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration']);
   const photoCategories = [
     ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
     ['🍂 Fall', 'autumn leaves cozy harvest warm'],
@@ -131,6 +138,8 @@
   });
   let saved = normalized(EVENT);
   let draft = clone(saved);
+  let availableThemeKeys = null;
+  let themeAvailabilityLoading = false;
   let backgroundThemeTouched = false;
   let activeTab = 'appearance';
   let activeMobileView = 'hub';
@@ -170,9 +179,64 @@
       throw new Error('Your session expired. Sign in again to continue.');
     }
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || 'The event could not be updated.');
+    if (!response.ok) {
+      const error = new Error(data.message || data.error || 'The event could not be updated.');
+      error.code = data.error;
+      throw error;
+    }
     return data;
   }
+
+  function themeIsAvailable(key) {
+    return key === saved.backgroundTheme || availableThemeKeys?.has(key) === true;
+  }
+
+  function updateThemeAvailability() {
+    document.querySelectorAll('[data-owner-theme]').forEach(button => {
+      const key = button.dataset.ownerTheme;
+      button.hidden = !themeIsAvailable(key);
+      const currentOnly = key === saved.backgroundTheme && availableThemeKeys && !availableThemeKeys.has(key);
+      const label = button.querySelector('[data-owner-theme-label]');
+      if (label) {
+        const name = draft.presentationMode === 'flyer' ? label.dataset.flyerLabel : label.dataset.standardLabel;
+        label.textContent = currentOnly ? `${name} · Current background` : name;
+      }
+    });
+  }
+
+  async function loadThemeAvailability() {
+    if (themeAvailabilityLoading) return;
+    themeAvailabilityLoading = true;
+    const status = $('owner-theme-availability');
+    const retry = $('owner-theme-retry');
+    const retryFocused = document.activeElement === retry;
+    if (retryFocused) {
+      status.setAttribute('tabindex', '-1');
+      status.focus();
+    }
+    retry.hidden = true;
+    status.setAttribute('role', 'status');
+    status.textContent = 'Loading available backgrounds…';
+    try {
+      const data = await request('/api/backgrounds');
+      if (!Array.isArray(data.backgrounds) || data.backgrounds.some(option => typeof option.active !== 'boolean')) throw new Error('Unavailable');
+      availableThemeKeys = new Set(data.backgrounds.filter(option => option.active && themeKeys.includes(option.key)).map(option => option.key));
+      if (!availableThemeKeys.size) throw new Error('Unavailable');
+      status.textContent = !availableThemeKeys.has(saved.backgroundTheme)
+        ? 'Your current background is no longer offered for new selections. You can keep it or choose another.' : retryFocused ? 'Background choices are ready.' : '';
+    } catch (_) {
+      availableThemeKeys = null;
+      status.setAttribute('role', 'alert');
+      status.textContent = 'We couldn’t load background choices. Your current design is unchanged.';
+      retry.hidden = false;
+    } finally {
+      themeAvailabilityLoading = false;
+      updateThemeAvailability();
+    }
+  }
+  $('owner-theme-retry').addEventListener('click', loadThemeAvailability);
+  updateThemeAvailability();
+  loadThemeAvailability();
 
   function isDirty() {
     return JSON.stringify(normalized(draft)) !== JSON.stringify(normalized(saved));
@@ -661,6 +725,7 @@
     document.querySelectorAll('[data-owner-theme-label]').forEach(label => {
       label.textContent = flyer ? label.dataset.flyerLabel : label.dataset.standardLabel;
     });
+    updateThemeAvailability();
     $('owner-mobile-designer-row').hidden = !(flyer && draft.flyerImageUrl);
   }
 
@@ -894,11 +959,11 @@
   }
 
   function videoEffectUrl(publicId, format) {
-    const goldenTide = publicId === videoEffects['golden-tide'];
-    const width = goldenTide && matchMedia('(max-width: 900px)').matches ? 800 : 1280;
+    const compactAmbientVideo = [...compactVideoEffects].some(theme => videoEffects[theme] === publicId);
+    const width = compactAmbientVideo && matchMedia('(max-width: 900px)').matches ? 800 : 1280;
     const transform = format === 'jpg'
       ? 'so_0,f_jpg,q_auto,w_1600'
-      : `${goldenTide ? 'du_20,' : ''}f_mp4,vc_h264,q_auto:eco,w_${width},c_limit,fl_progressive`;
+      : `${compactAmbientVideo ? 'du_20,' : ''}f_mp4,vc_h264,q_auto:eco,w_${width},c_limit,fl_progressive`;
     return `https://res.cloudinary.com/dhvavjgnw/video/upload/${transform}/${publicId}.${format}`;
   }
 
@@ -935,11 +1000,11 @@
       video.classList.remove('is-playing');
       return;
     }
-    const constrainedGoldenTide = theme === 'golden-tide' && (
+    const constrainedAmbientVideo = compactVideoEffects.has(theme) && (
       matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
       (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4)
     );
-    const seamlessLoop = seamlessVideoEffects.has(theme) && !constrainedGoldenTide
+    const seamlessLoop = seamlessVideoEffects.has(theme) && !constrainedAmbientVideo
       ? window.SGSeamlessVideoLoop?.attach(video)
       : null;
 
@@ -1615,6 +1680,7 @@
     }
   });
   document.querySelectorAll('[data-owner-theme]').forEach(button => button.addEventListener('click', () => {
+    if (!themeIsAvailable(button.dataset.ownerTheme)) return;
     backgroundThemeTouched = true;
     previewTheme(button.dataset.ownerTheme);
     syncDirtyState();
@@ -1812,6 +1878,7 @@
         }
         data = await request(`/api/events/${EVENT.id}`, { method: 'PUT', body });
         saved = clone(draft);
+        updateThemeAvailability();
       }
       if (publishing) {
         saveButton.textContent = 'Publishing…';
@@ -1826,6 +1893,7 @@
         : 'Event updated');
       location.reload();
     } catch (error) {
+      if (error.code === 'background_unavailable') loadThemeAvailability();
       saveButton.disabled = false;
       saveButton.textContent = primaryActionLabel();
       saveStatus.textContent = error.message;

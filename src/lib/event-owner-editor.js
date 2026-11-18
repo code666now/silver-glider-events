@@ -4,7 +4,7 @@ const EventBackgrounds = require('../../public/js/event-backgrounds');
 
 function themeButtons(group) {
   return EventBackgrounds.options.filter(option => option.group === group).map(({ key, label, flyerLabel }) => (
-    `<button class="owner-theme" type="button" data-owner-theme="${key}" aria-pressed="false">
+    `<button class="owner-theme" type="button" data-owner-theme="${key}" aria-pressed="false" hidden>
       <span class="owner-theme-preview owner-theme-${key}" aria-hidden="true"></span>
       <span data-owner-theme-label data-standard-label="${label}" data-flyer-label="${flyerLabel || label}">${label}</span>
     </button>`
@@ -217,6 +217,8 @@ function renderOwnerEditor(event) {
             </div>
 
             <div class="owner-theme-picker" id="owner-theme-picker" data-owner-mobile-appearance-section="effects">
+              <p class="owner-theme-availability" id="owner-theme-availability" role="status">Loading available backgrounds…</p>
+              <button class="owner-theme-retry" id="owner-theme-retry" type="button" hidden>Retry backgrounds</button>
               <div class="owner-theme-group owner-gradient-group">
                 <h4>Backgrounds</h4>
                 <div class="owner-theme-grid">${themeButtons('background')}</div>

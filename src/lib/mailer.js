@@ -30,6 +30,12 @@ const EVENT_THEME_ACCENTS = Object.freeze({
   'liquid-stardust': '#8557D6',
   'color-static': '#D94C9B',
   'golden-tide': '#C8A86B',
+  'rain-on-glass': '#527586',
+  'gather-and-glow': '#C78539',
+  'candlelit-christmas': '#B96F35',
+  'snow-day': '#6E9CAF',
+  'midnight-toast': '#C19D58',
+  'starlit-celebration': '#AD73B8',
   saloon: '#B9773F'
 });
 
@@ -118,6 +124,12 @@ const EMAIL_EFFECT_POSTERS = Object.freeze({
   'color-static': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/color-static.jpg',
   'last-guest': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/the-last-guest.jpg',
   'golden-tide': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/golden-tide.jpg',
+  'rain-on-glass': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/rain-on-glass-v1.jpg',
+  'gather-and-glow': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/gather-and-glow-v1.jpg',
+  'candlelit-christmas': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/candlelit-christmas-v1.jpg',
+  'snow-day': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/snow-day-v1.jpg',
+  'midnight-toast': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/midnight-toast-v1.jpg',
+  'starlit-celebration': 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/starlit-celebration-v1.jpg',
   disco: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/disco.jpg',
   fog: 'https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1240,c_limit/sg-events/effects/fog.jpg',
   saloon: 'https://res.cloudinary.com/dhvavjgnw/image/upload/sg-events/backgrounds/after-hours-saloon.png'

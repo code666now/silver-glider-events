@@ -105,6 +105,56 @@
     .event-bg.fx-golden-tide ~ .fx-veil {
       background: linear-gradient(rgba(5,19,20,.72), rgba(5,19,20,.82));
     }
+    /* Curated seasonal loops: still fallback and bounded contrast over bright frames. */
+    .event-bg.fx-rain-on-glass,
+    .event-bg.fx-gather-and-glow,
+    .event-bg.fx-candlelit-christmas,
+    .event-bg.fx-snow-day,
+    .event-bg.fx-midnight-toast,
+    .event-bg.fx-starlit-celebration {
+      animation: none;
+      filter: none;
+      inset: 0;
+      background-color: #090b0d;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    .event-bg.fx-rain-on-glass {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/rain-on-glass-v1.jpg");
+    }
+    .event-bg.fx-gather-and-glow {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/gather-and-glow-v1.jpg");
+    }
+    .event-bg.fx-candlelit-christmas {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/candlelit-christmas-v1.jpg");
+    }
+    .event-bg.fx-snow-day {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/snow-day-v1.jpg");
+    }
+    .event-bg.fx-midnight-toast {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/midnight-toast-v1.jpg");
+    }
+    .event-bg.fx-starlit-celebration {
+      background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/starlit-celebration-v1.jpg");
+    }
+    .event-bg.fx-rain-on-glass ~ .fx-veil,
+    .event-bg.fx-gather-and-glow ~ .fx-veil,
+    .event-bg.fx-candlelit-christmas ~ .fx-veil,
+    .event-bg.fx-snow-day ~ .fx-veil,
+    .event-bg.fx-midnight-toast ~ .fx-veil,
+    .event-bg.fx-starlit-celebration ~ .fx-veil {
+      background: linear-gradient(rgba(5,9,12,.82), rgba(5,9,12,.9));
+    }
+    .event-bg.fx-rain-on-glass ~ .layout,
+    .event-bg.fx-gather-and-glow ~ .layout,
+    .event-bg.fx-candlelit-christmas ~ .layout,
+    .event-bg.fx-snow-day ~ .layout,
+    .event-bg.fx-midnight-toast ~ .layout,
+    .event-bg.fx-starlit-celebration ~ .layout {
+      --sg-text-dim: #b4b4b4;
+      --sg-text-faint: #b4b4b4;
+    }
     .event-bg.fx-disco {
       background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/disco.jpg");
     }

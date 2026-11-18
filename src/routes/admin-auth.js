@@ -312,6 +312,7 @@ router.get('/api/admin/auth/me', requireAdmin, (req, res) => {
     deleteAccounts: dedicatedSuperAdmin,
     manageFlyerIntake: dedicatedSuperAdmin,
     manageOperators: dedicatedSuperAdmin,
+    manageBackgrounds: dedicatedSuperAdmin,
     moderateEvents: dedicatedSuperAdmin
   };
   res.json({

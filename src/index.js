@@ -77,6 +77,7 @@ app.use(require('./routes/auth'));
 app.use(require('./routes/legal-acceptance'));
 app.use(require('./routes/admin-auth'));
 app.use(require('./routes/admin-operators'));
+app.use(require('./routes/backgrounds'));
 app.use(require('./routes/flyer-intake'));
 app.use(require('./routes/admin-done-for-you'));
 app.use('/admin-editor', require('./routes/admin-editor'));
@@ -273,6 +274,7 @@ app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAd
 });
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/events', requireAdmin, view('admin-events.html'));
+app.get('/admin/backgrounds', requireAdmin, requireAdmin.requireSuperAdmin, view('admin-backgrounds.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));

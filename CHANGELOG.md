@@ -2,6 +2,25 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.208
+
+Released November 18, 2026.
+
+### Curated background availability and six new video looks
+
+* Add Super Admin → Backgrounds with still previews, accessible Active/Inactive switches, persistent availability and existing admin audit records. The core Match Photo, Midnight and Plaster defaults remain available.
+* Boot migration `085_background_availability.sql` starts all 22 backgrounds active. Availability controls new choices, not rendering: existing Standard/Flyer events, their editors and duplicated designs retain an inactive saved background. Stale new selections are rejected server-side, including Done For You and flyer-preview paths.
+* Add **Rain on Glass**, **Gather & Glow**, **Candlelit Christmas**, **Snow Day**, **Midnight Toast** and **Starlit Celebration** using six optimized, silent, versioned Cloudinary assets. Reuse mobile playback and reduced-motion/data-saving poster fallbacks; preserve all existing media and designs.
+* Keep background selection fail-closed when availability cannot load, with keyboard-safe retry states. No changes to RSVP, notification delivery, SMS credits or existing email designs.
+* Scope the test command to this application's unit/integration tests and exclude the unrelated local marketing project from Railway upload without changing that project.
+
+### Verification
+
+* `npm run check` passes **1,073/1,073** tests with zero failures/skips; static checks pass (319 JavaScript / 498 project files). The local `sge_test` database was idle before the exclusive run. The scoped runner excludes helper-only files previously counted as test entries.
+* Added authorization, persistence/audit, concurrent-toggle, stale-selection, inactive-design preservation, six-background Standard/Flyer save/render, keyboard-state and video-fallback regression coverage.
+* Mocked desktop and mobile browser checks cover 1440px, 390px and 320px layouts, keyboard switches, save failures/retry and retained focus. Physical iPhone Safari remains a manual device check.
+* All 24 new Cloudinary delivery URLs (mobile/desktop videos, thumbnails and posters) return HTTP 200. Actual-template local browser samples verified muted video playback, readable backgrounds and no overflow on desktop Standard and 390px Flyer.
+
 ## 1.0.207
 
 Released November 14, 2026.

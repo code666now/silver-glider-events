@@ -6,6 +6,7 @@ const requireAdmin = require('../middleware/requireAdmin');
 const { requireDedicatedAdmin } = require('../middleware/requireAdmin');
 const requireAdminEditorWorkspace = require('../middleware/requireAdminEditorWorkspace');
 const { clientIp } = require('../lib/rate-limit');
+const { listBackgroundAvailability } = require('../lib/background-availability');
 const { outboundDeliveryLockKey } = require('../lib/outbound-account-status');
 const { commerceAdmissionEnabled } = require('../lib/commerce-client');
 const unsplash = require('../lib/unsplash');
@@ -48,6 +49,11 @@ let eventUploads = {
 };
 
 router.use(requireAdmin, requireDedicatedAdmin, requireAdminEditorWorkspace);
+
+router.get('/api/backgrounds', async (req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  try { res.json(await listBackgroundAvailability(pool)); } catch (error) { next(error); }
+});
 
 function requestContext(req) {
   return {
