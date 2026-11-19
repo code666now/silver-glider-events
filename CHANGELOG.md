@@ -2,6 +2,20 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.213
+
+Released November 19, 2026.
+
+### Follow after an RSVP
+
+* Show one optional **Follow [host]** button in the existing Standard and Flyer confirmations, including a new signed-in Going RSVP. Existing followers never see the prompt, and reopening or editing a one-tap RSVP does not show it again.
+* Keep email checked for new followers with a verified email. Text announcements require an explicit choice even when a phone is already verified. Existing followers keep their saved preferences.
+* Give confirmed guests a shortcut to their existing event email reminder settings. RSVPs stay one tap, and event reminders, announcements, and SMS credits keep their existing rules.
+
+### Verification
+
+* `npm run check` passed **1,110/1,110** tests with no failures or skips. Nine isolated Chrome scenarios at desktop and phone widths verified new and returning RSVP flows, saved Follow preferences, and optional phone verification without sending messages.
+
 ## 1.0.212
 
 Released November 18, 2026.

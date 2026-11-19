@@ -113,7 +113,7 @@ test('host following is offered after RSVP and remains separate from event remin
   assert.match(publicRoutes, /id=\"sms_optin\"/);
   assert.match(publicRoutes, /class="channel-consent-copy"/);
   assert.match(publicRoutes, /id="rsvp-follow-host" hidden/);
-  assert.match(publicRoutes, /Choose email, text, or both for new-event announcements/);
+  assert.match(publicRoutes, /Hear about upcoming events\. Texts are optional\./);
   assert.match(publicClient, /organizer_optin: false/);
   assert.match(publicClient, /prepareFollowAfterRsvp/);
 });

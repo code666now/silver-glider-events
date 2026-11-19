@@ -182,7 +182,8 @@ test('RSVP keeps identity and event-reminder controls visible while Follow stays
   }
   const route = source('src/routes/public.js');
   assert.match(route, /id="rsvp-follow-host" hidden/);
-  assert.match(route, /Your RSVP reminders stay the same/);
+  assert.match(route, /id="rsvp-confirmation-email-settings" hidden>Manage email reminders/);
+  assert.match(source('public/js/follow-flow.js'), /Your RSVP confirmations and event reminders stay separate/);
 });
 
 test('expanded RSVP forms can be collapsed without resetting the shared form', () => {

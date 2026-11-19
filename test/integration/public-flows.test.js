@@ -1737,9 +1737,9 @@ test('RSVP SMS consent requires an enabled reminder and valid phone, then powers
   const publicPage = await fetch(`${baseUrl}/e/${event.slug}`);
   const publicHtml = await publicPage.text();
   assert.match(publicHtml, /Text me a reminder the day before this event from Test Host through Silver Glider\./);
-  assert.match(publicHtml, /<section class="rsvp-follow-host" id="rsvp-follow-host" hidden/);
-  assert.match(publicHtml, /Follow Test Host/);
-  assert.match(publicHtml, /Choose email, text, or both for new-event announcements\./);
+  assert.match(publicHtml, /id="rsvp-follow-host" hidden/);
+  assert.match(publicHtml, /id="rsvp-follow-host-button"[^>]*>Follow Test Host/);
+  assert.match(publicHtml, /Hear about upcoming events\. Texts are optional\./);
   assert.match(publicHtml, /Consent isn’t required to RSVP\./);
   assert.doesNotMatch(publicHtml, /id="sms_optin"[^>]*checked/);
   assert.doesNotMatch(publicHtml, /id="organizer_optin"[^>]*checked/);
