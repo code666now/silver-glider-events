@@ -119,6 +119,36 @@ test('host recap delivery preserves one-click preferences and provider idempoten
   assert.match(sent.text, /See your night:/);
 });
 
+test('host recap adds aggregate impact to HTML and plain text with the Familiar Faces action first', () => {
+  const email = buildHostRecapEmail({ event, stats, impact: {
+    newFollowers: 3, activeFollowers: 18, attributionStartedAt: '2026-10-24T00:00:00.000Z',
+    uniqueTicketClicks: 9, totalTicketClicks: 13, familiarFaces: 5, hasUpcomingInviteTarget: true
+  } });
+  for (const content of [email.html, email.text]) {
+    for (const label of ['New followers from this event', 'Current host followers', 'Approx. unique external ticket clicks',
+      'Past guests you may be able to invite', 'Ticket clicks show interest, not purchases', 'Your Familiar Faces are growing', 'October 24, 2026']) {
+      assert.ok(content.includes(label), label);
+    }
+    assert.ok(content.indexOf('View Your Familiar Faces') < content.indexOf('See your night'));
+    assert.match(content, /\/events\/42\/manage\?postEvent=familiar-faces/);
+    assert.doesNotMatch(content, /Create an event|marketing subscriber/);
+  }
+  assert.match(email.text, /Approx\. unique external ticket clicks: 9/);
+  assert.match(email.text, /23 RSVP submissions/);
+});
+
+test('host recap keeps the original action for no eligible people and does not turn unknown metrics into zeroes', () => {
+  const email = buildHostRecapEmail({ event, stats, impact: {
+    newFollowers: null, activeFollowers: 0, uniqueTicketClicks: null, familiarFaces: 0, hasUpcomingInviteTarget: false
+  } });
+  for (const content of [email.html, email.text]) {
+    assert.match(content, /See your night/);
+    assert.match(content, /Create an event/);
+    assert.doesNotMatch(content, /View Your Familiar Faces|unique external ticket clicks|New followers from this event/);
+  }
+  assert.match(email.text, /Current host followers: 0/);
+});
+
 test('thank-you preview escapes host copy and offers only the existing Host Page', () => {
   const email = buildPostEventThankYouEmail({
     event,

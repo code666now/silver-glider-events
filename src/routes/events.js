@@ -31,6 +31,9 @@ const { eventEndAtSql } = require('../lib/post-event');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
 const { invitationSelectionKey } = require('../lib/invitation-selection-key');
 const {
+  confirmedPrimaryGuestInviteSql, familiarInviteSourcePastSql, upcomingFamiliarInviteTargetSql
+} = require('../lib/familiar-invitation-eligibility');
+const {
   automaticFollowerEmailEnabled, allowAutomaticFollowerEmailForPublication
 } = require('../lib/automatic-follower-email-config');
 
@@ -640,12 +643,7 @@ async function selectedFamiliarFaceRecipients(queryable, { organizerId, sourceEv
         FROM rsvps r
         JOIN events source ON source.id=r.event_id
         WHERE source.id=$1 AND source.organizer_id=$2
-          AND r.id=ANY($3::int[]) AND r.status='confirmed'
-          AND NULLIF(TRIM(r.email),'') IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1 FROM follower_optouts fo
-             WHERE fo.organizer_id=$2 AND LOWER(fo.email)=LOWER(r.email)
-          )`,
+          AND r.id=ANY($3::int[]) AND ${confirmedPrimaryGuestInviteSql('r', '$2')}`,
       [sourceEventId, organizerId, rsvpIds]
     );
     for (const row of rows) recipients.push({
@@ -836,9 +834,8 @@ async function familiarFaceRows(eventId, organizerId) {
 router.get('/api/events/:id/familiar-faces', async (req, res, next) => {
   try {
     const { rows: eventRows } = await pool.query(
-      `SELECT id, status,
-              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
-         FROM events WHERE id=$1 AND organizer_id=$2`,
+      `SELECT id, status, ${familiarInviteSourcePastSql('source')} AS is_past
+         FROM events source WHERE id=$1 AND organizer_id=$2`,
       [req.params.id, req.organizer.id]
     );
     if (!eventRows.length) return res.status(404).json({ error: 'Event not found' });
@@ -943,9 +940,8 @@ router.post('/api/events/:id/familiar-faces/preview', async (req, res, next) => 
     if (!faceIds.length) return res.status(400).json({ error: 'Choose at least one person' });
     if (faceIds.length > 500) return res.status(400).json({ error: 'Choose no more than 500 people at a time' });
     const { rows: sourceRows } = await pool.query(
-      `SELECT id, title, status,
-              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
-         FROM events WHERE id=$1 AND organizer_id=$2`,
+      `SELECT id, title, status, ${familiarInviteSourcePastSql('source')} AS is_past
+         FROM events source WHERE id=$1 AND organizer_id=$2`,
       [req.params.id, req.organizer.id]
     );
     if (!sourceRows.length) return res.status(404).json({ error: 'Event not found' });
@@ -962,10 +958,8 @@ router.post('/api/events/:id/familiar-faces/preview', async (req, res, next) => 
     const { rows: targets } = await pool.query(
       `SELECT id, title, event_date, start_time, timezone, presentation_mode,
               flyer_image_url, cover_image_url
-         FROM events
-        WHERE organizer_id=$1 AND id<>$2 AND status='published' AND archived_at IS NULL
-          AND secret_show_enabled=FALSE
-          AND event_date >= (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date
+         FROM events target
+        WHERE organizer_id=$1 AND id<>$2 AND ${upcomingFamiliarInviteTargetSql('target')}
         ORDER BY event_date, start_time, id`,
       [req.organizer.id, sourceRows[0].id]
     );
@@ -1002,9 +996,8 @@ router.post('/api/events/:id/familiar-faces/invite', async (req, res, next) => {
 
     await client.query('BEGIN');
     const { rows: sourceRows } = await client.query(
-      `SELECT id, title, status,
-              event_date < (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date AS is_past
-         FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
+      `SELECT id, title, status, ${familiarInviteSourcePastSql('source')} AS is_past
+         FROM events source WHERE id=$1 AND organizer_id=$2 FOR UPDATE`,
       [req.params.id, req.organizer.id]
     );
     if (!sourceRows.length) {

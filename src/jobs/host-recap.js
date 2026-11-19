@@ -4,6 +4,7 @@ const { sendHostRecap } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { emailOptedOut, emailPreferenceUrls } = require('../lib/email-preferences');
 const { eventEndAtSql, loadPostEventContext } = require('../lib/post-event');
+const { loadPostEventImpact } = require('../lib/post-event-impact');
 
 let _running = false;
 
@@ -91,6 +92,11 @@ async function sendRecapFor(event) {
   }
   if (!await claimRecap(event.id)) return false;
   try {
+    // An unavailable impact snapshot does not suppress the existing recap.
+    const impact = await loadPostEventImpact(pool, { eventId: event.id, organizerId: event.organizer_id }).catch(() => {
+      console.warn('[host-recap] impact unavailable', { eventId: event.id });
+      return null;
+    });
     const delivery = await withActiveHostAccount(
       pool,
       event.organizer_id,
@@ -105,6 +111,7 @@ async function sendRecapFor(event) {
           },
           ...preferences,
           stats: context.stats,
+          impact,
           idempotencyKey: `sge-host-recap-v2-${event.id}`
         });
       }

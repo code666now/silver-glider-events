@@ -12983,6 +12983,8 @@ test('the morning after, the host gets one recap with the returning number', asy
   assert.match(recap.text, /2 marked going/);
   assert.match(recap.text, /1 returning faces/);
   assert.match(recap.html, /See your night/);
+  assert.match(recap.html, /View Your Familiar Faces/);
+  assert.match(recap.text, /Past guests you may be able to invite: 2/);
   assert.equal(mailer.devOutbox.some(message => message.to === legacyEmail), false,
     'the unverified compatibility email never receives the recap');
 
@@ -12994,6 +12996,56 @@ test('the morning after, the host gets one recap with the returning number', asy
   )).rows;
   assert.ok(claims.find(row => row.id === last.id).host_recap_sent_at);
   assert.equal(claims.find(row => row.id === quiet.id).host_recap_sent_at, null);
+});
+
+test('event impact in the private recap counts unique invite candidates without converting RSVPs into consent', async () => {
+  const event = await createEvent({ slug: 'impact-recap-past', event_date: '2021-01-01', allow_guests: true });
+  const inserted = (await pool.query("INSERT INTO organizers(email,name) VALUES ('other-impact-host@example.test','Other Host') RETURNING id")).rows[0];
+  await pool.query("INSERT INTO users(id,name) VALUES ($1,'Other Host') ON CONFLICT (id) DO NOTHING", [inserted.id]);
+  const other = (await pool.query('UPDATE organizers SET user_id=id WHERE id=$1 RETURNING id,user_id', [inserted.id])).rows[0];
+  await recordLegalAcceptance(pool, other);
+  await createRsvp(event.id, { email: 'first-identity@example.test', user_id: other.user_id, guest_first_name: 'Guest', guest_email: 'named-plus-one@example.test' });
+  await createRsvp(event.id, { email: 'second-identity@example.test', user_id: other.user_id });
+  await createRsvp(event.id, { email: 'opted-out@example.test', organizer_optin: true });
+  await createRsvp(event.id, { email: 'declined@example.test', status: 'cancelled' });
+  await createRsvp(event.id, { email: 'invalid-email' });
+  await pool.query("INSERT INTO follower_optouts (organizer_id,email) VALUES ($1,'opted-out@example.test')", [organizerId]);
+  const cookie = id => ({ cookie: `sge_session=${signSession(id)}` });
+  const url = `${baseUrl}/api/events/${event.id}/post-event`;
+  const response = await fetch(url, { headers: cookie(organizerId) });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control'), /private, no-store/);
+  const { stats: initialStats, impact } = await response.json();
+  assert.equal(initialStats.additionalGuests, 1);
+  assert.equal(impact.familiarFaces, 1);
+  assert.equal(impact.activeFollowers, 0);
+  assert.equal(impact.uniqueTicketClicks, null);
+  assert.equal(impact.hasUpcomingInviteTarget, false);
+  assert.doesNotMatch(JSON.stringify(impact), /@example|identity|email/i);
+  assert.equal((await fetch(url, { headers: cookie(other.id) })).status, 404);
+  assert.equal((await fetch(url)).status, 401);
+  await createEvent({ slug: 'impact-recap-future', event_date: '2099-01-01' });
+  const updated = await (await fetch(url, { headers: cookie(organizerId) })).json();
+  assert.equal(updated.impact.hasUpcomingInviteTarget, true);
+  assert.equal(updated.impact.familiarFaces, 1);
+});
+
+test('event impact Familiar Faces can preview invitations from an already ended morning event on the same date', async () => {
+  const { rows: [local] } = await pool.query(
+    `SELECT name AS timezone,(NOW() AT TIME ZONE name)::date::text AS day FROM pg_timezone_names
+      WHERE EXTRACT(HOUR FROM NOW() AT TIME ZONE name) BETWEEN 9 AND 19
+      ORDER BY name LIMIT 1`
+  );
+  const event = await createEvent({ slug: 'impact-morning-event', timezone: local.timezone, event_date: local.day, start_time: '00:30', end_time: '01:30' });
+  const target = await createEvent({ slug: 'impact-future-invite', event_date: '2099-01-01' });
+  const guest = await createRsvp(event.id, { wants_reminders: false, organizer_optin: false });
+  const headers = { cookie: `sge_session=${signSession(organizerId)}`, 'Content-Type': 'application/json' };
+  const root = `${baseUrl}/api/events/${event.id}/familiar-faces`;
+  const guests = await (await fetch(root, { headers })).json();
+  assert.equal(guests.canStartInvitation, true);
+  const response = await fetch(`${root}/preview`, { method: 'POST', headers, body: JSON.stringify({ faceIds: [`rsvp:${guest.id}`] }) });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).events.find(item => item.id === target.id).eligibleCount, 1);
 });
 
 test('event management lifecycle uses event-local dates and recorded outreach results', async () => {

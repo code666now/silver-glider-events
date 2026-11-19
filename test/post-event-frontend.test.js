@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const postEvent = require('../public/js/post-event');
 const root = path.join(__dirname, '..');
@@ -69,6 +70,86 @@ test('post-event state keeps RSVP, plus-one, returning, new and comment counts s
   });
   assert.equal(state.draw.estimatedTurnout, 58);
   assert.equal(state.thankYou.eligibleCount, 19);
+});
+
+test('post-event impact distinguishes zero metrics, unavailable historical data, and missing destinations', async () => {
+  const dom = postEventDom();
+  let state = { ended: true, impact: {
+    newFollowers: 0, activeFollowers: 1234, uniqueTicketClicks: 7, totalTicketClicks: 9,
+    familiarFaces: 3, attributionStartedAt: '2030-10-31T19:00:00.000Z', hasUpcomingInviteTarget: false
+  } };
+  try {
+    const experience = postEvent.create({ eventId: '42', request: async () => state });
+    await experience.load();
+    assert.equal(dom.get('post-event-impact').hidden, false);
+    assert.equal(dom.get('post-event-impact-new-followers-row').hidden, false);
+    assert.equal(dom.get('post-event-impact-new-followers').textContent, '0');
+    assert.equal(dom.get('post-event-impact-active-followers').textContent, '1,234');
+    assert.equal(dom.get('post-event-impact-unique-clicks').textContent, '7');
+    assert.equal(dom.get('post-event-impact-total-clicks').textContent, '9');
+    assert.equal(dom.get('post-event-impact-familiar-faces').textContent, '3');
+    assert.match(dom.get('post-event-impact-attribution-note').textContent, /first follows from this event by people who still follow you/);
+    assert.match(dom.get('post-event-impact-attribution-note').textContent, /Event follows are tracked from/);
+    assert.equal(dom.get('post-event-impact-ticket-note').hidden, false);
+    assert.equal(dom.get('post-event-impact-next').hidden, false);
+
+    state = { ended: true, impact: { newFollowers: null, activeFollowers: 0, uniqueTicketClicks: null,
+      totalTicketClicks: null, familiarFaces: -1, hasUpcomingInviteTarget: true } };
+    await experience.load();
+    assert.equal(dom.get('post-event-impact-new-followers-row').hidden, true);
+    assert.equal(dom.get('post-event-impact-new-followers').textContent, '');
+    assert.equal(dom.get('post-event-impact-active-followers').textContent, '0');
+    assert.equal(dom.get('post-event-impact-unique-clicks-row').hidden, true);
+    assert.equal(dom.get('post-event-impact-familiar-faces-row').hidden, true);
+    assert.equal(dom.get('post-event-impact-ticket-note').hidden, true);
+    assert.equal(dom.get('post-event-impact-next').hidden, true);
+
+    state = { ended: false, impact: { activeFollowers: 5, hasUpcomingInviteTarget: false } };
+    await experience.load();
+    assert.equal(dom.get('post-event-impact').hidden, true);
+    assert.equal(dom.get('post-event-impact-next').hidden, true);
+
+    state = { ended: true };
+    await experience.load();
+    assert.equal(dom.get('post-event-impact').hidden, true);
+    assert.equal(dom.get('post-event-impact-next').hidden, true);
+  } finally { dom.restore(); }
+
+  const view = read('src/views/event-manage.html');
+  assert.match(view, /Approximate unique external ticket clicks/);
+  assert.match(view, /Clicks show interest, not confirmed ticket purchases/);
+  assert.match(view, /Past guests you may be able to invite/);
+  assert.match(view, /id="post-event-impact-next" hidden[^<]*>[^<]*<a href="\/events\/new">Create an event/);
+});
+
+test('Familiar Faces recap links open the existing authenticated guest view without selecting or sending', () => {
+  const manage = read('public/js/manage.js');
+  const handler = manage.slice(manage.indexOf('function openPostEventGuests('), manage.indexOf('async function loadPostEventExperience('));
+  for (const scenario of [
+    { mobile: false, eligible: true, destination: 'familiar-faces', calls: ['guest-scroll', 'guest-focus'] },
+    { mobile: true, eligible: true, destination: 'familiar-faces', calls: ['guests:replace', 'guest-scroll', 'guest-focus'] },
+    { mobile: true, eligible: false, destination: 'familiar-faces', calls: [] },
+    { mobile: false, eligible: true, destination: 'recap', calls: ['recap-scroll', 'recap-focus'] },
+    { mobile: true, eligible: true, destination: 'thank-you', calls: ['promote:replace', 'dialog'] }
+  ]) {
+    const calls = [];
+    const nodes = {
+      'familiar-faces-title': { setAttribute() {}, focus: () => calls.push('guest-focus') },
+      'manage-guest-section': { scrollIntoView: () => calls.push('guest-scroll') },
+      'lifecycle-recap': { setAttribute() {}, scrollIntoView: () => calls.push('recap-scroll'), focus: () => calls.push('recap-focus') }
+    };
+    const context = vm.createContext({
+      $: id => nodes[id], URLSearchParams, location: { search: `?postEvent=${scenario.destination}` },
+      postEventDeepLinkHandled: false, isPostEventEligible: () => scenario.eligible,
+      postEventExperience: null, mobileManageLayout: { matches: scenario.mobile },
+      setMobileManageView: (view, options) => calls.push(`${view}:${options.historyMode}`),
+      window: { matchMedia: () => ({ matches: true }), requestAnimationFrame: fn => fn() }
+    });
+    vm.runInContext(`${handler}\nopenPostEventDeepLink();`, context);
+    context.postEventExperience = { openDialog: () => calls.push('dialog') };
+    vm.runInContext('openPostEventDeepLink({ recapLoaded: true });', context);
+    assert.deepEqual(calls, scenario.calls);
+  }
 });
 
 test('thank-you delivery language reports provider acceptance, never inbox delivery', () => {

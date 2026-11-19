@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.216
+
+Released November 19, 2026.
+
+* Attribute newly created follows only to a verified event page source and separate the current active following from people the event brought in. Do not backfill uncertain older attribution or change notification permissions.
+* Show the external seller below existing ticket links and count total and approximate unique clicks without interrupting the link. Clicks are not purchases. Silver Glider Tickets checkout is unchanged.
+* Add Event Impact to the private Manage recap and the existing recap email. View Familiar Faces or create a next event without selecting recipients or sending invitations. Preserve existing recap timing and eligibility.
+* `npm run check` passed **1,149/1,149** tests. Sixteen isolated phone- and desktop-width browser checks verified the recap and ticket links without sending mail or making purchases.
+
 ## 1.0.215
 
 Released November 19, 2026.

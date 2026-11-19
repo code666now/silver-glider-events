@@ -1342,7 +1342,35 @@ function postEventMetricCell(value, label) {
   </td>`;
 }
 
-function buildHostRecapEmail({ event = {}, stats = {}, unsubscribeUrl, manageUrl } = {}) {
+function hostRecapImpact(impact) {
+  if (!impact) return { html: '', text: [], hasFamiliarFaces: false };
+  const metrics = [
+    [impact.newFollowers, 'New followers from this event'],
+    [impact.activeFollowers, 'Current host followers'],
+    [impact.uniqueTicketClicks, 'Approx. unique external ticket clicks'],
+    [impact.familiarFaces, 'Past guests you may be able to invite']
+  ].filter(([value]) => Number.isSafeInteger(value) && value >= 0);
+  const hasFamiliarFaces = Number.isSafeInteger(impact.familiarFaces) && impact.familiarFaces > 0;
+  const facts = [];
+  const trackingDate = postEventDateLabel(impact.attributionStartedAt);
+  if (trackingDate && impact.newFollowers != null) facts.push(`Event follows count first follows since ${trackingDate} from people who still follow.`);
+  if (impact.uniqueTicketClicks != null) facts.push('Ticket clicks show interest, not purchases.');
+  if (hasFamiliarFaces) facts.push('See who RSVP’d and choose who to invite to your next show.');
+  const rows = [];
+  for (let index = 0; index < metrics.length; index += 2) {
+    rows.push(`<tr>${metrics.slice(index, index + 2).map(([value, label]) => postEventMetricCell(value, label)).join('')}</tr>`);
+  }
+  const title = hasFamiliarFaces ? 'Your Familiar Faces are growing.' : 'Your event impact';
+  return {
+    hasFamiliarFaces,
+    html: `<h2 style="color:#f4f4f4;font-size:22px;line-height:1.3;margin:28px 0 12px">${title}</h2>
+      ${rows.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="8" border="0" style="width:100%;border-collapse:separate;margin:0 0 12px">${rows.join('')}</table>` : ''}
+      ${facts.map(fact => `<p style="color:#a7a7a7;font-size:14px;line-height:1.6;margin:6px 0 0">${esc(fact)}</p>`).join('')}`,
+    text: [title, ...metrics.map(([value, label]) => `${label}: ${value}`), ...facts]
+  };
+}
+
+function buildHostRecapEmail({ event = {}, stats = {}, impact, unsubscribeUrl, manageUrl } = {}) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const eventId = String(event.id || '').trim();
   const dateLabel = postEventDateLabel(event.event_date);
@@ -1353,6 +1381,14 @@ function buildHostRecapEmail({ event = {}, stats = {}, unsubscribeUrl, manageUrl
   const newFaces = postEventCount(stats.newFaces);
   const comments = postEventCount(stats.comments);
   const recapUrl = `${baseUrl}/events/${encodeURIComponent(eventId)}/manage?postEvent=recap`;
+  const familiarFacesUrl = `${baseUrl}/events/${encodeURIComponent(eventId)}/manage?postEvent=familiar-faces`;
+  const createEventUrl = `${baseUrl}/events/new`;
+  const impactSection = hostRecapImpact(impact);
+  const primaryLabel = impactSection.hasFamiliarFaces ? 'View Your Familiar Faces' : 'See your night';
+  const primaryUrl = impactSection.hasFamiliarFaces ? familiarFacesUrl : recapUrl;
+  const nextLinks = [];
+  if (impactSection.hasFamiliarFaces) nextLinks.push(['See your night', recapUrl]);
+  if (impact && impact.hasUpcomingInviteTarget === false) nextLinks.push(['Create an event', createEventUrl]);
   const statsHtml = `<table role="presentation" width="100%" cellpadding="0" cellspacing="8" border="0" style="width:100%;border-collapse:separate;margin:0 0 20px">
     <tr>
       ${postEventMetricCell(markedGoing, 'Marked going')}
@@ -1376,9 +1412,10 @@ function buildHostRecapEmail({ event = {}, stats = {}, unsubscribeUrl, manageUrl
     event,
     kicker: 'Your night, revisited',
     sub: `${dateLabel ? `${dateLabel}. ` : ''}Here’s a look at the RSVPs around your event.`,
-    bodyHtml: statsHtml,
-    cta: 'See your night',
-    ctaUrl: recapUrl,
+    bodyHtml: statsHtml + impactSection.html,
+    cta: primaryLabel,
+    ctaUrl: primaryUrl,
+    secondaryHtml: nextLinks.map(([label, url]) => `<p class="sg-email-secondary" style="text-align:center;margin:0 0 16px"><a href="${esc(url)}" style="color:#a7a7a7;font-size:14px;text-decoration:underline">${esc(label)}</a></p>`).join(''),
     footerHtml: policyFooter({
       reason: 'You’re receiving this optional recap because you hosted this event.',
       includeAddress: true,
@@ -1405,15 +1442,18 @@ function buildHostRecapEmail({ event = {}, stats = {}, unsubscribeUrl, manageUrl
     `${comments} comments`,
     '',
     'These are guest-list numbers, not verified attendance.',
-    `See your night: ${recapUrl}`
+    ...impactSection.text,
+    impactSection.text.length ? '' : null,
+    `${primaryLabel}: ${primaryUrl}`,
+    ...nextLinks.map(([label, url]) => `${label}: ${url}`)
   ].filter((line, index, lines) => line || (index > 0 && lines[index - 1])).join('\n');
   return { subject, html, text };
 }
 
 // The morning after: a private, artwork-led recap with one path back to the
 // existing event manager. The pure builder above keeps previews send-free.
-async function sendHostRecap({ to, event, stats, unsubscribeUrl, manageUrl, idempotencyKey }) {
-  const email = buildHostRecapEmail({ event, stats, unsubscribeUrl, manageUrl });
+async function sendHostRecap({ to, event, stats, impact, unsubscribeUrl, manageUrl, idempotencyKey }) {
+  const email = buildHostRecapEmail({ event, stats, impact, unsubscribeUrl, manageUrl });
   return send({
     to,
     ...email,

@@ -4,6 +4,7 @@ const requireOrganizer = require('../middleware/requireOrganizer');
 const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const { buildPostEventThankYouEmail } = require('../lib/mailer');
 const { ThankYouCreditsError } = require('../lib/thank-you-credits');
+const { loadPostEventImpact } = require('../lib/post-event-impact');
 const {
   PostEventError,
   defaultThankYouDraft,
@@ -63,18 +64,21 @@ function consumeRateLimit(limiter, req, res) {
 }
 
 async function loadState(db, context) {
-  const [draw, batch, audience] = await Promise.all([
+  const [draw, batch, audience, impact] = await Promise.all([
     loadTurnout(db, context.event.id),
     loadThankYouBatch(db, context.event.id),
     eligibleThankYouAudience(db, {
       eventId: context.event.id,
       organizerId: context.event.organizer_id
-    })
+    }),
+    context.ended ? loadPostEventImpact(db, { eventId: context.event.id, organizerId: context.event.organizer_id })
+      .catch(() => null) : null
   ]);
   const draft = batch || defaultThankYouDraft(context.event, context.host);
   return {
     ended: context.ended,
     stats: context.stats,
+    impact,
     draw,
     thankYou: serializeThankYou({ batch, draft, audience, host: context.host, event: context.event })
   };

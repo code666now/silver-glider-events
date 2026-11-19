@@ -852,6 +852,20 @@
           <div class="lifecycle-recap-stat"><strong id="post-event-comments">0</strong><span>Comments</span></div>
         </div>
 
+        <section class="post-event-impact" id="post-event-impact" aria-labelledby="post-event-impact-title" hidden>
+          <h3 id="post-event-impact-title">Event impact</h3>
+          <dl class="post-event-impact-metrics">
+            <div id="post-event-impact-new-followers-row" hidden><dt>New followers from this event</dt><dd id="post-event-impact-new-followers"></dd></div>
+            <div id="post-event-impact-active-followers-row" hidden><dt>Current host followers</dt><dd id="post-event-impact-active-followers"></dd></div>
+            <div id="post-event-impact-unique-clicks-row" hidden><dt>Approximate unique external ticket clicks</dt><dd id="post-event-impact-unique-clicks"></dd></div>
+            <div id="post-event-impact-total-clicks-row" hidden><dt>Total external ticket clicks</dt><dd id="post-event-impact-total-clicks"></dd></div>
+            <div id="post-event-impact-familiar-faces-row" hidden><dt>Past guests you may be able to invite</dt><dd id="post-event-impact-familiar-faces"></dd></div>
+          </dl>
+          <p class="post-event-impact-note" id="post-event-impact-attribution-note" hidden></p>
+          <p class="post-event-impact-note" id="post-event-impact-ticket-note" hidden>Clicks show interest, not confirmed ticket purchases.</p>
+          <p class="post-event-impact-note" id="post-event-impact-invite-note" hidden>Invitation eligibility is checked again before you send.</p>
+        </section>
+
         <form class="post-event-draw" id="post-event-draw-form" hidden>
           <div class="post-event-section-copy">
             <p class="post-event-eyebrow">Your draw</p>
@@ -935,6 +949,7 @@
           <button class="sg-btn sg-btn-ghost" id="export-csv" type="button" disabled>Export CSV</button>
         </div>
       </div>
+      <p class="post-event-impact-next" id="post-event-impact-next" hidden>No upcoming published event is available for invitations. <a href="/events/new">Create an event</a></p>
       <div class="familiar-faces-grid" id="familiar-faces-grid" aria-live="polite">
         <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
         <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>

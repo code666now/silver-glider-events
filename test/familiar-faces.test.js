@@ -50,7 +50,10 @@ test('old-event invitation flow selects faces, chooses an upcoming event, review
     routes.indexOf('async function selectedFamiliarFaceRecipients'),
     routes.indexOf('async function targetRecipientState')
   );
-  assert.match(recipientHelper, /r\.status='confirmed'/);
+  assert.match(recipientHelper, /confirmedPrimaryGuestInviteSql\('r', '\$2'\)/);
+  const eligibility = read('src/lib/familiar-invitation-eligibility.js');
+  assert.match(eligibility, /status='confirmed'/);
+  assert.match(eligibility, /follower_optouts/);
   assert.doesNotMatch(recipientHelper, /organizer_optin/);
   assert.match(routes, /follower_optouts/);
   assert.match(routes, /targetRecipientState/);

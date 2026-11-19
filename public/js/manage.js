@@ -397,7 +397,7 @@ function positionGuestSection() {
   }
 }
 
-function openPostEventGuests() {
+function openPostEventGuests({ historyMode = 'push' } = {}) {
   const title = $('familiar-faces-title');
   title.setAttribute('tabindex', '-1');
   const reveal = () => {
@@ -408,17 +408,22 @@ function openPostEventGuests() {
     title.focus({ preventScroll: true });
   };
   if (mobileManageLayout.matches) {
-    setMobileManageView('guests', { focus: false, historyMode: 'push' });
+    setMobileManageView('guests', { focus: false, historyMode });
     window.requestAnimationFrame(() => window.requestAnimationFrame(reveal));
   } else {
     reveal();
   }
 }
 
-function openPostEventDeepLink() {
-  if (postEventDeepLinkHandled || !postEventExperience) return;
+function openPostEventDeepLink({ recapLoaded = false } = {}) {
+  if (postEventDeepLinkHandled || !isPostEventEligible()) return;
   const destination = new URLSearchParams(location.search).get('postEvent');
-  if (destination !== 'recap' && destination !== 'thank-you') return;
+  if (destination === 'familiar-faces') {
+    postEventDeepLinkHandled = true;
+    openPostEventGuests({ historyMode: 'replace' });
+    return;
+  }
+  if (!recapLoaded || !postEventExperience || (destination !== 'recap' && destination !== 'thank-you')) return;
   postEventDeepLinkHandled = true;
 
   if (mobileManageLayout.matches) {
@@ -438,7 +443,7 @@ function openPostEventDeepLink() {
 async function loadPostEventExperience() {
   try {
     await postEventExperience.load(eventData);
-    openPostEventDeepLink();
+    openPostEventDeepLink({ recapLoaded: true });
   } catch (_) {
     postEventExperience.renderUnavailable(eventData);
   }
@@ -2131,6 +2136,8 @@ async function initializeManagePage() {
     showPublishedWelcome();
     const eventEnded = isPostEventEligible();
     if (eventEnded) {
+      // The guest list doesn't depend on the recap or the impact metrics loading.
+      openPostEventDeepLink();
       postEventExperience = window.SgePostEvent?.create({
         eventId,
         request: api,

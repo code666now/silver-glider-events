@@ -18,6 +18,27 @@
     return `${total.toLocaleString('en-US')} ${total === 1 ? singular : plural}`;
   }
 
+  const IMPACT_METRICS = {
+    newFollowers: 'new-followers',
+    activeFollowers: 'active-followers',
+    uniqueTicketClicks: 'unique-clicks',
+    totalTicketClicks: 'total-clicks',
+    familiarFaces: 'familiar-faces'
+  };
+
+  function normalizeImpact(value = {}) {
+    if (!value || typeof value !== 'object') return null;
+    const impact = {};
+    for (const key of Object.keys(IMPACT_METRICS)) {
+      const metric = value[key];
+      impact[key] = Number.isSafeInteger(metric) && metric >= 0 ? metric : null;
+    }
+    const startedAt = value.attributionStartedAt;
+    impact.attributionStartedAt = typeof startedAt === 'string' && Number.isFinite(Date.parse(startedAt)) ? startedAt : null;
+    impact.hasUpcomingInviteTarget = typeof value.hasUpcomingInviteTarget === 'boolean' ? value.hasUpcomingInviteTarget : null;
+    return impact;
+  }
+
   function normalizeThankYou(value = {}) {
     return {
       subject: String(value.subject || ''),
@@ -53,6 +74,7 @@
         newFaces: count(stats.newFaces),
         comments: count(stats.comments)
       },
+      impact: normalizeImpact(value.impact ?? null),
       draw: value.draw && Number.isInteger(Number(value.draw.estimatedTurnout))
         ? { estimatedTurnout: count(value.draw.estimatedTurnout), updatedAt: value.draw.updatedAt || null }
         : null,
@@ -308,6 +330,31 @@
       }
     }
 
+    function renderImpact(impact) {
+      let hasMetrics = false;
+      for (const [key, suffix] of Object.entries(IMPACT_METRICS)) {
+        const id = `post-event-impact-${suffix}`;
+        const value = impact?.[key];
+        const visible = value != null;
+        byId(`${id}-row`).hidden = !visible;
+        setText(id, visible ? value.toLocaleString('en-US') : '');
+        hasMetrics ||= visible;
+      }
+      const trackingNote = byId('post-event-impact-attribution-note');
+      const trackingNotes = [];
+      if (impact?.newFollowers != null) trackingNotes.push('Counts only first follows from this event by people who still follow you.');
+      if (impact?.attributionStartedAt) {
+        const since = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date(impact.attributionStartedAt));
+        trackingNotes.push(`Event follows are tracked from ${since}.`);
+      }
+      trackingNote.hidden = !trackingNotes.length;
+      trackingNote.textContent = trackingNotes.join(' ');
+      byId('post-event-impact-ticket-note').hidden = impact?.uniqueTicketClicks == null && impact?.totalTicketClicks == null;
+      byId('post-event-impact-invite-note').hidden = impact?.familiarFaces == null;
+      byId('post-event-impact').hidden = !hasMetrics && trackingNote.hidden;
+      byId('post-event-impact-next').hidden = impact?.hasUpcomingInviteTarget !== false;
+    }
+
     function render(nextState) {
       state = normalizeState(nextState);
       if (!state.ended) {
@@ -318,6 +365,7 @@
         byId('post-event-draw-form').hidden = true;
         byId('post-event-draw-status').hidden = true;
         byId('post-event-actions').hidden = true;
+        renderImpact(null);
         if (dialog.open) closeDialog();
         return;
       }
@@ -349,6 +397,7 @@
       byId('post-event-stats').hidden = false;
       byId('post-event-actions').hidden = false;
       byId('lifecycle-recap').setAttribute('aria-busy', 'false');
+      renderImpact(state.impact);
       renderDraw();
       hydrateEditor();
     }
@@ -369,6 +418,7 @@
       byId('post-event-draw-form').hidden = true;
       byId('post-event-draw-status').hidden = true;
       byId('post-event-actions').hidden = true;
+      renderImpact(null);
     }
 
     function closeDialog() {
