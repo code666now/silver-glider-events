@@ -53,7 +53,7 @@ test('public event pages provide an owner-only progressive live editing shell', 
   assert.match(renderer, /data-owner-tab="settings"/);
   assert.match(renderer, /review and save your changes below\./);
   assert.match(renderer, /role="switch"/);
-  assert.equal((renderer.match(/<i aria-hidden="true"><b>On<\/b><b>Off<\/b><\/i>/g) || []).length, 4);
+  assert.equal((renderer.match(/<span class="sg-switch-track" aria-hidden="true"><\/span>/g) || []).length, 4);
   assert.match(renderer, /Music &amp; advanced settings/);
   assert.match(renderer, /name="owner_presentation_mode" value="standard"/);
   assert.match(renderer, /name="owner_presentation_mode" value="flyer"/);
@@ -201,7 +201,7 @@ test('desktop uses a right editing rail while mobile uses a collapsible bottom s
   assert.match(styles, /@media \(max-width: 879px\)[\s\S]*inset: auto 0 0;[\s\S]*height: min\(88dvh,760px\)/);
   assert.match(styles, /\.owner-editor\.is-peeking \{ transform: translateY\(calc\(100% - 70px\)\)/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(styles, /input:checked \+ i::after \{ transform: translateX\(35px\)/);
+  assert.match(read('public/css/brand.css'), /\.sg-switch-field input:checked ~ \.sg-switch-track/);
   assert.match(styles, /\.pac-container \{[\s\S]*z-index: 2000;[\s\S]*background: #141416;/);
 
   for (const template of [standard, flyer]) {

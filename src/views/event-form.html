@@ -377,62 +377,6 @@
     }
     .experience-option strong { display: block; color: var(--sg-text); font-size: 14px; }
     .experience-copy { display: block; min-width: 0; color: var(--sg-text-faint); font-size: 12px; line-height: 1.5; }
-    .experience-switch {
-      position: relative;
-      width: 72px;
-      height: 34px;
-      flex: 0 0 auto;
-      border: 1px solid var(--sg-border);
-      border-radius: 999px;
-      background: rgba(255,255,255,.035);
-      color: var(--sg-text-faint);
-      transition: border-color .18s ease, background .18s ease, color .18s ease;
-    }
-    .experience-switch::before {
-      content: '';
-      position: absolute;
-      top: 4px;
-      left: 4px;
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: var(--sg-text-dim);
-      box-shadow: 0 2px 8px rgba(0,0,0,.3);
-      transition: transform .18s ease, background .18s ease;
-    }
-    .experience-switch::after {
-      content: 'Off';
-      position: absolute;
-      top: 50%;
-      right: 10px;
-      transform: translateY(-50%);
-      font-size: 9px;
-      font-weight: 800;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-    .experience-option input:checked ~ .experience-switch {
-      border-color: rgba(28,197,190,.72);
-      background: rgba(28,197,190,.17);
-      color: var(--sg-accent);
-    }
-    .experience-option input:checked ~ .experience-switch::before {
-      transform: translateX(38px);
-      background: var(--sg-accent);
-    }
-    .experience-option input:checked ~ .experience-switch::after {
-      content: 'On';
-      left: 11px;
-      right: auto;
-    }
-    .experience-option input:focus-visible ~ .experience-switch {
-      outline: 2px solid var(--sg-accent);
-      outline-offset: 3px;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .experience-switch,
-      .experience-switch::before { transition: none; }
-    }
     .secret-shortcut {
       display:flex;align-items:center;justify-content:space-between;gap:18px;
       margin:0 0 24px;padding:18px 20px;border:1px solid rgba(28,197,190,.18);
@@ -2002,25 +1946,25 @@
 
           <section class="location-privacy-settings" id="location-privacy-settings" aria-labelledby="location-privacy-title" data-mobile-flow-panel="visibility" hidden>
             <div class="settings-group-heading"><strong id="location-privacy-title">Location privacy</strong></div>
-            <label class="experience-option"><input type="checkbox" id="hide_address_until_rsvp" role="switch"><span class="experience-copy"><strong>Reveal exact location after RSVP</strong>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option sg-switch-field"><input type="checkbox" id="hide_address_until_rsvp" role="switch"><span class="experience-copy"><strong>Reveal exact location after RSVP</strong>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
           </section>
 
           <section class="guest-experience-settings" id="guest-experience-settings" aria-labelledby="guest-experience-title" data-mobile-flow-panel="guests">
             <div class="settings-group-heading"><strong id="guest-experience-title">Guest experience</strong></div>
-            <label class="experience-option"><input type="checkbox" id="show_guest_list" role="switch"><span class="experience-copy"><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span><span class="experience-switch" aria-hidden="true"></span></label>
-            <label class="experience-option"><input type="checkbox" id="allow_guests" role="switch"><span class="experience-copy"><strong>Allow +1s</strong>Let each RSVP bring one guest.</span><span class="experience-switch" aria-hidden="true"></span></label>
-            <label class="experience-option"><input type="checkbox" id="comments_enabled" role="switch"><span class="experience-copy"><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option sg-switch-field"><input type="checkbox" id="show_guest_list" role="switch"><span class="experience-copy"><strong>Show guest list</strong>Show attendee first names and avatars on the event page.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
+            <label class="experience-option sg-switch-field"><input type="checkbox" id="allow_guests" role="switch"><span class="experience-copy"><strong>Allow +1s</strong>Let each RSVP bring one guest.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
+            <label class="experience-option sg-switch-field"><input type="checkbox" id="comments_enabled" role="switch"><span class="experience-copy"><strong>Enable comments</strong>Confirmed attendees can join the conversation.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
           </section>
 
           <section class="guest-experience-settings" id="automatic-text-settings" aria-labelledby="automatic-text-title" data-mobile-flow-panel="reminders">
             <div class="settings-group-heading"><strong id="automatic-text-title">Automatic texts</strong></div>
-            <label class="experience-option"><input type="checkbox" id="sms_reminder_enabled" role="switch"><span class="experience-copy"><strong>Day-before reminder</strong>Text confirmed guests who choose to receive a reminder the day before this event.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option sg-switch-field"><input type="checkbox" id="sms_reminder_enabled" role="switch"><span class="experience-copy"><strong>Day-before reminder</strong>Text confirmed guests who choose to receive a reminder the day before this event.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
             <p class="secret-code-help" id="sms-reminder-help">Uses your texting balance. The cost depends on how many guests opt in.</p>
           </section>
 
           <section class="private-settings" id="private-settings" aria-labelledby="private-options-title" data-mobile-flow-panel="visibility">
             <div class="settings-group-heading"><strong id="private-options-title">Private event options</strong></div>
-            <label class="experience-option secret-option"><input type="checkbox" id="secret_show_enabled" role="switch"><span class="experience-copy"><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span><span class="experience-switch" aria-hidden="true"></span></label>
+            <label class="experience-option secret-option sg-switch-field"><input type="checkbox" id="secret_show_enabled" role="switch"><span class="experience-copy"><strong>Secret Show Mode</strong>Require an access code before guests can view this event.</span><span class="experience-switch sg-switch-track" aria-hidden="true"></span></label>
             <div class="secret-code-fields" id="secret-code-fields">
               <div class="sg-field"><label for="secret_code">Access code</label><input class="sg-input" type="password" id="secret_code" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="6 letters or numbers"></div>
               <div class="sg-field"><label for="secret_code_confirm">Confirm access code</label><input class="sg-input" type="password" id="secret_code_confirm" maxlength="6" minlength="6" pattern="[A-Za-z0-9]{6}" autocomplete="new-password" autocapitalize="characters" spellcheck="false" placeholder="Enter it again"></div>

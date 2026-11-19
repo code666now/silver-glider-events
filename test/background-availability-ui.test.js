@@ -61,6 +61,15 @@ test('background manager shows all static previews with pinned core defaults and
   await settled();
   assert.equal(fixture.cards().length, catalog.options.length);
   assert.equal(fixture.parts('halloween').toggle.getAttribute('aria-checked'), 'false');
+  const toggle = fixture.parts('halloween').toggle;
+  assert.equal(toggle.tagName, 'BUTTON');
+  assert.equal(toggle.type, 'button');
+  assert.equal(toggle.getAttribute('role'), 'switch');
+  assert.match(toggle.className, /\bsg-switch-button\b/);
+  assert.equal(toggle.getAttribute('aria-labelledby'), 'background-title-halloween background-label-halloween');
+  assert.equal(toggle.children.length, 1);
+  assert.match(toggle.children[0].className, /\bsg-switch-track\b/);
+  assert.equal(toggle.children[0].getAttribute('aria-hidden'), 'true');
   assert.equal(fixture.parts('halloween').badge.textContent, 'Inactive');
   assert.equal(fixture.parts('midnight').toggle, undefined);
   assert.equal(fixture.parts('adaptive').toggle, undefined);
@@ -89,6 +98,7 @@ test('background switch saves only once while pending and preserves focus and co
   assert.equal(toggle.getAttribute('aria-checked'), 'true');
   assert.equal(toggle.getAttribute('aria-disabled'), 'false');
   assert.equal(fixture.document.activeElement, toggle);
+  assert.equal(toggle.getAttribute('aria-labelledby'), 'background-title-halloween background-label-halloween');
   assert.equal(fixture.parts('halloween').card, card);
 });
 
@@ -233,7 +243,7 @@ test('background manager keeps accessibility landmarks, touch targets and scoped
   assert.match(view, /id="backgrounds-summary" role="status"/);
   assert.match(css, /min-height: 44px/);
   assert.match(css, /:focus-visible/);
-  assert.match(css, /prefers-reduced-motion: reduce/);
+  assert.match(source('public/css/brand.css'), /prefers-reduced-motion: reduce/);
   assert.match(css, /@media \(max-width: 540px\)/);
   assert.match(shell, /backgroundsLink\.hidden = capabilities\.manageBackgrounds !== true/);
 });

@@ -671,3 +671,107 @@ a { color: var(--sg-accent); text-decoration: none; }
 }
 .sg-skip-link:focus { transform: none; outline: 2px solid var(--sg-text); outline-offset: 2px; }
 main[tabindex="-1"]:focus { outline: none; }
+
+/* Shared tactile switches. The track stays fixed; only its decorative thumb
+   changes size. Native checked/aria-checked state remains the source of truth. */
+.sg-switch-track {
+  --sg-switch-thumb-size: 16px;
+  --sg-switch-thumb-x: 16px;
+  --sg-switch-thumb-color: #99999f;
+  --sg-switch-check-opacity: 0;
+  position: relative;
+  display: block;
+  flex: 0 0 52px;
+  box-sizing: border-box;
+  width: 52px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: #303034;
+  box-shadow: inset 0 0 0 2px #85858b;
+  transition: background .16s ease, box-shadow .16s ease;
+}
+.sg-switch-track::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--sg-switch-thumb-x);
+  width: var(--sg-switch-thumb-size);
+  height: var(--sg-switch-thumb-size);
+  border-radius: 50%;
+  background: var(--sg-switch-thumb-color);
+  transform: translate(-50%, -50%);
+  transition: left .16s ease, width .16s ease, height .16s ease, background .16s ease;
+}
+.sg-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--sg-switch-thumb-x);
+  box-sizing: border-box;
+  width: 7px;
+  height: 12px;
+  border: solid var(--sg-accent);
+  border-width: 0 3px 3px 0;
+  opacity: var(--sg-switch-check-opacity);
+  transform: translate(-50%, -65%) rotate(45deg);
+  transition: left .16s ease, opacity .1s ease;
+}
+.sg-switch-field input:checked ~ .sg-switch-track,
+.sg-switch-button[aria-checked="true"] .sg-switch-track {
+  --sg-switch-thumb-size: 24px;
+  --sg-switch-thumb-x: 36px;
+  --sg-switch-thumb-color: #082e2c;
+  --sg-switch-check-opacity: 1;
+  background: var(--sg-accent);
+  box-shadow: none;
+}
+.sg-switch-field:has(input:enabled):active .sg-switch-track,
+.sg-switch-field input:enabled:active ~ .sg-switch-track,
+.sg-switch-button:not(:disabled):not([aria-disabled="true"]):active .sg-switch-track {
+  --sg-switch-thumb-size: 28px;
+}
+.sg-switch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sg-switch-field { touch-action: manipulation; }
+.sg-switch-field input:focus-visible ~ .sg-switch-track,
+.sg-switch-button:focus-visible {
+  outline: 2px solid var(--sg-accent);
+  outline-offset: 3px;
+}
+.sg-switch-field:has(input:disabled) { cursor: not-allowed; }
+.sg-switch-field input:disabled ~ .sg-switch-track,
+.sg-switch-button:disabled .sg-switch-track,
+.sg-switch-button[aria-disabled="true"] .sg-switch-track { opacity: .6; }
+.sg-switch-button:disabled,
+.sg-switch-button[aria-disabled="true"] { cursor: wait; }
+@media (prefers-reduced-motion: reduce) {
+  .sg-switch-track, .sg-switch-track::before, .sg-switch-track::after { transition: none; }
+  .sg-switch-field:has(input:enabled):active .sg-switch-track,
+  .sg-switch-field input:enabled:active ~ .sg-switch-track,
+  .sg-switch-button:not(:disabled):not([aria-disabled="true"]):active .sg-switch-track { --sg-switch-thumb-size: 16px; }
+  .sg-switch-field:has(input:checked:enabled):active .sg-switch-track,
+  .sg-switch-field input:checked:enabled:active ~ .sg-switch-track,
+  .sg-switch-button[aria-checked="true"]:not(:disabled):not([aria-disabled="true"]):active .sg-switch-track { --sg-switch-thumb-size: 24px; }
+}
+@media (forced-colors: active) {
+  .sg-switch-track { --sg-switch-thumb-color: ButtonText; background: Canvas; outline: 2px solid ButtonText; outline-offset: -2px; box-shadow: none; }
+  .sg-switch-field input:checked ~ .sg-switch-track,
+  .sg-switch-button[aria-checked="true"] .sg-switch-track { --sg-switch-thumb-color: Highlight; background: Canvas; }
+  .sg-switch-track::before { forced-color-adjust: none; }
+  .sg-switch-track::after { border-color: HighlightText; forced-color-adjust: none; }
+  .sg-switch-field input:focus-visible ~ .sg-switch-track,
+  .sg-switch-button:focus-visible { outline: 2px solid Highlight; outline-offset: 3px; }
+}

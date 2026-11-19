@@ -92,11 +92,11 @@
     retryButton.setAttribute('aria-label', `Retry ${background.label} availability change`);
     const state = { background, card, badge, status, retry: retryButton, toggle: null, busy: false };
     if (!background.alwaysAvailable) {
-      const toggle = element('button', 'background-switch');
+      const toggle = element('button', 'background-switch sg-switch-button');
       toggle.type = 'button';
       toggle.setAttribute('role', 'switch');
       toggle.setAttribute('aria-labelledby', `${title.id} ${label.id}`);
-      const track = element('span', 'background-switch-track');
+      const track = element('span', 'background-switch-track sg-switch-track');
       track.setAttribute('aria-hidden', 'true');
       toggle.appendChild(track);
       toggle.addEventListener('click', () => save(state, !state.background.active));

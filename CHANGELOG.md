@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.211
+
+Released November 18, 2026.
+
+### Tactile, checkmarked switches
+
+* Share one teal/charcoal switch treatment across event creation, the inline owner editor, Super Admin Backgrounds and Done For You intake. A quiet 16px thumb grows to 24px with a checkmark when enabled, with brief 28px press feedback inside a stable 52 × 32px track.
+* Preserve native checkbox/button semantics, keyboard focus, saved defaults, authorization and asynchronous save/error behavior. Keep comfortable button hit targets, associate the intake status caption and respect reduced-motion and forced-color settings.
+* No event data, notification, consent, billing, background availability or pricing changes.
+
+### Verification
+
+* `npm run check` passes **1,101/1,101** tests with zero failures/skips; static checks pass (321 JavaScript / 500 project files). The dedicated local `sge_test` database was idle before the exclusive run.
+* Eleven added regressions cover shared markup, native state, fixed geometry, checkmarks, focus, pending/disabled guards, reduced motion and Done For You save success/failure behavior.
+* Isolated actual-template browser checks cover desktop and 390px/320px phone layouts, Tab/Space, retained checkbox/background-switch focus, 28px held presses, disabled states and mocked pending/failure recovery without production writes. The actual reduced-motion rules were also verified via a labeled CSS simulation; OS-level reduced motion and physical iPhone Safari remain manual checks.
+
 ## 1.0.210
 
 Released November 18, 2026.

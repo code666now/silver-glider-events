@@ -326,7 +326,7 @@ function renderOwnerEditor(event) {
               <section class="owner-location-privacy" id="owner-location-privacy" aria-labelledby="owner-location-privacy-title" hidden>
                 <h4 id="owner-location-privacy-title">Location privacy</h4>
                 <div class="owner-switch-list">
-                  <label class="owner-switch-row"><span><strong>Reveal exact location after RSVP</strong><small>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</small></span><input id="owner-hide-address-until-rsvp" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
+                  <label class="owner-switch-row sg-switch-field"><span><strong>Reveal exact location after RSVP</strong><small>Before RSVP, location fields show only the city and state. Artwork and description remain visible, so leave the exact address out of them. Confirmed guests see the venue, address, map, and calendar location.</small></span><input id="owner-hide-address-until-rsvp" type="checkbox" role="switch"><span class="sg-switch-track" aria-hidden="true"></span></label>
                 </div>
               </section>
             </div>
@@ -335,9 +335,9 @@ function renderOwnerEditor(event) {
             </div>
             <div class="owner-settings-group" data-owner-mobile-section="guests">
               <div class="owner-switch-list">
-                <label class="owner-switch-row"><span><strong>Show guest list</strong><small>Show attendee first names and avatars.</small></span><input id="owner-show-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
-                <label class="owner-switch-row"><span><strong>Allow +1s</strong><small>Let each RSVP bring one named guest.</small></span><input id="owner-allow-guests" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
-                <label class="owner-switch-row"><span><strong>Enable comments</strong><small>Confirmed attendees can join the conversation.</small></span><input id="owner-comments" type="checkbox" role="switch"><i aria-hidden="true"><b>On</b><b>Off</b></i></label>
+                <label class="owner-switch-row sg-switch-field"><span><strong>Show guest list</strong><small>Show attendee first names and avatars.</small></span><input id="owner-show-guests" type="checkbox" role="switch"><span class="sg-switch-track" aria-hidden="true"></span></label>
+                <label class="owner-switch-row sg-switch-field"><span><strong>Allow +1s</strong><small>Let each RSVP bring one named guest.</small></span><input id="owner-allow-guests" type="checkbox" role="switch"><span class="sg-switch-track" aria-hidden="true"></span></label>
+                <label class="owner-switch-row sg-switch-field"><span><strong>Enable comments</strong><small>Confirmed attendees can join the conversation.</small></span><input id="owner-comments" type="checkbox" role="switch"><span class="sg-switch-track" aria-hidden="true"></span></label>
               </div>
               <div class="owner-rsvp-warning" id="owner-rsvp-warning" role="status" hidden></div>
             </div>

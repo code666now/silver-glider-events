@@ -256,9 +256,8 @@ test('desktop keeps venue, admission, and event settings in order while mobile g
   for (const id of ['show_guest_list', 'allow_guests', 'comments_enabled', 'secret_show_enabled']) {
     assert.match(form, new RegExp(`id="${id}" role="switch"[\\s\\S]*experience-switch`));
   }
-  assert.match(html, /\.experience-switch::after[\s\S]*content: 'Off'/);
-  assert.match(html, /input:checked ~ \.experience-switch::after[\s\S]*content: 'On'/);
-  assert.match(html, /input:focus-visible ~ \.experience-switch/);
+  assert.match(form, /class="experience-switch sg-switch-track" aria-hidden="true"/);
+  assert.doesNotMatch(html, /\.experience-switch::(?:before|after)\s*\{/);
   assert.match(form, /id="private-settings"[\s\S]*Private event options[\s\S]*Secret Show Mode/);
   assert.ok(form.indexOf('id="guest-experience-settings"') < form.indexOf('id="private-settings"'));
   assert.match(js, /vis-public'\)\.setAttribute\('aria-pressed'/);

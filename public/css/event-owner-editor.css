@@ -613,15 +613,10 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-location-privacy .owner-switch-list { margin-top: 0; }
 .owner-switch-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 75px; padding: 13px; background: rgba(255,255,255,.022); cursor: pointer; }
 .owner-switch-row + .owner-switch-row { border-top: 1px solid rgba(255,255,255,.08); }
-.owner-switch-row > span { display: grid; gap: 4px; }
+.owner-switch-row > span:first-child { display: grid; gap: 4px; min-width: 0; }
 .owner-switch-row strong { font-size: 12px; }
 .owner-switch-row small { color: var(--sg-text-faint); font-size: 10px; line-height: 1.4; }
 .owner-switch-row input { position: absolute; opacity: 0; pointer-events: none; }
-.owner-switch-row i { position: relative; flex: 0 0 auto; width: 69px; height: 34px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 0 5px; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(0,0,0,.3); color: var(--sg-text-faint); font-style: normal; font-size: 8px; font-weight: 800; text-align: center; text-transform: uppercase; }
-.owner-switch-row i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: #86868b; transition: transform .16s ease, background .16s ease; }
-.owner-switch-row input:checked + i { border-color: rgba(28,197,190,.42); color: var(--sg-accent); background: rgba(28,197,190,.09); }
-.owner-switch-row input:checked + i::after { transform: translateX(35px); background: var(--sg-accent); }
-.owner-switch-row input:focus-visible + i { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
 .owner-editor-links { display: grid; gap: 8px; margin-top: 20px; }
 .owner-editor-links a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding: 0 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; color: var(--sg-text-dim); font-size: 11px; font-weight: 700; }
 @media (hover: hover) { .owner-editor-links a:hover { border-color: rgba(28,197,190,.36); color: var(--sg-accent); } }
@@ -882,7 +877,6 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   body.owner-editor-open [data-owner-preview-section]:not([hidden]) { animation: none; }
   .owner-edit-trigger,
   .owner-editor,
-  .owner-switch-row i::after,
   .owner-editor-toast { transition: none; }
 }
 

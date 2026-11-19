@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8');
@@ -103,4 +104,87 @@ test('Done For You detail hides its loading skeleton after the client request se
 
   assert.match(script, /finally \{[\s\S]*dfyDetailLoading\.hidden = true/);
   assert.match(css, /\.dfy-detail-loading\[hidden\] \{ display: none; \}/);
+});
+
+function intakeSwitchFixture({ allowed = true, active = false, save } = {}) {
+  const script = read('public/js/admin-done-for-you.js');
+  const start = script.indexOf('async function dfyToggleIntake()');
+  const end = script.indexOf('\nasync function dfyCopyFlyerLink()', start);
+  assert.ok(start >= 0 && end > start, 'the existing intake action must remain available');
+  const attributes = { 'aria-checked': String(active) };
+  const toggle = { disabled: false, setAttribute(name, value) { attributes[name] = value; } };
+  const state = { canManageIntake: allowed, acceptingSubmissions: active };
+  const caption = { textContent: active ? 'On · the 24-hour promise is visible' : 'Off · the public page shows submissions paused' };
+  const status = { className: '', textContent: '' };
+  const calls = [];
+  const context = vm.createContext({
+    dfyState: state, dfyIntakeToggle: toggle, dfyIntakeCaption: caption, dfyIntakeStatus: status,
+    api: async (url, options) => { calls.push({ url, options }); return save(options); }
+  });
+  vm.runInContext(script.slice(start, end), context);
+  return { toggle, state, caption, status, attributes, calls, click: () => context.dfyToggleIntake() };
+}
+
+test('Done For You tactile intake switch keeps native button semantics and a stable accessible name', () => {
+  const html = read('src/views/admin-done-for-you.html');
+  const button = html.match(/<button\b[^>]*id="dfy-intake-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(button);
+  assert.match(button, /class="[^"]*\bsg-switch-button\b/);
+  assert.match(button, /type="button"/);
+  assert.match(button, /role="switch"/);
+  assert.match(button, /aria-checked="false"/);
+  assert.match(button, /aria-label="Accepting Submissions"/);
+  assert.match(button, /<span class="sg-switch-track" aria-hidden="true"><\/span>/);
+  assert.doesNotMatch(button, /tabindex="-1"/);
+  assert.match(read('public/js/admin-done-for-you.js'), /dfyIntakeToggle\.addEventListener\('click', dfyToggleIntake\)/);
+});
+
+test('Done For You intake switch keeps confirmed state while pending and prevents duplicate submissions', async () => {
+  let finish;
+  const fixture = intakeSwitchFixture({ save: () => new Promise(resolve => { finish = resolve; }) });
+  const first = fixture.click();
+  await fixture.click();
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.calls[0].url, '/api/admin/done-for-you/flyer-intake/settings');
+  assert.equal(fixture.calls[0].options.method, 'PATCH');
+  assert.equal(fixture.calls[0].options.body.acceptingSubmissions, true);
+  assert.equal(fixture.toggle.disabled, true);
+  assert.equal(fixture.attributes['aria-checked'], 'false');
+  assert.equal(fixture.state.acceptingSubmissions, false);
+  assert.match(fixture.status.textContent, /Opening submissions/);
+  finish({ settings: { acceptingSubmissions: true } });
+  await first;
+  assert.equal(fixture.toggle.disabled, false);
+  assert.equal(fixture.attributes['aria-checked'], 'true');
+  assert.equal(fixture.state.acceptingSubmissions, true);
+  assert.match(fixture.caption.textContent, /^On/);
+  assert.equal(fixture.status.textContent, 'Flyer submissions are open.');
+});
+
+test('Done For You failed intake changes retain the original state and can be retried', async () => {
+  let attempts = 0;
+  const fixture = intakeSwitchFixture({ active: true, save: async () => {
+    if (++attempts === 1) throw new Error('Connection lost');
+    return { settings: { acceptingSubmissions: false } };
+  } });
+  await fixture.click();
+  assert.equal(fixture.toggle.disabled, false);
+  assert.equal(fixture.attributes['aria-checked'], 'true');
+  assert.equal(fixture.state.acceptingSubmissions, true);
+  assert.match(fixture.caption.textContent, /^On/);
+  assert.equal(fixture.status.textContent, 'Connection lost');
+  assert.match(fixture.status.className, /error/);
+  await fixture.click();
+  assert.equal(fixture.calls.length, 2);
+  assert.equal(fixture.calls[1].options.body.acceptingSubmissions, false);
+  assert.equal(fixture.attributes['aria-checked'], 'false');
+  assert.equal(fixture.state.acceptingSubmissions, false);
+  assert.equal(fixture.status.textContent, 'Flyer submissions are paused.');
+});
+
+test('Done For You intake switch cannot submit without the existing manage-intake capability', async () => {
+  const fixture = intakeSwitchFixture({ allowed: false, save: () => { throw new Error('Must not submit'); } });
+  await fixture.click();
+  assert.equal(fixture.calls.length, 0);
+  assert.equal(fixture.attributes['aria-checked'], 'false');
 });
