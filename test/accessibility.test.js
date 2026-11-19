@@ -144,7 +144,7 @@ test('the Accessibility statement is public and linked wherever Terms is', () =>
   assert.equal((html.match(/<li>/g) || []).length - 6, 7, 'the seven "done so far" items render as a list beside the six contents links');
 
   // Every place that links Terms also links Accessibility right after it.
-  for (const file of ['public/js/legal-footer.js', 'public/js/api.js', 'src/views/index.html', 'src/views/dashboard.html', 'src/views/invitation-unavailable.html', 'src/views/secret-show.html']) {
+  for (const file of ['public/js/legal-footer.js', 'public/js/api.js', 'src/views/index.html', 'src/views/recs.html', 'src/views/dashboard.html', 'src/views/invitation-unavailable.html', 'src/views/secret-show.html']) {
     const source = read(file);
     const terms = (source.match(/href="\/terms"/g) || []).length;
     assert.ok(terms > 0, `${file} should link Terms`);

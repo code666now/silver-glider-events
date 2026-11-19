@@ -722,3 +722,9 @@ Lightweight on purpose: nothing gates or delays publishing.
 - **Audit:** `event_moderation_actions`. Admin UI: Admin → Events → event → Safety (`public/js/admin-event-safety.js`). Email links go to `/admin/events?event=ID`; the admin login page passes a signed-in admin straight through (the Strict cookie is missing on email clicks).
 - **Not covered yet:** guest-uploaded post-event photos, reports/approval, DMCA agent, Terms changes.
 - **Rule:** any new query that shows events publicly must filter `status='published'` (or explicitly exclude `hidden`).
+
+## Homepage hero, monograms and /recs (Claude)
+
+- Homepage hero is one line, one button and the event-page phone shown big, centred at every width (no tagline, no eyebrow, no side-by-side grid). The phone stands upright (`--lean: 0deg`); tilt and spin are unchanged.
+- Familiar Faces uses muted monogram circles (`--face-tone` per face) instead of emoji. The initials spell GLIDE (Gram, Lou, Iggy, David, Etta), so all five show on phones too.
+- The Silver Glider Recs signup moved to its own page, `GET /recs` (`src/views/recs.html`), same form, script and endpoint. The homepage keeps one quiet link to it so "Create your event" is the only primary button.

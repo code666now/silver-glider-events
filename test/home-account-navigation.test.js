@@ -45,15 +45,22 @@ test('homepage presents its value as a numbered editorial list', () => {
   assert.match(home, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
   // Familiar Faces has its own spotlight after the list, before the recs signup.
   const regulars = home.indexOf('<section class="home-regulars"');
-  assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('data-sg-email-signup'));
+  assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('class="home-recs-link"'));
   assert.match(home, /<h2 id="home-regulars-title">Familiar Faces, remembered\.<\/h2>/);
   assert.match(home, /See who keeps coming back\. Invite them again in a tap\./);
   assert.equal((home.match(/class="home-face"/g) || []).length, 5);
+  // Muted monograms, not emoji.
+  // The five monograms spell GLIDE, so all five show on phones too.
+  const initials = [...home.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join('');
+  assert.equal(initials, 'GLIDE');
+  assert.doesNotMatch(home, /\.home-face:nth-child\(n\+5\) \{ display: none; \}/);
+  assert.doesNotMatch(home, /Apple Color Emoji/);
+  assert.match(home, /--face-tone/);
   assert.doesNotMatch(home, /class="tick"/);
   assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
 });
 
-test('homepage hero shows a real event page on a phone, after the copy and before The good stuff', () => {
+test('homepage hero is one line, one button, and a real event page on a phone, before The good stuff', () => {
   const home = read('src/views/index.html');
   const hero = home.indexOf('<div class="home-hero">');
   const phone = home.indexOf('<figure class="home-hero-phone">');
@@ -61,7 +68,9 @@ test('homepage hero shows a real event page on a phone, after the copy and befor
   assert.ok(home.indexOf('<section class="feature-list"') > phone);
   assert.match(home, /src="\/img\/home\/event-phone-party\.jpg" width="390" height="844" alt="A Silver Glider event page on a phone/);
   assert.ok(fs.existsSync(path.join(root, 'public/img/home/event-phone-party.jpg')));
-  assert.match(home, /@media \(min-width: 960px\)[\s\S]*grid-template-columns: minmax\(0, 1fr\) 300px/);
+  assert.doesNotMatch(home, /class="tagline"/);
+  assert.equal((home.match(/class="sg-btn sg-btn-primary/g) || []).length, 1);
+  assert.match(home, /@media \(min-width: 960px\)[\s\S]*\.home-hero-phone \{ width: 360px;/);
 });
 
 test('homepage phone turns toward the pointer, floats on touch screens, and respects reduced motion', () => {
@@ -87,17 +96,22 @@ test('homepage phone turns toward the pointer, floats on touch screens, and resp
   assert.match(tilt, /setProperty\('--spin', '360deg'\)/);
 });
 
-test('homepage connects the weekly recs signup to the marketing service above the footer', () => {
-  const home = read('src/views/index.html');
+test('the weekly recs signup lives on /recs, and the homepage links to it quietly', () => {
+  const homepage = read('src/views/index.html');
+  const server = read('src/index.js');
+  assert.match(server, /app\.get\('\/recs', view\('recs\.html'\)\)/);
+  assert.match(homepage, /<p class="home-recs-link"><a href="\/recs">Going out instead\?/);
+  assert.doesNotMatch(homepage, /data-sg-email-signup|home-email-signup/);
+
+  const home = read('src/views/recs.html');
   const client = read('public/js/home-email-signup.js');
   const styles = read('public/css/home-email-signup.css');
   const signupIndex = home.indexOf('data-sg-email-signup');
   const footerIndex = home.indexOf('<footer class="sg-social-footer"');
 
-  assert.ok(signupIndex > home.indexOf('<section class="feature-list"'));
-  assert.ok(footerIndex > signupIndex);
+  assert.ok(signupIndex > 0 && footerIndex > signupIndex);
   assert.match(home, /data-endpoint="https:\/\/line\.silvergliderevents\.com\/api\/email\/subscribe"/);
-  assert.match(home, /<h2 id="sg-recs-title">Going out instead\?<\/h2>/);
+  assert.match(home, /<h1 id="sg-recs-title">Going out instead\?<\/h1>/);
   assert.match(home, /aria-labelledby="sg-recs-title"/);
   assert.match(home, /class="sg-label sg-display sg-recs-kicker"/);
   assert.match(home, /name="email"[\s\S]*type="email"[\s\S]*maxlength="254"[\s\S]*required/);

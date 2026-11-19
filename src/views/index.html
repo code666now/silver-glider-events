@@ -12,11 +12,9 @@
   <meta property="og:description" content="Create a beautiful event page, collect RSVPs or connect ticket sales, and keep your guest list organized in one place.">
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
-  <link rel="stylesheet" href="/css/home-email-signup.css">
   <script src="/js/legal-footer.js" defer></script>
   <script src="/js/api.js" defer></script>
   <script src="/js/home-account-nav.js" defer></script>
-  <script src="/js/home-email-signup.js" defer></script>
   <script src="/js/home-hero-tilt.js" defer></script>
   <style>
     /* Aurora — moving gradient background (Partiful-style) */
@@ -122,10 +120,12 @@
     .sg-home-mobile-profile [data-sg-initials] { font-size: 12px; font-weight: 800; }
     .sg-home-page .feedback-bubble { display: none; }
     .landing { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: clamp(34px, 6vh, 72px) 24px 80px; text-align: center; }
-    .logo { width: 64px; height: 64px; margin-bottom: 36px; opacity: .95; }
-    h1 { font-size: clamp(40px, 10vw, 58px); margin-bottom: 18px; letter-spacing: -0.02em; }
-    h1 span { color: var(--sg-accent); }
-    .tagline { color: var(--sg-text-dim); font-size: 17px; line-height: 1.7; margin-bottom: 44px; }
+    .logo { width: 56px; height: 56px; margin-bottom: 40px; opacity: .95; }
+    /* Hero, the Apple way: one line, one button, then the product shown big.
+       It steps out of the 560px column so the line can breathe on desktop. */
+    .home-hero { width: min(920px, calc(100vw - 48px)); margin-left: 50%; transform: translateX(-50%); text-align: center; }
+    h1 { max-width: 13em; margin: 0 auto 36px; font-size: clamp(34px, 8.6vw, 76px); line-height: 1.04; letter-spacing: -0.03em; text-wrap: balance; }
+    h1 span { display: block; color: var(--sg-accent); }
     .home-primary-cta {
       border-radius: 12px;
       font-size: 16px;
@@ -139,7 +139,7 @@
     .offer-note { color: var(--sg-text-dim); font-size: 13px; margin-top: 14px; }
     /* Hero: the copy, then a real event page on a phone. Side by side from
        960px, where the hero steps out of the 560px column. */
-    .home-hero-phone { position: relative; width: min(270px, 70vw); margin: 56px auto 0; }
+    .home-hero-phone { position: relative; width: min(330px, 80vw); margin: 64px auto 0; }
     .home-hero-phone::before {
       content: ''; position: absolute; inset: 12% -10% 4%; z-index: -1;
       background: radial-gradient(closest-side, rgba(28,197,190,.22), transparent);
@@ -151,7 +151,7 @@
       /* A slight lean toward the headline, like a phone set down on a table.
          On desktop it also turns toward the pointer (--rx/--ry, set by
          home-hero-tilt.js); a sheen follows the same angle. */
-      --lean: -3deg; --rx: 0deg; --ry: 0deg; --sheen: 50%; --spin: 0deg;
+      --lean: 0deg; --rx: 0deg; --ry: 0deg; --sheen: 50%; --spin: 0deg;
       position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; cursor: pointer;
       /* A tap spins it: no double-tap zoom, tap flash or text selection. */
       touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
@@ -189,15 +189,8 @@
     }
     .home-phone-screen { display: block; width: 100%; height: auto; border-radius: 35px; }
     @media (min-width: 960px) {
-      .home-hero {
-        width: min(1000px, calc(100vw - 64px)); margin-left: 50%; transform: translateX(-50%);
-        display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 80px; align-items: center; text-align: left;
-      }
-      .home-hero .logo { display: block; }
-      .home-hero-phone { width: 300px; margin: 0; }
-      .home-phone-frame { --lean: -4deg; }
-      .home-hero-phone::before { inset: 12% -28% 4%; }
-      .home-hero .tagline { max-width: 34em; }
+      .home-hero-phone { width: 360px; margin-top: 80px; }
+      .home-hero-phone::before { inset: 10% -40% 0; }
     }
     /* Familiar Faces gets its own spotlight: it's the one thing only Silver
        Glider does. The row is staged, floating like the manage page's
@@ -210,17 +203,23 @@
     .home-face { min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
     .home-face-avatar {
       width: 64px; height: 64px; display: grid; place-items: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 50%;
-      background: linear-gradient(145deg, rgba(28,197,190,.13), rgba(255,255,255,.035));
-      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 30px; line-height: 1;
-      box-shadow: 0 14px 30px rgba(0,0,0,.28);
+      /* Monograms in muted tones: each guest gets a quiet colour of their own. */
+      background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 60%), var(--face-tone, #3a3d40);
+      color: rgba(255,255,255,.88); font: 600 22px/1 var(--sg-font-display); letter-spacing: .02em;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 14px 30px rgba(0,0,0,.28);
     }
+    .home-face:nth-child(1) { --face-tone: #4a3f36; }
+    .home-face:nth-child(2) { --face-tone: #33414a; }
+    .home-face:nth-child(3) { --face-tone: #463a47; }
+    .home-face:nth-child(4) { --face-tone: #3c4637; }
+    .home-face:nth-child(5) { --face-tone: #3a3a4c; }
     .home-face-name { max-width: 100%; overflow: hidden; color: var(--sg-text); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
     .home-face-visit { margin-top: 3px; color: var(--sg-text-faint); font-size: 11px; font-weight: 700; white-space: nowrap; }
     .home-face-visit.is-returning { color: var(--sg-accent); }
     @media (max-width: 480px) {
-      .home-faces { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .home-face:nth-child(n+5) { display: none; }
-      .home-face-avatar { width: 56px; height: 56px; font-size: 26px; }
+      /* All five stay on phones: the initials spell GLIDE. */
+      .home-faces { gap: 6px; }
+      .home-face-avatar { width: 52px; height: 52px; font-size: 18px; }
       .home-regulars { margin-top: 56px; }
     }
     .feature-list { margin: 62px 0 0; text-align: left; }
@@ -255,6 +254,9 @@
     }
     .feature p { margin: 0; color: var(--sg-text-dim); font-size: 14px; line-height: 1.55; }
     .feature p strong { display: block; margin-bottom: 4px; color: var(--sg-text); font-size: 15px; font-weight: 650; }
+    .home-recs-link { margin: 72px 0 0; font-size: 14px; text-align: center; }
+    .home-recs-link a { color: var(--sg-text-dim); text-decoration: none; border-bottom: 1px solid rgba(255,255,255,.18); padding-bottom: 2px; transition: color 150ms ease, border-color 150ms ease; }
+    @media (hover: hover) { .home-recs-link a:hover { color: var(--sg-text); border-bottom-color: rgba(255,255,255,.5); } }
     @media (max-width: 879px) {
       .sg-home-header {
         width: 100%;
@@ -280,10 +282,8 @@
   <main class="landing">
     <div class="home-hero">
       <div class="home-hero-copy">
-        <img class="logo" src="/logo.png" alt="Silver Glider">
-        <p class="sg-label" style="margin-bottom:22px">Silver Glider Events</p>
+        <img class="logo" src="/logo.png" alt="Silver Glider Events">
         <h1>You have a personality. <span>Your events should too.</span></h1>
-        <p class="tagline">Create a beautiful event page, collect RSVPs or connect ticket sales, send confirmations and reminders, and keep your guest list organized in one place.</p>
         <a class="sg-btn sg-btn-primary home-primary-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
         <p class="offer-note">Free to create and publish.</p>
       </div>
@@ -311,58 +311,17 @@
       <p class="sg-label sg-display home-regulars-kicker">Only on Silver Glider</p>
       <h2 id="home-regulars-title">Familiar Faces, remembered.</h2>
       <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
-      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. -->
+      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. Their initials spell GLIDE. -->
       <div class="home-faces" aria-hidden="true">
-            <span class="home-face"><span class="home-face-avatar">🎃</span><span class="home-face-name">Keith</span><span class="home-face-visit is-returning">3rd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">👻</span><span class="home-face-name">Mick</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">😎</span><span class="home-face-name">Stevie</span><span class="home-face-visit">First time</span></span>
-            <span class="home-face"><span class="home-face-avatar">🤠</span><span class="home-face-name">Janis</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">👽</span><span class="home-face-name">Jimi</span><span class="home-face-visit is-returning">4th time</span></span>
+            <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
+            <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
       </div>
     </section>
-    <section
-      class="sg-recs-signup"
-      data-sg-email-signup
-      data-endpoint="https://line.silvergliderevents.com/api/email/subscribe"
-      aria-labelledby="sg-recs-title"
-    >
-      <p class="sg-label sg-display sg-recs-kicker">Silver Glider Recs</p>
-      <h2 id="sg-recs-title">Going out instead?</h2>
-      <p class="sg-recs-intro">Good shows and events, handpicked for your city, every week.</p>
-
-      <form class="sg-recs-form">
-        <fieldset class="sg-recs-cities">
-          <legend class="sg-recs-sr-only">Your city</legend>
-          <label class="sg-recs-city"><input type="radio" name="audience" value="sf" required><span>SF Bay Area</span></label>
-          <label class="sg-recs-city"><input type="radio" name="audience" value="la"><span>Los Angeles</span></label>
-        </fieldset>
-
-        <div class="sg-recs-row">
-          <label class="sg-recs-field">
-            <span class="sg-recs-sr-only">Email address</span>
-            <input
-              name="email"
-              type="email"
-              inputmode="email"
-              autocomplete="email"
-              autocapitalize="none"
-              spellcheck="false"
-              maxlength="254"
-              placeholder="Your email"
-              required
-            >
-          </label>
-          <button class="sg-recs-submit" type="submit"><span data-sg-button-label>Count me in</span></button>
-        </div>
-
-        <div class="sg-recs-trap" aria-hidden="true">
-          <label>Leave this field empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label>
-        </div>
-
-        <p class="sg-recs-consent">By selecting Count me in, you agree to receive Silver Glider&rsquo;s weekly picks for your city. Confirm by email. Unsubscribe anytime.</p>
-      </form>
-      <p class="sg-recs-status" data-sg-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
-    </section>
+    <!-- Recs is for guests, so it lives on its own page; hosts keep the one button above. -->
+    <p class="home-recs-link"><a href="/recs">Going out instead? Get weekly picks <span aria-hidden="true">&rarr;</span></a></p>
     <footer class="sg-social-footer" data-sg-legal-footer>
       <a class="sg-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
