@@ -114,6 +114,7 @@ const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-sess
 
 // Public pages
 app.get('/', view('index.html'));
+app.get('/recs', view('recs.html'));
 app.get('/flyer', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
   return sendHtmlFile(res, path.join(VIEWS, 'flyer-intake.html'));

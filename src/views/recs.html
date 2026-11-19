@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>Silver Glider Recs | Good shows, handpicked for your city</title>
+  <meta name="description" content="Good shows and events, handpicked for your city, every week.">
+  <meta property="og:title" content="Silver Glider Recs">
+  <meta property="og:description" content="Good shows and events, handpicked for your city, every week.">
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/home-email-signup.css">
+  <script src="/js/legal-footer.js" defer></script>
+  <script src="/js/home-email-signup.js" defer></script>
+  <style>
+    /* Silver Glider Recs: the guest side of Silver Glider, on its own page so
+       the homepage can keep one job (hosts) and one button. */
+    .recs-glow {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 50% at 20% 0%, rgba(255,138,42,.22), transparent 60%),
+        radial-gradient(ellipse 60% 50% at 90% 20%, rgba(28,197,190,.16), transparent 60%);
+    }
+    .recs-page { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: clamp(28px, 6vh, 64px) 24px 64px; }
+    .recs-home { display: inline-flex; align-items: center; min-height: 44px; }
+    .recs-home img { width: 44px; height: 44px; opacity: .95; }
+    .recs-page .sg-recs-signup { margin-top: clamp(48px, 12vh, 120px); }
+    .recs-page .sg-recs-signup h1 { margin: 0; font-size: clamp(36px, 9vw, 52px); line-height: 1.05; letter-spacing: -.03em; }
+    .recs-page .sg-recs-intro { margin: 14px 0 32px; font-size: 17px; }
+    .recs-page .sg-social-footer { margin-top: 96px; }
+  </style>
+</head>
+<body class="sg-recs-page">
+  <div class="recs-glow" aria-hidden="true"></div>
+  <main class="recs-page">
+    <a class="recs-home" href="/" aria-label="Silver Glider Events home"><img src="/logo.png" alt=""></a>
+    <section
+      class="sg-recs-signup"
+      data-sg-email-signup
+      data-endpoint="https://line.silvergliderevents.com/api/email/subscribe"
+      aria-labelledby="sg-recs-title"
+    >
+      <p class="sg-label sg-display sg-recs-kicker">Silver Glider Recs</p>
+      <h1 id="sg-recs-title">Going out instead?</h1>
+      <p class="sg-recs-intro">Good shows and events, handpicked for your city, every week.</p>
+
+      <form class="sg-recs-form">
+        <fieldset class="sg-recs-cities">
+          <legend class="sg-recs-sr-only">Your city</legend>
+          <label class="sg-recs-city"><input type="radio" name="audience" value="sf" required><span>SF Bay Area</span></label>
+          <label class="sg-recs-city"><input type="radio" name="audience" value="la"><span>Los Angeles</span></label>
+        </fieldset>
+
+        <div class="sg-recs-row">
+          <label class="sg-recs-field">
+            <span class="sg-recs-sr-only">Email address</span>
+            <input
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="email"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="254"
+              placeholder="Your email"
+              required
+            >
+          </label>
+          <button class="sg-recs-submit" type="submit"><span data-sg-button-label>Count me in</span></button>
+        </div>
+
+        <div class="sg-recs-trap" aria-hidden="true">
+          <label>Leave this field empty <input name="website" type="text" tabindex="-1" autocomplete="off"></label>
+        </div>
+
+        <p class="sg-recs-consent">By selecting Count me in, you agree to receive Silver Glider&rsquo;s weekly picks for your city. Confirm by email. Unsubscribe anytime.</p>
+      </form>
+      <p class="sg-recs-status" data-sg-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
+    </section>
+    <footer class="sg-social-footer" data-sg-legal-footer>
+      <a class="sg-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+          <circle cx="12" cy="12" r="4"></circle>
+          <circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle>
+        </svg>
+      </a>
+      <div class="sg-legal-links">
+        <a href="/privacy" class="sg-legal-link">Privacy Policy</a>
+        <span aria-hidden="true">·</span>
+        <a href="/terms" class="sg-legal-link">Terms</a>
+        <span aria-hidden="true">·</span>
+        <a href="/accessibility" class="sg-legal-link">Accessibility</a>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>
