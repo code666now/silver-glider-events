@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.214
+
+Released November 19, 2026.
+
+* Center the host credit beneath Share and Add to calendar on Standard event pages, with Powered by Silver Glider on the same centerline below. Keep the existing mobile and Flyer layouts, links, and actions.
+* `npm run check` passed **1,110/1,110** tests. Eight isolated desktop and phone-width Chrome checks verified the centerline and credit order in both layouts.
+
 ## 1.0.213
 
 Released November 19, 2026.

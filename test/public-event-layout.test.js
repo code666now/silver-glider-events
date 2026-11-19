@@ -24,6 +24,7 @@ test('public event sections follow the guest-first vertical hierarchy', () => {
     '{{GUEST_LIST_HTML}}',
     '{{COMMENTS_HTML}}',
     'id="share-btn"',
+    'id="cal-btn"',
     '{{PRESENTER_HTML}}',
     'Powered by <a href="/">Silver Glider</a>'
   ];
@@ -140,10 +141,11 @@ test('desktop sharing opens explicit choices while native mobile sharing cannot 
   assert.match(styles, /@media \(hover:hover\)/);
 });
 
-test('host and Silver Glider attribution center only on mobile', () => {
+test('Standard host and Silver Glider credits center beneath the action row at every width', () => {
   const view = source('src/views/event-public.html');
-  assert.match(view, /@media \(max-width: 879px\) \{\s*\.host-attribution \{ justify-content: center; \}\s*\.powered-by \{ text-align: center; \}/);
-  assert.match(view, /@media \(min-width: 880px\)/);
+  assert.match(view, /^    \.host-attribution \{[^}]*justify-content:\s*center;/m);
+  assert.match(view, /^    \.powered-by \{[^}]*text-align:\s*center;/m);
+  assert.match(view, /id="cal-btn"[^>]*>Add to calendar<\/a>\s*<\/div>\s*\{\{PRESENTER_HTML\}\}\s*<p class="powered-by">Powered by /);
 });
 
 test('Standard mobile artwork preserves portrait covers while desktop and Flyer rendering stay unchanged', () => {
