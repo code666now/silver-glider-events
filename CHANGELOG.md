@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.210
+
+Released November 18, 2026.
+
+### Portrait backgrounds on desktop
+
+* Replace Snow Day and Midnight Toast's black desktop gutters with a softly blurred still from the same scene. Keep the central video and no-motion fallback uncropped, proportional and softly blended at the edges; no additional video playback is introduced.
+* Center these backgrounds and their readability veil within the actual preview when the desktop editor is open. Use a lighter, frosted details surface and remove the unused Standard cover block when no image exists, while preserving Flyer upload placeholders.
+* Keep the phone treatment, other themes, original media, saved event data, availability and all RSVP/notification behavior unchanged.
+
+### Verification
+
+* `npm run check` passes **1,090/1,090** tests with zero failures/skips; static checks pass (320 JavaScript / 499 project files). The dedicated local `sge_test` database was idle before the exclusive run.
+* Eight added regressions cover desktop-only ambient layers, proportional video/still blending, editor alignment, unchanged phone surfaces and Standard/Flyer empty-artwork isolation. Muted text retains at least 5.54:1 contrast over the brightest possible background through the desktop panel.
+* Actual-template browser QA covers 1280px, 1440px and 1920px desktop compositions, editor open/closed, uploaded/missing artwork, Standard/Flyer and still fallbacks, plus unchanged 390px/320px phone layouts. No horizontal overflow or real event writes. Physical iPhone Safari remains a manual check.
+
 ## 1.0.209
 
 Released November 18, 2026.

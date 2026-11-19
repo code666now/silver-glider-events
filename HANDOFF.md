@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 18, 2026 (Portrait background fit and brightness, v1.0.209)
+**Last updated:** November 18, 2026 (Desktop portrait background composition, v1.0.210)
 
-## Current release — Portrait background fit and brightness (v1.0.209)
+## Current release — Desktop portrait background composition (v1.0.210)
+
+User rejected the narrow portrait strip/black gutters in 1.0.209 and approved correcting desktop appearance, testing and deployment. This supersedes the earlier note that dark side space is expected.
+
+- Only Snow Day / Midnight Toast change at desktop widths ≥880px: a blurred static poster fills the surroundings, a softly masked still/video retains the complete original frame, and the existing video controller remains unchanged. Source dimensions are 720×1280 and 674×1280 respectively. No extra video, upload, asset replacement or new dependency.
+- Desktop owner previews align the background and veil to the area left of the 420px editor rail. Details use a local .82 dark frosted surface; existing #b4b4b4 secondary text remains above 4.5:1 even over white footage. Phones retain the prior .9 surfaces, full-frame fit and no desktop blur/mask.
+- Empty Standard covers no longer form a dark box over these two scenes. Keep `.hero.no-image:not(.flyer-hero)` in Standard and the owner-only reverse-preview rule: true Flyer upload targets must remain visible. Standard/Flyer templates stay isolated.
+- No migration, background toggle, event data, guest list, capacity, messaging, SMS credit or discovery change. Halloween / The Last Guest remain inactive. QA uses read-only synthetic templates; do not save or publish the user's draft.
+
+**Verification:** `npm run check` passes **1,090/1,090**, zero failures/skips, with static checks (320 JavaScript / 499 project files). Dedicated local `sge_test` was idle before the exclusive run. Eight added regressions cover desktop ambient/masks/geometry, .82 versus unchanged .9 phone surfaces, editor alignment and both presentation-switch directions. Independent review caught and resolved an empty-Flyer-placeholder scope issue. Actual-template read-only browser samples were visually checked at 1280/1440/1920px desktop and 390/320px phone, with editor open/closed, cover/no cover, Standard/Flyer, video/still fallback and no overflow. `/private/tmp/sge-210-midnight-desktop.png` records the corrected empty-cover editor composition. Physical Safari remains manual. UX review guidance kept dimming local to readable text surfaces rather than the scene. Use the normal release commit/tag, post-commit uncommitted `.git-sha`, explicit Railway path, matching health/SHA/assets and previous-worker removal, then push main/tag.
+
+## Previous release — Portrait background fit and brightness (v1.0.209)
 
 User approved correcting Snow Day / Midnight Toast cropping, making them brighter, tests and deployment. Keep the change scoped to those two themes.
 

@@ -640,6 +640,20 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
   body.owner-editor-open { padding-right: var(--owner-panel-width); transition: padding-right .24s cubic-bezier(.22,.8,.2,1); }
   body.owner-editor-open .layout,
   body.owner-editor-open .flyer-layout { transition: max-width .24s ease, width .24s ease; }
+  /* The portrait scene belongs to the visible preview, not the area behind
+     the editor rail. Keep its still/video layers and veil aligned together. */
+  body.owner-editor-open .event-bg.fx-snow-day,
+  body.owner-editor-open .event-bg.fx-midnight-toast,
+  body.owner-editor-open .event-bg.fx-snow-day ~ .fx-veil,
+  body.owner-editor-open .event-bg.fx-midnight-toast ~ .fx-veil {
+    right: var(--owner-panel-width);
+  }
+  body.flyer-public-page.owner-preview-standard .event-bg.fx-snow-day ~ .flyer-layout .hero.standard-hero.no-image,
+  body.flyer-public-page.owner-preview-standard .event-bg.fx-midnight-toast ~ .flyer-layout .hero.standard-hero.no-image {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
 }
 
 @media (max-width: 879px) {

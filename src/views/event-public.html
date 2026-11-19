@@ -181,6 +181,60 @@
       border-radius: 12px;
       padding: 8px 12px;
     }
+    @media (min-width: 880px) {
+      /* Extend the portrait's atmosphere, not its proportions. The static
+         surround also works with reduced motion or blocked video playback. */
+      .event-bg.fx-snow-day { --portrait-frame-width: min(100%, 56.25vh); }
+      .event-bg.fx-midnight-toast { --portrait-frame-width: min(100%, 52.65625vh); }
+      .event-bg.fx-snow-day,
+      .event-bg.fx-midnight-toast { overflow: hidden; }
+      .event-bg.fx-snow-day::before,
+      .event-bg.fx-midnight-toast::before {
+        content: '';
+        position: absolute;
+        inset: -48px;
+        background-image: inherit;
+        background-size: cover;
+        background-position: center;
+        filter: blur(36px);
+      }
+      .event-bg.fx-snow-day::after,
+      .event-bg.fx-midnight-toast::after {
+        content: '';
+        background-image: inherit;
+        background-size: contain;
+        background-position: center;
+        background-repeat: no-repeat;
+      }
+      .event-bg.fx-snow-day::after,
+      .event-bg.fx-midnight-toast::after,
+      .event-bg.fx-snow-day .fx-video-media,
+      .event-bg.fx-midnight-toast .fx-video-media {
+        position: absolute;
+        inset: 0 auto 0 50%;
+        width: var(--portrait-frame-width);
+        height: 100%;
+        transform: translateX(-50%);
+        -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+        mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+      }
+      .event-bg.fx-snow-day .fx-video-media,
+      .event-bg.fx-midnight-toast .fx-video-media { z-index: 1; }
+      .event-bg.fx-snow-day ~ .layout .col-details .wrap,
+      .event-bg.fx-midnight-toast ~ .layout .col-details .wrap {
+        background: rgba(14,14,14,.82);
+        border: 1px solid rgba(255,255,255,.14);
+        box-shadow: 0 16px 48px rgba(0,0,0,.16);
+        -webkit-backdrop-filter: blur(20px);
+        backdrop-filter: blur(20px);
+      }
+      .event-bg.fx-snow-day ~ .layout .hero.no-image:not(.flyer-hero),
+      .event-bg.fx-midnight-toast ~ .layout .hero.no-image:not(.flyer-hero) {
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+      }
+    }
     @media (max-width: 879px) {
       .event-bg.fx-snow-day ~ .layout .col-details,
       .event-bg.fx-midnight-toast ~ .layout .col-details { padding: 16px 16px 96px; }
