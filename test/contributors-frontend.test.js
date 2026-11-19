@@ -77,7 +77,8 @@ test('public contributor follow is an unchecked deliberate action and claim offe
   assert.match(client, /if \(!following && !consent.checked\)/);
   assert.match(claim, /href="\/events\/new"/);
   assert.match(claim, /href="\/settings\/host-page"/);
-  assert.match(claim, /does not send an announcement automatically/);
+  assert.match(claim, /followers who chose email updates may get an email/);
+  assert.match(claim, /skip it for that event or change the default in <a href="\/settings\/messaging">/);
   assert.match(client, /count\s*\? `[\s\S]*from \$\{result.eventTitle\}/);
   assert.match(client, /get\('intro'\)/);
   assert.match(client, /\^\[A-Za-z0-9_-\]\{16,64\}\$/);

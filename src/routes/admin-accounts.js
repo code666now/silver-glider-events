@@ -1262,11 +1262,21 @@ router.post('/api/admin/accounts/:id/delete-account', async (req, res, next) => 
 
     // Only canonical ownership/link fields select records here. Contact and RSVP
     // snapshots are display/delivery data and must never become destructive keys.
+    await client.query('DELETE FROM automatic_follower_email_deliveries WHERE organizer_id=$1', [organizerId]);
+    await client.query(
+      `UPDATE automatic_follower_email_deliveries
+          SET recipient='deleted+' || $1::text || '+auto-email-' || id::text || '@example.invalid',
+              recipient_user_id=NULL,payload=NULL,next_attempt_at=NULL,
+              status=CASE WHEN status IN ('pending','sending') THEN 'skipped' ELSE status END
+        WHERE recipient_user_id=$1`, [userId]
+    );
     await client.query(
       `UPDATE message_log
           SET recipient='deleted+' || $1::text || '+message-' || id::text || '@example.invalid',
               recipient_name=NULL,recipient_user_id=NULL,import_render_payload=NULL,
-              status=CASE WHEN import_delivery_state='pending' THEN 'failed' ELSE status END,
+              status=CASE WHEN import_delivery_state='pending' OR (status='pending' AND
+                   (automatic_follower_email_next_at IS NOT NULL OR automatic_follower_email_delivery_id IS NOT NULL)) THEN 'failed' ELSE status END,
+              automatic_follower_email_next_at=NULL,
               attempt_count=CASE WHEN import_delivery_state='pending' THEN 3 ELSE attempt_count END,
               error=CASE WHEN import_delivery_state='pending' THEN 'recipient_deleted' ELSE error END,
               import_delivery_state=CASE WHEN import_delivery_state='pending' THEN 'skipped' ELSE import_delivery_state END

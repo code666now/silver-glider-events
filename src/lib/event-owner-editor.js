@@ -356,6 +356,10 @@ function renderOwnerEditor(event) {
         </div>
 
         <footer class="owner-editor-foot">
+          ${event.status === 'draft' ? `<label class="sg-follower-email-option" id="owner-follower-email-option" hidden>
+            <input id="owner-skip-follower-email" type="checkbox" aria-labelledby="owner-skip-follower-email-label" aria-describedby="owner-follower-email-help">
+            <span><strong id="owner-skip-follower-email-label">Don’t announce this one</strong><small id="owner-follower-email-help">Publishing schedules an email to followers who chose email updates.</small></span>
+          </label>` : ''}
           <p id="owner-save-status" role="status">${event.status === 'draft' ? 'Ready to publish' : 'No unsaved changes'}</p>
           <div>
             <button class="owner-cancel" id="owner-editor-cancel" type="button">Cancel</button>

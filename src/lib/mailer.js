@@ -1133,28 +1133,18 @@ async function sendEventCancellation({ to, event, rsvp, icsContent }) {
 }
 
 // Organizer-triggered announcement to opted-in followers.
-function renderEventAnnouncementEmail({ event, organizerLabel, replyTo, unsubscribeUrl }) {
+function renderEventAnnouncementEmail({ event, organizerLabel, replyTo, unsubscribeUrl, publicEventUrl }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const manageUrl = hostEmailSettingsUrl(unsubscribeUrl);
   const theme = eventEmailTheme(event);
   return rsvpConfirmationLayout({
     event,
     theme,
     kicker: 'New event',
     sub: `${organizerLabel} has a new event coming up.`,
-    bodyHtml: `${confirmationDetailsCard(event, { canViewExactLocation: false })}${confirmationMapLink(event, theme, { canViewExactLocation: false })}`,
+    bodyHtml: `${confirmationDetailsCard(event, { canViewExactLocation: false })}${publicEventUrl ? '' : confirmationMapLink(event, theme, { canViewExactLocation: false })}`,
     cta: 'View & RSVP',
-    ctaUrl: `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
-    footerHtml: policyFooter({
-      reason: `You’re receiving this because you asked ${organizerLabel} to keep you posted about future events.${safeReplyToAddress(replyTo) ? '' : ' Replies are not monitored.'}`,
-      hostLabel: organizerLabel,
-      includeAddress: true,
-      links: [
-        { label: `Unsubscribe from ${organizerLabel}`, url: unsubscribeUrl },
-        { label: 'Manage email settings', url: manageUrl },
-        { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
-      ]
-    }),
+    ctaUrl: publicEventUrl || `${baseUrl}/e/${encodeURIComponent(event.slug)}`,
+    footerHtml: eventAnnouncementFooter({ organizerLabel, replyTo, unsubscribeUrl, baseUrl }),
     showListening: false,
     footerActionLabel: '',
     footerActionUrl: ''
@@ -1170,6 +1160,139 @@ async function sendEventAnnouncement({ to, event, organizerLabel, replyTo, unsub
     headers: oneClickHeaders(unsubscribeUrl),
     html: renderEventAnnouncementEmail({ event, organizerLabel, replyTo, unsubscribeUrl })
   });
+}
+
+function eventAnnouncementReason(organizerLabel, replyTo) {
+  return `You’re receiving this because you asked ${organizerLabel} to keep you posted about future events.${safeReplyToAddress(replyTo) ? '' : ' Replies are not monitored.'}`;
+}
+
+function eventAnnouncementFooter({ organizerLabel, replyTo, unsubscribeUrl, baseUrl }) {
+  return policyFooter({
+    reason: eventAnnouncementReason(organizerLabel, replyTo),
+    hostLabel: organizerLabel,
+    includeAddress: true,
+    links: [
+      { label: `Unsubscribe from ${organizerLabel}`, url: unsubscribeUrl },
+      { label: 'Manage email settings', url: hostEmailSettingsUrl(unsubscribeUrl) },
+      { label: 'Privacy Policy', url: `${baseUrl}/privacy` }
+    ]
+  });
+}
+
+function automaticFollowerEvent(event, baseUrl) {
+  const id = String(event?.id || '');
+  if (!/^[1-9]\d{0,9}$/.test(id) || Number(id) > 2147483647 ||
+      (event.visibility != null && event.visibility !== 'public') ||
+      (event.status != null && event.status !== 'published') || event.secret_show_enabled) {
+    throw new Error('Automatic follower email requires a published public event');
+  }
+  const title = String(event.title || '').replace(/[\u0000-\u001F\u007F\s]+/g, ' ').trim();
+  if (!title) throw new Error('Automatic follower email requires an event title');
+  const city = [event.venue_city, event.venue_state]
+    .map(value => String(value || '').trim()).filter(Boolean).join(', ');
+  const venue = !event.hide_address_until_rsvp && !LocationUtils.isAddressFallback(event.venue_name, event.venue_address)
+    ? String(event.venue_name || '').trim() : '';
+  const venueName = venue || city || (event.hide_address_until_rsvp ? 'Exact location shared after RSVP' : '');
+  const date = event.event_date ? new Date(event.event_date) : null;
+  const dateLabel = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'
+  }) : '';
+  const startTime = /^\d{1,2}:\d{2}/.test(String(event.start_time || '')) ? event.start_time : null;
+  return {
+    title, dateLabel, timeLabel: startTime ? formatTime(startTime) : '', venueName,
+    url: `${baseUrl}/s/e/${id}`,
+    // The automated render carries a deliberate public projection, never an
+    // attendee object or the street address (even when the event is public).
+    event: {
+      title, event_date: dateLabel ? event.event_date : null, start_time: startTime, venue_name: venueName,
+      presentation_mode: event.presentation_mode,
+      flyer_image_url: event.hide_address_until_rsvp ? '' : event.flyer_image_url,
+      cover_image_url: event.hide_address_until_rsvp ? '' : event.cover_image_url,
+      background_theme: event.background_theme,
+      artwork_accent_color: event.artwork_accent_color
+    }
+  };
+}
+
+function automaticFollowerDigestCard(detail, theme) {
+  const when = [detail.dateLabel, detail.timeLabel].filter(Boolean).join(' · ');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="width:100%;background:#111111;border:1px solid #292929;border-radius:12px;margin:0 0 14px">
+    <tr><td style="padding:16px 18px">
+      <h2 style="color:#f4f4f4;font-size:20px;line-height:1.3;margin:0 0 6px">${esc(detail.title)}</h2>
+      ${when ? `<p style="color:#a7a7a7;font-size:15px;line-height:1.45;margin:0 0 3px">${esc(when)}</p>` : ''}
+      ${detail.venueName ? `<p style="color:#a7a7a7;font-size:15px;line-height:1.45;margin:0 0 3px">${esc(detail.venueName)}</p>` : ''}
+      <a href="${esc(detail.url)}" aria-label="View &amp; RSVP: ${esc(detail.title)}" style="display:inline-block;color:${theme.secondaryAccentColor};font-size:15px;font-weight:700;line-height:1.5;padding:10px 0 2px;text-decoration:underline">View &amp; RSVP &rarr;</a>
+    </td></tr>
+  </table>`;
+}
+
+// Build only once before the first attempt. The outbox can round-trip this
+// request through JSON and retry the same provider key without re-rendering.
+function buildAutomaticFollowerEmail({ events, organizerLabel, replyTo, unsubscribeUrl } = {}) {
+  if (!Array.isArray(events) || !events.length) throw new Error('Automatic follower email requires at least one event');
+  if (new Set(events.map(event => String(event?.id))).size !== events.length ||
+      new Set(events.map(event => event?.organizer_id).filter(id => id != null).map(String)).size > 1) {
+    throw new Error('Automatic follower email requires distinct events from one host');
+  }
+  const root = new URL(process.env.APP_URL || 'https://silvergliderevents.com');
+  if (!['http:', 'https:'].includes(root.protocol) || root.username || root.password) {
+    throw new Error('Automatic follower email requires a first-party event origin');
+  }
+  const baseUrl = root.origin;
+  const safeUnsubscribeUrl = safeHttpUrl(unsubscribeUrl);
+  const unsubscribe = safeUnsubscribeUrl && new URL(safeUnsubscribeUrl);
+  if (!unsubscribe || unsubscribe.origin !== baseUrl || unsubscribe.pathname !== '/unsubscribe' ||
+      unsubscribe.hash || unsubscribe.username || unsubscribe.password ||
+      [...unsubscribe.searchParams.keys()].join() !== 'token' || !unsubscribe.searchParams.get('token')) {
+    throw new Error('Automatic follower email requires a host unsubscribe URL');
+  }
+  const host = senderDisplayName(organizerLabel, 'Your host');
+  const recipientReplyTo = safeReplyToAddress(replyTo);
+  const details = events.map(event => automaticFollowerEvent(event, baseUrl));
+  const single = details.length === 1 ? details[0] : null;
+  const digestEvent = { title: `New events from ${host}` };
+  const footer = { organizerLabel: host, replyTo: recipientReplyTo, unsubscribeUrl: safeUnsubscribeUrl, baseUrl };
+  const theme = eventEmailTheme(digestEvent);
+  const html = single ? renderEventAnnouncementEmail({
+    ...footer, event: { ...single.event, org_name: host }, publicEventUrl: single.url
+  }) : rsvpConfirmationLayout({
+    event: digestEvent, theme, kicker: 'New events', sub: 'See what’s coming up.',
+    bodyHtml: details.map(detail => automaticFollowerDigestCard(detail, theme)).join(''),
+    footerHtml: eventAnnouncementFooter(footer), showEventIdentity: false, footerActionLabel: '', footerActionUrl: ''
+  });
+  const text = [
+    single ? `${host} has a new event coming up.` : digestEvent.title,
+    ...details.map(detail => [detail.title, [detail.dateLabel, detail.timeLabel].filter(Boolean).join(' · '),
+      detail.venueName, `View & RSVP: ${detail.url}`].filter(Boolean).join('\n')),
+    [eventAnnouncementReason(host, recipientReplyTo),
+      `Sent by Silver Glider on behalf of ${host}.`, ...COMPANY_ADDRESS,
+      `Unsubscribe: ${safeUnsubscribeUrl}`, `Manage email settings: ${hostEmailSettingsUrl(safeUnsubscribeUrl)}`,
+      `Privacy Policy: ${baseUrl}/privacy`].join('\n')
+  ].join('\n\n');
+  return Object.freeze({
+    from: hostFrom(host),
+    subject: single ? `${host} just announced: ${single.title}` : digestEvent.title,
+    html,
+    text,
+    ...(recipientReplyTo ? { replyTo: recipientReplyTo } : {}),
+    headers: Object.freeze(oneClickHeaders(safeUnsubscribeUrl))
+  });
+}
+
+async function sendAutomaticFollowerEmail({ to, payload, idempotencyKey } = {}) {
+  const recipient = safeReplyToAddress(to);
+  if (!recipient || recipient !== to || !payload?.from || !payload.subject || !payload.html || !payload.text ||
+      !payload.headers?.['List-Unsubscribe'] || payload.headers['List-Unsubscribe-Post'] !== 'List-Unsubscribe=One-Click' ||
+      typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
+    throw new Error('Automatic follower email requires a frozen payload and idempotency key');
+  }
+  const { from, subject, html, text, headers, replyTo } = payload;
+  const result = await send({ to: recipient, from, subject, html, text, headers, replyTo, idempotencyKey, timeoutMs: 15000 });
+  if (!(typeof result?.id === 'string' && result.id.trim()) &&
+      !(!resend && result?.dev === true && process.env.NODE_ENV !== 'production')) {
+    throw new Error('Automatic follower email provider acceptance not confirmed');
+  }
+  return result;
 }
 
 // An artist credited on an event's lineup is invited to claim the slot. The
@@ -1789,6 +1912,7 @@ module.exports = {
   formatTime, renderRsvpConfirmationEmail, renderEventUpdateEmail, renderEventCancellationEmail,
   renderPreviousGuestInvitationEmail,
   buildImportedGuestInvitationEmail, sendImportedGuestInvitation,
+  buildAutomaticFollowerEmail, sendAutomaticFollowerEmail,
   renderEventReminderEmail, renderEventAnnouncementEmail, renderSecurityEmailLayout: securityLayout,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, renderEmailCodeBlock: signInCodeBlock, rsvpConfirmationSubject

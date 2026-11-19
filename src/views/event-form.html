@@ -1173,7 +1173,7 @@
         display: block;
         padding: 0 22px 130px;
       }
-      #event-form[data-mobile-view="hub"] .event-editor-details > *:not(#publish-btn) { display: none !important; }
+      #event-form[data-mobile-view="hub"] .event-editor-details > *:not(#publish-btn):not(#create-follower-email-option) { display: none !important; }
       #event-form[data-mobile-view="hub"] #publish-btn {
         position: fixed;
         right: 22px;
@@ -1447,6 +1447,7 @@
       #event-form .experience-copy { font-size: 15px; line-height: 1.45; }
 
       #event-form[data-mobile-view]:not([data-mobile-view="hub"]) #publish-btn { display: none !important; }
+      #event-form[data-mobile-view]:not([data-mobile-view="hub"]) #create-follower-email-option { display: none; }
       .event-mobile-flow-actions {
         position: fixed;
         right: 0;
@@ -1974,6 +1975,10 @@
         </div>
       </section>
 
+      <label class="sg-follower-email-option" id="create-follower-email-option" hidden>
+        <input id="create-skip-follower-email" type="checkbox" aria-labelledby="create-skip-follower-email-label" aria-describedby="create-follower-email-help">
+        <span><strong id="create-skip-follower-email-label">Don’t announce this one</strong><small id="create-follower-email-help">Publishing schedules an email to followers who chose email updates.</small></span>
+      </label>
       <button class="sg-btn sg-btn-primary sg-btn-block event-editor-submit" type="submit" id="publish-btn">Publish Event</button>
       </div>
       </div>

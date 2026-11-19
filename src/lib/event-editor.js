@@ -452,7 +452,7 @@ function validateCreateEventInput(body) {
   return { out, secretShowEnabled, secretCode };
 }
 
-async function createEventInTransaction(db, { organizerId, body }) {
+async function createEventInTransaction(db, { organizerId, body, skipFollowerEmail = false }) {
   const { out, secretShowEnabled, secretCode } = validateCreateEventInput(body || {});
   if (!await backgroundSelectionAllowed(db, out.background_theme || 'midnight')) {
     throw editorError('background_unavailable', UNAVAILABLE_MESSAGE, 409);
@@ -470,8 +470,8 @@ async function createEventInTransaction(db, { organizerId, body }) {
                          event_vibe_url_2, event_vibe_label_2, event_vibe_image_url_2,
                          event_vibe_url_3, event_vibe_label_3, event_vibe_image_url_3,
                          show_guest_list, allow_guests, comments_enabled, hide_address_until_rsvp, secret_show_enabled, secret_show_version,
-                         artwork_accent_color, commerce_event_id, sms_reminder_enabled, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48)
+                         artwork_accent_color, commerce_event_id, sms_reminder_enabled, status, skip_follower_email)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49)
      RETURNING *`,
     [organizerId, slug, out.title, out.description || null, out.cover_image_url,
      out.cover_fit_mode, out.presentation_mode, out.flyer_image_url,
@@ -489,7 +489,7 @@ async function createEventInTransaction(db, { organizerId, body }) {
      out.hide_address_until_rsvp === true,
      secretShowEnabled, secretShowEnabled ? 1 : 0, out.artwork_accent_color || null,
      out.commerce_event_id || null, out.sms_reminder_enabled === true,
-     out.status === 'draft' ? 'draft' : 'published']
+     out.status === 'draft' ? 'draft' : 'published', skipFollowerEmail]
   );
   if (secretShowEnabled) {
     await db.query(
@@ -738,7 +738,8 @@ async function updateEventInTransaction(db, { organizerId, eventId, body }) {
 async function publishEventInTransaction(db, {
   organizerId,
   eventId,
-  approvedFlyerRequestId = null
+  approvedFlyerRequestId = null,
+  skipFollowerEmail = null
 }) {
   // A Done For You draft belongs to the recipient-approval workflow until the
   // exact request is approved. Lock the request before the event so every
@@ -803,10 +804,11 @@ async function publishEventInTransaction(db, {
   }
 
   const published = await db.query(
-    `UPDATE events SET status='published', updated_at=NOW()
+    `UPDATE events SET status='published', updated_at=NOW(),
+                       skip_follower_email=COALESCE($3::boolean,skip_follower_email)
       WHERE id=$1 AND organizer_id=$2
       RETURNING *`,
-    [eventId, organizerId]
+    [eventId, organizerId, skipFollowerEmail]
   );
   return { event: toEditorEventDto(published.rows[0]), alreadyPublished: false };
 }

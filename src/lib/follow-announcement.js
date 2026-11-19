@@ -11,13 +11,16 @@ const {
   buildFollowerAnnouncementMessage, previewFingerprint
 } = require('./sms-lifecycle');
 
-async function eligibleEmailRecipients(queryable, organizerId, eventId) {
+async function eligibleEmailRecipients(queryable, organizerId, eventId, {
+  ignoreOwnAutoDeliveryId = null, ignoreOwnAutoLogId = null, recipient = null, recipientUserId = null
+} = {}) {
   const { rows } = await queryable.query(
     `WITH candidates AS (
        SELECT r.user_id,LOWER(r.email) AS email,MIN(r.first_name) AS first_name,
               1 AS source_rank,MAX(r.created_at) AS consent_at
          FROM rsvps r JOIN events source_event ON source_event.id=r.event_id
         WHERE source_event.organizer_id=$1 AND r.organizer_optin=TRUE AND r.status='confirmed'
+          AND ($8::text IS NULL OR r.user_id=$9::int OR ($9::int IS NULL AND r.user_id IS NULL AND LOWER(BTRIM(r.email))=$8))
         GROUP BY r.user_id,LOWER(r.email)
        UNION ALL
        SELECT hf.follower_user_id AS user_id,LOWER(follower.email) AS email,
@@ -25,6 +28,7 @@ async function eligibleEmailRecipients(queryable, organizerId, eventId) {
               0 AS source_rank,MAX(hf.email_opted_in_at) AS consent_at
          FROM host_follows hf JOIN organizers follower ON follower.id=hf.follower_organizer_id
         WHERE hf.host_organizer_id=$1 AND hf.unsubscribed_at IS NULL
+          AND ($8::text IS NULL OR hf.follower_user_id=$9::int OR ($9::int IS NULL AND hf.follower_user_id IS NULL AND LOWER(BTRIM(follower.email))=$8))
           AND hf.email_opted_in_at IS NOT NULL
           AND (hf.email_consent_version=$3
                OR (hf.email_consent_source=$4 AND hf.email_consent_version=$5))
@@ -59,12 +63,16 @@ async function eligibleEmailRecipients(queryable, organizerId, eventId) {
                       OR ((c.user_id IS NULL OR ml.recipient_user_id IS NULL)
                           AND LOWER(ml.recipient)=c.email))
                  AND ml.message_type IN ('announcement','previous_guest_invite')
+                 AND ($6::bigint IS NULL OR ml.automatic_follower_email_delivery_id IS DISTINCT FROM $6::bigint)
+                 AND ($7::bigint IS NULL OR ml.id<>$7::bigint)
                  AND (ml.status IN ('pending','sent')
+                      OR ml.error='automatic_delivery_unknown'
                       OR (ml.message_type='previous_guest_invite' AND ml.import_delivery_state IS NOT NULL))
             )
       ORDER BY c.email`,
     [organizerId, eventId, FOLLOW_EMAIL_CONSENT_VERSION,
-      CONTRIBUTOR_EMAIL_CONSENT_SOURCE, CONTRIBUTOR_EMAIL_CONSENT_VERSION]
+      CONTRIBUTOR_EMAIL_CONSENT_SOURCE, CONTRIBUTOR_EMAIL_CONSENT_VERSION,
+      ignoreOwnAutoDeliveryId, ignoreOwnAutoLogId, recipient, recipientUserId]
   );
   return rows;
 }

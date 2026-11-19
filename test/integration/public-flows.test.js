@@ -13774,6 +13774,11 @@ require('../support/draft-reminder-cases')({
   createDoneForYouClient, openDoneForYouEditor, resetRateLimits
 });
 
+require('../support/automatic-follower-email-cases')({
+  test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession
+});
+
 require('../support/draft-manage-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer

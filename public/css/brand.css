@@ -672,6 +672,16 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-skip-link:focus { transform: none; outline: 2px solid var(--sg-text); outline-offset: 2px; }
 main[tabindex="-1"]:focus { outline: none; }
 
+/* Per-event permission stays a native checkbox, separate from the account switch. */
+.sg-follower-email-option {
+  display: flex; align-items: center; gap: 10px; min-height: 44px;
+  color: var(--sg-text); font: 700 14px/1.45 var(--sg-font-body); cursor: pointer;
+}
+.sg-follower-email-option[hidden] { display: none; }
+.sg-follower-email-option input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--sg-accent); }
+.sg-follower-email-option input:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 3px; }
+.sg-follower-email-option small { display: block; color: var(--sg-text-dim); font: 400 13px/1.45 var(--sg-font-body); }
+
 /* Shared tactile switches. The track stays fixed; only its decorative thumb
    changes size. Native checked/aria-checked state remains the source of truth. */
 .sg-switch-track {

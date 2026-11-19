@@ -46,7 +46,7 @@
             <span class="settings-index-value"></span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
           <a class="settings-index-link" href="/settings/messaging">
-            <span><strong>Messaging</strong><span class="settings-index-description">Text reminders, balance, and activity.</span></span>
+            <span><strong>Messaging</strong><span class="settings-index-description">Event updates, texting balance, and activity.</span></span>
             <span class="settings-index-value" id="settings-index-credit-balance">—</span><span class="settings-index-chevron" aria-hidden="true">›</span>
           </a>
           <a class="settings-index-link" href="/settings/host-page">
@@ -125,8 +125,17 @@
           <section class="settings-panel" id="settings-messaging" data-settings-section="messaging" aria-labelledby="sms-credits-title" hidden>
             <a class="settings-back" href="/settings" aria-label="Back to settings">← Settings</a>
             <div class="settings-section-head">
-              <div><h2 id="sms-credits-title">Keep your guests in the loop</h2><p>Send event reminders and new-event announcements to guests and followers who opted into texts.</p></div>
+              <div><h2 id="sms-credits-title">Keep your guests in the loop</h2><p>Manage event updates for guests and followers who opted into texts or email.</p></div>
             </div>
+            <section class="settings-follower-email" id="settings-follower-email" aria-labelledby="settings-follower-email-title" hidden>
+              <h3 id="settings-follower-email-title">Follower email</h3>
+              <label class="settings-follower-switch sg-switch-field">
+                <input type="checkbox" id="settings-follower-email-enabled" role="switch" aria-labelledby="settings-follower-email-label" aria-describedby="settings-follower-email-help">
+                <span class="settings-row-copy"><strong class="settings-row-label" id="settings-follower-email-label">Email my followers when I publish a public event</strong><span class="settings-row-description" id="settings-follower-email-help">Only followers who chose email updates. You can skip the email for any event. This setting never sends texts.</span></span>
+                <span class="sg-switch-track" aria-hidden="true"></span>
+              </label>
+              <p class="settings-follower-status" id="settings-follower-email-status" role="status" aria-atomic="true"></p>
+            </section>
             <section id="settings-welcome-texts" hidden aria-label="Your welcome texts"></section>
             <div class="credits-balance-block">
               <div><span class="credits-balance-label">Your texting balance</span><strong class="credits-balance-number"><span id="sms-credit-balance">—</span><span class="credits-balance-unit">texts available</span></strong></div>

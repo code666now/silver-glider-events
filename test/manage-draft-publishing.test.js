@@ -13,6 +13,9 @@ function harness({ publish, mobile = false, browserNavigator } = {}) {
   const calls = [];
   const navigations = [];
   let activeElement;
+  const confirmations = [];
+  const timers = new Map();
+  let timerId = 0;
   function node(id) {
     if (nodes.has(id)) return nodes.get(id);
     const listeners = new Map();
@@ -42,15 +45,18 @@ function harness({ publish, mobile = false, browserNavigator } = {}) {
   const location = { pathname: '/events/64/manage', search: '', origin: 'http://localhost', href: 'http://localhost/events/64/manage', assign(url) { navigations.push(url); }, replace(url) { navigations.push(url); } };
   const context = vm.createContext({
     URL, URLSearchParams, Map, Set, Number, String, Date, Promise, console,
-    document: { getElementById: node, querySelectorAll() { return []; }, addEventListener() {}, body: { classList: { toggle() {} } } },
+    document: { getElementById: node, querySelectorAll() { return []; }, addEventListener() {}, body: { classList: { toggle() {} } }, visibilityState: 'visible', get activeElement() { return node(activeElement); } },
     window: { location, matchMedia(query) { return { matches: query.includes('max-width') ? mobile : !mobile, addEventListener() {} }; }, setInterval() {}, SgeEventLifecycle: eventLifecycle },
-    location, history: { state: null }, renderNav() {}, toast() {}, sgSafeHttpUrl() { return ''; }, setTimeout, clearTimeout,
+    location, history: { state: null }, renderNav() {}, toast() {}, sgSafeHttpUrl() { return ''; },
+    confirm(message) { confirmations.push(message); return true; },
+    setTimeout(callback, delay) { timers.set(++timerId, { callback, delay }); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
     navigator: browserNavigator || { clipboard: { async writeText() { throw new Error('Unexpected clipboard access'); } } },
     api: async (url, options) => { calls.push({ url, options }); return publish?.(url, options); }
   });
   vm.runInContext(client.replace('\ninitializeMobileManage();\ninitializeManagePage();', ''), context);
   vm.runInContext(`eventData = { id:64, title:'Draft party', status:'draft', slug:'draft-party', visibility:'public' };`, context);
-  return { node, calls, navigations, context, run: source => vm.runInContext(source, context), active: () => activeElement };
+  return { node, calls, navigations, confirmations, timers, context, run: source => vm.runInContext(source, context), active: () => activeElement };
 }
 
 test('draft Manage offers publishing on desktop and phones without sharing an unavailable link', () => {
@@ -92,11 +98,12 @@ test('publishing needs explicit confirmation, suppresses repeat requests, and re
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].url, '/api/events/64/publish');
   assert.equal(h.calls[0].options.method, 'POST');
+  assert.equal(h.calls[0].options.body.skip_follower_email, true, 'unverified preferences do not allow unreviewed email');
   finish({ event: { id: 64, status: 'published' } });
   await pending;
   assert.deepEqual(h.navigations, ['/events/64/manage?created=1']);
   assert.match(client, /window\.location\.replace\(`\/events\/\$\{encodeURIComponent\(eventId\)\}\/manage\?created=1`\)/);
-  assert.equal(h.calls.length, 1, 'publishing never sends invitations or follower announcements');
+  assert.equal(h.calls.length, 1, 'publishing does not call a second delivery endpoint');
 });
 
 test('publication validation errors retain the draft, expose editing, and restore dialog controls', async () => {
@@ -150,6 +157,109 @@ test('an unconfirmed publish response never invents a successful publication', a
   assert.equal(h.run('eventData.status'), 'draft');
 });
 
+test('active follower email is disclosed before only public non-Secret publishes', async () => {
+  for (const { visibility, secret, available, enabled, optedOut, eligible } of [
+    { visibility: 'public', available: true, enabled: true, optedOut: false, eligible: true },
+    { visibility: 'public', available: true, enabled: true, optedOut: true, eligible: true },
+    { visibility: 'private', available: true, enabled: true },
+    { visibility: 'public', secret: true, available: true, enabled: true },
+    { visibility: 'public', available: true, enabled: false },
+    { visibility: 'public', available: false, enabled: true }
+  ]) {
+    const h = harness({ publish: async url => url === '/api/settings/follower-email'
+      ? { available, enabled }
+      : { event: { id: 64, status: 'published' } } });
+    h.run(`Object.assign(eventData, { visibility: '${visibility}', secret_show_enabled: ${Boolean(secret)} });`);
+    await h.run('loadPublishFollowerEmailPreference()');
+    h.node('publish-event').click();
+    assert.equal(h.node('publish-follower-email-option').hidden, !eligible);
+    assert.match(h.node('publish-event-copy').textContent, eligible ? /schedule an email to followers who chose email updates/ : /won’t email followers/);
+    h.node('publish-skip-follower-email').checked = Boolean(optedOut);
+    await h.node('publish-event-form').fire('submit');
+    assert.equal(h.calls.at(-1).options.body.skip_follower_email, !eligible || Boolean(optedOut));
+  }
+});
+
+test('automatic email status advances through server counts, polls only while active and accepts Send now', async () => {
+  let status = 'pending';
+  const h = harness({ publish: async (url, options) => {
+    if (url.endsWith('/automatic-follower-email')) {
+      assert.equal(options.body.action, 'send_now');
+      status = 'reserved';
+      return { ok: true };
+    }
+    return { automaticEmail: { status, scheduledAt: '2026-12-19T23:05:00Z', eligibleCount: 5, pendingCount: 3, sentCount: status === 'complete' ? 4 : 0, failedCount: 1 }, count: 0 };
+  } });
+  h.run(`eventData.status = 'published';`);
+  await h.run('loadFollowers()');
+  assert.equal(h.node('automatic-follower-email').hidden, false);
+  assert.match(h.node('automatic-follower-email-status').textContent, /Scheduled to email 5 at /);
+  assert.equal(h.node('automatic-follower-email-actions').hidden, false);
+  assert.equal(h.timers.size, 1);
+  h.node('automatic-follower-email-send').focus();
+  await h.node('automatic-follower-email-send').click();
+  assert.equal(h.node('automatic-follower-email-status').textContent, 'Sending to 3…');
+  assert.equal(h.node('automatic-follower-email-actions').hidden, true);
+  assert.equal(h.active(), 'automatic-follower-email-status');
+  status = 'complete';
+  await [...h.timers.values()][0].callback();
+  assert.equal(h.node('automatic-follower-email-status').textContent, '4 emails sent · 1 not confirmed');
+  assert.equal(h.timers.size, 0);
+});
+
+test('automatic email cancellation remains recoverable after a request error and honors confirmed skip', async () => {
+  let status = 'pending';
+  const h = harness({ publish: async (url, options) => {
+    if (url.endsWith('/automatic-follower-email')) {
+      assert.equal(options.body.action, 'cancel');
+      if (h.calls.length === 2) throw new Error('Connection failed.');
+      status = 'skipped';
+      return { ok: true };
+    }
+    return { automaticEmail: { status, scheduledAt: '2026-12-19T23:05:00Z', eligibleCount: 2, sentCount: 0 }, count: 0 };
+  } });
+  h.run(`eventData.status = 'published';`);
+  await h.run('loadFollowers()');
+  await h.node('automatic-follower-email-cancel').click();
+  assert.equal(h.node('automatic-follower-email-error').textContent, 'Connection failed.');
+  assert.equal(h.node('automatic-follower-email-error').hidden, false);
+  assert.equal(h.node('automatic-follower-email-cancel').disabled, false);
+  await h.node('automatic-follower-email-cancel').click();
+  assert.equal(h.node('automatic-follower-email-actions').hidden, true);
+  assert.equal(h.node('automatic-follower-email-error').hidden, true);
+  assert.equal(h.node('automatic-follower-email-status').textContent, 'No automatic follower email was sent.');
+});
+
+test('manual follower SMS remains available to eligible recipients after automatic email', async () => {
+  const followerPreview = { automaticEmail: { status: 'complete', sentCount: 5 }, canAnnounce: true, count: 2, emailCount: 0, textCount: 2, textBalance: 6, textCreditCost: 2, canIncludeTexts: true };
+  const h = harness({ publish: async url => {
+    if (!url.endsWith('/announce')) return followerPreview;
+    Object.assign(followerPreview, { announcedAt: '2026-12-19T23:11:00Z', announcedCount: 0, announcedTextCount: 2 });
+    return { sent: 0, textsQueued: 2 };
+  } });
+  h.run(`eventData.status = 'published';`);
+  await h.run('loadFollowers()');
+  assert.equal(h.node('announce-title').textContent, 'Text 2 followers');
+  assert.doesNotMatch(h.node('announce-copy').textContent, /emails/i);
+  await h.node('announce').click();
+  assert.match(h.confirmations[0], /2 followers as 2 texts/);
+  assert.doesNotMatch(h.confirmations[0], /emails/i);
+  assert.equal(h.calls.find(call => call.url.endsWith('/announce')).options.body.includeTexts, true);
+  assert.equal(h.node('announce-copy').textContent, '2 texts queued');
+  assert.equal(h.node('automatic-follower-email-status').textContent, '5 emails sent');
+});
+
+test('deferred emails show remaining recipients and cannot be accelerated', async () => {
+  const h = harness({ publish: async () => ({ count: 0, automaticEmail: { status: 'pending', scheduledAt: '2026-12-20T03:00:00Z', eligibleCount: 9, pendingCount: 7, sentCount: 2, canSendNow: false } }) });
+  h.run(`eventData.status = 'published';`);
+  await h.run('loadFollowers()');
+  assert.match(h.node('automatic-follower-email-status').textContent, /Scheduled to email 7 at .+ · 2 emails sent/);
+  assert.equal(h.node('automatic-follower-email-send').hidden, true);
+  assert.equal(h.node('automatic-follower-email-cancel').textContent, 'Stop remaining emails');
+  await h.node('automatic-follower-email-send').click();
+  assert.equal(h.calls.length, 1);
+});
+
 test('past guests are read-only while drafting, then become selectable only after publication', async () => {
   const h = harness();
   h.run(`peopleState = {canBrowsePastGuests:true, canInvite:false, people:[{id:'rsvp:1',name:'Past guest',detail:'Halloween',fallbackEmoji:'🎉'}], plusOnes:[{name:'Friend', detail:'Past guest’s +1',fallbackEmoji:'🎉'}], groups:[{key:'all',count:1,label:'Everyone'}]}; renderPeople();`);
@@ -172,7 +282,7 @@ test('past guests are read-only while drafting, then become selectable only afte
 test('publication review and hidden controls keep explicit accessible semantics', () => {
   assert.match(view, /<dialog class="publish-event-dialog"[^>]+aria-labelledby="publish-event-title"[^>]+aria-describedby="publish-event-copy"/);
   assert.match(view, /\.publish-event-dialog:not\(\[open\]\),\.publish-event-dialog \[hidden\] \{ display:none !important; \}/);
-  assert.match(view, /Publishing does not send invitations or notify followers/);
+  assert.match(view, /id="publish-skip-follower-email" type="checkbox" aria-describedby="publish-event-copy"/);
   assert.match(client, /!data\.canInvite && \(!\(data\.canBrowsePastGuests\)/);
   assert.match(client, /eventData\.status === 'cancelled' \|\| eventData\.status === 'draft'/);
 });
@@ -184,7 +294,7 @@ test('same-day drafts still load past guests and filtered empty states stay trut
   h.run(`peopleGroup = 'all'; $('familiar-people-source').value = '4'; renderPeople();`);
   assert.equal(h.node('familiar-people-empty').textContent, 'No past guests match this filter.');
   const initialization = client.slice(client.indexOf('async function initializeManagePage()'), client.indexOf('\ninitializeMobileManage();'));
-  assert.match(initialization, /eventData\.status === 'published' && eventData\.lifecycle_phase === 'tonight'\s*\? \[loadPeople\(\), loadContacts\(\)\]\s*:\s*\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\), loadContacts\(\)\]/);
+  assert.match(initialization, /eventData\.status === 'published' && eventData\.lifecycle_phase === 'tonight'\s*\? \[loadPeople\(\), loadContacts\(\), loadFollowers\(\)\]\s*:\s*\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\), loadContacts\(\)\]/);
   assert.doesNotMatch(initialization, /:\s*eventData\.lifecycle_phase === 'tonight'/);
 });
 

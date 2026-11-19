@@ -39,6 +39,7 @@
     .publish-event-summary { padding:20px;border:1px solid var(--sg-border-soft);border-radius:16px;background:rgba(255,255,255,.025);overflow-wrap:anywhere; }
     .publish-event-summary strong { display:block;font-size:19px; }
     .publish-event-summary p,.publish-event-copy { color:var(--sg-text-dim);font-size:14px;line-height:1.6;margin:12px 0 0; }
+    .publish-event-dialog .sg-follower-email-option { margin-top:8px; }
     .publish-event-actions { display:flex;gap:12px;justify-content:flex-end;margin-top:26px; }
     .publish-event-actions .sg-btn { min-height:48px; }
     .publish-event-error { color:var(--sg-danger);font-size:14px;line-height:1.5;margin:20px 0 12px; }
@@ -170,6 +171,14 @@
     .lifecycle-receipt strong,.lifecycle-receipt span { display:block; }
     .lifecycle-receipt strong { margin-bottom:3px;font-size:13px; }
     .lifecycle-receipt span { color:var(--sg-text-dim);font-size:11px;line-height:1.45; }
+    .automatic-email-card { margin:14px 0 20px;padding:14px 16px;border:1px solid var(--sg-border-soft);border-radius:14px;background:rgba(28,197,190,.045); }
+    .automatic-email-card[hidden],.automatic-email-actions[hidden],.automatic-email-actions [hidden] { display:none; }
+    .automatic-email-card h2 { font-size:13px;font-weight:800;line-height:1.4; }
+    .automatic-email-card p { margin:3px 0 0;color:var(--sg-text-dim);font-size:13px;line-height:1.5; }
+    .automatic-email-card p[role="alert"] { color:var(--sg-danger); }
+    .automatic-email-actions { display:flex;flex-wrap:wrap;gap:8px;margin-top:10px; }
+    .automatic-email-actions .sg-btn { min-height:44px;padding:8px 14px;font-size:12px; }
+    .automatic-email-card :focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
     .lifecycle-recap { margin-top:20px; }
     .lifecycle-recap-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
     .lifecycle-recap-stat {
@@ -480,6 +489,7 @@
       .manage-event-panel > .manage-mobile-hub,
       .manage-event-panel > .stat-row,
       .manage-event-panel > .notification-status,
+      .manage-event-panel > .automatic-email-card,
       .manage-event-panel > .toolbar,
       .manage-event-panel > .promotion-card,
       #manage-guest-section,
@@ -488,6 +498,7 @@
       .manage-shell[data-mobile-view="home"] .manage-title-row { display:flex !important;align-items:flex-start !important;gap:14px !important;margin-bottom:9px !important; }
       .manage-shell[data-mobile-view="home"] .manage-event-panel > #meta { display:block;margin-bottom:28px;font-size:16px;line-height:1.5; }
       .manage-shell[data-mobile-view="home"] .manage-mobile-hub:not([hidden]) { display:block; }
+      .manage-shell:is([data-mobile-view="home"],[data-mobile-view="promote"]) .automatic-email-card:not([hidden]) { display:block; }
       .manage-shell[data-mobile-view="overview"] .manage-visual-column { display:block; }
       .manage-shell[data-mobile-view="overview"] .manage-event-panel > .stat-row { display:grid; }
       .manage-shell[data-mobile-view="overview"] .manage-event-panel > .notification-status:not([hidden]) { display:block; }
@@ -688,6 +699,15 @@
     </div>
     <p class="sg-page-sub" id="meta"><span class="sg-skeleton manage-meta-skeleton" aria-hidden="true"></span></p>
     <p class="manage-moderation-notice" id="moderation-notice" role="status" hidden></p>
+    <section class="automatic-email-card" id="automatic-follower-email" aria-labelledby="automatic-follower-email-title" hidden>
+      <h2 id="automatic-follower-email-title">Follower email</h2>
+      <p id="automatic-follower-email-status" role="status" aria-atomic="true" tabindex="-1"></p>
+      <div class="automatic-email-actions" id="automatic-follower-email-actions" hidden>
+        <button class="sg-btn sg-btn-ghost" id="automatic-follower-email-send" type="button">Send now</button>
+        <button class="sg-btn sg-btn-ghost" id="automatic-follower-email-cancel" type="button">Don’t send</button>
+      </div>
+      <p id="automatic-follower-email-error" role="alert" hidden></p>
+    </section>
 
     <section class="manage-mobile-hub" id="manage-mobile-hub" aria-label="Event management sections" hidden>
       <div class="manage-mobile-hub-intro">
@@ -866,7 +886,7 @@
         </div>
         <button class="lifecycle-next-event" id="lifecycle-next-event" type="button" disabled>
           <span class="promotion-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 3v4m8-4v4M5 9h14"/><path d="M12 12v5m-2.5-2.5h5"/></svg></span>
-          <span class="promotion-action-copy"><strong class="promotion-action-title">Do this again</strong><span class="promotion-action-description">Start a draft with this artwork and these details. Choose a new date, then review who to invite after publishing. Nothing is sent automatically.</span></span>
+          <span class="promotion-action-copy"><strong class="promotion-action-title">Do this again</strong><span class="promotion-action-description">Start a draft with this artwork and these details. Choose a new date and decide whether to email followers when you publish.</span></span>
           <span class="promotion-action-arrow" aria-hidden="true">›</span>
         </button>
       </section>
@@ -1000,7 +1020,11 @@
         <p id="publish-event-details"></p>
         <p id="publish-event-visibility"></p>
       </div>
-      <p class="publish-event-copy" id="publish-event-copy">Your saved event page will become available to guests. Publishing does not send invitations or notify followers; you choose whom to contact afterward.</p>
+      <p class="publish-event-copy" id="publish-event-copy">Your saved event page will become available to guests.</p>
+      <label class="sg-follower-email-option" id="publish-follower-email-option" hidden>
+        <input id="publish-skip-follower-email" type="checkbox" aria-describedby="publish-event-copy">
+        <span>Don’t announce this one</span>
+      </label>
       <p class="publish-event-error" id="publish-event-error" role="alert" tabindex="-1" hidden></p>
       <a class="publish-event-edit" id="publish-event-edit" hidden>Edit event details →</a>
       <div class="publish-event-actions">

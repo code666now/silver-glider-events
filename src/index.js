@@ -323,6 +323,7 @@ async function start() {
   require('./jobs/post-event-thank-yous').startPostEventThankYouCron();
   require('./jobs/flyer-admin-notifications').startFlyerAdminNotificationCron();
   require('./jobs/event-admin-alerts').startEventAdminAlertCron();
+  require('./jobs/automatic-follower-email').startAutomaticFollowerEmailCron();
   require('./jobs/flyer-publication-notifications').startFlyerPublicationNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
   require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();

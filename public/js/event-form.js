@@ -23,6 +23,18 @@ let savedRsvpCount = 0;
 let backgroundThemeTouched = false;
 
 const $ = id => document.getElementById(id);
+let autoFollowerEmailEnabled = false;
+if (!editId && !adminEditorMode) {
+  api('/api/settings/follower-email', { redirectOnLegalReview: false }).then(preference => {
+    autoFollowerEmailEnabled = preference.available === true && preference.enabled === true;
+    renderPublishFollowerEmailOption();
+  }).catch(() => {});
+}
+
+function renderPublishFollowerEmailOption() {
+  $('create-follower-email-option').hidden = !autoFollowerEmailEnabled || visibility !== 'public' || $('secret_show_enabled').checked;
+}
+
 const ArtworkColor = window.SGArtworkColor;
 const EventBackgrounds = window.SGEventBackgrounds;
 const LocationUtils = window.SGLocation;
@@ -535,6 +547,7 @@ function renderVisibilityState() {
   $('private-settings').classList.toggle('show', visibility === 'private');
   $('private-settings').classList.toggle('secret-enabled', secret);
   $('location-privacy-settings').hidden = !(visibility === 'private' && admissionType === 'free_rsvp');
+  renderPublishFollowerEmailOption();
 }
 
 function setVisibility(mode) {
@@ -1803,6 +1816,8 @@ if (editId) {
 $('event-form').addEventListener('submit', async e => {
   e.preventDefault();
   if (!validateRequiredFields()) return;
+  const skipFollowerEmail = $('create-follower-email-option').hidden || $('create-skip-follower-email').checked
+    || (mobileFlowMedia.matches && mobileFlowView !== 'hub');
   const btn = $('publish-btn');
   btn.disabled = true;
   btn.textContent = adminEditorMode ? 'Saving draft…' : (editId ? 'Saving…' : 'Publishing…');
@@ -1815,6 +1830,7 @@ $('event-form').addEventListener('submit', async e => {
     }
     await refreshActiveArtworkAccent();
     const body = collect();
+    if (!editId && !adminEditorMode) body.skip_follower_email = skipFollowerEmail || body.visibility !== 'public' || body.secret_show_enabled;
     if (!adminEditorMode && editId && savedEventDetails && savedRsvpCount > 0) {
       const changes = window.SGEEventChanges.compare(savedEventDetails, body);
       if (changes.length) {

@@ -166,6 +166,7 @@
   let commerceConfigLoaded = false;
   let commerceEnabled = false;
   let commerceInterested = false;
+  let autoFollowerEmailEnabled = false;
 
   async function request(path, options = {}) {
     const response = await fetch(path, {
@@ -185,6 +186,18 @@
       throw error;
     }
     return data;
+  }
+
+  if (isDraftEvent()) {
+    request('/api/settings/follower-email').then(preference => {
+      autoFollowerEmailEnabled = preference.available === true && preference.enabled === true;
+      renderPublishFollowerEmailOption();
+    }).catch(() => {});
+  }
+
+  function renderPublishFollowerEmailOption() {
+    const option = $('owner-follower-email-option');
+    if (option) option.hidden = !autoFollowerEmailEnabled || draft.visibility !== 'public' || draft.secretShowEnabled;
   }
 
   function themeIsAvailable(key) {
@@ -794,6 +807,7 @@
       ? 'A code is already set. Leave both fields blank to keep it, or enter a new code twice.'
       : 'Choose a six-character code. Guests will need it to open the event.';
     $('owner-location-privacy').hidden = !(draft.visibility === 'private' && draft.admissionType === 'free_rsvp');
+    renderPublishFollowerEmailOption();
   }
 
   function setVisibilityMode(value) {
@@ -1804,6 +1818,8 @@
     readInputs();
     setMobileViewStatus('');
     const publishing = isDraftEvent();
+    const skipFollowerEmail = publishing && ($('owner-follower-email-option').hidden || $('owner-skip-follower-email').checked
+      || (mobileEditorMedia.matches && activeMobileView !== 'hub'));
     if (publishing && repeatRequested && draft.eventDate && draft.startTime) {
       const local = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
         timeZone: EVENT.timezone || 'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',
@@ -1883,7 +1899,7 @@
       if (publishing) {
         saveButton.textContent = 'Publishing…';
         saveStatus.textContent = 'Publishing your event…';
-        await request(`/api/events/${EVENT.id}/publish`, { method: 'POST' });
+        await request(`/api/events/${EVENT.id}/publish`, { method: 'POST', body: { skip_follower_email: skipFollowerEmail } });
         window.location.assign(`/events/${encodeURIComponent(EVENT.id)}/manage?created=1${repeatRequested ? '&repeat=1' : ''}`);
         return;
       }

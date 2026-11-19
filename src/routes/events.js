@@ -25,11 +25,14 @@ const {
   createFollowerAnnouncementBatch, makeFollowerAnnouncementPreview
 } = require('../lib/follow-announcement');
 const { queueSmsBatch } = require('../jobs/sms-notifications');
-const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { HOST_ACCOUNT_INACTIVE, outboundDeliveryLockKey, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
 const { invitationSelectionKey } = require('../lib/invitation-selection-key');
+const {
+  automaticFollowerEmailEnabled, allowAutomaticFollowerEmailForPublication
+} = require('../lib/automatic-follower-email-config');
 
 const router = express.Router();
 // Scope auth to organizer API paths only — this router is mounted at app root,
@@ -41,6 +44,15 @@ router.use('/api/places', requireOrganizer);
 
 function isTrue(value) {
   return value === true || value === 'true';
+}
+
+function readSkipFollowerEmail(body) {
+  const flag = body?.skip_follower_email;
+  if (flag === undefined) return null;
+  if (typeof flag !== 'boolean') {
+    throw new EventEditorError('invalid_announcement_choice', 'Choose whether to announce this event.');
+  }
+  return flag;
 }
 
 async function createEventNotificationBatch(client, { eventId, kind, changes = [] }) {
@@ -194,6 +206,7 @@ router.post('/api/events/:id/unarchive', async (req, res, next) => {
 router.post('/api/events', async (req, res, next) => {
   try {
     validateCreateEventInput(req.body);
+    const skipFollowerEmail = readSkipFollowerEmail(req.body);
 
     const presenterName = cleanHostName(req.body.presenter_name) || cleanHostName(req.organizer.org_name);
     let effectiveOrganizer = req.organizer;
@@ -211,9 +224,11 @@ router.post('/api/events', async (req, res, next) => {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        await allowAutomaticFollowerEmailForPublication(client);
         const result = await createEventInTransaction(client, {
           organizerId: req.organizer.id,
-          body: req.body
+          body: req.body,
+          skipFollowerEmail: skipFollowerEmail ?? false
         });
         // Only an explicit customer save enrolls a draft. Administrative and
         // system writes use the shared editor without this activity hook.
@@ -428,10 +443,13 @@ router.put('/api/events/:id', async (req, res, next) => {
 router.post('/api/events/:id/publish', async (req, res, next) => {
   const client = await pool.connect();
   try {
+    const skipFollowerEmail = readSkipFollowerEmail(req.body);
     await client.query('BEGIN');
+    await allowAutomaticFollowerEmailForPublication(client);
     const result = await publishEventInTransaction(client, {
       organizerId: req.organizer.id,
-      eventId: req.params.id
+      eventId: req.params.id,
+      skipFollowerEmail
     });
     await client.query('COMMIT');
     res.json(result);
@@ -685,7 +703,7 @@ async function targetRecipientState(queryable, { targetEventId, recipients }) {
       WHERE event_id=$1
         AND (LOWER(recipient)=ANY($2::text[]) OR recipient_user_id=ANY($3::int[]))
         AND message_type IN ('announcement','previous_guest_invite')
-        AND status IN ('pending','sent')`,
+        AND (status IN ('pending','sent') OR error='automatic_delivery_unknown')`,
     [targetEventId, emails, userIds]
   );
   const matchesRecipient = rows => recipient => rows.some(row => {
@@ -1110,7 +1128,7 @@ function connectedToTarget(emailExpression, userIdExpression = 'NULL') {
             OR ((${userIdExpression} IS NULL OR ml.recipient_user_id IS NULL)
                 AND LOWER(TRIM(ml.recipient))=${emailExpression}))
        AND ml.message_type IN ('announcement','previous_guest_invite')
-       AND ml.status IN ('pending','sent')
+       AND (ml.status IN ('pending','sent') OR ml.error='automatic_delivery_unknown')
   ))`;
 }
 
@@ -1500,7 +1518,50 @@ router.get('/api/events/:id/line-status', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/events/:id/followers — how many opted-in followers would get an announcement
+async function automaticEmailStatus(queryable, eventId, emailCount = 0) {
+  if (!automaticFollowerEmailEnabled()) return null;
+  const { rows } = await queryable.query(
+    `SELECT a.status,a.available_at,a.skip_reason,
+            (NOT o.auto_follower_email OR a.created_at <= o.auto_follower_email_disabled_at) AS disabled,
+            counts.total,counts.pending,counts.sent,counts.failed,counts.in_delivery,counts.next_at
+       FROM automatic_follower_email_events a JOIN organizers o ON o.id=a.organizer_id
+       CROSS JOIN LATERAL (
+         SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE ml.status='pending')::int AS pending,
+                COUNT(*) FILTER (WHERE ml.status='pending' AND ml.automatic_follower_email_delivery_id IS NOT NULL)::int AS in_delivery,
+                COUNT(*) FILTER (WHERE ml.status='sent')::int AS sent,
+                COUNT(*) FILTER (WHERE ml.status='failed')::int AS failed,
+                MIN(ml.automatic_follower_email_next_at) FILTER (WHERE ml.status='pending') AS next_at
+           FROM message_log ml WHERE ml.event_id=a.event_id
+             AND (ml.automatic_follower_email_delivery_id IS NOT NULL OR ml.automatic_follower_email_next_at IS NOT NULL)
+       ) counts WHERE a.event_id=$1`, [eventId]
+  );
+  const job = rows[0];
+  if (!job) return null;
+  const deferred = job.status === 'reserved' && !job.in_delivery && job.next_at;
+  const status = job.disabled && ['pending', 'reserved'].includes(job.status) ? 'skipped'
+    : deferred ? 'pending' : job.status;
+  return {
+    status,
+    scheduledAt: status === 'pending' ? (deferred ? job.next_at : job.available_at) : null,
+    eligibleCount: job.status === 'pending' ? emailCount : job.total,
+    sentCount: job.sent,
+    pendingCount: status === 'skipped' ? 0 : job.pending,
+    failedCount: job.failed,
+    canSendNow: status === 'pending' && !deferred,
+    reason: job.disabled ? 'host_disabled' : job.skip_reason
+  };
+}
+
+function autoBlocksManualEmail(status) {
+  return status && ['pending', 'reserved', 'complete'].includes(status.status);
+}
+
+function manualFollowerFingerprint(preview, suppressEmail) {
+  return suppressEmail ? `${preview.fingerprint}:text-only` : preview.fingerprint;
+}
+
+// GET /api/events/:id/followers — opted-in audience and automatic-email status
 router.get('/api/events/:id/followers', async (req, res, next) => {
   try {
     const { rows: ev } = await pool.query(
@@ -1512,10 +1573,13 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
     );
     if (!ev.length) return res.status(404).json({ error: 'Event not found' });
     const preview = await makeFollowerAnnouncementPreview(pool, ev[0]);
+    const automaticEmail = await automaticEmailStatus(pool, ev[0].id, preview.emailCount);
+    const suppressEmail = autoBlocksManualEmail(automaticEmail);
+    const emailCount = suppressEmail ? 0 : preview.emailCount;
     const didSendAnnouncement = Boolean(ev[0].announced_at);
     res.json({
-      count: preview.count,
-      emailCount: preview.emailCount,
+      count: suppressEmail ? preview.textCount : preview.count,
+      emailCount,
       textCount: preview.textCount,
       textCreditCost: preview.creditCost,
       textBalance: preview.balance,
@@ -1524,17 +1588,59 @@ router.get('/api/events/:id/followers', async (req, res, next) => {
       textReason: preview.textReason,
       canIncludeTexts: preview.canIncludeTexts,
       needsTextFunds: preview.needsFunds,
-      fingerprint: preview.fingerprint,
+      fingerprint: manualFollowerFingerprint(preview, suppressEmail),
       announcedAt: ev[0].announced_at,
       announcedCount: ev[0].announced_count,
       announcedTextCount: ev[0].announced_text_count,
+      automaticEmail,
       hostPageUrl: ev[0].organizer_public_slug
         ? `/h/${encodeURIComponent(ev[0].organizer_public_slug)}`
         : null,
       canAnnounce: ev[0].status === 'published' && ev[0].visibility === 'public' &&
-        !didSendAnnouncement && (preview.emailCount > 0 || preview.textCount > 0)
+        !didSendAnnouncement && (emailCount > 0 || preview.textCount > 0)
     });
   } catch (err) { next(err); }
+});
+
+router.post('/api/events/:id/automatic-follower-email', async (req, res, next) => {
+  if (!automaticFollowerEmailEnabled()) return res.status(404).json({ error: 'Automatic email is unavailable.' });
+  const action = req.body?.action;
+  if (!['send_now', 'cancel'].includes(action)) return res.status(400).json({ error: 'Choose Send now or Don’t send.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const event = (await client.query(
+      `SELECT * FROM events WHERE id=$1 AND organizer_id=$2 FOR UPDATE`, [req.params.id, req.organizer.id]
+    )).rows[0];
+    if (!event) throw new EventEditorError('event_not_found', 'Event not found', 404);
+    const organizer = (await client.query(
+      `SELECT auto_follower_email,auto_follower_email_disabled_at FROM organizers WHERE id=$1 FOR UPDATE`, [req.organizer.id]
+    )).rows[0];
+    const job = (await client.query(
+      `SELECT * FROM automatic_follower_email_events WHERE event_id=$1 FOR UPDATE`, [event.id]
+    )).rows[0];
+    const current = job && await automaticEmailStatus(client, event.id);
+    if (!current || current.status !== 'pending' || (action === 'send_now' &&
+        (!current.canSendNow ||
+        (!organizer.auto_follower_email || (organizer.auto_follower_email_disabled_at && organizer.auto_follower_email_disabled_at >= job.created_at) ||
+         event.status !== 'published' || event.visibility !== 'public' || event.secret_show_enabled || event.archived_at || event.skip_follower_email)))) {
+      throw new EventEditorError('announcement_not_pending', 'This email is no longer scheduled. Refresh to see its status.', 409);
+    }
+    if (action === 'cancel') {
+      // The database preserves this suppression even if the event is edited,
+      // unpublished or made public again later.
+      await client.query('UPDATE events SET skip_follower_email=TRUE WHERE id=$1', [event.id]);
+    } else {
+      await client.query(
+        `UPDATE automatic_follower_email_events SET available_at=NOW(),send_now_at=NOW() WHERE event_id=$1`, [event.id]
+      );
+    }
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    handleEventEditorError(error, res, next);
+  } finally { client.release(); }
 });
 
 // POST /api/events/:id/announce — host-approved email + optional paid SMS update (one-shot)
@@ -1566,7 +1672,14 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
     if (event.announced_at) throw Object.assign(new Error('This event was already announced'), { statusCode: 409 });
 
     preview = await makeFollowerAnnouncementPreview(client, event);
-    if (String(req.body.fingerprint || '') !== preview.fingerprint) {
+    const suppressEmail = autoBlocksManualEmail(await automaticEmailStatus(client, event.id));
+    if (suppressEmail) {
+      // Completing or waiting for an automatic email does not consume the
+      // organizer's separate ability to review and send a paid text batch.
+      preview.emailCount = 0;
+      preview._emails = [];
+    }
+    if (String(req.body.fingerprint || '') !== manualFollowerFingerprint(preview, suppressEmail)) {
       throw Object.assign(new Error('The follower audience or text cost changed. Review the updated preview.'), { statusCode: 409 });
     }
     const includeTexts = req.body.includeTexts === true;
@@ -1640,6 +1753,38 @@ router.post('/api/events/:id/announce', async (req, res, next) => {
   } finally {
     client.release();
   }
+});
+
+router.get('/api/settings/follower-email', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT auto_follower_email FROM organizers WHERE id=$1', [req.organizer.id]);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ enabled: rows[0]?.auto_follower_email === true, available: automaticFollowerEmailEnabled() });
+  } catch (error) { next(error); }
+});
+
+router.patch('/api/settings/follower-email', async (req, res, next) => {
+  if (!automaticFollowerEmailEnabled()) return res.status(404).json({ error: 'Automatic email is unavailable.' });
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'Choose an automatic email setting.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // A completed off-switch is ordered against a provider request already in
+    // flight. Ordinary event publishing never takes this delivery lock.
+    if (!enabled) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [outboundDeliveryLockKey(req.organizer.user_id)]);
+    }
+    const { rows } = await client.query(
+      `UPDATE organizers SET auto_follower_email=$2
+        WHERE id=$1 RETURNING auto_follower_email`, [req.organizer.id, enabled]
+    );
+    await client.query('COMMIT');
+    res.json({ enabled: rows[0]?.auto_follower_email === true, available: true });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally { client.release(); }
 });
 
 // PUT /api/settings

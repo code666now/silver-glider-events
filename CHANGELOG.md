@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.215
+
+Released November 19, 2026.
+
+* Automatically email eligible subscribers when a host first publishes a public event, after a 10-minute hold. Hosts can opt out in Settings, skip individual announcements at publish, or send now or cancel from Manage. Private, Secret, hidden, and cancelled events are excluded, and existing events aren't backfilled.
+* Queue email outside the publish request, combine eligible events, and send at most one automatic digest per recipient per host-local day. Report accepted sends from delivery records. Manual texts, SMS consent, and credit balances are unchanged.
+* Add migration 086 and a production rollout flag for automatic follower email.
+* `npm run check` passed **1,128/1,128** tests. Nine isolated Chrome checks verified publish, Manage, and the Messaging switch at phone and desktop widths without sending mail.
+
 ## 1.0.214
 
 Released November 19, 2026.

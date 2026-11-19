@@ -944,6 +944,49 @@ settingsElement('identity-dialog').addEventListener('click', event => {
   if (outside) closeIdentityDialog();
 });
 
+const followerEmailSetting = settingsElement('settings-follower-email-enabled');
+let savedFollowerEmail = null;
+let savingFollowerEmail = false;
+
+async function loadFollowerEmailSetting() {
+  try {
+    const preference = await api('/api/settings/follower-email', { redirectOnLegalReview: false });
+    if (preference.available !== true || typeof preference.enabled !== 'boolean') return;
+    savedFollowerEmail = preference.enabled;
+    followerEmailSetting.checked = savedFollowerEmail;
+    settingsElement('settings-follower-email').hidden = false;
+  } catch (_) {
+    // Messaging and texting controls are independent of this preference.
+  }
+}
+
+followerEmailSetting.addEventListener('click', event => {
+  if (savingFollowerEmail) event.preventDefault();
+});
+followerEmailSetting.addEventListener('change', async () => {
+  if (savingFollowerEmail || savedFollowerEmail === null) return;
+  savingFollowerEmail = true;
+  const status = settingsElement('settings-follower-email-status');
+  status.classList.remove('error');
+  status.textContent = 'Saving…';
+  followerEmailSetting.setAttribute('aria-disabled', 'true');
+  try {
+    const preference = await api('/api/settings/follower-email', {
+      method: 'PATCH', body: { enabled: followerEmailSetting.checked }
+    });
+    if (typeof preference.enabled !== 'boolean') throw new Error('Could not confirm the setting.');
+    savedFollowerEmail = preference.enabled;
+    status.textContent = 'Preference saved.';
+  } catch (_) {
+    status.classList.add('error');
+    status.textContent = 'We couldn’t save this preference. Try again.';
+  } finally {
+    followerEmailSetting.checked = savedFollowerEmail;
+    followerEmailSetting.removeAttribute('aria-disabled');
+    savingFollowerEmail = false;
+  }
+});
+
 api('/api/auth/me').then(({ organizer, legalAcceptance }) => {
   populateSettings(organizer);
   showSettings();
@@ -953,6 +996,7 @@ api('/api/auth/me').then(({ organizer, legalAcceptance }) => {
   if (!legalAcceptance?.required) {
     if (organizer.avatar_url) api('/api/me/link-rsvps', { method: 'POST' }).catch(() => {});
     loadSmsCredits().then(showCheckoutReturn);
+    if (requestedSettingsSection === 'messaging') loadFollowerEmailSetting();
   }
 }).catch(showSettingsError);
 

@@ -37,6 +37,17 @@ let mobileEditMarker = null;
 let postEventDeepLinkHandled = false;
 let publishBusy = false;
 let publishReturnFocus = null;
+let publishFollowerEmailPreference = null;
+
+async function loadPublishFollowerEmailPreference() {
+  try {
+    const preference = await api('/api/settings/follower-email', { redirectOnLegalReview: false });
+    publishFollowerEmailPreference = preference.available === true && preference.enabled === true;
+  } catch (_) {
+    publishFollowerEmailPreference = null;
+  }
+  if ($('publish-event-dialog').open && !publishBusy) renderPublishFollowerEmailOption();
+}
 
 function mobileManageHistoryEntry() {
   const entry = history.state?.[mobileManageHistoryKey];
@@ -467,6 +478,18 @@ function closePublishDialog() {
   if (!publishBusy) $('publish-event-dialog').close();
 }
 
+function renderPublishFollowerEmailOption() {
+  const isPublic = eventData?.visibility === 'public' && !eventData.secret_show_enabled;
+  const canSchedule = isPublic && publishFollowerEmailPreference === true;
+  $('publish-follower-email-option').hidden = !canSchedule;
+  const copy = 'Your saved event page will become available to guests.';
+  $('publish-event-copy').textContent = canSchedule
+    ? `${copy} We’ll schedule an email to followers who chose email updates, unless you skip it below.`
+    : isPublic && publishFollowerEmailPreference === null
+      ? `${copy} We’ll skip follower email if we can’t check your Messaging preference.`
+      : `${copy} Publishing this event won’t email followers.`;
+}
+
 function openPublishDialog(trigger) {
   if (!mobileManageReady() || eventData.status !== 'draft' || publishBusy) return;
   publishReturnFocus = trigger;
@@ -484,6 +507,7 @@ function openPublishDialog(trigger) {
   $('publish-event-error').hidden = true;
   $('publish-event-edit').hidden = true;
   $('publish-event-edit').href = `/events/${encodeURIComponent(eventData.id)}/edit`;
+  renderPublishFollowerEmailOption();
   $('publish-event-dialog').showModal();
   $('publish-event-title').focus();
 }
@@ -502,20 +526,22 @@ $('publish-event-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (publishBusy || !$('publish-event-dialog').open || eventData?.status !== 'draft') return;
   publishBusy = true;
+  const skipFollowerEmail = $('publish-follower-email-option').hidden || $('publish-skip-follower-email').checked;
   const button = $('publish-event-confirm');
   button.disabled = true;
   button.textContent = 'Publishing…';
   $('publish-event-form').setAttribute('aria-busy', 'true');
   $('publish-event-cancel').disabled = true;
   $('publish-event-close').disabled = true;
+  $('publish-skip-follower-email').disabled = true;
   $('publish-event-error').hidden = true;
   $('publish-event-edit').hidden = true;
   syncPublicationActions();
   syncMobileManageAvailability();
   try {
-    const result = await api(`/api/events/${eventId}/publish`, { method: 'POST' });
+    const result = await api(`/api/events/${eventId}/publish`, { method: 'POST', body: { skip_follower_email: skipFollowerEmail } });
     if (result?.event?.status !== 'published') throw new Error('Publication could not be confirmed. Refresh the page to check your event.');
-    // Reuse the existing publication success journey; no invitations are sent here.
+    // Reuse the existing success journey without waiting for any delivery.
     eventData = result.event;
     window.location.replace(`/events/${encodeURIComponent(eventId)}/manage?created=1`);
   } catch (error) {
@@ -528,6 +554,8 @@ $('publish-event-form').addEventListener('submit', async event => {
     button.textContent = 'Publish event';
     $('publish-event-cancel').disabled = false;
     $('publish-event-close').disabled = false;
+    $('publish-skip-follower-email').disabled = false;
+    renderPublishFollowerEmailOption();
     $('publish-event-form').removeAttribute('aria-busy');
     syncPublicationActions();
     syncMobileManageAvailability();
@@ -1213,6 +1241,11 @@ $('duplicate').addEventListener('click', () => duplicateEvent($('duplicate')));
 
 let smsPreviewState = null;
 let followerPreviewState = null;
+let followerPreviewRequest = null;
+let automaticEmailPoll = null;
+let automaticEmailActionBusy = false;
+let requestedAutomaticEmailAction = '';
+let manualFollowerBusy = false;
 
 function currentLifecycleVariant() {
   if (!eventData || !window.SgeEventLifecycle) return 'new-event';
@@ -1306,7 +1339,7 @@ function renderLifecycleCard() {
 
   $('lifecycle-card-title').textContent = 'Promote your event';
   $('promotion-copy').textContent = eventData.duplicated_from_id
-    ? 'Your new event is ready to share. Guests and messages were not copied. Choose whom to invite with Familiar Faces; review before anything is sent.'
+    ? 'Your new event is ready to share. Guests and messages were not copied. Review whom to invite with Familiar Faces before sending those invitations.'
     : variant === 'new-event'
       ? 'Start sharing. Reminder signups and followers will appear here.'
       : 'Spread the word and keep your guests in the loop.';
@@ -1769,7 +1802,74 @@ $('sms-audience').addEventListener('click', () => {
   }
 });
 
+function automaticEmailCount(value) {
+  const count = Number(value);
+  return Number.isSafeInteger(count) && count > 0 ? count : 0;
+}
+
+function formatAutomaticEmailStatus(email) {
+  if (!email) return '';
+  const eligible = automaticEmailCount(email.eligibleCount).toLocaleString();
+  const pending = automaticEmailCount(email.pendingCount);
+  const sent = automaticEmailCount(email.sentCount);
+  const receipt = `${sent.toLocaleString()} ${sent === 1 ? 'email' : 'emails'} sent`;
+  if (email.status === 'pending') {
+    const scheduled = email.canSendNow === false ? pending.toLocaleString() : eligible;
+    const at = email.scheduledAt ? new Date(email.scheduledAt) : null;
+    const time = at && !Number.isNaN(at.getTime()) ? new Intl.DateTimeFormat(undefined, {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+    }).format(at) : '';
+    return `Scheduled to email ${scheduled}${time ? ` at ${time}` : ''}${sent ? ` · ${receipt}` : ''}`;
+  }
+  if (email.status === 'reserved') {
+    const progress = pending ? `Sending to ${pending.toLocaleString()}…` : 'Updating delivery status…';
+    return sent ? `${progress} ${receipt}.` : progress;
+  }
+  if (email.status === 'complete') {
+    const failed = automaticEmailCount(email.failedCount);
+    return failed ? `${receipt} · ${failed.toLocaleString()} not confirmed` : receipt;
+  }
+  if (email.status === 'skipped' || email.status === 'cancelled') {
+    if (sent) return `${receipt} before automatic email stopped.`;
+    return automaticEmailCount(email.failedCount) ? 'No automatic follower email was confirmed.' : 'No automatic follower email was sent.';
+  }
+  return '';
+}
+
+function renderAutomaticEmail(email) {
+  const card = $('automatic-follower-email');
+  const status = $('automatic-follower-email-status');
+  const actions = $('automatic-follower-email-actions');
+  const send = $('automatic-follower-email-send');
+  const cancel = $('automatic-follower-email-cancel');
+  const focused = document.activeElement;
+  const moveFocus = actions.contains(focused);
+  let message = formatAutomaticEmailStatus(email);
+  if (email?.status === 'pending') {
+    if (requestedAutomaticEmailAction === 'send_now') message = 'Send requested. Waiting to start…';
+    if (requestedAutomaticEmailAction === 'cancel') message = 'Checking the cancellation…';
+  } else {
+    requestedAutomaticEmailAction = '';
+  }
+  actions.hidden = email?.status !== 'pending' || Boolean(requestedAutomaticEmailAction);
+  send.hidden = email?.canSendNow === false;
+  cancel.textContent = automaticEmailCount(email?.sentCount) ? 'Stop remaining emails' : 'Don’t send';
+  card.hidden = !message;
+  if (status.textContent !== message) status.textContent = message;
+  if (message && ((actions.hidden && moveFocus) || (send.hidden && focused === send))) status.focus({ preventScroll: true });
+}
+
+function pollAutomaticEmail() {
+  clearTimeout(automaticEmailPoll);
+  const email = followerPreviewState?.automaticEmail;
+  if (document.visibilityState !== 'hidden' && (email?.status === 'pending' || email?.status === 'reserved')) {
+    const remaining = email.scheduledAt && !requestedAutomaticEmailAction ? Date.parse(email.scheduledAt) - Date.now() : 0;
+    automaticEmailPoll = setTimeout(loadFollowers, Math.max(5000, Math.min(remaining || 0, 30000)));
+  }
+}
+
 function renderFollowerAction(preview) {
+  if (manualFollowerBusy) return;
   const { count, emailCount, textCount, textCreditCost, textBalance, canIncludeTexts,
     needsTextFunds, fingerprint, announcedAt, announcedCount, announcedTextCount, canAnnounce,
     hostPageUrl } = preview;
@@ -1783,9 +1883,19 @@ function renderFollowerAction(preview) {
 
   if (announcedAt) {
     btn.disabled = true;
-    const total = announcedCount + Number(announcedTextCount || 0);
-    $('announce-title').textContent = `${total} ${total === 1 ? 'update' : 'updates'} sent`;
-    $('announce-copy').textContent = `${announcedCount} email${announcedCount === 1 ? '' : 's'} · ${Number(announcedTextCount || 0)} text${Number(announcedTextCount || 0) === 1 ? '' : 's'}. This action can only be used once.`;
+    const emails = Number(announcedCount) || 0;
+    const texts = Number(announcedTextCount) || 0;
+    $('announce-title').textContent = 'Manual follower update';
+    $('announce-copy').textContent = [emails && `${emails} email${emails === 1 ? '' : 's'} sent`, texts && `${texts} text${texts === 1 ? '' : 's'} queued`].filter(Boolean).join(' · ') || 'This one-time update was used.';
+    return;
+  }
+
+  const automaticEmail = preview.automaticEmail;
+  const automaticEmailBlocksAction = ['pending', 'reserved'].includes(automaticEmail?.status)
+    || (automaticEmail?.status === 'complete' && automaticEmailCount(automaticEmail.eligibleCount) > 0);
+  if (automaticEmailBlocksAction && !emailCount && !textCount) {
+    btn.hidden = true;
+    btn.disabled = true;
     return;
   }
 
@@ -1795,7 +1905,7 @@ function renderFollowerAction(preview) {
     if (hostPageUrl) btn.dataset.hostPageUrl = hostPageUrl;
     $('announce-title').textContent = hostPageUrl ? 'Copy and share your public page' : 'Set up your public page';
     $('announce-copy').textContent = hostPageUrl
-      ? 'Followers get updates whenever you publish a public event.'
+      ? 'Give more people a place to follow your events.'
       : 'Give people one place to follow every event you host.';
     return;
   }
@@ -1821,6 +1931,16 @@ function renderFollowerAction(preview) {
     $('announce-copy').textContent = `${textCount} opted into texts · ${textCreditCost} credits total · ${textUsableBalance} usable for this audience. Add ${textCreditsNeeded} paid ${textCreditsNeeded === 1 ? 'credit' : 'credits'}; complimentary texts cover US numbers only.`;
     return;
   }
+  if (emailCount === 0 && !canIncludeTexts) {
+    btn.hidden = true;
+    btn.disabled = true;
+    return;
+  }
+  if (emailCount === 0) {
+    $('announce-title').textContent = `Text ${textCount} ${textCount === 1 ? 'follower' : 'followers'}`;
+    $('announce-copy').textContent = `Uses ${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'} · ${Math.max(0, Number(textBalance) - Number(textCreditCost))} left afterward.`;
+    return;
+  }
   const recipientsToNotify = canIncludeTexts ? count : emailCount;
   $('announce-title').textContent = `Update ${recipientsToNotify} ${recipientsToNotify === 1 ? 'follower' : 'followers'}`;
   if (canIncludeTexts) {
@@ -1832,17 +1952,54 @@ function renderFollowerAction(preview) {
   }
 }
 
-async function loadFollowers() {
-  try {
-    followerPreviewState = await api(`/api/events/${eventId}/followers`);
-    renderFollowerAction(followerPreviewState);
+function loadFollowers() {
+  if (followerPreviewRequest) return followerPreviewRequest;
+  followerPreviewRequest = api(`/api/events/${eventId}/followers`).then(preview => {
+    followerPreviewState = preview;
+    renderAutomaticEmail(preview.automaticEmail);
     renderLifecycleCard();
-    return followerPreviewState;
-  } catch (_) {
-    followerPreviewState = null;
-    return null;
+    return preview;
+  }).catch(() => null).finally(() => {
+    followerPreviewRequest = null;
+    pollAutomaticEmail();
+  });
+  return followerPreviewRequest;
+}
+
+async function changeAutomaticEmail(action) {
+  const email = followerPreviewState?.automaticEmail;
+  if (automaticEmailActionBusy || requestedAutomaticEmailAction || email?.status !== 'pending' || (action === 'send_now' && email.canSendNow === false)) return;
+  automaticEmailActionBusy = true;
+  const controls = [$('automatic-follower-email-send'), $('automatic-follower-email-cancel')];
+  const restoreFocus = controls.includes(document.activeElement);
+  controls.forEach(button => { button.disabled = true; });
+  const error = $('automatic-follower-email-error');
+  error.hidden = true;
+  try {
+    await api(`/api/events/${eventId}/automatic-follower-email`, { method: 'POST', body: { action } });
+    requestedAutomaticEmailAction = action;
+    renderAutomaticEmail(followerPreviewState?.automaticEmail);
+    if (restoreFocus && (!document.activeElement || document.activeElement === document.body || controls.includes(document.activeElement))) {
+      $('automatic-follower-email-status').focus({ preventScroll: true });
+    }
+  } catch (failure) {
+    error.textContent = failure.message || 'Could not update the follower email. Try again.';
+    error.hidden = false;
+  } finally {
+    await followerPreviewRequest;
+    await loadFollowers();
+    automaticEmailActionBusy = false;
+    controls.forEach(button => { button.disabled = false; });
   }
 }
+
+$('automatic-follower-email-send').addEventListener('click', () => changeAutomaticEmail('send_now'));
+$('automatic-follower-email-cancel').addEventListener('click', () => changeAutomaticEmail('cancel'));
+document.addEventListener('visibilitychange', () => {
+  const state = followerPreviewState?.automaticEmail?.status;
+  if (document.visibilityState === 'visible' && (state === 'pending' || state === 'reserved')) loadFollowers();
+  else pollAutomaticEmail();
+});
 
 $('announce').addEventListener('click', async () => {
   const button = $('announce');
@@ -1872,28 +2029,37 @@ $('announce').addEventListener('click', async () => {
     window.location.assign(`/settings/messaging?return=${encodeURIComponent(location.pathname)}`);
     return;
   }
-  const delivery = includeTexts
-    ? `${emailCount} email${emailCount === 1 ? '' : 's'} and ${textCount} text${textCount === 1 ? '' : 's'} (${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'})`
-    : `${emailCount} email${emailCount === 1 ? '' : 's'}`;
-  const deliveryCount = includeTexts ? Number(count) : emailCount;
+  const delivery = [
+    emailCount && `${emailCount} email${emailCount === 1 ? '' : 's'}`,
+    includeTexts && `${textCount} text${textCount === 1 ? '' : 's'} (${textCreditCost} texting ${textCreditCost === 1 ? 'credit' : 'credits'})`
+  ].filter(Boolean).join(' and ');
+  if (!delivery || manualFollowerBusy) return;
+  const deliveryCount = includeTexts ? (emailCount ? Number(count) : textCount) : emailCount;
   const remaining = includeTexts ? ` Your balance afterward: ${Math.max(0, Number(button.dataset.textBalance || 0) - textCreditCost)} credits.` : '';
   if (!confirm(`Send this event to ${deliveryCount} ${deliveryCount === 1 ? 'follower' : 'followers'} as ${delivery}?${remaining} This can only be done once.`)) return;
+  manualFollowerBusy = true;
   button.disabled = true;
   $('announce-title').textContent = 'Sending…';
-  $('announce-copy').textContent = includeTexts ? 'Emailing and texting your followers.' : 'Emailing your followers.';
+  $('announce-copy').textContent = includeTexts
+    ? (emailCount ? 'Emailing and queuing texts for your followers.' : 'Queuing texts for your followers.')
+    : 'Emailing your followers.';
   try {
     const { sent, textsQueued } = await api(`/api/events/${eventId}/announce`, {
       method: 'POST', body: {
         confirm: 'SEND_FOLLOWER_UPDATE', includeTexts, fingerprint: button.dataset.fingerprint
       }
     });
-    toast(`Sent ${sent} email${sent === 1 ? '' : 's'}${textsQueued ? ` and queued ${textsQueued} text${textsQueued === 1 ? '' : 's'}` : ''}`);
-    $('announce-title').textContent = 'Follower update sent';
-    $('announce-copy').textContent = 'Invitation sent. This action can only be used once.';
+    const receipt = [sent && `${sent} email${sent === 1 ? '' : 's'} sent`, textsQueued && `${textsQueued} text${textsQueued === 1 ? '' : 's'} queued`].filter(Boolean).join(' · ');
+    toast(receipt || 'No follower updates were sent.');
+    $('announce-title').textContent = 'Manual follower update';
+    $('announce-copy').textContent = receipt || 'No follower updates were sent.';
   } catch (err) {
     toast(err.message);
     button.disabled = false;
-    loadFollowers();
+  } finally {
+    await followerPreviewRequest;
+    manualFollowerBusy = false;
+    await loadFollowers();
   }
 });
 
@@ -1961,6 +2127,7 @@ async function initializeManagePage() {
     sessionStorage.removeItem('sge-manage-message');
     await loadEvent();
     setManageReady();
+    if (eventData.status === 'draft') loadPublishFollowerEmailPreference();
     showPublishedWelcome();
     const eventEnded = isPostEventEligible();
     if (eventEnded) {
@@ -1974,11 +2141,12 @@ async function initializeManagePage() {
     if (savedMessage) toast(savedMessage);
     const secondaryTasks = eventEnded
       ? [
+          loadFollowers(),
           ...(eventData.collect_photos_enabled ? [loadPhotoCollection()] : []),
           ...(postEventExperience ? [loadPostEventExperience()] : [])
         ]
       : eventData.status === 'published' && eventData.lifecycle_phase === 'tonight'
-        ? [loadPeople(), loadContacts()]
+        ? [loadPeople(), loadContacts(), loadFollowers()]
         : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview(), loadContacts()];
     await Promise.allSettled([loadGuests(), ...secondaryTasks]);
   } catch (_) {
