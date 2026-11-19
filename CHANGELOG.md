@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.221
+
+Released November 19, 2026.
+
+* Make **RSVP · Free** the only admission callout on free Standard events. Keep external ticket links above RSVP and leave the existing checkout paths unchanged.
+* Show price, date, and time in the mobile RSVP dock after guests scroll past the inline action. The dock and button feedback respect Reduce Motion.
+* Give new Going confirmations a one-time check animation, a full-width **Add to calendar** action, a **Follow** or **Following** card where available, and quieter answer and reminder controls. Closing the confirmation returns focus to **View RSVP**.
+* Static checks and all **1,162** tests passed. Covered 11 additional browser scenarios across phone and desktop widths.
+
 ## 1.0.220
 
 Released November 19, 2026.
