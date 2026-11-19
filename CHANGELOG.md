@@ -2,6 +2,22 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.209
+
+Released November 18, 2026.
+
+### Full-frame, brighter portrait backgrounds
+
+* Fit the entire **Snow Day** and **Midnight Toast** portrait scenes without cropping in Standard and Flyer pages, including inline editor previews, videos and still fallbacks. Keep the original proportions, centered over dark side space.
+* Reduce those two themes' full-page dimming from 82–90% to 18–24%. Protect event text and artwork credits with local dark surfaces instead of obscuring the whole scene.
+* Match the uncropped treatment in the full editor, inline editor and Super Admin background thumbnails. Other themes, original Cloudinary assets, saved selections, availability, RSVP data and notifications remain unchanged.
+
+### Verification
+
+* `npm run check` passes **1,082/1,082** tests with zero failures/skips; static checks pass (320 JavaScript / 499 project files). The final run used the idle, dedicated local `sge_test` database with localhost access.
+* Nine new regressions cover full-frame video/poster fit, brighter overlays, readable text/credits, editor previews, thumbnails and unchanged treatment of other themes. Existing Standard/Flyer isolation tests remain unchanged and pass.
+* Actual-template browser QA covers 1440px desktop and 390px/320px phone layouts, muted playback, still fallbacks, readable details and no horizontal overflow. Picker samples use the real styles. Physical iPhone Safari remains a manual device check.
+
 ## 1.0.208
 
 Released November 18, 2026.

@@ -5,6 +5,8 @@
 .background-card { min-width: 0; overflow: hidden; background: var(--sg-card); border: 1px solid var(--sg-border); border-radius: 20px; }
 .background-thumbnail { aspect-ratio: 16 / 10; background: #101217; overflow: hidden; border-bottom: 1px solid var(--sg-border-soft); }
 .background-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.background-thumbnail[data-theme="snow-day"] img,
+.background-thumbnail[data-theme="midnight-toast"] img { object-fit: contain; object-position: center; }
 .background-thumbnail[data-theme="adaptive"] { background: radial-gradient(ellipse at 20% 20%,#475a67,transparent 65%),radial-gradient(ellipse at 80% 80%,#77503f,transparent 65%),#182124; }
 .background-thumbnail[data-theme="midnight"] { background: linear-gradient(135deg,#24243e,#12121c 58%,#060609); }
 .background-thumbnail[data-theme="aurora"] { background: radial-gradient(ellipse at 20% 10%,#38604d,transparent 60%),radial-gradient(ellipse at 85% 80%,#473d69,transparent 65%),#10141b; }

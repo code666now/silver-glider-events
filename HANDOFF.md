@@ -1,8 +1,19 @@
 # Silver Glider Events — Master Reference
 
-**Last updated:** November 18, 2026 (Curated background availability, v1.0.208)
+**Last updated:** November 18, 2026 (Portrait background fit and brightness, v1.0.209)
 
-## Current release — Curated background availability (v1.0.208)
+## Current release — Portrait background fit and brightness (v1.0.209)
+
+User approved correcting Snow Day / Midnight Toast cropping, making them brighter, tests and deployment. Keep the change scoped to those two themes.
+
+- Public Standard/Flyer poster backgrounds use `contain`; both original and seamless-clone videos use `object-fit:contain` centered. Dark side space is expected for portrait media on wide screens. Do not stretch, crop or re-upload assets.
+- The global veil is reduced from 82–90% to 18–24%. Existing details containers and separate artwork credits use local `rgba(14,14,14,.9)` surfaces for readable text over bright snow/balloons. The event content still layers over the decorative scene normally.
+- Full-editor swatches, inline-owner previews and Super Admin thumbnails use the same uncropped composition. All other themes, playback/reduced-motion/data-saving behavior, database state, availability and messaging remain unchanged. Halloween / The Last Guest remain inactive; no toggle changes are part of this release.
+- Release as 1.0.209 with exclusive local `sge_test`, desktop/phone visual QA, post-commit generated uncommitted `.git-sha`, explicit Railway path, both health/version/SHA checks and exact assets, then push main/tag. No live test events, messages or edits to user designs.
+
+**Verification:** Final `npm run check` passes **1,082/1,082**, zero failures/skips; static checks pass (320 JavaScript / 499 project files). Nine new regressions plus unchanged Standard/Flyer separation tests pass. Keep the transient Standard-to-Flyer designer-credit backing in the owner stylesheet, not the Standard template. Actual-template browser samples verified desktop 1440px and phone 390px/320px layouts, muted playback, still fallback, picker fit and no horizontal overflow. Physical iPhone Safari remains a manual check. A sandboxed attempt could not reach local Postgres; the final successful run used explicitly local `sge_test` with authorized localhost access.
+
+## Previous release — Curated background availability (v1.0.208)
 
 User approved a minimal Super Admin Background Manager, six supplied videos as named curated effects, tests/deployment and deactivating Halloween / The Last Guest. Do not delete assets or alter existing event designs.
 

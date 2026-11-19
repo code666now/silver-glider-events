@@ -198,6 +198,33 @@
   --sg-text-dim: #b4b4b4;
   --sg-text-faint: #b4b4b4;
 }
+/* Preserve these portrait scenes; dim the text surface, not the artwork. */
+.event-bg.fx-snow-day,
+.event-bg.fx-midnight-toast {
+  background-size: contain;
+}
+.event-bg.fx-snow-day .fx-video-media,
+.event-bg.fx-midnight-toast .fx-video-media {
+  object-fit: contain;
+  object-position: center;
+}
+.event-bg.fx-snow-day ~ .fx-veil,
+.event-bg.fx-midnight-toast ~ .fx-veil {
+  background: linear-gradient(rgba(5,9,12,.18), rgba(5,9,12,.24));
+}
+.event-bg.fx-snow-day ~ .flyer-layout .flyer-details,
+.event-bg.fx-midnight-toast ~ .flyer-layout .flyer-details {
+  background: rgba(14,14,14,.9);
+  border-radius: 22px;
+  padding: 24px;
+  margin-top: 24px;
+}
+.event-bg.fx-snow-day ~ .flyer-layout .flyer-design-credit,
+.event-bg.fx-midnight-toast ~ .flyer-layout .flyer-design-credit {
+  background: rgba(14,14,14,.9);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
 .event-bg.fx-disco {
   background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1920/sg-events/effects/disco.jpg");
 }

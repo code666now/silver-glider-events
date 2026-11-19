@@ -439,6 +439,14 @@ body.flyer-public-page.owner-preview-standard .flyer-details {
 .owner-theme-candlelit-christmas { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/candlelit-christmas-v1.jpg"); }
 .owner-theme-snow-day { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/snow-day-v1.jpg"); }
 .owner-theme-midnight-toast { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/midnight-toast-v1.jpg"); }
+.owner-theme-snow-day,
+.owner-theme-midnight-toast { background-size: contain; }
+.event-bg.fx-snow-day ~ .layout .flyer-design-credit,
+.event-bg.fx-midnight-toast ~ .layout .flyer-design-credit {
+  background: rgba(14,14,14,.9);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
 .owner-theme-starlit-celebration { background-image: url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_300/sg-events/effects/starlit-celebration-v1.jpg"); }
 .owner-theme-paper { background-image: url("https://res.cloudinary.com/dhvavjgnw/image/upload/f_auto,q_auto,w_300/sg-events/textures/kraft-paper.jpg"); }
 .owner-theme-static { background-image: repeating-radial-gradient(circle,#777 0 1px,#171717 1px 3px); }

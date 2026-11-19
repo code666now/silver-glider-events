@@ -476,18 +476,20 @@ a { color: var(--sg-accent); text-decoration: none; }
 .sg-swatch.fx-snow-day {
   background-color: #090b0d;
   background-image:
-    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    linear-gradient(rgba(5,9,12,.06), rgba(5,9,12,.12)),
     url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/snow-day-v1.jpg");
-  background-size: cover;
+  background-size: 100% 100%, contain;
   background-position: center;
+  background-repeat: no-repeat;
 }
 .sg-swatch.fx-midnight-toast {
   background-color: #090b0d;
   background-image:
-    linear-gradient(rgba(5,9,12,.1), rgba(5,9,12,.28)),
+    linear-gradient(rgba(5,9,12,.06), rgba(5,9,12,.12)),
     url("https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_320/sg-events/effects/midnight-toast-v1.jpg");
-  background-size: cover;
+  background-size: 100% 100%, contain;
   background-position: center;
+  background-repeat: no-repeat;
 }
 .sg-swatch.fx-starlit-celebration {
   background-color: #090b0d;
