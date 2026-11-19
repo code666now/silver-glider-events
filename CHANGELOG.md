@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.220
+
+Released November 19, 2026.
+
+* Fly the Silver Glider over the homepage’s Familiar Faces once when the row comes into view. Each GLIDE face hops and glows in order. Tap the row or use the keyboard-accessible **Replay fly-over** button. Reduce Motion keeps the section still.
+* All **1,156** tests passed on the isolated test database. Chrome checks at 320px, 390px, and 1440px verified replay, motion preferences, and no horizontal overflow. The homepage phone preview and Recs signup are unchanged.
+
 ## 1.0.219
 
 Released November 19, 2026.
