@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
@@ -98,13 +99,104 @@ test('RSVP success optionally offers Follow without changing RSVP reminder conse
     assert.doesNotMatch(view, /id="organizer_optin"/);
   }
   assert.match(publicRoute, /id="rsvp-follow-host" hidden/);
-  assert.match(publicRoute, /Choose email, text, or both for new-event announcements/);
+  assert.match(publicRoute, /Hear about upcoming events\. Texts are optional\./);
+  assert.match(publicRoute, /id="rsvp-follow-host-button"[^>]*>Follow \$\{esc\(hostName \|\| 'this host'\)\}/);
   assert.match(publicRoute, /hostSlug: event\.organizer_public_slug/);
   assert.match(browser, /async function prepareFollowAfterRsvp/);
   assert.match(browser, /card\.hidden = Boolean\(state\.following\)/);
   assert.match(browser, /organizer_optin: false/);
   assert.match(browser, /sourceEventSlug: EVENT\.slug/);
   assert.match(browser, /eventUrlParams\.get\('follow'\) === '1'/);
+});
+
+function followDialogFixture(state, identities) {
+  let focused = null;
+  let errorMessage = '';
+  const requests = [];
+  const elements = new Map();
+  const body = {
+    set innerHTML(markup) {
+      elements.clear();
+      for (const [, channel, attributes] of markup.matchAll(/<input[^>]+data-channel="(email|text)"([^>]*)>/g)) {
+        const selector = `[data-channel="${channel}"]`;
+        elements.set(selector, { checked: /\bchecked\b/.test(attributes), focus() { focused = channel; } });
+      }
+    },
+    querySelector(selector) {
+      if (selector === '.sg-follow-error') return null;
+      if (!elements.has(selector)) elements.set(selector, {
+        dataset: {}, focus() {}, setAttribute() {},
+        addEventListener(event, handler) { this[event] = handler; }
+      });
+      return elements.get(selector);
+    },
+    prepend(error) { errorMessage = error.textContent; }
+  };
+  const dialog = {
+    showModal() { this.open = true; },
+    addEventListener() {},
+    querySelector: selector => selector === '[data-follow-body]' ? body : { addEventListener() {} }
+  };
+  const window = {
+    location: { href: 'https://example.test/e/test-show' },
+    confirm() { assert.fail('a guest who has not followed should not see an unfollow prompt'); }
+  };
+  vm.runInNewContext(source('public/js/follow-flow.js'), {
+    window, URL,
+    document: {
+      createElement: () => ({ firstElementChild: dialog, setAttribute() {} }),
+      body: { appendChild() {}, classList: { add() {} } }
+    },
+    requestAnimationFrame: callback => callback(),
+    fetch: async (url, { method = 'GET', body }) => {
+      requests.push({ method, url, data: body && JSON.parse(body) });
+      assert.ok(['/api/hosts/test-host/follow', '/api/me/identities'].includes(url));
+      return { ok: true, json: async () => url === '/api/me/identities' ? { identities } : state };
+    }
+  });
+  const flow = window.SGFollowFlow.mount({ hostSlug: 'test-host', hostName: 'Test Host', sourceEventSlug: 'test-show' });
+  return {
+    flow, requests,
+    channel: name => elements.get(`[data-channel="${name}"]`).checked,
+    focus: () => focused,
+    error: () => errorMessage,
+    save: () => elements.get('[data-save]').click({ currentTarget: elements.get('[data-save]') })
+  };
+}
+
+const followEmailIdentity = { type: 'email', value: 'guest@example.test', isPrimary: true };
+const followPhoneIdentity = { type: 'phone', value: '+14155550101' };
+
+test('new followers with a verified phone must actively opt in to texts', async () => {
+  const fixture = followDialogFixture({ following: false, emailOn: false, textOn: false }, [followEmailIdentity, followPhoneIdentity]);
+  await fixture.flow.open();
+  assert.equal(fixture.channel('email'), true);
+  assert.equal(fixture.channel('text'), false);
+  assert.equal(fixture.focus(), 'email');
+  assert.ok(fixture.requests.every(request => request.method === 'GET'));
+  await fixture.save();
+  assert.deepEqual(fixture.requests.at(-1), {
+    method: 'PATCH', url: '/api/hosts/test-host/follow',
+    data: { email: true, text: false, sourceEventSlug: 'test-show' }
+  });
+});
+
+test('existing followers keep their saved channels instead of new-follower defaults', async () => {
+  const fixture = followDialogFixture({ following: true, emailOn: false, textOn: true }, [followEmailIdentity, followPhoneIdentity]);
+  await fixture.flow.open();
+  assert.equal(fixture.channel('email'), false);
+  assert.equal(fixture.channel('text'), true);
+  assert.ok(fixture.requests.every(request => request.method === 'GET'));
+});
+
+test('new phone-only followers may choose a channel without a false unfollow prompt', async () => {
+  const fixture = followDialogFixture({ following: false, emailOn: false, textOn: false }, [followPhoneIdentity]);
+  await fixture.flow.open();
+  assert.equal(fixture.channel('email'), false);
+  assert.equal(fixture.channel('text'), false);
+  await fixture.save();
+  assert.match(fixture.error(), /Choose email or text notifications/);
+  assert.ok(fixture.requests.every(request => request.method === 'GET'));
 });
 
 test('Following is a lightweight authenticated list in the shared navigation', () => {

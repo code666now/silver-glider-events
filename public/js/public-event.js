@@ -26,12 +26,15 @@ function getEventFollowFlow() {
 
 async function prepareFollowAfterRsvp() {
   const card = $('rsvp-follow-host');
+  if (!card) return;
   const flow = getEventFollowFlow();
-  if (!card || !flow) return;
+  if (!flow) return;
   card.hidden = true;
   try {
     const state = await flow.status();
-    card.hidden = Boolean(state.following);
+    if (confirmationDialog?.open && confirmationFresh && !confirmationEditing && EVENT.returningGuest?.response === 'going') {
+      card.hidden = Boolean(state.following);
+    }
   } catch (_) {
     // RSVP completion remains useful if Follow status is temporarily unavailable.
   }
@@ -510,7 +513,7 @@ function renderConfirmationDialog() {
   calendar.href = confirmationCalendarUrl();
   calendar.hidden = response !== 'going' || confirmationEditing;
   const followCard = $('rsvp-follow-host');
-  if (followCard && (!confirmationFresh || confirmationEditing)) followCard.hidden = true;
+  if (followCard && (response !== 'going' || !confirmationFresh || confirmationEditing)) followCard.hidden = true;
   const inviteFriend = $('rsvp-invite-friend');
   if (inviteFriend) inviteFriend.hidden = response !== 'going' || confirmationEditing || !EVENT.friendShareAllowed;
   setReturningSelection(response);
@@ -526,7 +529,7 @@ function openRsvpConfirmation({ fresh = false, editing = false, trigger = null }
     if (typeof confirmationDialog.showModal === 'function') confirmationDialog.showModal();
     else confirmationDialog.setAttribute('open', '');
   }
-  if (fresh && !editing) prepareFollowAfterRsvp();
+  if (fresh && !editing && EVENT.returningGuest.response === 'going') prepareFollowAfterRsvp();
   requestAnimationFrame(() => {
     const focusTarget = confirmationEditing
       ? confirmationDialog.querySelector('.confirmation-choice.is-selected') || confirmationDialog.querySelector('.confirmation-choice')

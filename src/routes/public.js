@@ -505,12 +505,10 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location, f
         <button class="sg-btn sg-btn-ghost" id="rsvp-confirmation-change" type="button">Change my answer</button>
       </div>
 
-      ${event.organizer_public_slug ? `<section class="rsvp-follow-host" id="rsvp-follow-host" hidden aria-labelledby="rsvp-follow-host-title">
-        <p class="rsvp-follow-host-label">Future events</p>
-        <h3 id="rsvp-follow-host-title">Follow ${esc(hostName)}</h3>
-        <p>Choose email, text, or both for new-event announcements. Your RSVP reminders stay the same.</p>
-        <button class="sg-btn sg-btn-ghost sg-btn-block" id="rsvp-follow-host-button" type="button">Choose notifications</button>
-      </section>` : ''}
+      ${event.organizer_public_slug ? `<div class="rsvp-follow-host" id="rsvp-follow-host" hidden>
+        <p id="rsvp-follow-host-copy">Hear about upcoming events. Texts are optional.</p>
+        <button class="sg-btn sg-btn-ghost" id="rsvp-follow-host-button" type="button" aria-describedby="rsvp-follow-host-copy">Follow ${esc(hostName || 'this host')}</button>
+      </div>` : ''}
 
       ${friendShareAllowed ? `<section class="rsvp-invite-friend" id="rsvp-invite-friend" hidden aria-labelledby="rsvp-invite-friend-title">
         <h3 id="rsvp-invite-friend-title">Know someone who’d love this?</h3>

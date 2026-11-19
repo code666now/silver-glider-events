@@ -307,15 +307,15 @@
       const phone = phoneIdentity();
       const email = emailIdentity();
       const emailChecked = state.following ? state.emailOn : Boolean(email);
-      const textChecked = state.following ? state.textOn : Boolean(phone);
+      const textChecked = state.following && state.textOn;
       setHeader({
         label: state.following ? 'Notification preferences' : `Follow ${hostName}`,
         heading: state.following ? `Following ${hostName}` : 'How should we notify you?',
         description: `Pick how you want to hear about new events from ${hostName}.`
       });
       body.innerHTML = `<div class="sg-follow-choice-list">
-        <label class="sg-follow-choice"><input type="checkbox" data-channel="text" ${textChecked ? 'checked' : ''}><span class="sg-follow-choice-copy"><strong>Text notifications</strong><small>${phone ? `Sent to your verified number ending in ${esc(String(phone.value).slice(-4))}.` : 'Add and verify a mobile number next.'} Message and data rates may apply. Reply STOP to opt out.</small></span></label>
         <label class="sg-follow-choice"><input type="checkbox" data-channel="email" ${emailChecked ? 'checked' : ''}><span class="sg-follow-choice-copy"><strong>Email notifications</strong><small>${email ? `Sent to ${esc(email.value)}.` : 'Sent to your verified account email.'} Unsubscribe anytime.</small></span></label>
+        <label class="sg-follow-choice"><input type="checkbox" data-channel="text" ${textChecked ? 'checked' : ''}><span class="sg-follow-choice-copy"><strong>Text notifications</strong><small>${phone ? `Sent to your verified number ending in ${esc(String(phone.value).slice(-4))}.` : 'Add and verify a mobile number next.'} Message and data rates may apply. Reply STOP to opt out.</small></span></label>
       </div>
       <button class="sg-btn sg-btn-primary sg-btn-block" type="button" data-save>${state.following ? 'Save preferences' : `Follow ${esc(hostName)}`}</button>
       ${state.following ? `<button class="sg-follow-secondary" type="button" data-unfollow>Unfollow ${esc(hostName)}</button>` : ''}
@@ -323,7 +323,10 @@
       body.querySelector('[data-save]').addEventListener('click', async event => {
         const emailEnabled = body.querySelector('[data-channel="email"]').checked;
         const textEnabled = body.querySelector('[data-channel="text"]').checked;
-        if (!emailEnabled && !textEnabled && !window.confirm(`Unfollow ${hostName}? You’ll stop receiving future-event announcements.`)) return;
+        if (!emailEnabled && !textEnabled) {
+          if (!state.following) return showError('Choose email or text notifications to follow.');
+          if (!window.confirm(`Unfollow ${hostName}? You’ll stop receiving future-event announcements.`)) return;
+        }
         pendingPreferences = { email: emailEnabled, text: textEnabled };
         if (textEnabled && !phoneIdentity()) return renderAddPhoneEntry();
         await savePreferences(event.currentTarget);
@@ -333,7 +336,7 @@
         pendingPreferences = { email: false, text: false };
         await savePreferences(event.currentTarget);
       });
-      requestAnimationFrame(() => body.querySelector('[data-channel="text"]')?.focus());
+      requestAnimationFrame(() => body.querySelector('[data-channel="email"]')?.focus());
     }
 
     async function savePreferences(button) {
