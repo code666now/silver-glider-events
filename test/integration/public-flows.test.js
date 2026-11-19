@@ -1602,7 +1602,9 @@ test('a signed-in Familiar Faces recipient can answer a second event in one tap'
     body: JSON.stringify({ response: 'going', inviteToken: invitation.token })
   });
   assert.equal(answer.status, 200);
-  assert.equal((await answer.json()).response, 'going');
+  const result = await answer.json();
+  assert.equal(result.response, 'going');
+  assert.equal(result.newSignedInGoing, true);
 
   const linked = (await pool.query(
     `SELECT r.status,r.account_id,r.user_id,t.response
@@ -1615,6 +1617,60 @@ test('a signed-in Familiar Faces recipient can answer a second event in one tap'
   assert.equal(Number(linked.account_id), Number(account.id));
   assert.equal(Number(linked.user_id), Number(account.user_id));
   assert.equal(linked.response, 'going');
+});
+
+test('only a new signed-in Going RSVP triggers the completion prompt and its private reminder link', async () => {
+  const event = await createEvent({ slug: 'first-one-tap', sms_reminder_enabled: true });
+  const guest = (await pool.query(
+    `INSERT INTO organizers (email,name) VALUES ('one-tap@example.test','One Tap') RETURNING id`
+  )).rows[0];
+  const cookie = `sge_session=${signSession(guest.id)}`;
+  const eventUrl = `${baseUrl}/e/${event.slug}`;
+  const initial = await fetch(eventUrl, { headers: { cookie } });
+  assert.match(await initial.text(), /"source":"account","response":null/);
+  const answer = async response => {
+    const result = await fetch(`${baseUrl}/api/public/events/${event.slug}/returning-rsvp`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ response })
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.headers.get('cache-control'), 'private, no-store');
+    return result.json();
+  };
+  const results = await Promise.all([answer('going'), answer('going')]);
+  assert.equal(results.filter(result => result.newSignedInGoing).length, 1);
+
+  const { rows } = await pool.query('SELECT * FROM rsvps WHERE event_id=$1', [event.id]);
+  assert.equal(rows.length, 1);
+  const [rsvp] = rows;
+  const remindersUrl = `/r/${rsvp.manage_token}#email-settings`;
+  for (const result of results) assert.equal(result.rsvpEmailSettingsUrl, remindersUrl);
+  assert.equal(rsvp.wants_reminders, true, 'existing one-tap email default remains on');
+  assert.equal(rsvp.event_email_optin, false, 'one tap grants no additional event email consent');
+  assert.equal(rsvp.sms_optin, false);
+  assert.equal(rsvp.organizer_optin, false);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM host_follows')).rows[0].n, 0);
+
+  const confirmed = await fetch(eventUrl, { headers: { cookie } });
+  assert.equal(confirmed.headers.get('cache-control'), 'private, no-store');
+  assert.ok((await confirmed.text()).includes(`"rsvpEmailSettingsUrl":"${remindersUrl}"`));
+  const anonymous = await (await fetch(eventUrl)).text();
+  assert.match(anonymous, /"rsvpEmailSettingsUrl":null/);
+  assert.ok(!anonymous.includes(rsvp.manage_token));
+
+  const manage = await fetch(`${baseUrl}${remindersUrl}`);
+  assert.equal(manage.status, 200);
+  assert.match(await manage.text(), /id="email-settings"[\s\S]*id="email-reminders" type="checkbox" checked/);
+  const save = await fetch(`${baseUrl}/api/public/rsvps/${rsvp.manage_token}/reminders`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(save.status, 200);
+  const declined = await answer('not_going');
+  assert.equal(declined.newSignedInGoing, false);
+  assert.equal(declined.rsvpEmailSettingsUrl, null);
+  assert.ok(!(await (await fetch(eventUrl, { headers: { cookie } })).text()).includes(remindersUrl));
+  assert.equal((await answer('going')).newSignedInGoing, false);
+  assert.equal((await pool.query('SELECT wants_reminders FROM rsvps WHERE id=$1', [rsvp.id])).rows[0].wants_reminders, false);
 });
 
 test('a changed-email invitation reuses its canonical RSVP instead of creating a duplicate', async () => {
@@ -3147,7 +3203,7 @@ test('completes logged-in and magic-link Host follows without creating Host Page
 test('Follow stores independent email and text preferences even when the host has zero credits', async () => {
   await pool.query('UPDATE organizers SET sms_credits=0 WHERE id=$1', [organizerId]);
   const sourceEvent = await createEvent({
-    slug: 'follow-preferences-source', title: 'Follow Preferences Source'
+    slug: 'follow-preferences-source', title: 'Follow Preferences Source', sms_reminder_enabled: true
   });
   const follower = (await pool.query(
     `INSERT INTO organizers (email,name)
@@ -3190,6 +3246,22 @@ test('Follow stores independent email and text preferences even when the host ha
   });
   assert.equal(status.headers.get('cache-control'), 'private, no-store');
   assert.equal((await status.json()).textOn, true);
+
+  const oneTap = await fetch(`${baseUrl}/api/public/events/${sourceEvent.slug}/returning-rsvp`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ response: 'going' })
+  });
+  assert.equal(oneTap.status, 200);
+  await oneTap.json();
+  const oneTapPreferences = (await pool.query(
+    'SELECT wants_reminders, sms_optin, organizer_optin, event_email_optin FROM rsvps WHERE event_id=$1 AND user_id=$2',
+    [sourceEvent.id, followerUserId]
+  )).rows[0];
+  assert.deepEqual(oneTapPreferences, {
+    wants_reminders: true, sms_optin: false, organizer_optin: false, event_email_optin: false
+  }, 'text announcements and verified phones do not enroll event reminder texts or change RSVP email');
+  const afterRsvp = await fetch(`${baseUrl}/api/hosts/test-host/follow`, { headers: { cookie } });
+  assert.equal((await afterRsvp.json()).textOn, true, 'RSVP does not change saved Follow preferences');
 
   const emailOnly = await fetch(`${baseUrl}/api/hosts/test-host/follow`, {
     method: 'PATCH',

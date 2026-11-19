@@ -401,6 +401,12 @@ function locationResponse(event, { canViewExact = false, manageToken = null } = 
   };
 }
 
+function rsvpEmailSettingsUrl(rsvp) {
+  return rsvp?.status === 'confirmed' && rsvp.manage_token
+    ? `/r/${encodeURIComponent(rsvp.manage_token)}#email-settings`
+    : null;
+}
+
 function renderSmsReminderOptin(event) {
   if (!event.sms_reminder_enabled || event.secret_show_enabled) return '';
   return `<section class="sms-reminder-optin" aria-labelledby="sms-reminder-optin-title">
@@ -504,6 +510,7 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location, f
         <a class="sg-btn sg-btn-primary" id="rsvp-confirmation-calendar" href="#">Add to calendar</a>
         <button class="sg-btn sg-btn-ghost" id="rsvp-confirmation-change" type="button">Change my answer</button>
       </div>
+      <a class="rsvp-confirmation-email-settings" id="rsvp-confirmation-email-settings" hidden>Manage email reminders</a>
 
       ${event.organizer_public_slug ? `<div class="rsvp-follow-host" id="rsvp-follow-host" hidden>
         <p id="rsvp-follow-host-copy">Hear about upcoming events. Texts are optional.</p>
@@ -1021,6 +1028,7 @@ router.get('/e/:slug', async (req, res, next) => {
       hostSlug: event.organizer_public_slug && !ownerPreview ? event.organizer_public_slug : null,
       hostName: event.organizer_public_slug && !ownerPreview ? event.org_name : null,
       returningGuest: returningGuestJson,
+      rsvpEmailSettingsUrl: event.is_past ? null : rsvpEmailSettingsUrl(returningGuest?.rsvp),
       location: locationDisplay,
       calendarUrl: returningCalendarUrl,
       bgEffect: isEffect ? theme : null
@@ -1389,6 +1397,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
           response: 'going',
           friendShareAllowed: await friendShareAvailable(pool, event.id),
           rsvpToken: existing[0].manage_token,
+          rsvpEmailSettingsUrl: rsvpEmailSettingsUrl(existing[0]),
           calendarUrl: `/r/${encodeURIComponent(existing[0].manage_token)}/calendar.ics`,
           location: locationResponse(event, {
             canViewExact: true,
@@ -1517,6 +1526,7 @@ router.post('/api/public/events/:slug/rsvp', protectRsvp, async (req, res, next)
       response: 'going',
       friendShareAllowed: await friendShareAvailable(pool, event.id),
       rsvpToken: rsvp.manage_token,
+      rsvpEmailSettingsUrl: rsvpEmailSettingsUrl(rsvp),
       calendarUrl: `/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`,
       location: locationResponse(event, {
         canViewExact: true,
@@ -1664,6 +1674,9 @@ router.post('/api/public/events/:slug/returning-rsvp', protectRsvp, async (req, 
     return res.json({
       ok: true,
       response: answer,
+      newSignedInGoing: answer === 'going' && !guest.rsvp &&
+        (guest.source === 'account' || guest.sessionMatchesInvitation === true),
+      rsvpEmailSettingsUrl: rsvpEmailSettingsUrl(rsvp),
       friendShareAllowed: answer === 'going' && await friendShareAvailable(pool, event.id),
       location: locationResponse(event, {
         canViewExact: answer === 'going',

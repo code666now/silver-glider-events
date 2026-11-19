@@ -76,6 +76,9 @@
 .rsvp-confirmation-summary-actions .sg-btn[hidden] { display:none; }
 .rsvp-confirmation-summary-actions.is-single { grid-template-columns:1fr; }
 .rsvp-confirmation-summary-actions .sg-btn { min-height:50px;display:flex;align-items:center;justify-content:center; }
+.rsvp-confirmation-email-settings { min-height:44px;display:inline-flex;align-items:center;color:var(--sg-text-dim,#aaa);font-size:13px;text-decoration:underline;text-underline-offset:3px; }
+.rsvp-confirmation-email-settings[hidden] { display:none; }
+.rsvp-confirmation-email-settings:focus-visible { outline:2px solid var(--sg-accent,#1cc5be);outline-offset:3px; }
 .rsvp-follow-host {
   margin:18px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);
   display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;

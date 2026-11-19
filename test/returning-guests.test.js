@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { renderPreviousGuestInvitationEmail } = require('../src/lib/mailer');
 const { invitationExpiry, tokenHash } = {
   ...require('../src/lib/guest-invitations'),
@@ -94,6 +95,43 @@ test('first and returning RSVPs share one responsive confirmation dialog', () =>
   assert.match(styles, /@media \(max-width:\s*640px\)/);
   assert.match(styles, /margin:\s*auto 0 0/);
   assert.match(styles, /max-height:\s*94dvh/);
+});
+
+test('one tap reuses the optional Follow confirmation only after the server saves a new Going RSVP', async () => {
+  const client = read('public/js/public-event.js');
+  const answer = client.slice(
+    client.indexOf('async function answerReturningRsvp('),
+    client.indexOf("document.querySelectorAll('.returning-choice').forEach(button => {\n  button.addEventListener")
+  );
+  const remindUrl = '/r/fixture#email-settings';
+  for (const [prior, response, newSignedInGoing, accepted, expected] of [
+    [null, 'going', true, true, true],
+    [null, 'going', false, true, false],      // Another tab already saved it.
+    [null, 'going', false, false, false],    // A rejected RSVP never offers Follow.
+    [null, 'not_going', false, true, false],
+    ['not_going', 'going', false, true, false]
+  ]) {
+    const opened = [];
+    const viewRsvp = { focus() {} };
+    const EVENT = { slug: 'fixture', returningGuest: { response: prior } };
+    await vm.runInNewContext(`${answer}\nanswerReturningRsvp(${JSON.stringify(response)})`, {
+      EVENT, confirmationDialog: { open: false }, confirmationFresh: false, confirmationEditing: false, returningEditing: false,
+      $: id => id === 'returning-rsvp-change' ? viewRsvp : { style: {} },
+      document: { querySelectorAll: () => [] },
+      personalAccess: {},
+      postJson: async () => ({ response: { ok: accepted }, data: {
+        newSignedInGoing, rsvpEmailSettingsUrl: response === 'going' ? remindUrl : null
+      } }),
+      renderReturningState() {}, renderConfirmationDialog() {}, show() {}, loadComments() {},
+      openRsvpConfirmation({ fresh, trigger }) {
+        assert.equal(EVENT.returningGuest.response, 'going');
+        assert.equal(EVENT.rsvpEmailSettingsUrl, remindUrl);
+        assert.equal(trigger, viewRsvp);
+        opened.push(fresh);
+      }
+    });
+    assert.deepEqual(opened, expected ? [true] : []);
+  }
 });
 
 test('both public presentations use the personalized one-tap RSVP state', () => {

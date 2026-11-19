@@ -512,6 +512,12 @@ function renderConfirmationDialog() {
   const calendar = $('rsvp-confirmation-calendar');
   calendar.href = confirmationCalendarUrl();
   calendar.hidden = response !== 'going' || confirmationEditing;
+  const reminders = $('rsvp-confirmation-email-settings');
+  if (reminders) {
+    reminders.hidden = response !== 'going' || confirmationEditing || !EVENT.rsvpEmailSettingsUrl;
+    if (reminders.hidden) reminders.removeAttribute('href');
+    else reminders.href = EVENT.rsvpEmailSettingsUrl;
+  }
   const followCard = $('rsvp-follow-host');
   if (followCard && (response !== 'going' || !confirmationFresh || confirmationEditing)) followCard.hidden = true;
   const inviteFriend = $('rsvp-invite-friend');
@@ -587,6 +593,7 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     }
     if (!result.ok) throw new Error(data.message || data.error || 'Could not update your RSVP');
     EVENT.returningGuest.response = response;
+    EVENT.rsvpEmailSettingsUrl = data.rsvpEmailSettingsUrl || null;
     if (data.location) {
       EVENT.returningGuest.calendarUrl = data.location.calendarUrl || publicIcsUrl;
       applyLocation(data.location);
@@ -595,9 +602,17 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     confirmationEditing = false;
     confirmationFresh = false;
     renderReturningState({ fresh: true });
-    renderConfirmationDialog();
     show('returning-rsvp-state');
-    (confirmationDialog?.open ? $('rsvp-confirmation-change') : $('returning-rsvp-change'))?.focus({ preventScroll: true });
+    const viewRsvp = $('returning-rsvp-change');
+    if (response === 'going' && data.newSignedInGoing) {
+      // The RSVP is already saved. Reuse the ordinary confirmation and its
+      // optional Follow action, with a visible focus target when it closes.
+      viewRsvp?.focus({ preventScroll: true });
+      openRsvpConfirmation({ fresh: true, trigger: viewRsvp });
+    } else {
+      renderConfirmationDialog();
+      (confirmationDialog?.open ? $('rsvp-confirmation-change') : viewRsvp)?.focus({ preventScroll: true });
+    }
     if (response === 'going') await loadComments();
   } catch (errorValue) {
     error.textContent = errorValue.message;
@@ -890,6 +905,7 @@ async function submitRsvp({ afterVerification = false } = {}) {
 
     const firstName = $('full_name').value.trim().split(/\s+/)[0] || 'there';
     personalAccess.rsvpToken = data.rsvpToken || personalAccess.rsvpToken;
+    EVENT.rsvpEmailSettingsUrl = data.rsvpEmailSettingsUrl || null;
     EVENT.returningGuest = {
       firstName,
       source: 'rsvp',
