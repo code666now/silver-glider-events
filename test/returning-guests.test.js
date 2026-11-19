@@ -88,7 +88,7 @@ test('first and returning RSVPs share one responsive confirmation dialog', () =>
   assert.match(routes, /calendarUrl: `\/r\/\$\{encodeURIComponent\(rsvp\.manage_token\)\}\/calendar\.ics`/);
   assert.match(client, /function openRsvpConfirmation/);
   assert.match(client, /confirmationDialog\.showModal\(\)/);
-  assert.match(client, /openRsvpConfirmation\(\{ fresh: !data\.alreadyRsvpd, trigger: btn \}\)/);
+  assert.match(client, /show\('returning-rsvp-state'\);\s*const viewRsvp = \$\('returning-rsvp-change'\);\s*viewRsvp\?\.focus\(\{ preventScroll: true \}\);\s*openRsvpConfirmation\(\{ fresh: !data\.alreadyRsvpd, trigger: viewRsvp \}\)/);
   assert.match(client, /EVENT\.returningGuest\?\.response && \['invitation', 'rsvp'\]\.includes\(EVENT\.returningGuest\.source\)/);
   assert.match(routes, /<dialog class="rsvp-confirmation-dialog"/);
   assert.match(styles, /\.rsvp-confirmation-dialog::backdrop/);

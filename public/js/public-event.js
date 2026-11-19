@@ -948,7 +948,9 @@ async function submitRsvp({ afterVerification = false } = {}) {
     returningEditing = false;
     renderReturningState({ fresh: !data.alreadyRsvpd });
     show('returning-rsvp-state');
-    openRsvpConfirmation({ fresh: !data.alreadyRsvpd, trigger: btn });
+    const viewRsvp = $('returning-rsvp-change');
+    viewRsvp?.focus({ preventScroll: true });
+    openRsvpConfirmation({ fresh: !data.alreadyRsvpd, trigger: viewRsvp });
     if (EVENT.commentsEnabled && EVENT.returningGuest.response === 'going') await loadComments();
   } catch (err) {
     const el = $('rsvp-error');
