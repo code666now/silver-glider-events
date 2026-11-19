@@ -114,6 +114,7 @@ test('the weekly recs signup lives on /recs, and the homepage links to it quietl
   assert.match(home, /<h1 id="sg-recs-title">Going out instead\?<\/h1>/);
   assert.match(home, /aria-labelledby="sg-recs-title"/);
   assert.match(home, /class="sg-label sg-display sg-recs-kicker"/);
+  assert.match(home, /<form class="sg-recs-form" method="post">/, 'without JavaScript, email must not be sent in the URL');
   assert.match(home, /name="email"[\s\S]*type="email"[\s\S]*maxlength="254"[\s\S]*required/);
   assert.match(home, /type="radio" name="audience" value="sf" required[\s\S]*type="radio" name="audience" value="la"/);
   assert.doesNotMatch(home, /<select name="audience"/);

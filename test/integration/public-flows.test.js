@@ -13178,10 +13178,14 @@ test('admin traction reports the loop numbers and ignores test accounts', async 
   )).rows[0];
   await pool.query(
     flagged
-      ? `INSERT INTO users (id,name,is_test_account) VALUES ($1,'Test Data',TRUE)
-         ON CONFLICT (id) DO UPDATE SET is_test_account=TRUE`
+      ? `INSERT INTO users (id,name,is_test_account,test_account_marked_at,test_account_marked_by_user_id,test_account_mark_reason)
+         VALUES ($1,'Test Data',TRUE,NOW(),$2,'Traction report test fixture')
+         ON CONFLICT (id) DO UPDATE SET is_test_account=TRUE,
+           test_account_marked_at=EXCLUDED.test_account_marked_at,
+           test_account_marked_by_user_id=EXCLUDED.test_account_marked_by_user_id,
+           test_account_mark_reason=EXCLUDED.test_account_mark_reason`
       : `INSERT INTO users (id,name) VALUES ($1,'Test Data') ON CONFLICT (id) DO NOTHING`,
-    [testHost.id]
+    flagged ? [testHost.id, organizerId] : [testHost.id]
   );
   await pool.query('UPDATE organizers SET user_id=$1 WHERE id=$1', [testHost.id]);
   const testEvent = (await pool.query(

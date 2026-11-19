@@ -465,10 +465,18 @@ module.exports = function registerContributorCases(h) {
     const contributor = await approve(await invite(current, { email: 'unsubscribed-artist@example.test' }));
     const follower = await h.signInAccount('old-unsubscribed-follower@example.test');
     const identity = (await pool.query("SELECT id,user_id FROM organizers WHERE email='old-unsubscribed-follower@example.test'")).rows[0];
+    const {
+      FOLLOW_EMAIL_CONSENT_SOURCE, FOLLOW_EMAIL_CONSENT_VERSION,
+      FOLLOW_SMS_CONSENT_SOURCE, FOLLOW_SMS_CONSENT_VERSION
+    } = require('../../src/lib/follow-consent');
     await pool.query(`INSERT INTO host_follows(follower_organizer_id,follower_user_id,host_organizer_id,
-      unsubscribed_at,email_opted_in_at,sms_phone,sms_opted_in_at,sms_opted_out_at)
-      VALUES($1,$2,$3,'2025-01-01','2024-01-01','+14155550123','2024-01-01','2025-01-01')`,
-    [identity.id, identity.user_id, owner.id]);
+      unsubscribed_at,email_opted_in_at,sms_phone,sms_opted_in_at,sms_opted_out_at,
+      email_consent_source,email_consent_version,email_consent_text,
+      sms_consent_source,sms_consent_version,sms_consent_text)
+      VALUES($1,$2,$3,'2025-01-01','2024-01-01','+14155550123','2024-01-01','2025-01-01',
+        $4,$5,'Fixture prior email consent',$6,$7,'Fixture prior text consent')`,
+    [identity.id, identity.user_id, owner.id, FOLLOW_EMAIL_CONSENT_SOURCE, FOLLOW_EMAIL_CONSENT_VERSION,
+      FOLLOW_SMS_CONSENT_SOURCE, FOLLOW_SMS_CONSENT_VERSION]);
     const before = (await pool.query('SELECT unsubscribed_at,sms_phone,sms_opted_in_at,sms_opted_out_at FROM host_follows WHERE host_organizer_id=$1', [owner.id])).rows[0];
     assert.equal((await follow(contributor, follower.sessionCookie)).status, 200);
     const response = await request(`/api/contributors/claim/${contributor.id}`, { cookie: artist.sessionCookie, method: 'POST', body: {} });

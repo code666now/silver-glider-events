@@ -2,6 +2,15 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.218
+
+Released November 19, 2026.
+
+* Simplify the homepage hero with one primary action and a larger, centered phone preview. Preserve desktop pointer tilt, click or tap to spin, and the reduced-motion fallback.
+* Replace the illustrated Familiar Faces emojis with muted initials that spell **GLIDE** on phones and desktop. Actual guest avatars are unchanged.
+* Move the weekly Silver Glider Recs signup to `/recs` and link it from the homepage. Keep the existing city choices, consent, and signup endpoint. Use POST so email addresses stay out of the URL even if the signup script does not load.
+* Pre-merge `npm test` passed **1,151/1,151** tests on a fresh isolated PostgreSQL database. Two older test fixtures now supply the audit fields required by the current schema; production data and rules are unchanged.
+
 ## 1.0.217
 
 Released November 19, 2026.
