@@ -3,11 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const eventLifecycle = require('../public/js/event-lifecycle');
 
 const client = fs.readFileSync(path.join(__dirname, '../public/js/manage.js'), 'utf8');
 const view = fs.readFileSync(path.join(__dirname, '../src/views/event-manage.html'), 'utf8');
 
-function harness({ publish, mobile = false } = {}) {
+function harness({ publish, mobile = false, browserNavigator } = {}) {
   const nodes = new Map();
   const calls = [];
   const navigations = [];
@@ -22,15 +23,17 @@ function harness({ publish, mobile = false } = {}) {
       classList: { toggle() {}, add() {}, remove() {} },
       addEventListener(name, callback) { listeners.set(name, callback); },
       setAttribute(name, value) { attributes.set(name, value); },
+      getAttribute(name) { return attributes.get(name); },
       removeAttribute(name) { attributes.delete(name); },
       hasAttribute(name) { return attributes.has(name); },
+      contains() { return false; },
       querySelector(selector) { return node(`${id} ${selector}`); },
       querySelectorAll() { return []; },
       insertAdjacentHTML() {}, replaceChildren() {}, append() {},
       focus() { activeElement = id; },
       showModal() { this.open = true; },
       close() { this.open = false; listeners.get('close')?.(); },
-      click() { return listeners.get('click')?.({ target: this }); },
+      click() { if (!this.disabled) return listeners.get('click')?.({ target: this }); },
       fire(name, event = {}) { return listeners.get(name)?.({ preventDefault() {}, ...event }); }
     };
     nodes.set(id, element);
@@ -40,9 +43,9 @@ function harness({ publish, mobile = false } = {}) {
   const context = vm.createContext({
     URL, URLSearchParams, Map, Set, Number, String, Date, Promise, console,
     document: { getElementById: node, querySelectorAll() { return []; }, addEventListener() {}, body: { classList: { toggle() {} } } },
-    window: { location, matchMedia(query) { return { matches: query.includes('max-width') ? mobile : !mobile, addEventListener() {} }; }, setInterval() {}, SgeEventLifecycle: { isPostEventEligible() { return false; }, variantFor() { return 'new-event'; } } },
+    window: { location, matchMedia(query) { return { matches: query.includes('max-width') ? mobile : !mobile, addEventListener() {} }; }, setInterval() {}, SgeEventLifecycle: eventLifecycle },
     location, history: { state: null }, renderNav() {}, toast() {}, sgSafeHttpUrl() { return ''; }, setTimeout, clearTimeout,
-    navigator: { clipboard: { async writeText() { throw new Error('Unexpected clipboard access'); } } },
+    navigator: browserNavigator || { clipboard: { async writeText() { throw new Error('Unexpected clipboard access'); } } },
     api: async (url, options) => { calls.push({ url, options }); return publish?.(url, options); }
   });
   vm.runInContext(client.replace('\ninitializeMobileManage();\ninitializeManagePage();', ''), context);
@@ -183,4 +186,80 @@ test('same-day drafts still load past guests and filtered empty states stay trut
   const initialization = client.slice(client.indexOf('async function initializeManagePage()'), client.indexOf('\ninitializeMobileManage();'));
   assert.match(initialization, /eventData\.status === 'published' && eventData\.lifecycle_phase === 'tonight'\s*\? \[loadPeople\(\), loadContacts\(\)\]\s*:\s*\[loadLineStatus\(\), loadPeople\(\), loadFollowers\(\), loadSmsPreview\(\), loadContacts\(\)\]/);
   assert.doesNotMatch(initialization, /:\s*eventData\.lifecycle_phase === 'tonight'/);
+});
+
+const emptyFaces = { faces: [], totalCount: 0, selectableCount: 0 };
+
+test('empty Familiar Faces reuses native sharing or desktop clipboard without sending anything', async () => {
+  assert.match(view, /id="familiar-faces-empty-state" hidden>[\s\S]*?<img[^>]+music-notes\.png[^>]+alt=""/);
+  assert.match(view, /id="no-guests" role="status"/);
+  for (const mobile of [false, true]) {
+    const shared = [];
+    const browserNavigator = mobile
+      ? { share: async ({ url }) => shared.push(url) }
+      : { clipboard: { writeText: async url => shared.push(url) } };
+    const h = harness({ mobile, browserNavigator, publish: async () => emptyFaces });
+    h.run("eventData.status = 'published'; eventData.visibility = 'private'; syncPublicationActions();");
+    await h.run('loadGuests()');
+    assert.equal(h.node('familiar-faces-empty-state').hidden, false);
+    assert.equal(h.node('familiar-faces-empty-share').hidden, false);
+    h.node('familiar-faces-empty-share').click();
+    assert.deepEqual(shared, ['http://localhost/e/draft-party']);
+    assert.deepEqual(h.calls, [{ url: '/api/events/64/familiar-faces', options: undefined }]);
+    assert.deepEqual(h.navigations, []);
+  }
+});
+
+test('draft, hidden, cancelled and ended events do not gain a share action in the empty state', async () => {
+  for (const [status, ended] of [['draft', false], ['hidden', false], ['cancelled', false], ['published', true]]) {
+    const h = harness({ publish: async () => emptyFaces });
+    h.run(`eventData.status = '${status}'; eventData.post_event_ended = ${ended}; syncPublicationActions();`);
+    await h.run('loadGuests()');
+    assert.equal(h.node('familiar-faces-empty-state').hidden, false, status);
+    assert.equal(h.node('familiar-faces-empty-share').hidden, true, status);
+    assert.doesNotMatch(h.node('familiar-faces-empty-copy').textContent, /first RSVPs/);
+  }
+});
+
+test('Familiar Faces separates loading, populated results, search misses and failures from a true empty list', async () => {
+  let finish;
+  let fail;
+  const h = harness({ publish: () => new Promise((resolve, reject) => { finish = resolve; fail = reject; }) });
+  h.run("eventData.status = 'published'; syncPublicationActions();");
+  const initial = h.run('loadGuests()');
+  assert.equal(h.node('manage-guest-section').getAttribute('aria-busy'), 'true');
+  assert.equal(h.node('familiar-faces-empty-state').hidden, true);
+  finish({ ...emptyFaces, totalCount: 1, faces: [{ id: 'rsvp:1', name: 'Test guest', group: 'going' }] });
+  await initial;
+  assert.equal(h.node('familiar-faces-empty-state').hidden, true);
+  assert.match(h.node('familiar-faces-grid').innerHTML, /Test guest/);
+
+  const filtered = h.run("loadGuests('missing name')");
+  finish(emptyFaces);
+  await filtered;
+  assert.equal(h.node('familiar-faces-empty-state').hidden, true);
+  assert.equal(h.node('familiar-faces-empty-share').hidden, true);
+  assert.equal(h.node('no-guests').textContent, 'No people match that search.');
+
+  const failed = h.run('loadGuests()');
+  fail(new Error('fixture failure'));
+  await failed;
+  assert.equal(h.node('familiar-faces-empty-state').hidden, true);
+  assert.match(h.node('no-guests').textContent, /Could not load Familiar Faces/i);
+  assert.equal(h.node('manage-guest-section').getAttribute('aria-busy'), 'false');
+});
+
+test('a stale unfiltered Familiar Faces response cannot replace more recent search feedback', async () => {
+  const replies = [];
+  const h = harness({ publish: () => new Promise(resolve => replies.push(resolve)) });
+  h.run("eventData.status = 'published'; syncPublicationActions();");
+  const initial = h.run('loadGuests()');
+  const query = h.run("loadGuests('missing')");
+  replies[1](emptyFaces);
+  await query;
+  replies[0](emptyFaces);
+  await initial;
+  assert.equal(h.node('no-guests').textContent, 'No people match that search.');
+  assert.equal(h.node('familiar-faces-empty-state').hidden, true);
+  assert.equal(h.node('manage-guest-section').getAttribute('aria-busy'), 'false');
 });

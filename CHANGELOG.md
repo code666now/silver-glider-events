@@ -2,6 +2,19 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.212
+
+Released November 18, 2026.
+
+### A starting point for Familiar Faces
+
+* Show the existing music-note characters when an event has no RSVPs or invitations. Hosts can share the event link from there whenever the existing share action is available.
+* Keep loading, search misses and errors distinct from a genuinely empty list. Reuse native sharing or clipboard copy without publishing, sending invitations or changing visibility.
+
+### Verification
+
+* `npm run check` passed **1,105/1,105** tests with no failures or skips. The final static checks and isolated Chrome checks at 1440px, 390px and 320px passed, including keyboard activation, draft gating and search/error recovery.
+
 ## 1.0.211
 
 Released November 18, 2026.

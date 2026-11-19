@@ -543,9 +543,7 @@ function showManageLoadError() {
   $('title').textContent = 'Event unavailable';
   $('meta').textContent = 'Try loading this page again.';
   ['stat-rsvps', 'stat-attendance', 'stat-returning', 'stat-guests', 'stat-comments'].forEach(id => { $(id).textContent = '—'; });
-  $('familiar-faces-grid').innerHTML = '';
-  $('no-guests').textContent = 'We could not load Familiar Faces. Try loading the page again.';
-  $('no-guests').hidden = false;
+  showFamiliarFacesLoadError();
 }
 
 async function loadEvent() {
@@ -740,6 +738,7 @@ async function loadLineStatus() {
 
 const familiarFaceSelection = new Set();
 let familiarFaceState = { faces: [], totalCount: 0, rsvpCount: 0, selectableCount: 0, canStartInvitation: false };
+let familiarFacesRequest = 0;
 let familiarSelectionMode = false;
 let familiarInviteState = { step: 'targets', preview: null, targetId: null };
 
@@ -821,7 +820,24 @@ function renderFamiliarFaces() {
     [...grid.querySelectorAll('[data-familiar-face]')]
       .find(card => card.dataset.familiarFace === focusedFace)?.focus();
   }
-  $('no-guests').hidden = familiarFaceState.faces.length > 0;
+}
+
+function renderFamiliarFacesFeedback({ empty = false, message = '' } = {}) {
+  $('familiar-faces-empty-state').hidden = !empty;
+  // The toolbar action already knows whether sharing is offered for this event.
+  const canShare = empty && !$('copy-link').hidden && !$('share-event').disabled;
+  $('familiar-faces-empty-share').hidden = !canShare;
+  if (empty) {
+    $('familiar-faces-empty-copy').textContent = canShare ? 'Share your event link to get your first RSVPs.'
+      : eventData?.status === 'draft' ? 'Publish your event before sharing or inviting.'
+        : 'There are no RSVPs or invitations to show.';
+  }
+  $('no-guests').textContent = message;
+}
+
+function showFamiliarFacesLoadError() {
+  $('familiar-faces-grid').innerHTML = '';
+  renderFamiliarFacesFeedback({ message: 'We could not load Familiar Faces. Try loading the page again.' });
 }
 
 function familiarFacesSummary(data) {
@@ -886,18 +902,29 @@ function stopFamiliarSelection() {
 }
 
 async function loadGuests(search = '') {
-  const data = await api(`/api/events/${eventId}/familiar-faces${search ? `?search=${encodeURIComponent(search)}` : ''}`);
-  familiarFaceState = data;
-  $('familiar-faces-summary').textContent = familiarFacesSummary(data);
-  $('no-guests').textContent = search ? 'No people match that search.'
-    : eventData?.status === 'draft' ? 'No RSVPs for this draft yet. Publish before sharing or inviting.'
-      : 'No faces yet. Share the event link to receive RSVPs.';
-  $('export-csv').disabled = Number(data.totalCount) === 0;
-  $('search').disabled = false;
-  $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
-  renderFamiliarFaces();
-  $('manage-guest-section').setAttribute('aria-busy', 'false');
-  updateMobileManageSummaries();
+  const request = ++familiarFacesRequest;
+  const section = $('manage-guest-section');
+  section.setAttribute('aria-busy', 'true');
+  renderFamiliarFacesFeedback();
+  try {
+    const data = await api(`/api/events/${eventId}/familiar-faces${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+    if (request !== familiarFacesRequest) return;
+    familiarFaceState = data;
+    $('familiar-faces-summary').textContent = familiarFacesSummary(data);
+    $('export-csv').disabled = Number(data.totalCount) === 0;
+    $('search').disabled = false;
+    $('familiar-faces-start').hidden = familiarSelectionMode || !(data.canStartInvitation && Number(data.selectableCount) > 0);
+    renderFamiliarFaces();
+    renderFamiliarFacesFeedback({
+      empty: !search && !data.faces.length,
+      message: search && !data.faces.length ? 'No people match that search.' : ''
+    });
+    updateMobileManageSummaries();
+  } catch (_) {
+    if (request === familiarFacesRequest) showFamiliarFacesLoadError();
+  } finally {
+    if (request === familiarFacesRequest) section.setAttribute('aria-busy', 'false');
+  }
 }
 
 $('familiar-faces-grid').addEventListener('click', event => {
@@ -1046,6 +1073,7 @@ $('familiar-invite-close').addEventListener('click', closeFamiliarInviteDialog);
 $('familiar-invite-form').addEventListener('submit', event => event.preventDefault());
 
 $('copy-link').addEventListener('click', () => $('share-event').click());
+$('familiar-faces-empty-share').addEventListener('click', () => $('copy-link').click());
 
 $('share-event').addEventListener('click', async () => {
   if (eventData?.status !== 'published') return;
@@ -1952,13 +1980,7 @@ async function initializeManagePage() {
       : eventData.status === 'published' && eventData.lifecycle_phase === 'tonight'
         ? [loadPeople(), loadContacts()]
         : [loadLineStatus(), loadPeople(), loadFollowers(), loadSmsPreview(), loadContacts()];
-    const [guests] = await Promise.allSettled([loadGuests(), ...secondaryTasks]);
-    if (guests.status === 'rejected') {
-      $('manage-guest-section').setAttribute('aria-busy', 'false');
-      $('familiar-faces-grid').innerHTML = '';
-      $('no-guests').textContent = 'We could not load the guest list. Try loading the page again.';
-      $('no-guests').hidden = false;
-    }
+    await Promise.allSettled([loadGuests(), ...secondaryTasks]);
   } catch (_) {
     showManageLoadError();
   }

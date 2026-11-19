@@ -95,6 +95,17 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
 .familiar-face-skeleton-name { width:90px;height:13px;margin-top:16px; }
 .familiar-face-skeleton-status { width:54px;height:9px;margin-top:8px; }
 .familiar-faces-empty { margin:0;padding:44px 20px;color:var(--sg-text-dim);font-size:13px;text-align:center; }
+#no-guests:empty { padding:0; }
+.familiar-faces-empty-card {
+  display:flex;align-items:center;gap:20px;padding:22px;
+  border:1px solid var(--sg-border);border-radius:var(--sg-radius-card);background:var(--sg-surface);
+}
+.familiar-faces-empty-card[hidden],.familiar-faces-empty-card .sg-btn[hidden] { display:none; }
+.familiar-faces-empty-card img { display:block;flex:none;width:108px;max-width:100%;height:auto;border-radius:14px;background:#f7f2e8; }
+.familiar-faces-empty-card h3 { font-size:22px; }
+.familiar-faces-empty-card p { margin:6px 0 0;color:var(--sg-text-dim);font-size:14px; }
+.familiar-faces-empty-card .sg-btn { min-height:44px;margin-top:12px; }
+.familiar-faces-empty-card .sg-btn:focus-visible { outline:2px solid var(--sg-accent);outline-offset:3px; }
 .familiar-faces-start { margin-top:18px;padding-top:18px;border-top:1px solid var(--sg-border-soft); }
 .familiar-faces-start .sg-btn { min-height:48px; }
 .familiar-faces-start p { margin:9px 0 0;color:var(--sg-text-faint);font-size:11px;line-height:1.5; }
@@ -183,6 +194,8 @@ button.familiar-face-card:focus-visible { outline:2px solid var(--sg-accent);out
   .manage-shell .familiar-face-status { font-size:13px;line-height:1.4; }
   .manage-shell .familiar-face-share { min-height:44px;display:inline-flex;align-items:center;padding:9px 14px;font-size:12px; }
   .manage-shell .familiar-faces-empty { padding:46px 18px;font-size:15px;line-height:1.55; }
+  .familiar-faces-empty-card { flex-direction:column;gap:14px;padding:20px 16px;text-align:center; }
+  .familiar-faces-empty-card .sg-btn { min-height:48px; }
   .manage-shell .familiar-faces-start { margin-top:22px;padding-top:22px; }
   .manage-shell .familiar-faces-start .sg-btn { width:100%;min-height:58px; }
   .manage-shell .familiar-faces-start p { font-size:13px; }

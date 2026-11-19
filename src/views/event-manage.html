@@ -920,7 +920,15 @@
         <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
         <div class="familiar-face-card familiar-face-skeleton" aria-hidden="true"><span class="sg-skeleton familiar-face-skeleton-avatar"></span><span class="sg-skeleton familiar-face-skeleton-name"></span><span class="sg-skeleton familiar-face-skeleton-status"></span></div>
       </div>
-      <p class="familiar-faces-empty" id="no-guests" hidden>No faces yet. Share the event link to receive RSVPs.</p>
+      <div class="familiar-faces-empty-card" id="familiar-faces-empty-state" hidden>
+        <img src="/images/flyer-intake/music-notes.png" width="520" height="346" alt="" loading="lazy" decoding="async">
+        <div>
+          <h3>No faces yet</h3>
+          <p id="familiar-faces-empty-copy">There are no RSVPs or invitations to show.</p>
+          <button class="sg-btn sg-btn-primary" id="familiar-faces-empty-share" type="button" hidden>Share event link</button>
+        </div>
+      </div>
+      <p class="familiar-faces-empty" id="no-guests" role="status"></p>
       <div class="familiar-faces-start" id="familiar-faces-start" hidden>
         <button class="sg-btn sg-btn-primary" id="familiar-invite-start" type="button">Invite to another event</button>
         <p>Primary guests with an email can be selected. Unsubscribed guests and named +1s are excluded.</p>
