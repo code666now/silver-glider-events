@@ -97,6 +97,21 @@ test('homepage phone turns toward the pointer, floats on touch screens, and resp
   assert.match(tilt, /setProperty\('--spin', '360deg'\)/);
 });
 
+test('homepage fly-over keeps GLIDE ordered and the replay control outside the decorative row', () => {
+  const home = read('src/views/index.html');
+  const row = home.match(/<div class="home-faces" aria-hidden="true">([\s\S]*?)<\/div>\s*<\/div>/)?.[1];
+  assert.ok(row);
+  assert.equal([...row.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join(''), 'GLIDE');
+  assert.match(row, /<div class="home-faces-flight"><img class="home-faces-glider" src="\/logo\.png" alt=""/);
+  for (let index = 0; index < 5; index++) {
+    assert.match(home, new RegExp(`\\.home-face:nth-of-type\\(${index + 1}\\) \\{ --face-tone: #[0-9a-f]{6}; --face-i: ${index}; \\}`));
+  }
+  assert.match(home, /src="\/js\/home-glide\.js" defer/);
+  assert.match(home, /<\/div>\s*<\/div>\s*<button class="home-faces-replay" type="button" hidden>Replay fly-over<\/button>/);
+  assert.match(home, /\.home-faces-replay:focus-visible/);
+  assert.match(home, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\}\s*\.home-faces\.is-gliding[^}]*animation: none/);
+});
+
 test('the weekly recs signup lives on /recs, and the homepage links to it quietly', () => {
   const homepage = read('src/views/index.html');
   const server = read('src/index.js');

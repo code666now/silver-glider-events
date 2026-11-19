@@ -727,4 +727,5 @@ Lightweight on purpose: nothing gates or delays publishing.
 
 - Homepage hero is one line, one button and the event-page phone shown big, centred at every width (no tagline, no eyebrow, no side-by-side grid). The phone stands upright (`--lean: 0deg`); tilt and spin are unchanged.
 - Familiar Faces uses muted monogram circles (`--face-tone` per face) instead of emoji. The initials spell GLIDE (Gram, Lou, Iggy, David, Etta), so all five show on phones too.
+- The homepage glider flies in an arc once when at least 80% of the Familiar Faces row is visible; GLIDE hops and lights teal in order (`public/js/home-glide.js`). Tap the row or use **Replay fly-over** to repeat it. Reduce Motion keeps it still.
 - The Silver Glider Recs signup moved to its own page, `GET /recs` (`src/views/recs.html`), same form, script and endpoint. The homepage keeps one quiet link to it so "Create your event" is the only primary button.
