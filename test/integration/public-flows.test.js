@@ -13794,6 +13794,11 @@ require('../support/guest-import-cases')({
   getBaseUrl: () => baseUrl, signSession, mailer, addVerifiedEmailIdentity
 });
 
+require('../support/external-ticket-click-cases')({
+  test, assert, pool, createEvent, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession, responseCookie
+});
+
 require('../support/event-guest-avatar-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession, mailer

@@ -17,7 +17,7 @@ test('paid Flyer events with a valid destination prioritize tickets and demote R
     type: 'ticket',
     label: 'Get Tickets · $36',
     url: 'https://tickets.example/show',
-    supportingText: '',
+    supportingText: 'Tickets sold on an external site',
     secondaryRsvp: true
   });
 });

@@ -25,6 +25,9 @@ const { clearPhotoAccessCookie } = require('../lib/photo-access');
 const { createSignInChallenge, maskEmail } = require('../lib/sign-in-challenges');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action');
+const { externalTicketLink } = require('../lib/ticket-links');
+const { loadExternalTicketClickTarget, recordExternalTicketClick, validTicketVisitorKey } = require('../lib/external-ticket-impact');
+const { sameOriginMutation } = require('../middleware/requireOrganizer');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
 const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
 const {
@@ -86,6 +89,17 @@ const rsvpRateLimiter = createRateLimiter({
   ]
 });
 setInterval(() => rsvpRateLimiter.prune(), RSVP_RATE_WINDOW_MS).unref();
+
+const TICKET_CLICK_RATE_WINDOW_MS = 60_000;
+const ticketClickRateKey = crypto.randomBytes(32);
+const ticketClickRateLimiter = createRateLimiter({
+  windowMs: TICKET_CLICK_RATE_WINDOW_MS,
+  rules: [
+    { name: 'event', max: 40, key: ({ network, slug }) => `${network}:${slug}` },
+    { name: 'network', max: 120, key: ({ network }) => network }
+  ]
+});
+setInterval(() => ticketClickRateLimiter.prune(), TICKET_CLICK_RATE_WINDOW_MS).unref();
 
 const SECRET_UNLOCK_WINDOW_MS = 15 * 60 * 1000;
 const secretUnlockLimiter = createRateLimiter({
@@ -857,12 +871,19 @@ router.get('/e/:slug', async (req, res, next) => {
       : '';
     const isPaid = isExternalTickets(event);
     const isCommerceTicketed = isSilverGliderTickets(event);
+    const externalTicket = externalTicketLink(event);
+    const trackExternalTicket = Boolean(externalTicket && event.status === 'published' && !event.is_past && !ownerPreview && !flyerPreview);
+    const ticketTrackingAttributes = trackExternalTicket
+      ? ` data-external-ticket-event="${esc(event.id)}" data-external-ticket-click="/api/public/events/${encodeURIComponent(event.slug)}/external-ticket-click"`
+      : '';
     const ticketHtml = event.is_past
       ? ''
       : isCommerceTicketed
       ? '<div class="ticket-note"><span>Tickets</span><em>Sold by Silver Glider</em></div>'
       : isPaid
-      ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${event.ticket_url ? `<a href="${esc(event.ticket_url)}" target="_blank" rel="noopener">Ticket link →</a>` : '<em>At the door</em>'}</div>`
+      ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${externalTicket
+        ? `<div class="ticket-link-group"><a href="${esc(externalTicket.url)}" target="_blank" rel="noopener" aria-describedby="standard-ticket-seller"${ticketTrackingAttributes}>Get Tickets <b aria-hidden="true">→</b></a><small id="standard-ticket-seller" class="ticket-seller-note">${esc(externalTicket.sellerLabel)}</small></div>`
+        : '<em>At the door</em>'}</div>`
       : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
     const vibeHtml = renderVibe(event, { declinedSlots: await declinedLineupSlots(pool, event.id) });
     const flyerAction = flyerPrimaryAction(event);
@@ -894,7 +915,7 @@ router.get('/e/:slug', async (req, res, next) => {
       : event.is_past
       ? endedActionHtml
       : flyerAction.type === 'ticket'
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}" target="_blank" rel="noopener" aria-describedby="flyer-ticket-seller"${ticketTrackingAttributes}>${esc(flyerAction.label)}</a>`
       : flyerAction.type === 'commerce_ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
@@ -902,14 +923,14 @@ router.get('/e/:slug', async (req, res, next) => {
       ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
       : '';
     const flyerActionSupportHtml = !ownerDraft && !event.is_past && flyerAction.supportingText
-      ? `<p class="primary-action-support${isPaid && flyerAction.type === 'rsvp' ? ' is-admission-price' : ''}">${esc(flyerAction.supportingText)}</p>`
+      ? `<p${flyerAction.type === 'ticket' ? ' id="flyer-ticket-seller"' : ''} class="primary-action-support${isPaid && flyerAction.type === 'rsvp' ? ' is-admission-price' : ''}">${esc(flyerAction.supportingText)}</p>`
       : '';
     const flyerMobileActionHtml = ownerDraft
       ? ''
       : event.is_past
       ? endedMobileActionHtml
       : flyerAction.type === 'ticket'
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener">${esc(flyerAction.label)}</a>`
+      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener" aria-describedby="dock-ticket-seller"${ticketTrackingAttributes}>${esc(flyerAction.label)}</a><p id="dock-ticket-seller" class="mobile-ticket-seller-note">${esc(flyerAction.supportingText)}</p>`
       : flyerAction.type === 'commerce_ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
@@ -1105,10 +1126,36 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{OWNER_EDITOR_STYLES}}/g, ownerEditorStyles)
       .replace(/{{OWNER_EDITOR_HTML}}/g, ownerEditorHtml)
       .replace(/{{OWNER_EDITOR_SCRIPTS}}/g, ownerEditorScripts)
+      .replace(/{{EXTERNAL_TICKET_CLICK_SCRIPT}}/g, trackExternalTicket ? '<script src="/js/external-ticket-clicks.js" defer></script>' : '')
       .replace(/{{EVENT_JSON}}/g, JSON.stringify(eventJson).replace(/</g, '\\u003c'));
 
     res.send(html);
   } catch (err) { next(err); }
+});
+
+// Best-effort first-party measurement. Never put this request in the guest's
+// navigation path or accept a visitor-supplied URL to redirect to.
+router.post('/api/public/events/:slug/external-ticket-click', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const slug = req.params.slug;
+  const key = req.body?.browserKey;
+  if (!sameOriginMutation(req) || typeof slug !== 'string' || slug.length > 220 || !validTicketVisitorKey(key)) {
+    return res.sendStatus(204);
+  }
+  // Keep only a short-lived, per-process opaque network key for abuse control.
+  // The aggregate write never receives that key or the raw address.
+  const network = crypto.createHmac('sha256', ticketClickRateKey).update(clientIp(req)).digest('hex').slice(0, 32);
+  if (!ticketClickRateLimiter.consume({ network, slug }).allowed) return res.sendStatus(204);
+  try {
+    const event = await loadExternalTicketClickTarget(pool, slug);
+    if (event && !organizerViewer(req, event) && !secretShowLocked(req, event)) {
+      await recordExternalTicketClick(pool, event, key);
+    }
+  } catch (_) {
+    // Never include a ticket URL, visitor key, or request metadata in logs.
+    console.error('[external-ticket-click] recording failed');
+  }
+  return res.sendStatus(204);
 });
 
 // Stable Events-owned handoff URL. It enforces event visibility before any
@@ -2028,6 +2075,7 @@ router.post('/api/public/rsvps/:token/cancel', async (req, res, next) => {
 
 // Test-only: the in-memory limiters are process-wide.
 router.resetRateLimitsForTests = () => {
+  ticketClickRateLimiter.reset();
   rsvpRateLimiter.reset();
   secretUnlockLimiter.reset();
 };

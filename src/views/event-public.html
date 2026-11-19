@@ -477,6 +477,9 @@
     .ticket-note span { color: var(--sg-text); font-weight: 700; }
     .ticket-note a { min-height:44px;display:inline-flex;align-items:center;font-weight:700;white-space:nowrap; }
     .ticket-note em { font-style: normal; color: var(--sg-text-dim); white-space: nowrap; }
+    .ticket-link-group { display:grid; justify-items:end; text-align:right; min-width:0; }
+    .ticket-link-group a { gap:5px; }
+    .ticket-seller-note { color:var(--sg-text-dim); font-size:12px; line-height:1.35; }
     .desc {
       color: rgba(255,255,255,.8);
       font-size: 15px;
@@ -1240,6 +1243,7 @@
   <script src="/js/email-code-input.js"></script>
   <script src="/js/follow-flow.js"></script>
   <script src="/js/public-event.js"></script>
+  {{EXTERNAL_TICKET_CLICK_SCRIPT}}
   {{OWNER_EDITOR_SCRIPTS}}
 </body>
 </html>

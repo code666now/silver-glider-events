@@ -1,19 +1,11 @@
+const { isExternalTickets, isSilverGliderTickets } = require('./admission');
+const { externalTicketLink, validTicketUrl } = require('./ticket-links');
+
 function formatTicketPrice(price) {
   if (price == null || price === '') return 'Paid admission';
   const value = Number(price);
   if (!Number.isFinite(value) || value <= 0) return 'Paid admission';
   return `$${value.toFixed(2).replace(/\.00$/, '')}`;
-}
-
-function validTicketUrl(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
-  } catch (_) {
-    return null;
-  }
 }
 
 function flyerPrimaryAction(event = {}) {
@@ -28,16 +20,16 @@ function flyerPrimaryAction(event = {}) {
   }
 
   const isPaid = isExternalTickets(event);
-  const ticketUrl = isPaid ? validTicketUrl(event.ticket_url) : null;
+  const external = externalTicketLink(event);
   const price = formatTicketPrice(event.ticket_price);
   const hasPrice = price !== 'Paid admission';
 
-  if (ticketUrl) {
+  if (external) {
     return {
       type: 'ticket',
       label: `Get Tickets${hasPrice ? ` · ${price}` : ''}`,
-      url: ticketUrl,
-      supportingText: '',
+      url: external.url,
+      supportingText: external.sellerLabel,
       secondaryRsvp: true
     };
   }
@@ -62,4 +54,3 @@ function flyerPrimaryAction(event = {}) {
 }
 
 module.exports = { flyerPrimaryAction, formatTicketPrice, validTicketUrl };
-const { isExternalTickets, isSilverGliderTickets } = require('./admission');

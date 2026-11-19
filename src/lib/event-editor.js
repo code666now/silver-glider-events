@@ -10,6 +10,7 @@ const { SMS_CONSENT_VERSION } = require('./sms-consent');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
 const { backgroundSelectionAllowed, UNAVAILABLE_MESSAGE } = require('./background-availability');
 const { eventEndAtSql } = require('./post-event');
+const { validTicketUrl } = require('./ticket-links');
 
 const CATEGORIES = ['Music', 'Art', 'Market', 'Party', 'Community', 'Food & Drink', 'Film', 'Other'];
 const THEMES = EventBackgrounds.keys;
@@ -228,14 +229,7 @@ function validateSecretCodePair(body) {
 }
 
 function cleanTicketUrl(v) {
-  const raw = String(v ?? '').trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString().slice(0, 500) : null;
-  } catch (_) {
-    return null;
-  }
+  return validTicketUrl(v)?.slice(0, 500) || null;
 }
 
 function cleanCommerceEventId(v) {
