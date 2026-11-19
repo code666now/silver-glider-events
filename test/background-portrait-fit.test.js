@@ -64,6 +64,27 @@ function luminance(gray) {
 }
 
 for (const view of publicViews) {
+  test(`${view.name} keeps Starlit Celebration visible without sacrificing event-detail contrast`, () => {
+    const cssRules = rules(view.file);
+    const prefix = '.event-bg.fx-starlit-celebration';
+    for (const width of [390, 1440]) {
+      const veil = declarations(cssRules, `${prefix} ~ .fx-veil`, width).background;
+      const opacities = [...veil.matchAll(/rgba\(5,9,12,([\d.]+)\)/g)].map(match => Number(match[1]));
+      assert.equal(opacities.length, 2);
+      assert.ok(opacities.every(opacity => opacity <= 0.25), 'at least 75% of the fireworks show through');
+      const details = declarations(cssRules, `${prefix} ~ ${view.layout} ${view.details}`, width);
+      const [, alpha] = details['background-color'].match(/^rgba\(5,9,12,([\d.]+)\)$/);
+      const lightestBacking = 12 * Number(alpha) + 255 * (1 - Number(alpha));
+      assert.ok((luminance(180) + 0.05) / (luminance(lightestBacking) + 0.05) >= 4.5);
+      assert.equal(details.padding, undefined, 'the theme does not change the details layout');
+      assert.ok(declarations(cssRules, `${prefix} ~ ${view.layout} ${view.credit}`, width)['text-shadow']);
+      const artwork = declarations(cssRules, prefix, width);
+      assert.ok(artwork['background-image'].includes('/sg-events/effects/starlit-celebration-v1.jpg'));
+      assert.equal(artwork['background-size'], 'cover');
+      assert.deepEqual(declarations(cssRules, `${prefix} .fx-video-media`, width), {});
+    }
+  });
+
   test(`${view.name} preserves the full Snow Day and Midnight Toast frames in video and still fallbacks`, () => {
     const cssRules = rules(view.file);
     for (const theme of portraitThemes) {
@@ -218,7 +239,7 @@ test('Background Manager portrait thumbnails contain the whole scene without cha
   }
 });
 
-test('other seasonal backgrounds keep their cover fit and existing dimming on every picker and public layout', () => {
+test('seasonal pickers keep their cover fit, and other seasonal backgrounds keep their existing public dimming', () => {
   const brand = rules('public/css/brand.css');
   const owner = rules('public/css/event-owner-editor.css');
   for (const theme of otherSeasonalThemes) {
@@ -233,13 +254,15 @@ test('other seasonal backgrounds keep their cover fit and existing dimming on ev
     for (const theme of otherSeasonalThemes) {
       const prefix = `.event-bg.fx-${theme}`;
       assert.equal(declarations(cssRules, prefix)['background-size'], 'cover');
-      assert.equal(declarations(cssRules, `${prefix} ~ .fx-veil`).background,
-        'linear-gradient(rgba(5,9,12,.82), rgba(5,9,12,.9))');
       assert.deepEqual(declarations(cssRules, `${prefix} .fx-video-media`), {});
       assert.deepEqual(declarations(cssRules, `${prefix}::before`), {});
       assert.deepEqual(declarations(cssRules, `${prefix}::after`), {});
-      assert.deepEqual(declarations(cssRules, `${prefix} ~ ${view.layout} ${view.details}`), {});
-      assert.deepEqual(declarations(cssRules, `${prefix} ~ ${view.layout} ${view.credit}`), {});
+      if (theme !== 'starlit-celebration') {
+        assert.equal(declarations(cssRules, `${prefix} ~ .fx-veil`).background,
+          'linear-gradient(rgba(5,9,12,.82), rgba(5,9,12,.9))');
+        assert.deepEqual(declarations(cssRules, `${prefix} ~ ${view.layout} ${view.details}`), {});
+        assert.deepEqual(declarations(cssRules, `${prefix} ~ ${view.layout} ${view.credit}`), {});
+      }
     }
     assert.equal(declarations(cssRules, '.event-bg.fx-golden-tide ~ .fx-veil').background,
       'linear-gradient(rgba(5,19,20,.72), rgba(5,19,20,.82))');

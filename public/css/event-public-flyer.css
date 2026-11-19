@@ -185,9 +185,20 @@
 .event-bg.fx-gather-and-glow ~ .fx-veil,
 .event-bg.fx-candlelit-christmas ~ .fx-veil,
 .event-bg.fx-snow-day ~ .fx-veil,
-.event-bg.fx-midnight-toast ~ .fx-veil,
-.event-bg.fx-starlit-celebration ~ .fx-veil {
+.event-bg.fx-midnight-toast ~ .fx-veil {
   background: linear-gradient(rgba(5,9,12,.82), rgba(5,9,12,.9));
+}
+/* Keep the dark fireworks footage visible; shade the event copy locally. */
+.event-bg.fx-starlit-celebration ~ .fx-veil {
+  background: linear-gradient(rgba(5,9,12,.16), rgba(5,9,12,.24));
+}
+.event-bg.fx-starlit-celebration ~ .flyer-layout .flyer-details {
+  background-color: rgba(5,9,12,.82);
+  border-radius: 16px;
+  box-shadow: 0 0 24px 10px rgba(5,9,12,.72);
+}
+.event-bg.fx-starlit-celebration ~ .flyer-layout .flyer-design-credit {
+  text-shadow: 0 1px 4px #05090c, 0 0 8px #05090c;
 }
 .event-bg.fx-rain-on-glass ~ .flyer-layout,
 .event-bg.fx-gather-and-glow ~ .flyer-layout,

@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.217
+
+Released November 19, 2026.
+
+* Brighten the **Starlit Celebration** fireworks in Standard and Flyer event pages. Keep the stronger shading behind event details so the text stays readable. Other backgrounds, shared media, and saved event settings are unchanged.
+* `npm run check` passed **1,151/1,151** tests. Verified both layouts at desktop and phone sizes in Chrome, including the static reduced-motion fallback.
+
 ## 1.0.216
 
 Released November 19, 2026.
