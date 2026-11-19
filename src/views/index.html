@@ -217,9 +217,9 @@
     .home-face-visit { margin-top: 3px; color: var(--sg-text-faint); font-size: 11px; font-weight: 700; white-space: nowrap; }
     .home-face-visit.is-returning { color: var(--sg-accent); }
     @media (max-width: 480px) {
-      .home-faces { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .home-face:nth-child(n+5) { display: none; }
-      .home-face-avatar { width: 56px; height: 56px; font-size: 19px; }
+      /* All five stay on phones: the initials spell GLIDE. */
+      .home-faces { gap: 6px; }
+      .home-face-avatar { width: 52px; height: 52px; font-size: 18px; }
       .home-regulars { margin-top: 56px; }
     }
     .feature-list { margin: 62px 0 0; text-align: left; }
@@ -311,13 +311,13 @@
       <p class="sg-label sg-display home-regulars-kicker">Only on Silver Glider</p>
       <h2 id="home-regulars-title">Familiar Faces, remembered.</h2>
       <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
-      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. -->
+      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. Their initials spell GLIDE. -->
       <div class="home-faces" aria-hidden="true">
-            <span class="home-face"><span class="home-face-avatar">K</span><span class="home-face-name">Keith</span><span class="home-face-visit is-returning">3rd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">M</span><span class="home-face-name">Mick</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">S</span><span class="home-face-name">Stevie</span><span class="home-face-visit">First time</span></span>
-            <span class="home-face"><span class="home-face-avatar">J</span><span class="home-face-name">Janis</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">J</span><span class="home-face-name">Jimi</span><span class="home-face-visit is-returning">4th time</span></span>
+            <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
+            <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
+            <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
       </div>
     </section>
     <!-- Recs is for guests, so it lives on its own page; hosts keep the one button above. -->

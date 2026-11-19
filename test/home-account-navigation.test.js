@@ -50,7 +50,10 @@ test('homepage presents its value as a numbered editorial list', () => {
   assert.match(home, /See who keeps coming back\. Invite them again in a tap\./);
   assert.equal((home.match(/class="home-face"/g) || []).length, 5);
   // Muted monograms, not emoji.
-  for (const initial of ['K', 'M', 'S', 'J']) assert.match(home, new RegExp(`<span class="home-face-avatar">${initial}</span>`));
+  // The five monograms spell GLIDE, so all five show on phones too.
+  const initials = [...home.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join('');
+  assert.equal(initials, 'GLIDE');
+  assert.doesNotMatch(home, /\.home-face:nth-child\(n\+5\) \{ display: none; \}/);
   assert.doesNotMatch(home, /Apple Color Emoji/);
   assert.match(home, /--face-tone/);
   assert.doesNotMatch(home, /class="tick"/);
