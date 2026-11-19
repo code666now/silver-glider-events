@@ -99,14 +99,44 @@ test('RSVP success optionally offers Follow without changing RSVP reminder conse
     assert.doesNotMatch(view, /id="organizer_optin"/);
   }
   assert.match(publicRoute, /id="rsvp-follow-host" hidden/);
-  assert.match(publicRoute, /Hear about upcoming events\. Texts are optional\./);
-  assert.match(publicRoute, /id="rsvp-follow-host-button"[^>]*>Follow \$\{esc\(hostName \|\| 'this host'\)\}/);
+  assert.match(publicRoute, /Get the next invite\. Texts are optional\./);
+  assert.match(publicRoute, /id="rsvp-follow-host-button"[^>]*>Follow<\/button>/);
   assert.match(publicRoute, /hostSlug: event\.organizer_public_slug/);
   assert.match(browser, /async function prepareFollowAfterRsvp/);
-  assert.match(browser, /card\.hidden = Boolean\(state\.following\)/);
   assert.match(browser, /organizer_optin: false/);
   assert.match(browser, /sourceEventSlug: EVENT\.slug/);
   assert.match(browser, /eventUrlParams\.get\('follow'\) === '1'/);
+});
+
+test('a fresh Going confirmation offers Follow or notification settings without promising delivery', async () => {
+  const browser = source('public/js/public-event.js');
+  const followCardFunctions = browser.slice(browser.indexOf('function setFollowCardState('), browser.indexOf('const icsUrl'));
+  for (const [following, open, fresh, editing, response, cardVisible] of [
+    [false, true, true, false, 'going', true],
+    [true, true, true, false, 'going', true],
+    [false, true, false, false, 'going', false],
+    [true, true, true, true, 'going', false],
+    [false, true, true, false, 'not_going', false],
+    [true, false, true, false, 'going', false]
+  ]) {
+    const classes = new Set();
+    const card = { hidden: true, classList: { toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } } };
+    const button = { setAttribute(name, value) { this[name] = value; } };
+    const copy = {};
+    await vm.runInNewContext(`${followCardFunctions}\nprepareFollowAfterRsvp()`, {
+      EVENT: { hostName: 'Test Host', returningGuest: { response } },
+      confirmationDialog: { open }, confirmationFresh: fresh, confirmationEditing: editing,
+      getEventFollowFlow: () => ({ status: async () => ({ following, emailOn: false, textOn: false }) }),
+      $: id => ({ 'rsvp-follow-host': card, 'rsvp-follow-host-button': button, 'rsvp-follow-host-copy': copy })[id]
+    });
+    assert.equal(card.hidden, !cardVisible);
+    if (cardVisible) {
+      assert.equal(classes.has('is-following'), following);
+      assert.equal(button.textContent, following ? 'Following ✓' : 'Follow');
+      assert.match(button['aria-label'], new RegExp(`^${following ? 'Following' : 'Follow'} Test Host\\b`));
+      assert.equal(copy.textContent, following ? 'Manage notifications for future events.' : 'Get the next invite. Texts are optional.');
+    }
+  }
 });
 
 function followDialogFixture(state, identities, sourceOptions = { sourceEventSlug: 'test-show' }) {

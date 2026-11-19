@@ -729,3 +729,10 @@ Lightweight on purpose: nothing gates or delays publishing.
 - Familiar Faces uses muted monogram circles (`--face-tone` per face) instead of emoji. The initials spell GLIDE (Gram, Lou, Iggy, David, Etta), so all five show on phones too.
 - The homepage glider flies in an arc once when at least 80% of the Familiar Faces row is visible; GLIDE hops and lights teal in order (`public/js/home-glide.js`). Tap the row or use **Replay fly-over** to repeat it. Reduce Motion keeps it still.
 - The Silver Glider Recs signup moved to its own page, `GET /recs` (`src/views/recs.html`), same form, script and endpoint. The homepage keeps one quiet link to it so "Create your event" is the only primary button.
+
+## RSVP polish (Claude)
+
+- On Standard pages, only free events use **RSVP · Free**, replacing the separate free-price row. Flyer keeps **Free with RSVP**. Paid Standard pages still put the external ticket link above RSVP; Flyer keeps its primary external ticket action above **RSVP instead**. No ticketing launch or checkout change.
+- In both layouts the mobile dock leads with the price (or **Free** / **Tickets**), with date and time below. It starts only after the inline action passes the top of the viewport, hides near the footer, and stops accepting input immediately on exit. The dock slides in for 250 ms and out for 150 ms; the primary buttons give a short press response. Reduce Motion suppresses that motion.
+- A fresh Going confirmation draws its check once. **Add to calendar** stands alone, then come the eligible host card, invite-a-friend action, and quiet links to change the answer or manage this event's email reminders. Reopening a saved response does not replay the check.
+- A host with an available public Host Page gets a logo/initial and a **Follow** or **Following ✓** control on the fresh Going confirmation. Both reuse the existing Follow dialog; following and event reminders remain separate permissions. Private sharing, guest verification, capacity, and RSVP emails are unchanged.

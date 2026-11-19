@@ -97,6 +97,84 @@ test('first and returning RSVPs share one responsive confirmation dialog', () =>
   assert.match(styles, /max-height:\s*94dvh/);
 });
 
+test('RSVP confirmation puts a single primary calendar action ahead of optional actions', () => {
+  const routes = read('src/routes/public.js');
+  const renderer = routes.slice(routes.indexOf('function renderRsvpConfirmationDialog('), routes.indexOf('async function returningGuestContext('));
+  const render = vm.runInNewContext(`${renderer}\nrenderRsvpConfirmationDialog`, { esc: require('../src/lib/public-html').esc });
+  const event = { title: 'Test Show', org_name: 'Test Host', organizer_public_slug: 'test-host' };
+  const details = { dateLabel: 'Friday', timeLabel: '7:00 PM', location: { name: 'Test Venue' }, friendShareAllowed: true };
+  const markup = render(event, details);
+  const orderedIds = [
+    'rsvp-confirmation-mark', 'rsvp-confirmation-location-name', 'rsvp-confirmation-calendar',
+    'rsvp-follow-host', 'rsvp-invite-friend', 'rsvp-confirmation-change', 'rsvp-confirmation-email-settings'
+  ];
+  let previous = -1;
+  for (const id of orderedIds) {
+    const position = markup.indexOf(`id="${id}"`);
+    assert.ok(position > previous, `${id} should appear after the preceding action`);
+    previous = position;
+  }
+  assert.match(markup, /<a class="[^"\n]*\bsg-btn-primary\b[^"\n]*"[^>]+id="rsvp-confirmation-calendar"/);
+  assert.equal((markup.match(/\bsg-btn-primary\b/g) || []).length, 1);
+  assert.match(markup, /id="rsvp-follow-host-button"[^>]*aria-label="Follow Test Host"[^>]*>Follow<\/button>/);
+  assert.doesNotMatch(render({ ...event, organizer_public_slug: null }, { ...details, friendShareAllowed: false }), /id="rsvp-(?:follow-host|invite-friend)"/);
+});
+
+test('check draws once for a fresh Going response, and edit mode hides the quiet links', () => {
+  const client = read('public/js/public-event.js');
+  const dialogFunctions = client.slice(client.indexOf('const confirmationDialog ='), client.indexOf('if (EVENT.returningGuest) {'));
+  const nodes = new Map();
+  let drawStarts = 0;
+  const EVENT = { returningGuest: { response: 'going' }, rsvpEmailSettingsUrl: '/r/test#email-settings', friendShareAllowed: true };
+  const $ = id => {
+    if (!nodes.has(id)) {
+      const classes = new Set();
+      nodes.set(id, {
+        classList: {
+          add(...names) {
+            for (const name of names) {
+              if (id === 'rsvp-confirmation-mark' && name === 'is-drawing' && !classes.has(name)) drawStarts += 1;
+              classes.add(name);
+            }
+          },
+          remove: name => classes.delete(name),
+          toggle(name, enabled) { if (enabled) this.add(name); else this.remove(name); },
+          contains: name => classes.has(name)
+        },
+        close() { this.open = false; },
+        showModal() { this.open = true; },
+        focus() {}, removeAttribute() {}, querySelector: () => null
+      });
+    }
+    return nodes.get(id);
+  };
+  const dialog = vm.runInNewContext(`${dialogFunctions}\n({ openRsvpConfirmation, closeRsvpConfirmation, renderConfirmationDialog })`, {
+    $, EVENT, publicIcsUrl: '/e/test/calendar.ics', personalAccess: {}, document: {}, requestAnimationFrame: callback => callback(),
+    RETURNING_COPY: { going: {}, not_going: { mark: '–' } }, setReturningSelection() {}, prepareFollowAfterRsvp() {}
+  });
+  const mark = $('rsvp-confirmation-mark');
+  dialog.openRsvpConfirmation({ fresh: true });
+  assert.match(mark.innerHTML, /<svg\b[^>]*aria-hidden="true"[^>]*>\s*<path\b/);
+  dialog.renderConfirmationDialog();
+  assert.equal(drawStarts, 1, 'a refresh of this confirmation should not restart its animation');
+  dialog.closeRsvpConfirmation();
+  dialog.openRsvpConfirmation();
+  assert.equal(drawStarts, 1, 'opening an existing RSVP does not replay');
+  assert.equal(mark.classList.contains('is-drawing'), false);
+  dialog.openRsvpConfirmation({ editing: true });
+  assert.equal($('rsvp-confirmation-links').hidden, true);
+  assert.equal($('rsvp-confirmation-calendar').hidden, true);
+  dialog.closeRsvpConfirmation();
+  EVENT.returningGuest.response = 'not_going';
+  dialog.openRsvpConfirmation({ fresh: true });
+  assert.equal(drawStarts, 1, 'declining an RSVP does not play the Going animation');
+  assert.equal($('rsvp-confirmation-email-settings').hidden, true);
+  const styles = read('public/css/rsvp-confirmation.css');
+  const motionOnly = /@media \(prefers-reduced-motion:\s*no-preference\)\s*\{[^}]*\.rsvp-confirmation-mark\.is-drawing[\s\S]*?\n\}/;
+  assert.match(styles.match(motionOnly)?.[0] || '', /animation:\s*rsvp-check-draw/);
+  assert.doesNotMatch(styles.replace(motionOnly, ''), /animation:\s*rsvp-(?:mark-in|check-draw)/);
+});
+
 test('one tap reuses the optional Follow confirmation only after the server saves a new Going RSVP', async () => {
   const client = read('public/js/public-event.js');
   const answer = client.slice(
