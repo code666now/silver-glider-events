@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.219
+
+Released November 19, 2026.
+
+* Make the centered homepage phone preview smaller and bring it closer to the main button so visitors reach the event details and the next section sooner. The headline, button, and existing tilt, spin, and reduced-motion behavior are unchanged.
+* Static checks and all **1,151** tests passed on a fresh isolated database. Chrome checks at six widths confirmed the centered preview, with no horizontal overflow or motion regressions.
+
 ## 1.0.218
 
 Released November 19, 2026.

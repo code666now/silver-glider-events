@@ -70,7 +70,8 @@ test('homepage hero is one line, one button, and a real event page on a phone, b
   assert.ok(fs.existsSync(path.join(root, 'public/img/home/event-phone-party.jpg')));
   assert.doesNotMatch(home, /class="tagline"/);
   assert.equal((home.match(/class="sg-btn sg-btn-primary/g) || []).length, 1);
-  assert.match(home, /@media \(min-width: 960px\)[\s\S]*\.home-hero-phone \{ width: 360px;/);
+  assert.match(home, /\.home-hero-phone \{ position: relative; width: min\(270px, 69vw\); margin: 44px auto 0; \}/);
+  assert.match(home, /@media \(min-width: 960px\) \{\s*\.home-hero-phone \{ width: 310px; margin-top: 56px; \}/);
 });
 
 test('homepage phone turns toward the pointer, floats on touch screens, and respects reduced motion', () => {

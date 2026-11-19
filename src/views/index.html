@@ -137,9 +137,8 @@
       }
     }
     .offer-note { color: var(--sg-text-dim); font-size: 13px; margin-top: 14px; }
-    /* Hero: the copy, then a real event page on a phone. Side by side from
-       960px, where the hero steps out of the 560px column. */
-    .home-hero-phone { position: relative; width: min(330px, 80vw); margin: 64px auto 0; }
+    /* Keep the preview centered, close enough to the copy to feel connected. */
+    .home-hero-phone { position: relative; width: min(270px, 69vw); margin: 44px auto 0; }
     .home-hero-phone::before {
       content: ''; position: absolute; inset: 12% -10% 4%; z-index: -1;
       background: radial-gradient(closest-side, rgba(28,197,190,.22), transparent);
@@ -189,7 +188,7 @@
     }
     .home-phone-screen { display: block; width: 100%; height: auto; border-radius: 35px; }
     @media (min-width: 960px) {
-      .home-hero-phone { width: 360px; margin-top: 80px; }
+      .home-hero-phone { width: 310px; margin-top: 56px; }
       .home-hero-phone::before { inset: 10% -40% 0; }
     }
     /* Familiar Faces gets its own spotlight: it's the one thing only Silver
