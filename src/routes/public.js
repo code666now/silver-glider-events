@@ -29,7 +29,7 @@ const { externalTicketLink } = require('../lib/ticket-links');
 const { loadExternalTicketClickTarget, recordExternalTicketClick, validTicketVisitorKey } = require('../lib/external-ticket-impact');
 const { sameOriginMutation } = require('../middleware/requireOrganizer');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
-const { isExternalTickets, isSilverGliderTickets } = require('../lib/admission');
+const { isExternalTickets, isFreeRsvp, isSilverGliderTickets } = require('../lib/admission');
 const {
   addressPrivacyEnabled,
   calendarEventForViewer,
@@ -523,13 +523,17 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location, f
 
       <div class="rsvp-confirmation-summary-actions" id="rsvp-confirmation-summary-actions">
         <a class="sg-btn sg-btn-primary" id="rsvp-confirmation-calendar" href="#">Add to calendar</a>
-        <button class="sg-btn sg-btn-ghost" id="rsvp-confirmation-change" type="button">Change my answer</button>
       </div>
-      <a class="rsvp-confirmation-email-settings" id="rsvp-confirmation-email-settings" hidden>Manage email reminders</a>
 
       ${event.organizer_public_slug ? `<div class="rsvp-follow-host" id="rsvp-follow-host" hidden>
-        <p id="rsvp-follow-host-copy">Hear about upcoming events. Texts are optional.</p>
-        <button class="sg-btn sg-btn-ghost" id="rsvp-follow-host-button" type="button" aria-describedby="rsvp-follow-host-copy">Follow ${esc(hostName || 'this host')}</button>
+        <span class="rsvp-follow-host-avatar" aria-hidden="true">${event.organizer_logo_url
+          ? `<img src="${esc(event.organizer_logo_url)}" alt="">`
+          : esc(Array.from(hostName || '?')[0].toUpperCase())}</span>
+        <div class="rsvp-follow-host-text">
+          <strong>${esc(hostName || 'This host')}</strong>
+          <p id="rsvp-follow-host-copy">Get the next invite. Texts are optional.</p>
+        </div>
+        <button class="sg-btn sg-btn-ghost" id="rsvp-follow-host-button" type="button" aria-label="Follow ${esc(hostName || 'this host')}" aria-describedby="rsvp-follow-host-copy">Follow</button>
       </div>` : ''}
 
       ${friendShareAllowed ? `<section class="rsvp-invite-friend" id="rsvp-invite-friend" hidden aria-labelledby="rsvp-invite-friend-title">
@@ -537,6 +541,11 @@ function renderRsvpConfirmationDialog(event, { dateLabel, timeLabel, location, f
         <p>Send them the invite. They’ll need their own RSVP; sharing doesn’t reserve a place.</p>
         <button class="sg-btn sg-btn-ghost" id="rsvp-invite-friend-button" type="button">Send the invite <span aria-hidden="true">→</span></button>
       </section>` : ''}
+
+      <div class="rsvp-confirmation-links" id="rsvp-confirmation-links">
+        <button class="rsvp-confirmation-link" id="rsvp-confirmation-change" type="button">Change my answer</button>
+        <a class="rsvp-confirmation-email-settings" id="rsvp-confirmation-email-settings" hidden>Manage email reminders</a>
+      </div>
 
       <div class="rsvp-confirmation-editor" id="rsvp-confirmation-editor" hidden>
         <p>Update your answer</p>
@@ -884,7 +893,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<div class="ticket-note"><span>${esc(formatTicketPrice(event.ticket_price))}</span>${externalTicket
         ? `<div class="ticket-link-group"><a href="${esc(externalTicket.url)}" target="_blank" rel="noopener" aria-describedby="standard-ticket-seller"${ticketTrackingAttributes}>Get Tickets <b aria-hidden="true">→</b></a><small id="standard-ticket-seller" class="ticket-seller-note">${esc(externalTicket.sellerLabel)}</small></div>`
         : '<em>At the door</em>'}</div>`
-      : '<div class="ticket-note"><span>Free</span><em>RSVP</em></div>';
+      : '';
     const vibeHtml = renderVibe(event, { declinedSlots: await declinedLineupSlots(pool, event.id) });
     const flyerAction = flyerPrimaryAction(event);
     const recapHref = featuredPhotos.length ? '#event-recap' : '';
@@ -900,9 +909,11 @@ router.get('/e/:slug', async (req, res, next) => {
       ? endedActionHtml
       : isCommerceTicketed
       ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="ticket-cta" data-primary-action="ticket" href="/e/${encodeURIComponent(event.slug)}/tickets" style="font-size:17px;padding:17px">Get Tickets</a>`
-      : '<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP</button>';
-    // Once the dock appears the date has scrolled away, so it rides along beside the button.
-    const dockWhenHtml = `<p class="dock-when"><strong>${esc(new Date(event.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }))}</strong><span>${esc(formatTime(event.start_time))}</span></p>`;
+      : `<button class="sg-btn sg-btn-primary sg-btn-block" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp style="font-size:17px;padding:17px">RSVP${isFreeRsvp(event) ? ' <span class="cta-price">· Free</span>' : ''}</button>`;
+    const dockDate = new Date(event.event_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const displayedPrice = formatTicketPrice(event.ticket_price);
+    const dockPrice = isCommerceTicketed ? 'Tickets' : isPaid ? (displayedPrice === 'Paid admission' ? 'Tickets' : displayedPrice) : 'Free';
+    const dockWhenHtml = `<p class="dock-when"><strong>${esc(dockPrice)}</strong><span>${esc(dockDate)} · ${esc(formatTime(event.start_time))}</span></p>`;
     const standardMobileActionHtml = ownerDraft
       ? ''
       : event.is_past
@@ -930,10 +941,10 @@ router.get('/e/:slug', async (req, res, next) => {
       : event.is_past
       ? endedMobileActionHtml
       : flyerAction.type === 'ticket'
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener" aria-describedby="dock-ticket-seller"${ticketTrackingAttributes}>${esc(flyerAction.label)}</a><p id="dock-ticket-seller" class="mobile-ticket-seller-note">${esc(flyerAction.supportingText)}</p>`
+      ? `<div class="dock-row">${dockWhenHtml}<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}" target="_blank" rel="noopener" aria-describedby="dock-ticket-seller"${ticketTrackingAttributes}>Get Tickets</a></div><p id="dock-ticket-seller" class="mobile-ticket-seller-note">${esc(flyerAction.supportingText)}</p>`
       : flyerAction.type === 'commerce_ticket'
-      ? `<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
-      : `<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button>`;
+      ? `<div class="dock-row">${dockWhenHtml}<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a></div>`
+      : `<div class="dock-row">${dockWhenHtml}<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">${esc(flyerAction.label)}</button></div>`;
 
     const venueSummary = [event.venue_city, event.venue_state].filter(Boolean).join(', ');
     const locationDisplay = locationForViewer(event, { canViewExact: canViewExactLocation });

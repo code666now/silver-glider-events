@@ -13,6 +13,11 @@ module.exports = function registerExternalTicketClickCases({
   }
   const page = (event, headers) => fetch(`${getBaseUrl()}/e/${event.slug}`, { headers }).then(res => res.text());
   const metrics = (event, organizerId = getOrganizerId()) => loadExternalTicketImpact(pool, { eventId: event.id, organizerId });
+  const dock = (html) => {
+    const start = html.indexOf('id="mobile-rsvp-dock"');
+    assert.notEqual(start, -1);
+    return html.slice(start);
+  };
 
   async function click(event, browserKey = point, headers = {}) {
     const response = await fetch(`${getBaseUrl()}/api/public/events/${event.slug}/external-ticket-click`, {
@@ -24,17 +29,40 @@ module.exports = function registerExternalTicketClickCases({
     assert.equal(await response.text(), '');
   }
 
+  test('free and at-the-door RSVP actions display the admission price in the right place', async () => {
+    const standard = await createEvent({ slug: 'standard-free-dock' });
+    const flyer = await createEvent({ slug: 'flyer-free-dock', presentation_mode: 'flyer',
+      flyer_image_url: 'https://images.example.test/flyer.jpg' });
+    const door = await external({ slug: 'standard-door-dock', ticket_url: null, ticket_price: null });
+    const standardHtml = await page(standard);
+    assert.doesNotMatch(standardHtml, /<div class="ticket-note">/);
+    assert.match(standardHtml, /<button[^>]*id="rsvp-cta"[^>]*>RSVP <span class="cta-price">· Free<\/span><\/button>/);
+    const flyerHtml = await page(flyer);
+    assert.match(flyerHtml, /Free with RSVP/);
+    for (const html of [standardHtml, flyerHtml]) {
+      assert.match(dock(html), /<div class="dock-row">\s*<p class="dock-when">\s*<strong>Free<\/strong>\s*<span>Sat, Aug 10 · 7:30 PM<\/span>\s*<\/p>\s*<button[^>]*id="mobile-rsvp-cta"[^>]*aria-controls="rsvp-form-box"[^>]*>RSVP<\/button>/);
+    }
+    const doorHtml = await page(door);
+    assert.match(doorHtml, /<div class="ticket-note"><span>Paid admission<\/span><em>At the door<\/em><\/div>/);
+    assert.match(doorHtml, /<button[^>]*id="rsvp-cta"[^>]*>RSVP<\/button>/);
+    assert.match(dock(doorHtml), /<p class="dock-when"><strong>Tickets<\/strong><span>Sat, Aug 10 · 7:30 PM<\/span>/);
+  });
+
   test('external ticket links preserve direct navigation and track a deduplicated aggregate across surfaces', async () => {
     const standard = await external({ slug: 'standard-external-clicks' });
     const flyer = await external({ slug: 'flyer-external-clicks', presentation_mode: 'flyer',
       flyer_image_url: 'https://images.example.test/flyer.jpg', ticket_url: 'https://test-show.eventbrite.com/' });
     const standardHtml = await page(standard);
     assert.match(standardHtml, /href="https:\/\/dice\.fm\/event\/fixture-show\?src=ordinary"[^>]*data-external-ticket-click/);
-    assert.match(standardHtml, /data-primary-action="rsvp"/);
+    assert.match(standardHtml, /<div class="ticket-note"><span>\$15<\/span>/);
+    assert.match(standardHtml, /<button[^>]*id="rsvp-cta"[^>]*data-primary-action="rsvp"[^>]*>RSVP<\/button>/);
     assert.match(standardHtml, /Tickets sold on DICE/);
+    assert.match(dock(standardHtml), /<p class="dock-when"><strong>\$15<\/strong><span>Sat, Aug 10 · 7:30 PM<\/span>/);
     const flyerHtml = await page(flyer);
     assert.match(flyerHtml, /id="ticket-cta"[^>]*href="https:\/\/test-show\.eventbrite\.com\/"[^>]*data-external-ticket-click/);
-    assert.match(flyerHtml, /id="mobile-rsvp-cta"[^>]*href="https:\/\/test-show\.eventbrite\.com\/"[^>]*data-external-ticket-click/);
+    const flyerDock = dock(flyerHtml);
+    assert.match(flyerDock, /<div class="dock-row"><p class="dock-when"><strong>\$15<\/strong><span>Sat, Aug 10 · 7:30 PM<\/span><\/p>/);
+    assert.match(flyerDock, /id="mobile-rsvp-cta"[^>]*href="https:\/\/test-show\.eventbrite\.com\/"[^>]*aria-describedby="dock-ticket-seller"[^>]*data-external-ticket-click[^>]*>Get Tickets<\/a><\/div><p id="dock-ticket-seller"[^>]*>Tickets sold on Eventbrite<\/p>/);
     assert.match(flyerHtml, /RSVP instead/);
     assert.equal(flyerHtml.match(/Tickets sold on Eventbrite/g)?.length, 2);
     assert.deepEqual(await metrics(standard), { totalTicketClicks: 0, uniqueTicketClicks: 0 });

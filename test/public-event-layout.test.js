@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
@@ -202,7 +203,7 @@ test('expanded RSVP forms can be collapsed without resetting the shared form', (
   assert.doesNotMatch(client, /closeRsvpForm[\s\S]{0,300}reset\(\)/);
 });
 
-test('mobile primary-action dock reuses the active Flyer action and avoids the footer', () => {
+test('both mobile primary-action docks reuse the existing controls', () => {
   const client = source('public/js/public-event.js');
   const route = source('src/routes/public.js');
   const flyerStyles = source('public/css/event-public-flyer.css');
@@ -218,10 +219,6 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
 
   assert.match(client, /matchMedia\('\(max-width: 767px\)'\)/);
   assert.match(client, /document\.querySelector\('\[data-primary-action\]'\)/);
-  assert.match(client, /inlineCtaRect\.bottom > 0 && inlineCtaRect\.top < window\.innerHeight/);
-  assert.match(client, /&& !inlineCtaIsVisible/);
-  assert.match(client, /&& !footerIsNear/);
-  assert.match(client, /activeRsvpState === 'cta-state'/);
   assert.match(client, /scrollToForm: trigger === mobileRsvpCta \|\| context === 'location'/);
   assert.match(client, /context: trigger\.dataset\.rsvpContext \|\| ''|const context = trigger\.dataset\.rsvpContext \|\| ''/);
   assert.doesNotMatch(client, /cloneNode|rsvp\/sticky/);
@@ -230,6 +227,88 @@ test('mobile primary-action dock reuses the active Flyer action and avoids the f
   assert.match(flyerStyles, /\.vibe-embed \{ touch-action: pan-y; \}/);
   assert.match(flyerStyles, /\.flyer-public-page > \.event-bg,[\s\S]*\.flyer-public-page > \.fx-veil[\s\S]*height: 100lvh;[\s\S]*contain: paint/);
   assert.match(flyerStyles, /\.public-guest-list,[\s\S]*\.event-wall \{[\s\S]*backdrop-filter: none;/);
+});
+
+test('mobile dock appears only after the inline action passes and is immediately inert when hidden', () => {
+  const client = source('public/js/public-event.js');
+  const dockScript = client.slice(client.indexOf('function keepsAdmissionAction('), client.indexOf('let mobileRsvpSyncQueued'));
+  let actionRect = { top: 690, bottom: 742 };
+  let footerRect = { top: 1500, bottom: 1540 };
+  let focusOptions;
+  let reservesDockSpace;
+  const mobileRsvpCta = {};
+  const mobileRsvpDock = {
+    contains: (element) => element === mobileRsvpCta,
+    getBoundingClientRect: () => ({ height: 72 })
+  };
+  const footerLink = { focus(opts) { document.activeElement = this; focusOptions = opts; } };
+  const inlineCta = {
+    dataset: { primaryAction: 'rsvp' },
+    getBoundingClientRect: () => actionRect,
+    focus(opts) { document.activeElement = this; focusOptions = opts; }
+  };
+  const document = {
+    querySelector: selector => ({
+      '[data-primary-action]': inlineCta,
+      '.sg-event-legal-footer': {
+        getBoundingClientRect: () => footerRect,
+        querySelector: selector => selector === 'a' ? footerLink : null
+      }
+    })[selector],
+    activeElement: null,
+    body: { classList: { toggle(name, enabled) { if (name === 'has-mobile-rsvp-dock') reservesDockSpace = enabled; } } }
+  };
+  const mobileRsvpMedia = { matches: true };
+  const context = vm.createContext({
+    document, mobileRsvpCta, mobileRsvpDock, mobileRsvpMedia,
+    activeRsvpState: 'cta-state', window: { innerHeight: 650 }
+  });
+  const sync = vm.runInContext(`${dockScript}\nsyncMobileRsvpDock`, context);
+  const expectDock = visible => {
+    sync();
+    assert.equal(mobileRsvpDock.hidden, !visible);
+    assert.equal(mobileRsvpDock.inert, !visible);
+    assert.equal(reservesDockSpace, visible);
+  };
+
+  expectDock(false); // Inline button has not reached the viewport yet.
+  actionRect = { top: -51, bottom: 1 };
+  expectDock(false); // The inline button is still partially visible.
+  actionRect = { top: -52, bottom: 0 };
+  expectDock(true);
+
+  document.activeElement = mobileRsvpCta;
+  actionRect = { top: 50, bottom: 102 };
+  expectDock(false);
+  assert.equal(document.activeElement, inlineCta);
+  assert.equal(focusOptions.preventScroll, true);
+
+  actionRect = { top: -150, bottom: -98 };
+  expectDock(true);
+  document.activeElement = mobileRsvpCta;
+  footerRect = { top: 500, bottom: 540 };
+  expectDock(false);
+  assert.equal(document.activeElement, footerLink);
+  assert.equal(focusOptions.preventScroll, true);
+
+  footerRect = { top: 1500, bottom: 1540 };
+  context.activeRsvpState = 'returning-rsvp-state';
+  expectDock(false);
+  inlineCta.dataset.primaryAction = 'ticket';
+  expectDock(true);
+  mobileRsvpMedia.matches = false;
+  expectDock(false);
+});
+
+test('both layouts disable dock and primary-action motion for reduced motion', () => {
+  for (const stylesheet of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
+    const styles = source(stylesheet);
+    assert.match(styles, /\.mobile-rsvp-dock\s*\{[^{}]*transition:\s*transform 250ms/);
+    assert.match(styles, /\.mobile-rsvp-dock\[hidden\]\s*\{[^{}]*transition:\s*transform 150ms/);
+    assert.match(styles, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.mobile-rsvp-dock,\s*\.mobile-rsvp-dock\[hidden\]\s*\{\s*transition:\s*none/);
+    assert.match(styles, /#rsvp-cta:active, #ticket-cta:active, #mobile-rsvp-cta:active\s*\{\s*transform:\s*scale\(1\.03,\s*\.92\);\s*transition-duration:\s*90ms/);
+    assert.match(styles, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*#rsvp-cta, #ticket-cta, #mobile-rsvp-cta[^{}]*\{[^{}]*transition:\s*none[^{}]*transform:\s*none/);
+  }
 });
 
 test('answered RSVP state suppresses RSVP actions while preserving ticket admission', () => {

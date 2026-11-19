@@ -17,12 +17,26 @@ function getEventFollowFlow() {
     sourceEventSlug: EVENT.slug,
     sourceAttribution: EVENT.followAttribution,
     onChange(state) {
-      if (state.following && $('rsvp-follow-host')) $('rsvp-follow-host').hidden = true;
+      setFollowCardState(Boolean(state.following));
       const endedFollow = $('event-return-follow');
       if (endedFollow) endedFollow.textContent = state.following ? 'Following · Manage notifications' : `Follow ${EVENT.hostName}`;
     }
   });
   return eventFollowFlow;
+}
+
+function setFollowCardState(following) {
+  const card = $('rsvp-follow-host');
+  const button = $('rsvp-follow-host-button');
+  if (!card || !button) return;
+  card.classList.toggle('is-following', following);
+  button.textContent = following ? 'Following ✓' : 'Follow';
+  button.setAttribute('aria-label', following
+    ? `Following ${EVENT.hostName || 'this host'}. Manage notifications`
+    : `Follow ${EVENT.hostName || 'this host'}`);
+  $('rsvp-follow-host-copy').textContent = following
+    ? 'Manage notifications for future events.'
+    : 'Get the next invite. Texts are optional.';
 }
 
 async function prepareFollowAfterRsvp() {
@@ -34,7 +48,8 @@ async function prepareFollowAfterRsvp() {
   try {
     const state = await flow.status();
     if (confirmationDialog?.open && confirmationFresh && !confirmationEditing && EVENT.returningGuest?.response === 'going') {
-      card.hidden = Boolean(state.following);
+      setFollowCardState(Boolean(state.following));
+      card.hidden = false;
     }
   } catch (_) {
     // RSVP completion remains useful if Follow status is temporarily unavailable.
@@ -296,12 +311,19 @@ function syncMobileRsvpDock() {
   const inlineCta = document.querySelector('[data-primary-action]');
   if (!inlineCta) return;
   const inlineCtaRect = inlineCta.getBoundingClientRect();
-  const inlineCtaIsVisible = inlineCtaRect.bottom > 0 && inlineCtaRect.top < window.innerHeight;
   const footerTarget = document.querySelector('.sg-event-legal-footer') || document.querySelector('.flyer-attribution');
   const footerRect = footerTarget?.getBoundingClientRect();
   const footerIsNear = Boolean(footerRect && footerRect.bottom > 0 && footerRect.top < window.innerHeight * .88);
   const stateAllowsDock = activeRsvpState === 'cta-state' || keepsAdmissionAction(activeRsvpState, inlineCta);
-  const shouldShow = mobileRsvpMedia.matches && stateAllowsDock && !inlineCtaIsVisible && !footerIsNear;
+  const shouldShow = mobileRsvpMedia.matches && stateAllowsDock && inlineCtaRect.bottom <= 0 && !footerIsNear;
+  if (!shouldShow && mobileRsvpDock.contains(document.activeElement)) {
+    if (stateAllowsDock && inlineCtaRect.bottom > 0 && inlineCtaRect.top < window.innerHeight) {
+      inlineCta.focus({ preventScroll: true });
+    } else if (footerIsNear) {
+      footerTarget.querySelector('a')?.focus({ preventScroll: true });
+    }
+  }
+  mobileRsvpDock.inert = !shouldShow;
   mobileRsvpDock.hidden = !shouldShow;
   document.body.classList.toggle('has-mobile-rsvp-dock', shouldShow);
 }
@@ -496,20 +518,26 @@ function confirmationCalendarUrl() {
   return EVENT.calendarUrl || publicIcsUrl;
 }
 
-function renderConfirmationDialog() {
+function renderConfirmationDialog({ drawCheck = false } = {}) {
   if (!confirmationDialog || !EVENT.returningGuest?.response) return;
   const response = EVENT.returningGuest.response;
   const copy = RETURNING_COPY[response];
   const status = $('rsvp-confirmation-status');
   status.classList.toggle('is-not-going', response === 'not_going');
-  $('rsvp-confirmation-mark').textContent = copy.mark;
+  const mark = $('rsvp-confirmation-mark');
+  mark.classList.toggle('is-drawing', response === 'going' && drawCheck);
+  if (response === 'going') {
+    mark.innerHTML = '<svg viewBox="0 0 58 58" aria-hidden="true"><path d="M18 30l7.5 7.5L40 22"/></svg>';
+  } else {
+    mark.textContent = copy.mark;
+  }
   $('rsvp-confirmation-title').textContent = copy.title;
   $('rsvp-confirmation-detail').textContent = confirmationFresh ? copy.fresh : copy.detail;
   $('rsvp-confirmation-email-note').hidden = !confirmationFresh;
   $('rsvp-confirmation-editor').hidden = !confirmationEditing;
   const summaryActions = $('rsvp-confirmation-summary-actions');
-  summaryActions.hidden = confirmationEditing;
-  summaryActions.classList.toggle('is-single', response !== 'going');
+  summaryActions.hidden = response !== 'going' || confirmationEditing;
+  $('rsvp-confirmation-links').hidden = confirmationEditing;
   const calendar = $('rsvp-confirmation-calendar');
   calendar.href = confirmationCalendarUrl();
   calendar.hidden = response !== 'going' || confirmationEditing;
@@ -531,7 +559,7 @@ function openRsvpConfirmation({ fresh = false, editing = false, trigger = null }
   confirmationFresh = fresh;
   confirmationEditing = editing;
   confirmationTrigger = trigger || document.activeElement;
-  renderConfirmationDialog();
+  renderConfirmationDialog({ drawCheck: fresh && !editing });
   if (!confirmationDialog.open) {
     if (typeof confirmationDialog.showModal === 'function') confirmationDialog.showModal();
     else confirmationDialog.setAttribute('open', '');
@@ -572,6 +600,7 @@ async function answerReturningRsvp(response, { afterVerification = false } = {})
     renderReturningState();
     renderConfirmationDialog();
     show('returning-rsvp-state');
+    if (confirmationDialog?.open) $('rsvp-confirmation-change')?.focus({ preventScroll: true });
     return;
   }
   const buttons = Array.from(document.querySelectorAll('.returning-choice'));
@@ -919,7 +948,9 @@ async function submitRsvp({ afterVerification = false } = {}) {
     returningEditing = false;
     renderReturningState({ fresh: !data.alreadyRsvpd });
     show('returning-rsvp-state');
-    openRsvpConfirmation({ fresh: !data.alreadyRsvpd, trigger: btn });
+    const viewRsvp = $('returning-rsvp-change');
+    viewRsvp?.focus({ preventScroll: true });
+    openRsvpConfirmation({ fresh: !data.alreadyRsvpd, trigger: viewRsvp });
     if (EVENT.commentsEnabled && EVENT.returningGuest.response === 'going') await loadComments();
   } catch (err) {
     const el = $('rsvp-error');
