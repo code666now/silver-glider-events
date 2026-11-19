@@ -8,6 +8,7 @@ const { buildIcs } = require('../lib/calendar');
 const { sendRsvpConfirmation } = require('../lib/mailer');
 const { formatTime } = require('../lib/mailer');
 const { verifyOptout } = require('../lib/followers');
+const { signEventFollowSource } = require('../lib/event-follow-attribution');
 const { declinedLineupSlots } = require('../lib/lineup-claims');
 const { clearSessionCookie } = require('../lib/session');
 const { ensureGuestIdentity } = require('../lib/guest-identity');
@@ -1027,6 +1028,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ownerPreview,
       hostSlug: event.organizer_public_slug && !ownerPreview ? event.organizer_public_slug : null,
       hostName: event.organizer_public_slug && !ownerPreview ? event.org_name : null,
+      followAttribution: event.organizer_public_slug && !ownerPreview && !flyerPreview ? signEventFollowSource(event) : null,
       returningGuest: returningGuestJson,
       rsvpEmailSettingsUrl: event.is_past ? null : rsvpEmailSettingsUrl(returningGuest?.rsvp),
       location: locationDisplay,

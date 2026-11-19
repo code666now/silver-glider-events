@@ -57,6 +57,7 @@
     const hostSlug = String(options.hostSlug || '').trim();
     const hostName = String(options.hostName || 'this host').trim();
     const sourceEventSlug = String(options.sourceEventSlug || '').trim();
+    const sourceAttribution = typeof options.sourceAttribution === 'string' ? options.sourceAttribution : undefined;
     const returnPath = cleanReturnPath({ sourceEventSlug });
     const wrapper = document.createElement('div');
     wrapper.innerHTML = dialogMarkup();
@@ -344,7 +345,7 @@
       try {
         state = { signedIn: true, ...(await request(`/api/hosts/${encodeURIComponent(hostSlug)}/follow`, {
           method: 'PATCH',
-          body: JSON.stringify({ ...pendingPreferences, sourceEventSlug: sourceEventSlug || undefined })
+          body: JSON.stringify({ ...pendingPreferences, sourceEventSlug: sourceEventSlug || undefined, sourceAttribution })
         })) };
         pendingPreferences = null;
         options.onChange?.(state);

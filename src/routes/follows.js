@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../config/db');
 const requireOrganizer = require('../middleware/requireOrganizer');
 const { eventEndAtSql } = require('../lib/post-event');
+const { eventFollowSourceMatches } = require('../lib/event-follow-attribution');
 const {
   findPublicHost, followHost, unfollowHost, followStatus, enableFollowSms, setFollowPreferences
 } = require('../lib/host-follows');
@@ -54,18 +55,25 @@ router.patch('/api/hosts/:slug/follow', requireOrganizer, async (req, res, next)
       const host = await findPublicHost(client, req.params.slug);
       if (!host) return null;
       let sourceEventId = null;
+      let trustedFirstFollowEventId = null;
       const sourceEventSlug = String(req.body?.sourceEventSlug || '').trim();
-      if (sourceEventSlug) {
+      if (sourceEventSlug && sourceEventSlug.length <= 220) {
         const sourceEvent = (await client.query(
-          'SELECT id FROM events WHERE slug=$1 AND organizer_id=$2',
+          `SELECT id,organizer_id,slug,status,visibility,secret_show_enabled,secret_show_version
+             FROM events WHERE slug=$1 AND organizer_id=$2
+              FOR SHARE`,
           [sourceEventSlug, host.id]
         )).rows[0];
         sourceEventId = sourceEvent?.id || null;
+        if (eventFollowSourceMatches(req, sourceEvent, req.body?.sourceAttribution)) {
+          trustedFirstFollowEventId = sourceEventId;
+        }
       }
       await setFollowPreferences(client, req.organizer.id, host.id, {
         emailEnabled: req.body?.email === true,
         textEnabled: req.body?.text === true,
-        sourceEventId
+        sourceEventId,
+        trustedFirstFollowEventId
       });
       return followStatus(client, req.organizer.id, host.id);
     });

@@ -7,6 +7,7 @@ const {
   followEmailConsentCopy,
   prepareFollowSmsConsent
 } = require('./follow-consent');
+const { loadEventFollowerImpact } = require('./event-follow-attribution');
 
 async function findPublicHost(db, slug) {
   const value = String(slug || '').trim();
@@ -125,7 +126,8 @@ async function verifiedFollowPhone(db, followerOrganizerId) {
 async function setFollowPreferences(db, followerOrganizerId, hostOrganizerId, {
   emailEnabled,
   textEnabled,
-  sourceEventId = null
+  sourceEventId = null,
+  trustedFirstFollowEventId = null
 } = {}) {
   const wantsEmail = emailEnabled === true;
   const wantsText = textEnabled === true;
@@ -162,13 +164,15 @@ async function setFollowPreferences(db, followerOrganizerId, hostOrganizerId, {
 
   await db.query(
     `INSERT INTO host_follows
-       (follower_organizer_id,follower_user_id,host_organizer_id,source_event_id)
-     VALUES ($1,$2,$3,$4)
+       (follower_organizer_id,follower_user_id,host_organizer_id,source_event_id,first_follow_event_id)
+     VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (follower_organizer_id,host_organizer_id)
      DO UPDATE SET follower_user_id=EXCLUDED.follower_user_id,
                    source_event_id=COALESCE(host_follows.source_event_id,EXCLUDED.source_event_id),
                    unsubscribed_at=NULL,updated_at=NOW()`,
-    [followerOrganizerId, identity.follower_user_id, hostOrganizerId, sourceEventId]
+    // Deliberately do not update first_follow_event_id on conflict. Even NULL
+    // is meaningful: an existing relationship is not a new follow.
+    [followerOrganizerId, identity.follower_user_id, hostOrganizerId, sourceEventId, trustedFirstFollowEventId]
   );
   await db.query(
     `UPDATE host_follows
@@ -277,5 +281,5 @@ async function followStatus(db, followerOrganizerId, hostOrganizerId) {
 
 module.exports = {
   findPublicHost, followHost, unfollowHost, isFollowingHost, followStatus, enableFollowSms,
-  setFollowPreferences, verifiedFollowPhone
+  loadEventFollowerImpact, setFollowPreferences, verifiedFollowPhone
 };

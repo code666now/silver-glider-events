@@ -574,10 +574,10 @@ async function getEventForEditor(db, { organizerId, eventId }) {
                                        AND LOWER(TRIM(invitation.recipient))=
                                            LOWER(TRIM(current_rsvp.email))))
                          )), 0)::int AS invited_returning_count
-            ,COALESCE((SELECT COUNT(*)
+            ,COALESCE((SELECT COUNT(DISTINCT COALESCE(hf.follower_user_id,hf.follower_organizer_id))
                          FROM host_follows hf
                         WHERE hf.host_organizer_id=e.organizer_id
-                          AND hf.source_event_id=e.id
+                          AND hf.first_follow_event_id=e.id
                           AND hf.unsubscribed_at IS NULL), 0)::int AS new_follower_count
             ,COALESCE((SELECT COUNT(*)
                          FROM message_log ml

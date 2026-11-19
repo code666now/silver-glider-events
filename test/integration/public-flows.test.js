@@ -13026,8 +13026,8 @@ test('event management lifecycle uses event-local dates and recorded outreach re
     `INSERT INTO organizers (email,name) VALUES ('lifecycle-follower@example.test','Lifecycle Follower') RETURNING id`
   )).rows[0];
   await pool.query(
-    `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,source_event_id)
-     VALUES ($1,$2,$3)`,
+    `INSERT INTO host_follows (follower_organizer_id,host_organizer_id,source_event_id,first_follow_event_id)
+     VALUES ($1,$2,$3,$3)`,
     [follower.id, organizerId, event.id]
   );
 
@@ -13776,6 +13776,11 @@ require('../support/draft-reminder-cases')({
 
 require('../support/automatic-follower-email-cases')({
   test, assert, pool, createEvent, createRsvp, getOrganizerId: () => organizerId,
+  getBaseUrl: () => baseUrl, signSession
+});
+
+require('../support/event-follow-attribution-cases')({
+  test, assert, pool, createEvent, getOrganizerId: () => organizerId,
   getBaseUrl: () => baseUrl, signSession
 });
 

@@ -15,6 +15,7 @@ function getEventFollowFlow() {
     hostSlug: EVENT.hostSlug,
     hostName: EVENT.hostName,
     sourceEventSlug: EVENT.slug,
+    sourceAttribution: EVENT.followAttribution,
     onChange(state) {
       if (state.following && $('rsvp-follow-host')) $('rsvp-follow-host').hidden = true;
       const endedFollow = $('event-return-follow');

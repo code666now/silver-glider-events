@@ -109,7 +109,7 @@ test('RSVP success optionally offers Follow without changing RSVP reminder conse
   assert.match(browser, /eventUrlParams\.get\('follow'\) === '1'/);
 });
 
-function followDialogFixture(state, identities) {
+function followDialogFixture(state, identities, sourceOptions = { sourceEventSlug: 'test-show' }) {
   let focused = null;
   let errorMessage = '';
   const requests = [];
@@ -154,7 +154,7 @@ function followDialogFixture(state, identities) {
       return { ok: true, json: async () => url === '/api/me/identities' ? { identities } : state };
     }
   });
-  const flow = window.SGFollowFlow.mount({ hostSlug: 'test-host', hostName: 'Test Host', sourceEventSlug: 'test-show' });
+  const flow = window.SGFollowFlow.mount({ hostSlug: 'test-host', hostName: 'Test Host', ...sourceOptions });
   return {
     flow, requests,
     channel: name => elements.get(`[data-channel="${name}"]`).checked,
@@ -179,6 +179,24 @@ test('new followers with a verified phone must actively opt in to texts', async 
     method: 'PATCH', url: '/api/hosts/test-host/follow',
     data: { email: true, text: false, sourceEventSlug: 'test-show' }
   });
+});
+
+test('only an event Follow transmits its rendered attribution marker', async () => {
+  const state = { following: false, emailOn: false, textOn: false };
+  const marker = 'e'.repeat(64);
+  const fromEvent = followDialogFixture(state, [followEmailIdentity], {
+    sourceEventSlug: 'test-show', sourceAttribution: marker
+  });
+  await fromEvent.flow.open();
+  await fromEvent.save();
+  assert.deepEqual(fromEvent.requests.at(-1).data, {
+    email: true, text: false, sourceEventSlug: 'test-show', sourceAttribution: marker
+  });
+
+  const fromHostPage = followDialogFixture(state, [followEmailIdentity], {});
+  await fromHostPage.flow.open();
+  await fromHostPage.save();
+  assert.deepEqual(fromHostPage.requests.at(-1).data, { email: true, text: false });
 });
 
 test('existing followers keep their saved channels instead of new-follower defaults', async () => {
