@@ -443,11 +443,7 @@ router.get('/api/photos/search', requireBoundWorkspace, async (req, res, next) =
     if (!unsplash.enabled) {
       return res.status(503).json({ error: 'photo_search_unavailable', message: 'Photo search is not set up.' });
     }
-    const query = String(req.query.q || '').trim();
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const perPage = Math.min(24, Math.max(1, parseInt(req.query.per_page, 10) || 24));
-    if (!query) return res.json({ results: [] });
-    res.json(await unsplash.search(query, page, perPage));
+    res.json(await unsplash.searchPicker(req.query));
   } catch (error) { next(error); }
 });
 

@@ -57,8 +57,8 @@
   const compactVideoEffects = new Set(['golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration']);
   const photoCategories = [
     ['❄️ Winter', 'winter snow pine forest'],
-    ['🎄 Christmas', 'christmas lights ornaments'],
-    ['🎆 New Year’s', 'new year fireworks celebration'],
+    ['🎄 Christmas', '', 'christmas'],
+    ['🎆 New Year’s', '', 'new-year'],
     ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event'],
     ['🍂 Fall', 'autumn leaves cozy harvest warm'],
     ['📼 Nostalgia', 'vintage retro analog 90s nostalgic background'],
@@ -157,6 +157,8 @@
   let photoTotalPages = 1;
   let photoQuery = photoCategories[0][1];
   let photoCategory = photoCategories[0][0];
+  let photoCollection = '';
+  const photoCollectionIds = new Set();
   let photoLoading = false;
   let photosReady = false;
   let editorFieldSyncTimer;
@@ -1340,7 +1342,7 @@
     $('owner-photo-query').focus();
     if (!photosReady) {
       renderPhotoCategories();
-      loadPhotos(photoQuery, { category: photoCategory });
+      loadPhotos(photoQuery, { category: photoCategory, collection: photoCollection });
     }
   }
 
@@ -1358,13 +1360,13 @@
   function renderPhotoCategories() {
     const host = $('owner-photo-categories');
     host.innerHTML = '';
-    photoCategories.forEach(([label, query]) => {
+    photoCategories.forEach(([label, query, collection]) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'owner-photo-category';
       button.textContent = label;
       button.setAttribute('aria-pressed', String(label === photoCategory));
-      button.addEventListener('click', () => loadPhotos(query, { category: label }));
+      button.addEventListener('click', () => loadPhotos(query, { category: label, collection }));
       host.appendChild(button);
     });
   }
@@ -1399,11 +1401,13 @@
     });
   }
 
-  async function loadPhotos(query, { category = '', page = 1, append = false } = {}) {
+  async function loadPhotos(query, { category = '', collection = '', page = 1, append = false } = {}) {
     if (photoLoading) return;
     photoLoading = true;
     photoQuery = query;
     photoCategory = category;
+    photoCollection = collection;
+    if (!append) photoCollectionIds.clear();
     photoPage = page;
     $('owner-photo-status').textContent = append ? 'Loading more photos…' : 'Loading photos…';
     $('owner-photo-more').disabled = true;
@@ -1411,11 +1415,20 @@
       button.setAttribute('aria-pressed', String(button.textContent === photoCategory));
     });
     try {
-      const data = await request(`/api/photos/search?q=${encodeURIComponent(query)}&page=${page}&per_page=12`);
-      const photos = data.results || [];
+      const data = await request(collection
+        ? `/api/photos/search?collection=${encodeURIComponent(collection)}&page=${page}`
+        : `/api/photos/search?q=${encodeURIComponent(query)}&page=${page}&per_page=12`);
+      let photos = data.results || [];
+      if (collection) photos = photos.filter(photo => {
+        const key = photo.id || photo.full;
+        if (photoCollectionIds.has(key)) return false;
+        photoCollectionIds.add(key);
+        return true;
+      });
       photoTotalPages = data.totalPages || 1;
       renderPhotos(photos, { append });
-      $('owner-photo-status').textContent = photos.length ? (category || `Results for “${query}”`) : 'No photos found. Try another search.';
+      const hasPhotos = collection ? photoCollectionIds.size > 0 : photos.length > 0;
+      $('owner-photo-status').textContent = hasPhotos ? (category || `Results for “${query}”`) : 'No photos found. Try another search.';
       photosReady = true;
     } catch (error) {
       if (!append) $('owner-photo-grid').innerHTML = '';
@@ -1783,7 +1796,7 @@
       if (query) loadPhotos(query);
     }
   });
-  $('owner-photo-more').addEventListener('click', () => loadPhotos(photoQuery, { category: photoCategory, page: photoPage + 1, append: true }));
+  $('owner-photo-more').addEventListener('click', () => loadPhotos(photoQuery, { category: photoCategory, collection: photoCollection, page: photoPage + 1, append: true }));
 
   request('/api/commerce/config')
     .then(({ enabled, interest }) => {

@@ -308,25 +308,28 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   assert.doesNotMatch(setCoverSource, /background[^\n]*style\.display|fallback-background-field/);
 });
 
-test('both free-photo pickers start with Winter and keep seasonal shortcuts to one query each', () => {
+test('both free-photo pickers start with Winter and use the same Christmas and New Year’s collections', () => {
   const js = read('public/js/event-form.js');
   const owner = read('public/js/event-owner-editor.js');
   const formCategories = vm.runInNewContext(js.match(/const IMAGE_CATEGORIES = (\[[\s\S]+?\n\]);/)[1]);
   const ownerCategories = vm.runInNewContext(owner.match(/const photoCategories = (\[[\s\S]+?\n  \]);/)[1]);
-  const pairs = Array.from(formCategories, ({ label, query }) => [label, query]);
-  assert.deepEqual(pairs, Array.from(ownerCategories, ([label, query]) => [label, query]));
-  assert.deepEqual(pairs.slice(0, 5), [
-    ['❄️ Winter', 'winter snow pine forest'],
-    ['🎄 Christmas', 'christmas lights ornaments'],
-    ['🎆 New Year’s', 'new year fireworks celebration'],
-    ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event'],
-    ['🍂 Fall', 'autumn leaves cozy harvest warm']
+  const entries = Array.from(formCategories, ({ label, query = '', collection = '' }) => [label, query, collection]);
+  assert.deepEqual(entries, Array.from(ownerCategories, ([label, query, collection = '']) => [label, query, collection]));
+  assert.deepEqual(entries.slice(0, 5), [
+    ['❄️ Winter', 'winter snow pine forest', ''],
+    ['🎄 Christmas', '', 'christmas'],
+    ['🎆 New Year’s', '', 'new-year'],
+    ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event', ''],
+    ['🍂 Fall', 'autumn leaves cozy harvest warm', '']
   ]);
   assert.ok(formCategories.every(category => !category.queries && !/halloween/i.test(category.label)));
   assert.match(js, /let activeImageCategory = IMAGE_CATEGORIES\[0\]\.label/);
   assert.match(js, /if \(photosEnabled\) loadCategory\(theme\.label\)/);
   assert.match(owner, /let photoQuery = photoCategories\[0\]\[1\];\s*let photoCategory = photoCategories\[0\]\[0\]/);
   assert.doesNotMatch(js, /unsplash-q'\)\.addEventListener\('input'/);
+  assert.match(js, /remaining < 700 && !currentPhotoCollection/);
+  assert.match(js, /collection: currentPhotoCollection,\s*page: currentPhotoPage \+ 1/);
+  assert.match(owner, /collection: photoCollection, page: photoPage \+ 1/);
 });
 
 test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {

@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.223
+
+Released November 19, 2026.
+
+* Mix decorated trees, snowmen, gifts, and gatherings in the Christmas photo picker. Lead New Year’s with balloons, signs, party decorations, and champagne, with at most two dedicated fireworks picks on the first page. Both editors use the same collections; saved photos and manual search are unchanged.
+
 ## 1.0.222
 
 Released November 19, 2026.

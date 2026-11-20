@@ -920,7 +920,7 @@ const pickerUpload = $('picker-upload');
 let photosEnabled = false;
 let lastPhotos = [];
 let currentPhotoQuery = '';
-let currentPhotoQueries = [];
+let currentPhotoCollection = '';
 let currentPhotoCategory = '';
 let currentPhotoPage = 0;
 let currentPhotoTotalPages = 1;
@@ -956,13 +956,13 @@ const IMAGE_CATEGORIES = [
   },
   {
     label: '🎄 Christmas',
-    query: 'christmas lights ornaments',
+    collection: 'christmas',
     bgClass: 'picker-bg-christmas',
     colors: ['#1d4839', '#5c2630', '#724a27']
   },
   {
     label: '🎆 New Year’s',
-    query: 'new year fireworks celebration',
+    collection: 'new-year',
     bgClass: 'picker-bg-new-year',
     colors: ['#222744', '#36284f', '#79552c']
   },
@@ -1223,7 +1223,7 @@ function markSelectedPhoto(url) {
 function updateLoadMore() {
   const btn = $('photo-load-more');
   const hasMore = currentPhotoPage < currentPhotoTotalPages;
-  btn.hidden = !hasMore || !currentPhotoQuery;
+  btn.hidden = !hasMore || (!currentPhotoQuery && !currentPhotoCollection);
   btn.disabled = photoLoading;
   btn.textContent = photoLoading ? 'Loading...' : 'Load more photos';
 }
@@ -1234,34 +1234,17 @@ function setupPhotoInfiniteScroll() {
     photoScrollBound = true;
     scroller.addEventListener('scroll', () => {
       const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-      if (remaining < 700) loadMorePhotos();
+      if (remaining < 700 && !currentPhotoCollection) loadMorePhotos();
     }, { passive: true });
   }
 }
 
-function interleavePhotoResults(groups, existing = []) {
-  const mixed = [];
-  const seen = new Set(existing.map(photo => photo.id || photo.full));
-  const longest = Math.max(0, ...groups.map(group => group.length));
-  for (let index = 0; index < longest; index += 1) {
-    groups.forEach(group => {
-      const photo = group[index];
-      const key = photo && (photo.id || photo.full);
-      if (photo && !seen.has(key)) {
-        seen.add(key);
-        mixed.push(photo);
-      }
-    });
-  }
-  return mixed;
-}
-
-async function searchPhotos(q, { category = null, queries = null, page = 1, append = false } = {}) {
+async function searchPhotos(q, { category = '', collection = '', page = 1, append = false } = {}) {
   if (photoLoading) return;
   photoLoading = true;
   currentPhotoQuery = q;
-  currentPhotoQueries = Array.isArray(queries) && queries.length ? queries : [q];
-  currentPhotoCategory = category || '';
+  currentPhotoCollection = collection;
+  currentPhotoCategory = category;
   currentPhotoPage = page;
   const status = $('unsplash-status');
   const grid = $('unsplash-results');
@@ -1269,15 +1252,17 @@ async function searchPhotos(q, { category = null, queries = null, page = 1, appe
   updateLoadMore();
   if (!append) grid.innerHTML = '<div class="picker-empty" style="grid-column:1/-1">Loading images...</div>';
   try {
-    const perPage = Math.ceil(24 / currentPhotoQueries.length);
-    const responses = await Promise.all(currentPhotoQueries.map(query => (
-      api(`/api/photos/search?q=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`)
-    )));
-    const results = interleavePhotoResults(
-      responses.map(response => response.results || []),
-      append ? lastPhotos : []
-    );
-    currentPhotoTotalPages = Math.min(...responses.map(response => response.totalPages || 1));
+    const response = await api(collection
+      ? `/api/photos/search?collection=${encodeURIComponent(collection)}&page=${page}`
+      : `/api/photos/search?q=${encodeURIComponent(q)}&page=${page}&per_page=24`);
+    const seen = new Set((append ? lastPhotos : []).map(photo => photo.id || photo.full));
+    const results = (response.results || []).filter(photo => {
+      const key = photo.id || photo.full;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    currentPhotoTotalPages = response.totalPages || 1;
     lastPhotos = append ? lastPhotos.concat(results) : results;
     status.textContent = lastPhotos.length ? (currentPhotoCategory || '') : '';
     renderPhotoGrid(results, { append });
@@ -1312,28 +1297,30 @@ function renderPhotoGrid(results, { append = false } = {}) {
 }
 
 function loadMorePhotos() {
-  if (photoLoading || !currentPhotoQuery || currentPhotoPage >= currentPhotoTotalPages) return;
+  if (photoLoading || (!currentPhotoQuery && !currentPhotoCollection) || currentPhotoPage >= currentPhotoTotalPages) return;
   const now = Date.now();
   if (now - lastPhotoLoadAt < 900) return;
   lastPhotoLoadAt = now;
   searchPhotos(currentPhotoQuery, {
     category: currentPhotoCategory,
-    queries: currentPhotoQueries,
+    collection: currentPhotoCollection,
     page: currentPhotoPage + 1,
     append: true
   });
 }
 
 function loadCategory(label) {
+  if (photoLoading) return;
   const item = IMAGE_CATEGORIES.find(category => category.label === label) || IMAGE_CATEGORIES[0];
   activeImageCategory = item.label;
   applyPickerBackground(item);
   markActiveCategory();
   $('unsplash-q').value = '';
-  searchPhotos(item.query, { category: item.label, queries: item.queries });
+  searchPhotos(item.query || '', { category: item.label, collection: item.collection });
 }
 
 async function runSearch() {
+  if (photoLoading) return;
   const q = $('unsplash-q').value.trim();
   if (!q) return loadCategory(activeImageCategory);
   activeImageCategory = '';
