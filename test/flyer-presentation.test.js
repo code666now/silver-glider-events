@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const {
   renderRsvpConfirmationEmail,
@@ -307,19 +308,25 @@ test('Standard artwork actions keep local upload separate from free-photo browsi
   assert.doesNotMatch(setCoverSource, /background[^\n]*style\.display|fallback-background-field/);
 });
 
-test('free-photo browsing starts with rate-conscious Halloween and Fall collections', () => {
+test('both free-photo pickers start with Winter and keep seasonal shortcuts to one query each', () => {
   const js = read('public/js/event-form.js');
-  const halloweenIndex = js.indexOf("label: '🎃 Halloween'");
-  const fallIndex = js.indexOf("label: '🍂 Fall'");
-  const picksIndex = js.indexOf("label: '⭐ Silver Glider Picks'");
-  assert.ok(halloweenIndex > -1 && halloweenIndex < fallIndex && fallIndex < picksIndex);
-  assert.match(js, /let activeImageCategory = '🎃 Halloween'/);
-  assert.match(js, /query: 'halloween pumpkins costumes haunted spooky'/);
-  assert.match(js, /query: 'autumn leaves cozy harvest warm'/);
-  const categoryConfig = js.slice(js.indexOf('const IMAGE_CATEGORIES'), js.indexOf('IMAGE_CATEGORIES.forEach'));
-  assert.doesNotMatch(categoryConfig, /queries:/);
+  const owner = read('public/js/event-owner-editor.js');
+  const formCategories = vm.runInNewContext(js.match(/const IMAGE_CATEGORIES = (\[[\s\S]+?\n\]);/)[1]);
+  const ownerCategories = vm.runInNewContext(owner.match(/const photoCategories = (\[[\s\S]+?\n  \]);/)[1]);
+  const pairs = Array.from(formCategories, ({ label, query }) => [label, query]);
+  assert.deepEqual(pairs, Array.from(ownerCategories, ([label, query]) => [label, query]));
+  assert.deepEqual(pairs.slice(0, 5), [
+    ['❄️ Winter', 'winter snow pine forest'],
+    ['🎄 Christmas', 'christmas lights ornaments'],
+    ['🎆 New Year’s', 'new year fireworks celebration'],
+    ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event'],
+    ['🍂 Fall', 'autumn leaves cozy harvest warm']
+  ]);
+  assert.ok(formCategories.every(category => !category.queries && !/halloween/i.test(category.label)));
+  assert.match(js, /let activeImageCategory = IMAGE_CATEGORIES\[0\]\.label/);
+  assert.match(js, /if \(photosEnabled\) loadCategory\(theme\.label\)/);
+  assert.match(owner, /let photoQuery = photoCategories\[0\]\[1\];\s*let photoCategory = photoCategories\[0\]\[0\]/);
   assert.doesNotMatch(js, /unsplash-q'\)\.addEventListener\('input'/);
-  assert.doesNotMatch(js, /☀️ Summer|pool party friends colorful summer/);
 });
 
 test('flyer public rendering uses an isolated poster-first template without replacing the existing event flow', () => {

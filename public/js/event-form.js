@@ -918,7 +918,6 @@ const fileInput = $('cover-input');
 const imageModal = $('image-modal');
 const pickerUpload = $('picker-upload');
 let photosEnabled = false;
-let activeImageCategory = '🎃 Halloween';
 let lastPhotos = [];
 let currentPhotoQuery = '';
 let currentPhotoQueries = [];
@@ -950,16 +949,22 @@ let pickerBgTimer;
 // inspirational event backgrounds rather than literal event-type matches.
 const IMAGE_CATEGORIES = [
   {
-    label: '🎃 Halloween',
-    query: 'halloween pumpkins costumes haunted spooky',
-    bgClass: 'picker-bg-halloween',
-    colors: ['#4f210d', '#321143', '#151810']
+    label: '❄️ Winter',
+    query: 'winter snow pine forest',
+    bgClass: 'picker-bg-winter',
+    colors: ['#24485d', '#293956', '#446e73']
   },
   {
-    label: '🍂 Fall',
-    query: 'autumn leaves cozy harvest warm',
-    bgClass: 'picker-bg-fall',
-    colors: ['#6d3518', '#7a541d', '#29341f']
+    label: '🎄 Christmas',
+    query: 'christmas lights ornaments',
+    bgClass: 'picker-bg-christmas',
+    colors: ['#1d4839', '#5c2630', '#724a27']
+  },
+  {
+    label: '🎆 New Year’s',
+    query: 'new year fireworks celebration',
+    bgClass: 'picker-bg-new-year',
+    colors: ['#222744', '#36284f', '#79552c']
   },
   {
     label: '⭐ Silver Glider Picks',
@@ -967,6 +972,7 @@ const IMAGE_CATEGORIES = [
     bgClass: 'picker-bg-featured',
     colors: ['#155b5a', '#30255f', '#75511f']
   },
+  { label: '🍂 Fall', query: 'autumn leaves cozy harvest warm', bgClass: 'picker-bg-fall', colors: ['#6d3518', '#7a541d', '#29341f'] },
   { label: '📼 Nostalgia', query: 'vintage retro analog 90s nostalgic background', bgClass: 'picker-bg-nostalgia', colors: ['#5b3c57', '#765132', '#244c5d'] },
   { label: '🎨 Textures', query: 'concrete paper grain fabric texture background', bgClass: 'picker-bg-textures', colors: ['#4a443e', '#272c35', '#5a4930'] },
   { label: '📐 Patterns', query: 'geometric repeating patterns graphic design background', bgClass: 'picker-bg-patterns', colors: ['#153f47', '#352d63', '#5d5d5f'] },
@@ -978,6 +984,7 @@ const IMAGE_CATEGORIES = [
   { label: '🌙 Dark', query: 'black shadows low light dark moody background', bgClass: 'picker-bg-dark', colors: ['#0c1625', '#21152f', '#331c32'] },
   { label: '🖤 Minimal', query: 'clean simple negative space minimal background', bgClass: 'picker-bg-minimal', colors: ['#1f2428', '#333236', '#0f3f42'] }
 ];
+let activeImageCategory = IMAGE_CATEGORIES[0].label;
 IMAGE_CATEGORIES.forEach(category => IMAGE_BG_CLASSES.push(category.bgClass));
 
 function applyPickerBackground(item, className = item.bgClass) {
@@ -1036,7 +1043,7 @@ function openImageModal() {
   document.body.style.overflow = 'hidden';
   const theme = IMAGE_CATEGORIES.find(category => category.label === activeImageCategory) || IMAGE_CATEGORIES[0];
   applyPickerBackground(theme);
-  if (photosEnabled) loadCategory(activeImageCategory || '🎃 Halloween');
+  if (photosEnabled) loadCategory(theme.label);
 }
 
 function closeImageModal() {

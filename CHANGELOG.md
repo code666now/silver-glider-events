@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.222
+
+Released November 19, 2026.
+
+* Replace the Halloween shortcut in both Unsplash photo pickers with **Winter**, **Christmas**, and **New Year’s**, opening on Winter. Silver Glider Picks, Fall, and existing event photos and backgrounds are unchanged.
+
 ## 1.0.221
 
 Released November 19, 2026.

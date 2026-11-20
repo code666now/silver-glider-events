@@ -56,9 +56,11 @@
   const seamlessVideoEffects = new Set(['liquid-stardust', 'color-static', 'golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration']);
   const compactVideoEffects = new Set(['golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration']);
   const photoCategories = [
-    ['🎃 Halloween', 'halloween pumpkins costumes haunted spooky'],
-    ['🍂 Fall', 'autumn leaves cozy harvest warm'],
+    ['❄️ Winter', 'winter snow pine forest'],
+    ['🎄 Christmas', 'christmas lights ornaments'],
+    ['🎆 New Year’s', 'new year fireworks celebration'],
     ['⭐ Silver Glider Picks', 'nightlife live music crowd neon event'],
+    ['🍂 Fall', 'autumn leaves cozy harvest warm'],
     ['📼 Nostalgia', 'vintage retro analog 90s nostalgic background'],
     ['🎨 Textures', 'concrete paper grain fabric texture background'],
     ['📐 Patterns', 'geometric repeating patterns graphic design background'],

@@ -322,8 +322,6 @@ test('appearance editing reuses protected uploads and rate-conscious photo searc
   assert.match(styles, /\.owner-image-plus/);
   assert.match(client, /\/api\/photos\/search\?q=/);
   assert.match(client, /per_page=12/);
-  assert.match(client, /halloween pumpkins costumes haunted spooky/);
-  assert.match(client, /autumn leaves cozy harvest warm/);
   assert.doesNotMatch(client, /addEventListener\('input',[\s\S]{0,120}loadPhotos/);
 });
 
