@@ -328,6 +328,7 @@ async function start() {
   require('./jobs/automatic-follower-email').startAutomaticFollowerEmailCron();
   require('./jobs/flyer-publication-notifications').startFlyerPublicationNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
+  require('./jobs/transit-ride-reminders').startTransitRideReminderCron();
   require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();
   return server;
 }

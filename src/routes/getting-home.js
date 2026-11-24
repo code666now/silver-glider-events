@@ -6,11 +6,14 @@ const crypto = require('node:crypto');
 const pool = require('../config/db');
 const { eventEndAtSql } = require('../lib/post-event');
 const { attendeeCookieName, readCookie } = require('../lib/private-events');
+const { readGuestSession, guestVerifiedFor } = require('../lib/guest-session');
 const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { sendHtmlFile } = require('../lib/static-assets');
 const { render404 } = require('../lib/public-html');
 const { sameOriginMutation } = require('../middleware/requireOrganizer');
 const { createGettingHome, gettingHomeEnabled, gettingHomeEligible, readTransitSelection } = require('../lib/transit/getting-home');
+const { RideReminderError, RIDE_SMS_CONSENT } = require('../lib/transit/ride-reminders');
+const { rideReminders } = require('../jobs/transit-ride-reminders');
 
 const PAGE = '/e/:slug/getting-home';
 const API = '/api/public/events/:slug/getting-home';
@@ -49,8 +52,18 @@ async function accessForGettingHome(db, req, { env, now }) {
   return rsvp ? { event, rsvp, signedInUserId: userId } : null;
 }
 
+async function verifiedRideUser(db, req, { accountWide = false } = {}) {
+  const { event, rsvp, signedInUserId } = req.gettingHome;
+  const rsvpUserId = positiveId(rsvp.user_id);
+  if (!rsvpUserId) return null;
+  if (signedInUserId) return signedInUserId === rsvpUserId ? rsvpUserId : null;
+  const guest = await readGuestSession(db, req);
+  return guestVerifiedFor(guest, event.id) && positiveId(guest.user_id) === rsvpUserId &&
+    (!accountWide || guest.verified_event_id == null) ? rsvpUserId : null;
+}
+
 function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
-  home = createGettingHome({ env, now }) } = {}) {
+  home = createGettingHome({ env, now }), reminders = rideReminders } = {}) {
   const router = express.Router();
   const limiter = createRateLimiter({ windowMs: 60_000, rules: [
     { name: 'network', max: 80, key: ctx => ctx.network },
@@ -86,7 +99,28 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
     if (!readTransitSelection(req.body)) return res.status(400).json({ status: 'unsupported-selection' });
     res.json(await home.getDeparture(req.gettingHome.event, req.body));
   });
+
+  const reminderAction = action => async (req, res) => {
+    if (env.TRANSIT_RIDE_REMINDERS_ENABLED !== 'true') return res.json({ status: 'unavailable' });
+    try {
+      const userId = await verifiedRideUser(db, req);
+      if (!userId) return res.json({ status: 'identity-required' });
+      const ids = { eventId: req.gettingHome.event.id, userId };
+      if (action === 'getStatus') return res.json({ ...await reminders.getStatus(ids), consentLabel: RIDE_SMS_CONSENT });
+      if (action === 'cancel') return res.json(await reminders.cancel(ids));
+      const selection = readTransitSelection(req.body?.selection);
+      const expectedReminderAt = req.body?.expectedReminderAt;
+      if (!selection || !Number.isSafeInteger(expectedReminderAt)) return res.status(400).json({ status: 'unsupported-selection' });
+      return res.json(await reminders.schedule({ ...ids, selection, expectedReminderAt, consent: req.body?.consent === true }));
+    } catch (error) {
+      if (error instanceof RideReminderError) return res.status(error.status).json({ status: error.code });
+      throw error;
+    }
+  };
+  router.get(`${API}/reminder`, gate(true), reminderAction('getStatus'));
+  router.post(`${API}/reminder`, jsonMutation, gate(true), reminderAction('schedule'));
+  router.delete(`${API}/reminder`, jsonMutation, gate(true), reminderAction('cancel'));
   return router;
 }
 
-module.exports = { createGettingHomeRouter, accessForGettingHome };
+module.exports = { createGettingHomeRouter, accessForGettingHome, verifiedRideUser };

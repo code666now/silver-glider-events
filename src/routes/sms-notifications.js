@@ -11,6 +11,7 @@ const {
 } = require('../lib/sms-reminder-fulfillment');
 const { normalizeE164 } = require('../lib/sms');
 const { finalizeSmsBatch, queueSmsBatch } = require('../jobs/sms-notifications');
+const { recordRideSmsOptOut } = require('../lib/transit/ride-reminders');
 
 const router = express.Router();
 const verifyTwilio = twilio.webhook({ validate: process.env.NODE_ENV === 'production' });
@@ -64,7 +65,8 @@ router.post('/api/webhooks/twilio/inbound', verifyTwilio, async (req, res, next)
           pool.query(
             `UPDATE host_follows SET sms_opted_out_at=COALESCE(sms_opted_out_at,NOW()),updated_at=NOW()
               WHERE sms_phone=$1 AND sms_opted_in_at IS NOT NULL`, [from]
-          )
+          ),
+          ...(process.env.TRANSIT_RIDE_REMINDERS_ENABLED === 'true' ? [recordRideSmsOptOut(pool, from)] : [])
         ]);
       }
     }

@@ -89,6 +89,16 @@ test('server SMS transport attaches a provider status callback only when supplie
   assert.equal(Object.hasOwn(calls[0], 'from'), false);
 });
 
+test('time-sensitive SMS can expire in the provider queue and invalid expirations never send', async () => {
+  const { service, calls } = fakeService();
+  await service.sendSms({ to: '+14155551234', body: 'Ride reminder', validityPeriod: 300 });
+  assert.equal(calls[0].validityPeriod, 300);
+  for (const validityPeriod of [0, 36001, 1.5, '300']) {
+    await assert.rejects(service.sendSms({ to: '+14155551234', body: 'Ride reminder', validityPeriod }), { code: 'invalid_validity_period' });
+  }
+  assert.equal(calls.length, 1);
+});
+
 test('lifecycle SMS transport does not expose an authentication sender path', () => {
   const { service } = fakeService();
   assert.equal(service.sendAuthSms, undefined);

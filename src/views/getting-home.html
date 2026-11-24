@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/getting-home.css">
   <script src="/js/getting-home.js" defer></script>
+  <script src="/js/getting-home-reminder.js" defer></script>
 </head>
 <body class="gh-body">
   <svg class="gh-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
@@ -105,8 +106,28 @@
         </dl>
         <p class="gh-note" id="gh-show-warning" hidden>This departure may mean leaving before the show ends.</p>
         <div id="gh-trip-actions"></div>
+        <section class="gh-reminder" id="gh-reminder-offer" aria-labelledby="gh-reminder-offer-title" hidden>
+          <h3 id="gh-reminder-offer-title">One optional ride text</h3>
+          <p id="gh-reminder-requirement" class="gh-note" hidden></p>
+          <a id="gh-reminder-signin" class="gh-directions" href="/login" hidden>Sign in with an existing account</a>
+          <form id="gh-reminder-form" hidden>
+            <label class="gh-text-consent" for="gh-reminder-consent">
+              <input id="gh-reminder-consent" type="checkbox" required aria-describedby="gh-reminder-disclosure">
+              <span>Text me one reminder for this event.</span>
+            </label>
+            <p class="gh-note" id="gh-reminder-disclosure">Free from Silver Glider. No marketing texts. Msg &amp; data rates may apply. Reply STOP to opt out.</p>
+            <button class="gh-primary" type="submit" id="gh-reminder-submit">Set ride reminder</button>
+          </form>
+        </section>
       </section>
     </section>
+
+    <section class="gh-reminder" id="gh-reminder-management" aria-labelledby="gh-reminder-title" hidden>
+      <h2 id="gh-reminder-title" tabindex="-1">Your ride reminder</h2>
+      <p class="gh-note" id="gh-reminder-description"></p>
+      <button class="gh-secondary" id="gh-reminder-cancel" type="button" hidden>Cancel ride reminder</button>
+    </section>
+    <p class="gh-result-status" id="gh-reminder-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
 
     <aside class="gh-alternatives" aria-labelledby="gh-alternatives-title">
       <h2 id="gh-alternatives-title">Another way home</h2>

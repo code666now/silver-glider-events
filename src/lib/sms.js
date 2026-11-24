@@ -109,7 +109,7 @@ function createSmsService({
 } = {}) {
   let client = null;
 
-  async function sendWithConfig({ to, body, statusCallback }, configReader) {
+  async function sendWithConfig({ to, body, statusCallback, validityPeriod }, configReader) {
     const recipient = normalizeE164(to);
     const messageBody = String(body || '').trim();
     if (!messageBody || messageBody.length > 1600) {
@@ -117,6 +117,9 @@ function createSmsService({
         code: 'invalid_message',
         status: 400
       });
+    }
+    if (validityPeriod !== undefined && (!Number.isInteger(validityPeriod) || validityPeriod < 1 || validityPeriod > 36000)) {
+      throw new SmsDeliveryError('Invalid SMS queue expiration', { code: 'invalid_validity_period', status: 400 });
     }
 
     const config = configReader(env);
@@ -129,6 +132,7 @@ function createSmsService({
         messagingServiceSid: config.messagingServiceSid
       };
       if (statusCallback) payload.statusCallback = String(statusCallback);
+      if (validityPeriod !== undefined) payload.validityPeriod = validityPeriod;
       submitted = true;
       const message = await client.messages.create(payload);
       const sid = String(message?.sid || '').trim();

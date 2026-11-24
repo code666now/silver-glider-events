@@ -66,6 +66,23 @@
 .gh-timing-note { display: block; margin-top: 5px; }
 .gh-note { margin-top: 8px; }
 
+.gh-reminder {
+  display: grid; gap: 9px; margin-top: 14px; padding: 15px;
+  border: 1px solid var(--gh-border); border-radius: 14px; background: var(--gh-surface);
+}
+.gh-reminder .gh-note { margin-top: 0; }
+.gh-reminder form { display: grid; gap: 8px; }
+.gh-reminder .gh-primary { margin-top: 4px; justify-self: start; }
+.gh-reminder .gh-secondary { justify-self: start; }
+.gh-text-consent {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-weight: 650;
+}
+.gh-text-consent input {
+  accent-color: var(--gh-teal); width: 20px; height: 20px; flex: 0 0 auto;
+}
+.gh-text-consent input:focus-visible { outline: 2px solid var(--gh-teal); outline-offset: 4px; }
+#gh-reminder-announcement:not(:empty) { margin-top: 10px; }
+
 .gh-alternatives { margin-top: 26px; border-top: 1px solid var(--gh-border); padding-top: 19px; }
 .gh-alternative-links { margin: 12px 0 4px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .gh-secondary { display: inline-flex; justify-content: center; align-items: center; gap: 7px; padding: 8px 12px; }

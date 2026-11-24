@@ -4,7 +4,7 @@ process.env.SESSION_SECRET ||= 'getting-home-unit-test-only';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createGettingHome, gettingHomeEligible, readTransitSelection } = require('../src/lib/transit/getting-home');
-const { accessForGettingHome } = require('../src/routes/getting-home');
+const { accessForGettingHome, verifiedRideUser } = require('../src/routes/getting-home');
 const { attendeeCookieName } = require('../src/lib/private-events');
 
 const env = { TRANSIT_GETTING_HOME_ENABLED: 'true' };
@@ -49,6 +49,24 @@ test('only schedule identifiers and short direction labels enter the lookup', ()
   assert.equal(readTransitSelection({ ...choice, stopId: 'evil\nsecond' }), null);
   assert.equal(readTransitSelection({ stationId: '24TH', destinationStationId: '24TH' }), null);
   assert.deepEqual(readTransitSelection({ stationId: 'BA:24TH', destinationStationId: 'BA:FRMT' }), { stationId: 'BA:24TH', destinationStationId: 'BA:FRMT' });
+});
+
+test('a bare RSVP cookie cannot request a text or claim a saved preference', async () => {
+  let guest;
+  const db = { query: async () => ({ rows: guest ? [guest] : [] }) };
+  const rsvp = { id: 21, user_id: 3 };
+  const req = { headers: { cookie: `${attendeeCookieName(event.id)}=example` }, gettingHome: { event, rsvp } };
+  assert.equal(await verifiedRideUser(db, req), null);
+  guest = { user_id: 3, verified_at: new Date(), verified_event_id: 10 };
+  const proof = { ...req, headers: { cookie: 'sge_guest=event-proof' } };
+  assert.equal(await verifiedRideUser(db, proof), 3);
+  assert.equal(await verifiedRideUser(db, proof, { accountWide: true }), null);
+  guest.verified_event_id = null;
+  assert.equal(await verifiedRideUser(db, proof, { accountWide: true }), 3);
+  guest.user_id = 12;
+  assert.equal(await verifiedRideUser(db, proof), null);
+  assert.equal(await verifiedRideUser(db, { ...req, gettingHome: { event, rsvp, signedInUserId: 3 } }), 3);
+  assert.equal(await verifiedRideUser(db, { ...req, gettingHome: { event, rsvp, signedInUserId: 12 } }), null);
 });
 
 test('leave-by subtracts walk and buffer, and proposed text is 30 minutes before leave-by', async () => {
