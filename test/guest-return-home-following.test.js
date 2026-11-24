@@ -103,6 +103,13 @@ test('mixed-role Home selects the earliest plan but keeps owner counts and manag
   assert.doesNotMatch(owner.get('next-event').innerHTML, /View RSVP/);
 });
 
+test('Home replaces directions with Help me get home only for eligible Going plans', async () => {
+  const browser = await runView('src/views/dashboard.html', homeResponses([], [event({ getting_home: true })]));
+  const markup = browser.get('next-event').innerHTML;
+  assert.match(markup, /href="\/e\/guest-night\/getting-home">Help me get home/);
+  assert.doesNotMatch(markup, /Get directions|manage_token|token=/);
+});
+
 test('playing nights remain accessible and cancelled or ended plans do not replace the next event', async () => {
   const browser = await runView('src/views/dashboard.html', homeResponses([], [
     event({ id:1, title:'Cancelled', status:'cancelled' }),

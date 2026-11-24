@@ -28,6 +28,7 @@ const { queueSmsBatch } = require('../jobs/sms-notifications');
 const { HOST_ACCOUNT_INACTIVE, outboundDeliveryLockKey, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
+const { gettingHomeEligible } = require('../lib/transit/getting-home');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
 const { invitationSelectionKey } = require('../lib/invitation-selection-key');
 const {
@@ -133,6 +134,9 @@ router.get('/api/events/going', async (req, res, next) => {
               (e.event_date + e.start_time) AT TIME ZONE e.timezone AS starts_at,
               ${eventEndAtSql('e')} AS ends_at,
               e.venue_name, e.venue_city, e.venue_state, e.status, e.visibility,
+              e.venue_address AS transit_venue_address,
+              e.secret_show_enabled AS transit_secret_show,
+              e.hide_address_until_rsvp AS transit_hide_address,
               e.presentation_mode, e.flyer_image_url, e.cover_image_url,
               o.org_name AS host_name, o.name AS host_person_name,
               mine.joined_at AS rsvp_created_at, mine.playing
@@ -143,7 +147,13 @@ router.get('/api/events/going', async (req, res, next) => {
       [req.organizer.id, req.organizer.user_id]
     );
     rows.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)) || Number(b.id) - Number(a.id));
-    res.json({ events: rows });
+    res.json({ events: rows.map(({ transit_venue_address, transit_secret_show, transit_hide_address, ...event }) => ({
+      ...event,
+      ...(!event.playing && gettingHomeEligible({
+        ...event, venue_address: transit_venue_address, secret_show_enabled: transit_secret_show,
+        hide_address_until_rsvp: transit_hide_address
+      }) && { getting_home: true })
+    })) });
   } catch (err) { next(err); }
 });
 

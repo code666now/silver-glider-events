@@ -168,7 +168,7 @@ function scheduleEnd(tables) {
 }
 
 function create511ScheduleSource({
-  apiKey = process.env.TRANSIT_511_API_KEY,
+  apiKey = process.env.TRANSIT_511_API_KEY || process.env['511_API_TOKEN'],
   fetchImpl = globalThis.fetch,
   now = Date.now,
   ttlMs = 12 * 60 * 60 * 1000,

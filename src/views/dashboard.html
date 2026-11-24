@@ -594,6 +594,8 @@
           ? `${hostedUpcoming.length} upcoming event${hostedUpcoming.length === 1 ? '' : 's'} you host · ${totalRsvps} total RSVP${totalRsvps === 1 ? '' : 's'}`
           : `${plans.length} upcoming plan${plans.length === 1 ? '' : 's'}`;
         const eventPath = `/e/${encodeURIComponent(String(ev.slug))}`;
+        const ridePath = ev.getting_home === true ? `${eventPath}/getting-home` : `${eventPath}#event-location-map`;
+        const rideLabel = ev.getting_home === true ? 'Help me get home' : 'Get directions';
         if (ev.isGoing) {
           // The event page rechecks the signed-in RSVP before exposing a
           // protected location. No address or personal token goes in this link.
@@ -618,7 +620,7 @@
                   : `<strong>${rsvpCount}</strong><span>going${capacity ? ` / ${capacity}` : ''}</span>`}
               </div>
             </div>
-            ${ev.isGoing ? `<div class="next-plan-actions"><a class="sg-btn sg-btn-primary" href="${eventPath}#returning-rsvp-state">View RSVP</a><a class="sg-btn sg-btn-ghost" href="${eventPath}#event-location-map">Get directions</a></div></article>` : '</a>'}`;
+            ${ev.isGoing ? `<div class="next-plan-actions"><a class="sg-btn sg-btn-primary" href="${eventPath}#returning-rsvp-state">View RSVP</a><a class="sg-btn sg-btn-ghost" href="${ridePath}">${rideLabel}</a></div></article>` : '</a>'}`;
         finishLoading();
       } catch (_) {
         document.getElementById('sub').textContent = 'Your plans could not be loaded.';

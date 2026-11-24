@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0d1112">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Getting Home | Silver Glider Events</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/getting-home.css">
+  <script src="/js/getting-home.js" defer></script>
+</head>
+<body class="gh-body">
+  <svg class="gh-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <symbol id="gh-icon-bus" viewBox="0 0 24 24">
+      <path d="M4 16V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2ZM4 11h16M7 18v3m10-3v3M7.5 14.5h.01m8.99 0h.01"/>
+    </symbol>
+    <symbol id="gh-icon-train" viewBox="0 0 24 24">
+      <path d="M5 7a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v8a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3Zm0 4h14m-7-8v8M7 21l2-3m8 3-2-3m-6.5-3.5h.01m6.99 0h.01"/>
+    </symbol>
+    <symbol id="gh-icon-car" viewBox="0 0 24 24">
+      <path d="m5 10 2.1-5h9.8l2.1 5M4 18v2m16-2v2M4 10h16l1 3v5H3v-5l1-3Zm3 4h1m8 0h1"/>
+    </symbol>
+    <symbol id="gh-icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+    </symbol>
+    <symbol id="gh-icon-walk" viewBox="0 0 24 24">
+      <circle cx="14" cy="4" r="2"/><path d="m8 21 3-5m4 5-2-5 1-7 3 3h3M5 12l3-1 3-3 3 1"/>
+    </symbol>
+    <symbol id="gh-icon-bell" viewBox="0 0 24 24">
+      <path d="M18 8a6 6 0 0 0-12 0c0 6-2 7-2 9h16c0-2-2-3-2-9Zm-8 12a2 2 0 0 0 4 0"/>
+    </symbol>
+    <symbol id="gh-icon-arrow" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></symbol>
+    <symbol id="gh-icon-external" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
+  </svg>
+
+  <main class="gh-page" data-getting-home>
+    <header class="gh-masthead">
+      <a class="gh-back" id="gh-event-link" href="/dashboard">← <span>Back to event</span></a>
+      <img class="gh-logo" src="/logo.png" alt="Silver Glider Events" width="44" height="44">
+    </header>
+    <div class="gh-intro">
+      <h1>Getting home</h1>
+      <p class="gh-venue" id="gh-venue" hidden></p>
+      <p class="gh-helper">Find a ride after the show. Check the schedule again before you leave.</p>
+    </div>
+
+    <div class="gh-status" id="gh-status" role="status" aria-live="polite" aria-atomic="true">Checking nearby transit…</div>
+    <noscript><p class="gh-note">Turn on JavaScript to check transit schedules, or return to the event for directions.</p></noscript>
+    <button class="gh-secondary gh-retry" type="button" id="gh-retry" hidden>Try again</button>
+
+    <section class="gh-route-picker" id="gh-route-picker" aria-labelledby="gh-routes-title" hidden>
+      <h2 id="gh-routes-title" tabindex="-1">Nearby routes</h2>
+      <ul class="gh-route-grid" id="gh-routes"></ul>
+      <template id="gh-route-template">
+        <li>
+          <button class="gh-route" type="button">
+            <span class="gh-icon-tile"><svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-bus"></use></svg></span>
+            <span class="gh-route-copy"><strong></strong><span></span></span>
+            <svg class="gh-icon gh-route-arrow" aria-hidden="true"><use href="#gh-icon-arrow"></use></svg>
+          </button>
+        </li>
+      </template>
+    </section>
+
+    <section class="gh-plan" id="gh-plan" aria-labelledby="gh-plan-title" hidden>
+      <div class="gh-plan-heading">
+        <h2 id="gh-plan-title" tabindex="-1">Your route</h2>
+        <button class="gh-change" id="gh-change" type="button">Change route</button>
+      </div>
+      <form class="gh-form" id="gh-form">
+        <div class="gh-field" id="gh-direction-field">
+          <label for="gh-direction">Direction</label>
+          <select id="gh-direction"></select>
+        </div>
+        <div class="gh-field">
+          <label id="gh-stop-label" for="gh-stop">Boarding stop</label>
+          <select id="gh-stop"></select>
+        </div>
+        <div class="gh-field" id="gh-destination-field" hidden>
+          <label for="gh-destination">Destination station</label>
+          <select id="gh-destination"></select>
+        </div>
+        <button class="gh-primary" id="gh-check" type="submit">Check last departure</button>
+      </form>
+
+      <div class="gh-result-status" id="gh-result-status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <section class="gh-results" id="gh-results" aria-labelledby="gh-results-title" hidden>
+        <h3 id="gh-results-title" tabindex="-1">Your ride home</h3>
+        <dl>
+          <div class="gh-timing gh-timing-main">
+            <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-clock"></use></svg>
+            <div><dt id="gh-departure-label">Last scheduled departure</dt><dd id="gh-departure-time"></dd><span id="gh-boarding-stop" class="gh-timing-note"></span></div>
+          </div>
+          <div class="gh-timing" id="gh-leave-row" hidden>
+            <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-walk"></use></svg>
+            <div><dt>Leave the venue by</dt><dd id="gh-leave-time"></dd><span id="gh-walk-helper" class="gh-timing-note"></span></div>
+          </div>
+          <div class="gh-timing gh-timing-preview" id="gh-preview-row" hidden>
+            <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-bell"></use></svg>
+            <div><dt>Proposed text time</dt><dd id="gh-text-time"></dd><span id="gh-text-helper" class="gh-timing-note">30 minutes before you need to leave. No text is scheduled.</span></div>
+          </div>
+        </dl>
+        <p class="gh-note" id="gh-show-warning" hidden>This departure may mean leaving before the show ends.</p>
+        <div id="gh-trip-actions"></div>
+      </section>
+    </section>
+
+    <aside class="gh-alternatives" aria-labelledby="gh-alternatives-title">
+      <h2 id="gh-alternatives-title">Another way home</h2>
+      <p id="gh-rideshare-note" class="gh-note">Choose your pickup and destination with the provider.</p>
+      <div class="gh-alternative-links">
+        <a class="gh-secondary" id="gh-uber" href="https://m.uber.com/looking" target="_blank" rel="noopener noreferrer" aria-label="Open Uber (new tab)">
+          <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-car"></use></svg> Uber <svg class="gh-icon gh-external" aria-hidden="true"><use href="#gh-icon-external"></use></svg>
+        </a>
+        <a class="gh-secondary" id="gh-lyft" href="https://ride.lyft.com/u" target="_blank" rel="noopener noreferrer" aria-label="Open Lyft (new tab)">
+          <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-car"></use></svg> Lyft <svg class="gh-icon gh-external" aria-hidden="true"><use href="#gh-icon-external"></use></svg>
+        </a>
+      </div>
+      <a class="gh-directions" id="gh-directions" href="/dashboard">Get venue directions <span aria-hidden="true">→</span></a>
+    </aside>
+    <footer class="gh-footer"><a id="gh-source" href="https://511.org/" target="_blank" rel="noopener noreferrer">data provided by 511.org</a></footer>
+  </main>
+</body>
+</html>

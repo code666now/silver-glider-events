@@ -100,6 +100,7 @@ app.use(require('./routes/email-icons'));
 app.use(require('./routes/email-preferences'));
 app.use(require('./routes/host-onboarding'));
 app.use(require('./routes/public-hosts'));
+app.use(require('./routes/getting-home').createGettingHomeRouter());
 app.use(require('./routes/public'));
 app.use(require('./routes/admin'));
 app.use(require('./routes/admin-identity-changes'));

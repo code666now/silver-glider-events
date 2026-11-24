@@ -144,7 +144,14 @@ function createGtfsSchedule(tables) {
       const row = rows[i];
       if (rail && dropOff(row)) {
         const id = stationOf(row.stop_id);
-        if (stops.has(id)) bartStations.set(id, { stationId: id, name: stops.get(id).stop_name });
+        const station = stops.get(id);
+        if (station) {
+          const latitude = Number(station.stop_lat);
+          const longitude = Number(station.stop_lon);
+          const validPoint = station.stop_lat && station.stop_lon && Number.isFinite(latitude) && Number.isFinite(longitude) &&
+            latitude >= 37 && latitude <= 39 && longitude >= -123 && longitude <= -121;
+          bartStations.set(id, { stationId: id, name: station.stop_name, ...(validPoint && { latitude, longitude }) });
+        }
       }
       if (i + 1 < rows.length && pickup(row)) {
         if (!choicesByStop.has(row.stop_id)) choicesByStop.set(row.stop_id, new Map());
