@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.224
+
+Released November 24, 2026.
+
+* Add the server-side transit schedule foundation for the Make-Out Room pilot. It is not wired into event pages, RSVPs, reminder emails, or texts.
+
 ## 1.0.223
 
 Released November 19, 2026.
