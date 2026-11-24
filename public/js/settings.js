@@ -987,10 +987,55 @@ followerEmailSetting.addEventListener('change', async () => {
   }
 });
 
+function createSavedTransitRouteControl({ row, button, status, request }) {
+  const endpoint = '/api/account/saved-transit-route';
+  const baseOptions = { credentials: 'same-origin', cache: 'no-store' };
+  const announce = message => {
+    status.hidden = false;
+    status.textContent = message;
+  };
+
+  button.addEventListener('click', async () => {
+    if (row.hidden || button.disabled) return;
+    button.disabled = true;
+    announce('Clearing your saved route…');
+    try {
+      const response = await request(endpoint, {
+        ...baseOptions, method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      if (!response.ok || (await response.json())?.status !== 'removed') throw new Error('Removal not confirmed');
+      row.hidden = true;
+      announce('Saved route cleared. Any ride text already set is unchanged.');
+      status.focus();
+    } catch (_) {
+      announce('We couldn’t confirm that the saved route was cleared. Try again.');
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  return async function loadSavedTransitRoute() {
+    try {
+      const response = await request(endpoint, baseOptions);
+      if (!response.ok) return;
+      const preference = await response.json();
+      row.hidden = !(preference?.status === 'available' && preference.hasPreference === true);
+    } catch (_) {
+      // Optional, remove-only setting. Never redirect or block Account.
+    }
+  };
+}
+
+const loadSavedTransitRoute = createSavedTransitRouteControl({
+  row: settingsElement('account-saved-transit'), button: settingsElement('account-saved-transit-clear'),
+  status: settingsElement('account-saved-transit-status'), request: (url, options) => fetch(url, options)
+});
+
 api('/api/auth/me').then(({ organizer, legalAcceptance }) => {
   populateSettings(organizer);
   showSettings();
   loadAccountIdentities();
+  if (desktopSettingsSection === 'account') loadSavedTransitRoute();
   // Credential recovery and privacy controls must remain reachable before
   // agreement. Do not let optional background app calls redirect this page.
   if (!legalAcceptance?.required) {

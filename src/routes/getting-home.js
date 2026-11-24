@@ -14,6 +14,7 @@ const { sameOriginMutation } = require('../middleware/requireOrganizer');
 const { createGettingHome, gettingHomeEnabled, gettingHomeEligible, readTransitSelection } = require('../lib/transit/getting-home');
 const { RideReminderError, RIDE_SMS_CONSENT } = require('../lib/transit/ride-reminders');
 const { rideReminders } = require('../jobs/transit-ride-reminders');
+const { createSavedRouteService } = require('../lib/transit/saved-route');
 
 const PAGE = '/e/:slug/getting-home';
 const API = '/api/public/events/:slug/getting-home';
@@ -63,7 +64,8 @@ async function verifiedRideUser(db, req, { accountWide = false } = {}) {
 }
 
 function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
-  home = createGettingHome({ env, now }), reminders = rideReminders } = {}) {
+  home = createGettingHome({ env, now }), reminders = rideReminders,
+  saved = createSavedRouteService({ db, transit: home, now }) } = {}) {
   const router = express.Router();
   const limiter = createRateLimiter({ windowMs: 60_000, rules: [
     { name: 'network', max: 80, key: ctx => ctx.network },
@@ -120,6 +122,31 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   router.get(`${API}/reminder`, gate(true), reminderAction('getStatus'));
   router.post(`${API}/reminder`, jsonMutation, gate(true), reminderAction('schedule'));
   router.delete(`${API}/reminder`, jsonMutation, gate(true), reminderAction('cancel'));
+
+  const preferenceAction = action => async (req, res) => {
+    const userId = await verifiedRideUser(db, req, { accountWide: true });
+    if (!userId) return res.json({ status: 'not-eligible' });
+    const event = req.gettingHome.event;
+    if (action === 'get') return res.json(await saved.get({ userId, event }));
+    if (action === 'remove') return res.json(await saved.remove({ userId }));
+    const selection = readTransitSelection(req.body?.selection);
+    if (!selection || req.body?.remember !== true) return res.status(400).json({ status: 'not-requested' });
+    res.json(await saved.save({ userId, event, selection, remember: true }));
+  };
+  router.get(`${API}/saved-route`, gate(true), preferenceAction('get'));
+  router.post(`${API}/saved-route`, jsonMutation, gate(true), preferenceAction('save'));
+  router.delete(`${API}/saved-route`, jsonMutation, gate(true), preferenceAction('remove'));
+  router.get('/api/account/saved-transit-route', async (req, res) => {
+    protectResponse(res);
+    const userId = positiveId(req.sessionAccount?.user_id);
+    if (!userId) return res.status(401).json({ status: 'unavailable' });
+    res.json(await saved.status({ userId }));
+  });
+  router.delete('/api/account/saved-transit-route', jsonMutation, async (req, res) => {
+    const userId = positiveId(req.sessionAccount?.user_id);
+    if (!userId) return res.status(401).json({ status: 'unavailable' });
+    res.json(await saved.remove({ userId }));
+  });
   return router;
 }
 

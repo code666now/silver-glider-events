@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/css/getting-home.css">
   <script src="/js/getting-home.js" defer></script>
   <script src="/js/getting-home-reminder.js" defer></script>
+  <script src="/js/getting-home-saved.js" defer></script>
 </head>
 <body class="gh-body">
   <svg class="gh-symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
@@ -51,6 +52,16 @@
     <div class="gh-status" id="gh-status" role="status" aria-live="polite" aria-atomic="true">Checking nearby transit…</div>
     <noscript><p class="gh-note">Turn on JavaScript to check transit schedules, or return to the event for directions.</p></noscript>
     <button class="gh-secondary gh-retry" type="button" id="gh-retry" hidden>Try again</button>
+
+    <section class="gh-reminder gh-saved" id="gh-saved" aria-labelledby="gh-saved-title" hidden>
+      <h2 id="gh-saved-title" tabindex="-1">Your saved route</h2>
+      <p class="gh-note" id="gh-saved-details"></p>
+      <div class="gh-saved-actions">
+        <button class="gh-secondary" id="gh-saved-use" type="button">Check this route</button>
+        <button class="gh-change" id="gh-saved-change" type="button">Pick another route</button>
+        <button class="gh-change" id="gh-saved-remove" type="button">Remove saved route</button>
+      </div>
+    </section>
 
     <section class="gh-route-picker" id="gh-route-picker" aria-labelledby="gh-routes-title" hidden>
       <h2 id="gh-routes-title" tabindex="-1">Nearby routes</h2>
@@ -128,6 +139,15 @@
       <button class="gh-secondary" id="gh-reminder-cancel" type="button" hidden>Cancel ride reminder</button>
     </section>
     <p class="gh-result-status" id="gh-reminder-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+
+    <section class="gh-reminder" id="gh-remember" aria-label="Saved route preference" hidden>
+      <label class="gh-text-consent" for="gh-remember-check">
+        <input type="checkbox" id="gh-remember-check"> Remember my route
+      </label>
+      <p class="gh-note">Only you can see it. This won’t schedule a text or sign you up for future texts.</p>
+      <button class="gh-secondary" id="gh-remember-save" type="button" disabled>Save route</button>
+    </section>
+    <div class="gh-note" id="gh-saved-status" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <aside class="gh-alternatives" aria-labelledby="gh-alternatives-title">
       <h2 id="gh-alternatives-title">Another way home</h2>

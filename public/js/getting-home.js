@@ -55,6 +55,24 @@
     }
   }
 
+  function matchSavedChoice(choices, selection) {
+    if (!selection) return null;
+    for (const choice of choices) {
+      if (choice.bart && selection.stationId) {
+        const stop = choice.stations.findIndex(station => station.stationId === selection.stationId);
+        const destination = choice.destinations.findIndex(station => station.stationId === selection.destinationStationId);
+        if (stop !== -1 && destination !== -1) return { choice, stop, destination };
+      }
+      if (choice.bart || selection.stationId) continue;
+      for (const [direction, row] of choice.directions.entries()) {
+        const stop = row.stops.findIndex(s => s.stopId === selection.stopId && s.route.routeId === selection.routeId &&
+          (s.route.direction || '') === selection.direction && (s.route.headsign || '') === selection.headsign);
+        if (stop !== -1) return { choice, direction, stop };
+      }
+    }
+    return null;
+  }
+
   function makeRideshareLinks(destination) {
     const uber = new URL('https://m.uber.com/looking');
     const lyft = new URL('https://ride.lyft.com/u');
@@ -95,6 +113,9 @@
     let activeButton = null;
     let lookup = null;
     let loading = false;
+    let routeChoices = [];
+    let queuedSelection = null;
+    const routeButtons = new Map();
 
     get('event-link').href = eventPath;
     get('directions').href = `${eventPath}#event-location-map`;
@@ -184,6 +205,7 @@
       };
       if (data.status !== 'scheduled') {
         resultStatus.textContent = messages[data.status] || 'We couldn’t verify a departure. Check the operator directly before travelling.';
+        if (data.status === 'overnight') root.dispatchEvent(new win.CustomEvent('getting-home:plan', { detail: { selection, plan: data } }));
         return;
       }
       const departure = formattedTime(data.departureAt, data.timezone);
@@ -220,22 +242,24 @@
           return;
         }
         if (!response.ok || !['available', 'empty'].includes(data.status)) throw new Error('Schedule unavailable');
-        const choices = makeRouteChoices(data.stops);
+        routeChoices = makeRouteChoices(data.stops);
         get('venue').textContent = data.venue ? `From ${data.venue}` : '';
         get('venue').hidden = !data.venue;
-        if (choices.length === 0) {
+        if (routeChoices.length === 0) {
           status.textContent = 'No nearby transit routes were verified for this event. You can still get directions or look for a ride.';
           return;
         }
         const fragment = win.document.createDocumentFragment();
         const template = get('route-template');
-        for (const choice of choices) {
+        routeButtons.clear();
+        for (const choice of routeChoices) {
           const item = template.content.cloneNode(true);
           const button = item.querySelector('button');
           button.querySelector('strong').textContent = choice.label;
           button.querySelector('.gh-route-copy span').textContent = [choice.closest.name, walkLabel(choice.closest.walkSeconds)].filter(Boolean).join(' · ');
           button.querySelector('use').setAttribute('href', `#gh-icon-${choice.icon}`);
           button.addEventListener('click', () => showPlan(choice, button));
+          routeButtons.set(choice, button);
           fragment.append(item);
         }
         routeList.replaceChildren(fragment);
@@ -246,13 +270,40 @@
         retry.hidden = false;
       } finally {
         loading = false;
+        if (queuedSelection) {
+          const selection = queuedSelection;
+          queuedSelection = null;
+          chooseSaved(selection);
+        }
       }
+    }
+
+    function chooseSaved(selection) {
+      if (!selection) return;
+      if (loading) { queuedSelection = selection; return; }
+      const match = matchSavedChoice(routeChoices, selection);
+      if (!match) {
+        status.textContent = 'This saved route is no longer available. Choose a route below or check the operator.';
+        return;
+      }
+      showPlan(match.choice, routeButtons.get(match.choice));
+      if (match.choice.bart) {
+        destination.value = String(match.destination);
+      } else {
+        direction.value = String(match.direction);
+        stop.disabled = false;
+        showStops();
+      }
+      stop.value = String(match.stop);
+      showRideshare();
+      form.requestSubmit(); // Recalculate the route only; no reminder mutation.
     }
 
     direction.addEventListener('change', () => { clearResult(); stop.disabled = false; showStops(); });
     stop.addEventListener('change', clearResult);
     destination.addEventListener('change', () => { clearResult(); showRideshare(); });
     retry.addEventListener('click', loadRoutes);
+    root.addEventListener('getting-home:choose-saved', (event) => chooseSaved(event.detail));
     get('change').addEventListener('click', () => {
       clearResult();
       active = null;
@@ -295,5 +346,5 @@
     loadRoutes();
   }
 
-  return { formattedTime, makeRouteChoices, makeRideshareLinks, mount };
+  return { formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice, mount };
 });

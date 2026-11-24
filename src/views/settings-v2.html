@@ -120,6 +120,13 @@
               <div class="settings-row-copy"><span class="settings-row-label">Signed-in devices</span><span class="settings-row-description">Sign out everywhere, including phones and browsers you no longer use. For account recovery, this also removes phone sign-in; you can verify it again next time.</span></div>
               <div class="settings-row-control"><button class="sg-btn sg-btn-ghost" type="button" id="logout-all-btn">Sign out of all devices</button></div>
             </div>
+            <div id="account-saved-transit" hidden>
+              <div class="settings-row">
+                <div class="settings-row-copy"><span class="settings-row-label">Saved transit route</span><span class="settings-row-description" id="account-saved-transit-help">Clear the route you chose to remember for Getting Home. Any ride text already set is unchanged.</span></div>
+                <div class="settings-row-control"><button class="sg-btn sg-btn-ghost" type="button" id="account-saved-transit-clear" aria-describedby="account-saved-transit-help">Clear saved transit route</button></div>
+              </div>
+            </div>
+            <p class="settings-form-status" id="account-saved-transit-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden></p>
           </section>
 
           <section class="settings-panel" id="settings-messaging" data-settings-section="messaging" aria-labelledby="sms-credits-title" hidden>

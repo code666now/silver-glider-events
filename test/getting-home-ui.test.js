@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formattedTime, makeRouteChoices, makeRideshareLinks } = require('../public/js/getting-home');
+const { formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice } = require('../public/js/getting-home');
 const view = readFileSync(join(__dirname, '../src/views/getting-home.html'), 'utf8');
 
 test('Getting Home groups buses by route/direction across verified boarding stops', () => {
@@ -34,6 +34,17 @@ test('BART combines train lines/platforms at each station and keeps the destinat
   assert.equal(choices[0].icon, 'train');
   assert.deepEqual(choices[0].stations.map(stop => stop.stationId), ['24']);
   assert.deepEqual(choices[0].destinations, destinations);
+  assert.equal(matchSavedChoice(choices, { stationId: '24', destinationStationId: 'deln' }).stop, 0);
+  assert.equal(matchSavedChoice(choices, { stationId: '24', destinationStationId: 'missing' }), null);
+});
+
+test('saved selections only use the exact route, direction and verified stop', () => {
+  const route = { routeId: '33', direction: '0', headsign: 'Richmond' };
+  const choices = makeRouteChoices([{ stopId: 'a', name: 'Mission', walkSeconds: 120, routes: [route, { ...route, direction: '1' }] }]);
+  const result = matchSavedChoice(choices, { ...route, direction: '1', stopId: 'a' });
+  assert.equal(result.direction, 1);
+  assert.equal(result.stop, 0);
+  assert.equal(matchSavedChoice(choices, { ...route, stopId: 'wrong' }), null);
 });
 
 test('departure, leave-by and text preview use the supplied local date even after midnight', () => {
