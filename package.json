@@ -17,6 +17,7 @@
   "dependencies": {
     "cloudinary": "^2.5.1",
     "compression": "^1.8.2",
+    "csv-parse": "^7.0.3",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "ics": "^3.8.1",
@@ -29,6 +30,7 @@
     "resend": "^6.9.4",
     "sharp": "^0.35.5",
     "stripe": "^22.6.2",
-    "twilio": "^6.1.0"
+    "twilio": "^6.1.0",
+    "yauzl": "^3.4.0"
   }
 }
