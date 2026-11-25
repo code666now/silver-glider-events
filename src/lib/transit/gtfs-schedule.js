@@ -50,6 +50,15 @@ function gtfsSeconds(value) {
   return match ? +match[1] * 3600 + +match[2] * 60 + +match[3] : null;
 }
 
+function compactStopTime(row) {
+  return {
+    trip_id: row.trip_id, stop_id: row.stop_id, stop_headsign: row.stop_headsign, stop_sequence: +row.stop_sequence,
+    pickup_type: row.pickup_type, drop_off_type: row.drop_off_type, timepoint: row.timepoint,
+    arrival: gtfsSeconds(row.arrival_time || row.departure_time),
+    departure: gtfsSeconds(row.departure_time || row.arrival_time)
+  };
+}
+
 const indexBy = (rows, key) => new Map(rows.map(row => [row[key], row]));
 function groupBy(rows, key) {
   const result = new Map();
@@ -89,17 +98,19 @@ function nextDepartures(origins, { ridePlanning, start, eventEndsAt, last, lates
 
 function createGtfsSchedule(tables) {
   const agencies = tables.agency ?? [];
+  const feedInfo = tables.feed_info ?? [];
   const agenciesById = indexBy(agencies, 'agency_id');
   const routes = indexBy(tables.routes ?? [], 'route_id');
   const stops = indexBy(tables.stops ?? [], 'stop_id');
   const trips = tables.trips ?? [];
   const calendar = indexBy(tables.calendar ?? [], 'service_id');
   const exceptions = groupBy(tables.calendar_dates ?? [], 'service_id');
-  const stopTimes = groupBy(tables.stop_times ?? [], 'trip_id');
   const frequencies = groupBy(tables.frequencies ?? [], 'trip_id');
   const transfers = groupBy(tables.transfers ?? [], 'from_stop_id');
   const agencyFor = route => agenciesById.get(route?.agency_id) ?? (agencies.length === 1 ? agencies[0] : null);
   const isBart = route => /\bBART\b|Bay Area Rapid Transit/i.test(agencyFor(route)?.agency_name ?? '');
+  const tripsByRoute = groupBy(trips, 'route_id');
+  const bartTrips = trips.filter(trip => isBart(routes.get(trip.route_id)));
 
   const agencyService = new Map();
   for (const trip of trips) {
@@ -128,8 +139,8 @@ function createGtfsSchedule(tables) {
     }
     // A sole feed_info row can assert non-service weekdays/holidays for a
     // single agency; a regional coverage claim doesn't substitute for ours.
-    if (agencies.length === 1 && service.size && tables.feed_info?.length === 1) {
-      const { feed_start_date, feed_end_date } = tables.feed_info[0];
+    if (agencies.length === 1 && service.size && feedInfo.length === 1) {
+      const { feed_start_date, feed_end_date } = feedInfo[0];
       include(civilDate(feed_start_date), civilDate(feed_end_date));
     }
     return startCovered && endCovered;
@@ -154,12 +165,13 @@ function createGtfsSchedule(tables) {
     return id;
   }
 
-  const rowsByTrip = new Map([...stopTimes].map(([id, rows]) => [id, rows.map(row => ({
-    stop_id: row.stop_id, stop_headsign: row.stop_headsign, stop_sequence: row.stop_sequence,
-    pickup_type: row.pickup_type, drop_off_type: row.drop_off_type, timepoint: row.timepoint,
-    arrival: gtfsSeconds(row.arrival_time || row.departure_time),
-    departure: gtfsSeconds(row.departure_time || row.arrival_time)
-  })).sort((a, b) => +a.stop_sequence - +b.stop_sequence)]));
+  const rowsByTrip = new Map();
+  for (const record of tables.stop_times ?? []) {
+    const { trip_id: id } = record;
+    if (!rowsByTrip.has(id)) rowsByTrip.set(id, []);
+    rowsByTrip.get(id).push(Object.hasOwn(record, 'departure') ? record : compactStopTime(record));
+  }
+  for (const rows of rowsByTrip.values()) rows.sort((a, b) => a.stop_sequence - b.stop_sequence);
 
   const choicesByStop = new Map();
   const bartStations = new Map();
@@ -248,16 +260,16 @@ function createGtfsSchedule(tables) {
     return null;
   }
 
-  function departure({ date, stopId, stationId, routeId, direction, headsign, destinationStationId, startTime, endTime, ridePlanning }) {
+  function departure({ date, stopId, stationId, routeId, direction, headsign, destinationStationId, startTime, endTime, ridePlanning, boardingOnly = false }) {
     date = civilDate(date);
     const bartOrigin = stationId ? stationOf(stationId) : null;
     const route = bartOrigin ? [...routes.values()].find(isBart) : routes.get(routeId);
     const agency = agencyFor(route);
     if (!date || !(bartOrigin ? bartStations.has(bartOrigin) : stops.has(stopId)) || !route || !agency?.agency_timezone) return UNAVAILABLE;
     const bart = isBart(route);
-    if (bart && !destinationStationId) return { status: 'destination-required' };
+    if (bart && !boardingOnly && !destinationStationId) return { status: 'destination-required' };
     const destination = bart ? stationOf(destinationStationId) : null;
-    if (bart && (!bartStations.has(destination) || destination === (bartOrigin || stationOf(stopId)))) return { status: 'invalid-destination' };
+    if (bart && !boardingOnly && (!bartStations.has(destination) || destination === (bartOrigin || stationOf(stopId)))) return { status: 'invalid-destination' };
     const zone = agency.agency_timezone;
     const startClock = parseClock(startTime);
     const endClock = parseClock(endTime);
@@ -288,7 +300,7 @@ function createGtfsSchedule(tables) {
     let incomplete = false;
     const prior = addDays(anchor, -1);
     const serviceDays = new Map();
-    for (const trip of trips) {
+    for (const trip of (bart ? bartTrips : tripsByRoute.get(routeId) ?? [])) {
       const tripRoute = routes.get(trip.route_id);
       const matches = bartOrigin ? isBart(tripRoute) : trip.route_id === routeId && (direction === undefined || (trip.direction_id || '') === direction);
       if (!matches && !(bart && agencyFor(tripRoute) === agency && isBart(tripRoute))) continue;
@@ -331,13 +343,18 @@ function createGtfsSchedule(tables) {
             }
             if (departureAt < (bart ? start : Math.min(start, midnight - 90 * MINUTE)) || departureAt > morning) continue;
             const leg = { ...instance, board, departureAt };
-            if (bart) {
+            if (bart && !boardingOnly) {
               const station = stationOf(row.stop_id);
               if (!boards.has(station)) boards.set(station, []);
               boards.get(station).push(leg);
             }
-            if (matches && originRow(row, board) &&
-                rows.slice(board + 1).some(next => dropOff(next) && next.arrival !== null && next.arrival >= row.departure)) origins.push(leg);
+            if (matches && originRow(row, board) && rows.slice(board + 1).some(next => {
+              if (!dropOff(next) || next.arrival === null || next.arrival < row.departure) return false;
+              // Preflight service for a station without asking a guest for a
+              // destination. Actual BART lookups always require one.
+              const nextStation = bart && boardingOnly && stationOf(next.stop_id);
+              return !(bart && boardingOnly) || (nextStation !== bartOrigin && bartStations.has(nextStation) && actual(instance, next, 'arrival') <= morning);
+            })) origins.push(leg);
           }
         }
       }
@@ -360,8 +377,8 @@ function createGtfsSchedule(tables) {
 
     for (const origin of origins) {
       if (origin.departureAt < start || origin.departureAt >= cutoff) continue;
-      const itinerary = bart ? bartConnection(origin, destination, boards, morning) : undefined;
-      if (bart && !itinerary) continue;
+      const itinerary = bart && !boardingOnly ? bartConnection(origin, destination, boards, morning) : undefined;
+      if (bart && !boardingOnly && !itinerary) continue;
       const upcoming = !bart && nextDepartures(origins, { ridePlanning, start, eventEndsAt, last: origin.departureAt });
       return {
         status: 'scheduled', departureAt: origin.departureAt, timezone: zone,
@@ -383,4 +400,4 @@ function createGtfsSchedule(tables) {
   };
 }
 
-module.exports = { createGtfsSchedule, scheduleNightEnd };
+module.exports = { createGtfsSchedule, scheduleNightEnd, compactStopTime };

@@ -28,7 +28,8 @@ const { queueSmsBatch } = require('../jobs/sms-notifications');
 const { HOST_ACCOUNT_INACTIVE, outboundDeliveryLockKey, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
-const { gettingHomeEligible } = require('../lib/transit/getting-home');
+const { gettingHomeEligible, sfGettingHomeEligible } = require('../lib/transit/getting-home');
+const { createSfCoverageStore } = require('../lib/transit/sf-coverage-store');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
 const { invitationSelectionKey } = require('../lib/invitation-selection-key');
 const {
@@ -137,6 +138,8 @@ router.get('/api/events/going', async (req, res, next) => {
               e.venue_address AS transit_venue_address,
               e.secret_show_enabled AS transit_secret_show,
               e.hide_address_until_rsvp AS transit_hide_address,
+              e.venue_latitude AS transit_latitude, e.venue_longitude AS transit_longitude,
+              e.google_place_id AS transit_place_id, e.archived_at AS transit_archived_at,
               e.presentation_mode, e.flyer_image_url, e.cover_image_url,
               o.org_name AS host_name, o.name AS host_person_name,
               mine.joined_at AS rsvp_created_at, mine.playing
@@ -147,12 +150,18 @@ router.get('/api/events/going', async (req, res, next) => {
       [req.organizer.id, req.organizer.user_id]
     );
     rows.sort((a, b) => String(b.event_date).localeCompare(String(a.event_date)) || Number(b.id) - Number(a.id));
-    res.json({ events: rows.map(({ transit_venue_address, transit_secret_show, transit_hide_address, ...event }) => ({
+    const plans = rows.map(({ transit_venue_address, transit_secret_show, transit_hide_address,
+      transit_latitude, transit_longitude, transit_place_id, transit_archived_at, ...event }) => ({
+      event,
+      candidate: { ...event, venue_address: transit_venue_address, secret_show_enabled: transit_secret_show,
+        hide_address_until_rsvp: transit_hide_address, venue_latitude: transit_latitude, venue_longitude: transit_longitude,
+        google_place_id: transit_place_id, archived_at: transit_archived_at }
+    }));
+    const city = plans.filter(({ event, candidate }) => !event.playing && sfGettingHomeEligible(candidate)).map(({ candidate }) => candidate);
+    const ready = city.length ? await createSfCoverageStore({ db: pool }).readyEvents(city) : new Set();
+    res.json({ events: plans.map(({ event, candidate }) => ({
       ...event,
-      ...(!event.playing && gettingHomeEligible({
-        ...event, venue_address: transit_venue_address, secret_show_enabled: transit_secret_show,
-        hide_address_until_rsvp: transit_hide_address
-      }) && { getting_home: true })
+      ...(!event.playing && (gettingHomeEligible(candidate) || ready.has(String(event.id))) && { getting_home: true })
     })) });
   } catch (err) { next(err); }
 });

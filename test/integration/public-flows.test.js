@@ -78,6 +78,7 @@ const flyerIntakeRoutes = require('../../src/routes/flyer-intake');
 const uploadRoutes = require('../../src/routes/uploads');
 const postEventRoutes = require('../../src/routes/post-event');
 const { outboundDeliveryLockKey } = require('../../src/lib/outbound-account-status');
+const { sfCoverageInput } = require('../../src/lib/transit/sf-coverage-store');
 
 let server;
 let baseUrl;
@@ -4508,6 +4509,44 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
     [secondEvent.id]
   );
   assert.equal(unverifiedRsvp.rows[0].account_id, null);
+});
+
+test('Going dashboard uses a ready SF venue cache but never returns the prep metadata', async t => {
+  const flags = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-only' };
+  const current = Object.fromEntries(Object.keys(flags).map(key => [key, process.env[key]]));
+  t.after(() => {
+    for (const [key, value] of Object.entries(current)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  Object.assign(process.env, flags);
+  const guest = (await pool.query(`INSERT INTO organizers (email,name) VALUES ('city-going@example.test','City Guest') RETURNING id`)).rows[0];
+  await acceptedAccountFixture(guest.id);
+  const city = await createEvent({ slug: 'city-going-night', venue_name: 'City Fixture', venue_address: '801 Market St, San Francisco, CA 94103',
+    venue_city: 'San Francisco', venue_state: 'CA', venue_latitude: 37.784, venue_longitude: -122.407,
+    google_place_id: 'fixture-only-place-id', timezone: 'America/Los_Angeles' });
+  await createRsvp(city.id, { email: 'city-going@example.test', account_id: guest.id });
+  const { venue, version } = sfCoverageInput(city);
+  const getPlan = async () => {
+    const response = await fetch(`${baseUrl}/api/events/going`, { headers: { cookie: `sge_session=${signSession(guest.id)}` } });
+    assert.equal(response.status, 200);
+    const plan = (await response.json()).events.find(row => row.id === city.id);
+    assert.ok(plan);
+    assert.equal(Object.keys(plan).some(key => /transit_|venue_address|latitude|longitude|place_id|walks/.test(key)), false);
+    assert.doesNotMatch(JSON.stringify(plan), /fixture-only-place-id|801 Market St/);
+    return plan;
+  };
+  assert.equal((await getPlan()).getting_home, undefined);
+  await pool.query(`INSERT INTO transit_sf_venue_coverage(venue_key,walks,expires_at) VALUES ($1,$2::jsonb,NOW()+interval '1 hour')`,
+    [venue.key, JSON.stringify([{ stopId: 'SF:fixture', lat: 37.784, lon: -122.407, walkSeconds: 215 }])]);
+  await pool.query(`INSERT INTO transit_sf_event_coverage(event_id,venue_key,input_version,retry_at,ready_until)
+      VALUES ($1,$2,$3,NOW()+interval '15 minutes',NOW()+interval '30 minutes')`, [city.id, venue.key, version]);
+  assert.equal((await getPlan()).getting_home, true);
+  await pool.query(`UPDATE events SET venue_address='802 Market St, San Francisco, CA 94103' WHERE id=$1`, [city.id]);
+  assert.equal((await getPlan()).getting_home, undefined);
+  await pool.query(`UPDATE events SET venue_address=$2,visibility='private' WHERE id=$1`, [city.id, city.venue_address]);
+  assert.equal((await getPlan()).getting_home, undefined);
 });
 
 test('signed-in guests see RSVP events in Going and can edit only their own public avatar', async () => {

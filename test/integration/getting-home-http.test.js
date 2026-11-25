@@ -44,6 +44,8 @@ async function fixture(t) {
   const metricsCalls = [];
   const savedCalls = [];
   const writes = [];
+  let cityReady = false;
+  let coverageReads = 0;
   let current = START;
   const now = () => current;
   let pending = null;
@@ -92,7 +94,7 @@ async function fixture(t) {
     }
   };
   const home = {
-    async getOptions() { return { status: 'available', venue: 'Make-Out Room', stops: [] }; },
+    async getOptions(event) { return { status: 'available', venue: event.venue_name, stops: event.sfWalks || [] }; },
     async getDeparture(_event, selection, options) {
       assert.deepEqual(selection, choice);
       return options?.includeUpcoming ? { ...verifiedPlan, upcoming } : verifiedPlan;
@@ -113,7 +115,11 @@ async function fixture(t) {
     req.sessionAccount = req.get('x-fixture-session') === 'owner' ? { id: 3, user_id: 3 } : null;
     next();
   });
-  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics }));
+  const sfCoverage = { async getReadyWalks() {
+    coverageReads++;
+    return cityReady ? [{ stopId: 'S', walkSeconds: 240 }] : null;
+  } };
+  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics, sfCoverage }));
   let unexpected;
   app.use((error, _req, res, _next) => { unexpected = error; res.status(500).json({ error: 'fixture-error' }); });
   const server = await new Promise((resolve, reject) => {
@@ -130,6 +136,8 @@ async function fixture(t) {
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
     events, rsvps, metricsCalls, savedCalls, writes, env, entry,
+    setCityReady(value) { cityReady = value; },
+    coverageReads() { return coverageReads; },
     advance(ms) { current += ms; },
     link() { return rideEmailEntryPath({ event: events.get(scenario.id), rsvp: rsvps.get(guest.id), env, now, entry }); },
     previewLink() { return createRidePreview({ env, now }).issueLink('2026-11-27'); },
@@ -144,6 +152,37 @@ const denied = response => {
   assert.match(response.headers.get('cache-control') || '', /no-store/);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
 };
+
+test('SF planner is for confirmed guests with ready public Places coverage; analytics do not enable messages', async t => {
+  const f = await fixture(t);
+  const venue = f.events.get(scenario.id);
+  Object.assign(venue, { venue_name: 'City fixture', venue_address: '801 Market St, San Francisco, CA 94103, USA',
+    venue_city: 'San Francisco', venue_state: 'CA', venue_latitude: 37.784, venue_longitude: -122.407, google_place_id: 'fixture-place' });
+  Object.assign(f.env, { TRANSIT_DISTRIBUTION_ENABLED: 'false', TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-key' });
+  const headers = { 'x-fixture-session': 'owner' };
+  denied(await f.fetch(`${api}/options`));
+  assert.equal(f.coverageReads(), 0);
+  denied(await f.fetch(`${api}/options`, { headers }));
+  assert.equal(f.coverageReads(), 1);
+  f.setCityReady(true);
+  assert.equal((await f.fetch(page, { headers })).status, 200);
+  assert.deepEqual(await (await f.fetch(`${api}/options`, { headers })).json(), { status: 'available', venue: 'City fixture', stops: [{ stopId: 'S', walkSeconds: 240 }] });
+  const response = await f.fetch(`${api}/departure`, json('POST', choice, headers));
+  assert.equal(response.status, 200);
+  assert.deepEqual(f.metricsCalls.map(record => record.kind), ['page_open', 'route_selected']);
+  assert.equal((await (await f.fetch(`${api}/reminder`, { headers })).json()).status, 'unavailable');
+  assert.equal((await (await f.fetch(`${api}/saved-route`, { headers })).json()).status, 'not-eligible');
+  assert.equal(f.link(), null);
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.savedCalls, []);
+  for (const override of [{ visibility: 'private' }, { hide_address_until_rsvp: true }, { secret_show_enabled: true }, { google_place_id: null }]) {
+    f.events.set(scenario.id, { ...venue, ...override });
+    denied(await f.fetch(`${api}/options`, { headers }));
+  }
+  f.events.set(scenario.id, venue);
+  f.rsvps.get(guest.id).status = 'declined';
+  denied(await f.fetch(`${api}/options`, { headers }));
+});
 
 async function redeem(f) {
   const url = f.link();

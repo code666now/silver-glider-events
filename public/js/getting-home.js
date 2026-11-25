@@ -294,6 +294,7 @@
           return;
         }
         if (!response.ok || !['available', 'empty'].includes(data.status)) throw new Error('Schedule unavailable');
+        get('walking-source').hidden = !data.walkingAttribution;
         routeChoices = makeRouteChoices(data.stops);
         get('venue').textContent = data.venue ? `From ${data.venue}` : '';
         get('venue').hidden = !data.venue;

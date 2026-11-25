@@ -19,39 +19,21 @@ function eventDate(value) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
-function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectStopTime: selectPilotStopTimes }) } = {}) {
-  let memo;
-  async function load() {
-    const snapshot = await source.getSchedule();
-    if (memo?.snapshot !== snapshot) {
-      const schedule = createGtfsSchedule(snapshot.tables);
-      const stops = Object.values(discoverPilotStops(snapshot.tables)).flat().map(stop => ({
-        ...stop,
-        routes: schedule.choices(stop.stopId).filter(route => !stop.agencyId || stop.agencyId === route.agencyId)
-      })).filter(stop => stop.routes.length);
-      memo = { snapshot, schedule, stops };
-    }
-    return memo;
-  }
-
-  function eligible(event) {
-    return isMakeOutRoomEvent(event) && (!event.timezone || event.timezone === 'America/Los_Angeles');
-  }
-
+// Pilot and citywide adapters provide verified stops; both use the same
+// schedule, selection validation and departure response shape.
+function createVenueTransit({ load, eligible, venueName }) {
   return {
     async getOptions(event) {
       if (!eligible(event)) return { status: 'unsupported-event' };
       try {
-        const { snapshot, schedule, stops } = await load();
+        const { snapshot, schedule, stops } = await load(event);
         if (!stops.length) return { status: 'schedule-unavailable' };
         return {
-          status: 'available', venue: PILOT.name, fetchedAt: snapshot.fetchedAt, attribution: GTFS_511_ATTRIBUTION,
+          status: 'available', venue: venueName(event), fetchedAt: snapshot.fetchedAt, attribution: GTFS_511_ATTRIBUTION,
           stops: stops.filter(stop => stop.walkSeconds !== null).map(stop => ({
             ...stop,
-            ...(stop.routes.some(route => route.requiresDestination) && { destinations: schedule.destinations(stop.stopId) })
+            ...(stop.routes.some(route => route.requiresDestination) && { destinations: schedule.destinations(stop.stationId || stop.stopId) })
           })),
-          // Retained for coverage review. Aerial distance alone doesn't make
-          // these walkable choices, and they cannot produce a pilot departure.
           unverifiedStops: stops.filter(stop => stop.walkSeconds === null)
         };
       } catch {
@@ -62,7 +44,7 @@ function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectSto
       if (!eligible(event)) return { status: 'unsupported-event' };
       if (!event.start_time) return { status: 'schedule-unavailable' };
       try {
-        const { snapshot, schedule, stops } = await load();
+        const { snapshot, schedule, stops } = await load(event);
         const stop = stops.find(stop => stop.walkSeconds !== null && (stationId
           ? stop.stationId === stationId && stop.routes.some(route => route.requiresDestination)
           : stop.stopId === stopId && stop.routes.some(route => route.routeId === routeId && route.direction === direction && route.headsign === headsign)));
@@ -82,4 +64,26 @@ function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectSto
   };
 }
 
-module.exports = { createMakeOutRoomTransit, selectPilotStopTimes, eventDate };
+function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectStopTime: selectPilotStopTimes }) } = {}) {
+  let memo;
+  async function load() {
+    const snapshot = await source.getSchedule();
+    if (memo?.snapshot !== snapshot) {
+      const schedule = createGtfsSchedule(snapshot.tables);
+      const stops = Object.values(discoverPilotStops(snapshot.tables)).flat().map(stop => ({
+        ...stop,
+        routes: schedule.choices(stop.stopId).filter(route => !stop.agencyId || stop.agencyId === route.agencyId)
+      })).filter(stop => stop.routes.length);
+      memo = { snapshot, schedule, stops };
+    }
+    return memo;
+  }
+
+  function eligible(event) {
+    return isMakeOutRoomEvent(event) && (!event.timezone || event.timezone === 'America/Los_Angeles');
+  }
+
+  return createVenueTransit({ load, eligible, venueName: () => PILOT.name });
+}
+
+module.exports = { createMakeOutRoomTransit, createVenueTransit, selectPilotStopTimes, eventDate };

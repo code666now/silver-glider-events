@@ -11,7 +11,8 @@ const { createRateLimiter, clientIp } = require('../lib/rate-limit');
 const { sendHtmlFile } = require('../lib/static-assets');
 const { render404 } = require('../lib/public-html');
 const { sameOriginMutation } = require('../middleware/requireOrganizer');
-const { createGettingHome, gettingHomeEnabled, gettingHomeEligible, readTransitSelection } = require('../lib/transit/getting-home');
+const { createGettingHome, gettingHomeEnabled, gettingHomeEligible, sfGettingHomeEligible, readTransitSelection } = require('../lib/transit/getting-home');
+const { createSfCoverageStore } = require('../lib/transit/sf-coverage-store');
 const { RideReminderError, RIDE_SMS_CONSENT } = require('../lib/transit/ride-reminders');
 const { rideReminders } = require('../jobs/transit-ride-reminders');
 const { createSavedRouteService } = require('../lib/transit/saved-route');
@@ -31,14 +32,15 @@ function protectResponse(res) {
   res.set('X-Robots-Tag', 'noindex, nofollow');
 }
 
-async function loadEligibleGettingHomeEvent(db, slug, { env, now }) {
+async function loadEligibleGettingHomeEvent(db, slug, { env, now, allowSf = false }) {
   if (!gettingHomeEnabled(env) || typeof slug !== 'string' || !/^[a-z0-9-]{1,120}$/i.test(slug)) return null;
   const { rows: [event] } = await db.query(
     `SELECT id, slug, status, visibility, venue_name, venue_address, venue_city, venue_state,
             secret_show_enabled, hide_address_until_rsvp, timezone, start_time, end_time, event_date,
+            google_place_id, venue_latitude, venue_longitude, archived_at,
             ${eventEndAtSql('e')} AS ends_at
        FROM events e WHERE e.slug=$1 AND e.status='published' AND e.visibility='public'`, [slug]);
-  return gettingHomeEligible(event, env, now()) ? event : null;
+  return gettingHomeEligible(event, env, now()) || (allowSf && sfGettingHomeEligible(event, env, now())) ? event : null;
 }
 
 async function confirmedEmailRsvp(db, eventId, rsvpId) {
@@ -48,9 +50,11 @@ async function confirmedEmailRsvp(db, eventId, rsvpId) {
   return rsvp ?? null;
 }
 
-async function accessForGettingHome(db, req, { env, now, rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }) }) {
-  const event = await loadEligibleGettingHomeEvent(db, req.params.slug, { env, now });
+async function accessForGettingHome(db, req, { env, now, rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }),
+  sfCoverage = createSfCoverageStore({ db, now }) }) {
+  const event = await loadEligibleGettingHomeEvent(db, req.params.slug, { env, now, allowSf: true });
   if (!event) return null;
+  const city = !gettingHomeEligible(event, env, now());
   const accountId = positiveId(req.sessionAccount?.id);
   const userId = positiveId(req.sessionAccount?.user_id);
   // A stale attendee cookie must not switch a signed-in browser to another
@@ -64,9 +68,15 @@ async function accessForGettingHome(db, req, { env, now, rideEntry = createRideE
         ($3::int IS NOT NULL AND user_id IS NULL AND account_id=$3) OR
         ($4::text <> '' AND manage_token=$4))
       ORDER BY id DESC LIMIT 1`, [event.id, userId, accountId, token]);
-    if (rsvp) return { event, rsvp, signedInUserId: userId };
+    if (rsvp) {
+      if (city) {
+        const sfWalks = await sfCoverage.getReadyWalks(event);
+        return sfWalks?.length ? { event: { ...event, sfWalks }, rsvp, signedInUserId: userId, city } : null;
+      }
+      return { event, rsvp, signedInUserId: userId };
+    }
   }
-  if (env.TRANSIT_DISTRIBUTION_ENABLED !== 'true') return null;
+  if (city || env.TRANSIT_DISTRIBUTION_ENABLED !== 'true') return null;
   const grant = rideEntry.verifyCookie(readCookie(req, rideEntryCookieName(event.id)), { eventId: event.id });
   if (!grant) return null;
   const rsvp = await confirmedEmailRsvp(db, event.id, grant.rsvpId);
@@ -89,11 +99,12 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   saved = createSavedRouteService({ db, transit: home, now }),
   rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }),
   ridePreview = createRidePreview({ env, now }),
-  metrics = createRideMetrics({ db, secret: env.SESSION_SECRET, now }) } = {}) {
+  metrics = createRideMetrics({ db, secret: env.SESSION_SECRET, now }), sfCoverage = createSfCoverageStore({ db, now }) } = {}) {
   const router = express.Router();
   const metricsEnabled = () => env.TRANSIT_DISTRIBUTION_ENABLED === 'true';
-  async function record(kind, { event, rsvp, signedInUserId }) {
-    if (rsvp && metricsEnabled()) await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
+  async function record(kind, { event, rsvp, signedInUserId, city }) {
+    const plannerMetric = kind === 'page_open' || kind === 'route_selected';
+    if (rsvp && (city ? plannerMetric : metricsEnabled())) await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
   }
   const limiter = createRateLimiter({ windowMs: 60_000, rules: [
     { name: 'network', max: 80, key: ctx => ctx.network },
@@ -108,7 +119,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
       const previewEvent = req.params.slug === PREVIEW_SLUG ? ridePreview.verifyCookie(readCookie(req, PREVIEW_COOKIE)) : null;
       const ctx = req.params.slug === PREVIEW_SLUG
         ? (previewEvent && { event: previewEvent, preview: true, readOnlyGrant: true })
-        : await accessForGettingHome(db, req, { env, now, rideEntry });
+        : await accessForGettingHome(db, req, { env, now, rideEntry, sfCoverage });
       if (!ctx) return api ? res.status(404).json({ status: 'unavailable' }) : res.status(404).send(render404());
       if (api) {
         const network = crypto.createHmac('sha256', networkKey).update(clientIp(req)).digest('hex');
@@ -158,7 +169,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   router.get(PAGE, gate(false), async (req, res) => {
     const ctx = req.gettingHome;
     if (req.method === 'GET') await record('page_open', ctx);
-    if (req.method === 'GET' && metricsEnabled() && req.query.from === 'text' && !ctx.readOnlyGrant) {
+    if (req.method === 'GET' && metricsEnabled() && req.query.from === 'text' && !ctx.readOnlyGrant && !ctx.city) {
       try {
         const { rowCount } = await db.query(`SELECT 1 FROM transit_ride_reminders
           WHERE event_id=$1 AND rsvp_id=$2 AND status='sent' AND sent_at IS NOT NULL`, [ctx.event.id, ctx.rsvp.id]);
@@ -180,7 +191,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   });
 
   const reminderAction = action => async (req, res) => {
-    if (req.gettingHome.preview || env.TRANSIT_RIDE_REMINDERS_ENABLED !== 'true') return res.json({ status: 'unavailable' });
+    if (req.gettingHome.preview || req.gettingHome.city || env.TRANSIT_RIDE_REMINDERS_ENABLED !== 'true') return res.json({ status: 'unavailable' });
     try {
       const userId = await verifiedRideUser(db, req);
       if (!userId) return res.json({ status: 'identity-required' });
@@ -203,6 +214,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   router.delete(`${API}/reminder`, jsonMutation, gate(true), reminderAction('cancel'));
 
   const preferenceAction = action => async (req, res) => {
+    if (req.gettingHome.city) return res.json({ status: 'not-eligible' });
     const userId = await verifiedRideUser(db, req, { accountWide: true });
     if (!userId) return res.json({ status: 'not-eligible' });
     const event = req.gettingHome.event;

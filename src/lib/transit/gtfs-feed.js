@@ -43,6 +43,7 @@ const TABLES = new Map(Object.entries({
   calendar_dates: schema('service_id date exception_type'),
   feed_info: schema('feed_publisher_name', 'feed_start_date feed_end_date feed_version'),
   transfers: schema('transfer_type', 'from_stop_id to_stop_id from_route_id to_route_id from_trip_id to_trip_id min_transfer_time'),
+  pathways: schema('from_stop_id to_stop_id is_bidirectional pathway_mode'),
   frequencies: schema('trip_id start_time end_time headway_secs', 'exact_times'),
   directions: schema('route_id direction_id direction'),
   route_attributes: schema('route_id', 'category subcategory running_way'),
@@ -178,7 +179,7 @@ async function forEachRecord(zip, entry, fields, visit) {
   });
 }
 
-async function parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selectStopTime }) {
+async function parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selectStopTime, selectTripIds, formatStopTime }) {
   const zip = await yauzl.openPromise(path, { autoClose: false, strictFileNames: true, validateEntrySizes: true });
   try {
     if (zip.entryCount > MAX_ZIP_ENTRIES) throw new Error('Too many archive entries');
@@ -187,6 +188,7 @@ async function parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selec
     for await (const entry of zip.eachEntry()) {
       const name = entry.fileName.endsWith('.txt') && entry.fileName.slice(0, -4);
       if (!TABLES.has(name)) continue;
+      if (name === 'pathways' && !selectTripIds) continue;
       uncompressedBytes += entry.uncompressedSize;
       if (entries.has(name) || uncompressedBytes > maxUncompressedBytes) throw new Error('Invalid archive size or file set');
       entries.set(name, entry);
@@ -201,7 +203,9 @@ async function parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selec
       if (!entries.has(name)) continue;
       const entry = entries.get(name);
       let selectedTrips;
-      if (name === 'stop_times' && selectStopTime) {
+      if (name === 'stop_times' && selectTripIds) {
+        selectedTrips = selectTripIds(tables);
+      } else if (name === 'stop_times' && selectStopTime) {
         const select = selectStopTime(tables);
         if (typeof select !== 'function') throw new Error('Missing stop time selector');
         selectedTrips = new Set();
@@ -218,7 +222,7 @@ async function parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selec
         rowCount++;
         if (selectedTrips && !selectedTrips.has(row.trip_id)) return;
         if (++retainedRows > maxRetainedRows) throw new Error('Schedule row limit exceeded');
-        rows.push(row);
+        rows.push(name === 'stop_times' && formatStopTime ? formatStopTime(row) : row);
       });
       if (!rowCount && REQUIRED_TABLES.includes(name)) throw new Error('Empty GTFS schedule table');
       tables[name] = rows;
@@ -260,7 +264,10 @@ function create511ScheduleSource({
   maxArchiveBytes = 192 * MIB,
   maxUncompressedBytes = 768 * MIB,
   maxRetainedRows = 800_000,
-  selectStopTime
+  selectStopTime,
+  selectTripIds,
+  formatStopTime,
+  compileSnapshot
 } = {}) {
   const key = typeof apiKey === 'string' ? apiKey.trim() : '';
   let cached;
@@ -274,11 +281,11 @@ function create511ScheduleSource({
       const path = join(directory, 'feed.zip');
       try {
         await downloadArchive({ path, apiKey: key, fetchImpl, timeoutMs, maxArchiveBytes });
-        const tables = await parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selectStopTime });
+        const tables = await parseArchive(path, { maxUncompressedBytes, maxRetainedRows, selectStopTime, selectTripIds, formatStopTime });
         const fetchedAt = now();
         const validThrough = scheduleEnd(tables);
         if (validThrough < pacificDate(fetchedAt)) throw new Error('No current GTFS coverage');
-        return { schedule: { tables, fetchedAt }, validThrough };
+        return { schedule: { ...(compileSnapshot ? compileSnapshot(tables) : { tables }), fetchedAt }, validThrough };
       } finally {
         await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
         await rmdir(directory);

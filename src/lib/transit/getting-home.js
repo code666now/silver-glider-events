@@ -3,6 +3,8 @@
 const { isMakeOutRoomEvent, PILOT } = require('./make-out-room');
 const { createMakeOutRoomTransit, eventDate } = require('./index');
 const { scheduleNightEnd } = require('./gtfs-schedule');
+const { sfTransit, sfTransitEnabled } = require('./sf-transit');
+const { sfCoverageInput } = require('./sf-coverage-store');
 
 const MINUTE = 60_000;
 const RIDE_BUFFER_MINUTES = 5;
@@ -13,7 +15,15 @@ function gettingHomeEnabled(env = process.env) {
 }
 
 function gettingHomeEligible(event, env = process.env, now = Date.now()) {
-  if (!gettingHomeEnabled(env) || !isMakeOutRoomEvent(event) || event.timezone !== PILOT.timezone || !event.ends_at) return false;
+  return gettingHomeEnabled(env) && isMakeOutRoomEvent(event) && planningWindowOpen(event, now);
+}
+
+function sfGettingHomeEligible(event, env = process.env, now = Date.now()) {
+  return sfTransitEnabled(env) && Boolean(sfCoverageInput(event)) && planningWindowOpen(event, now);
+}
+
+function planningWindowOpen(event, now) {
+  if (event.timezone !== PILOT.timezone || !event.ends_at) return false;
   const ends = new Date(event.ends_at).getTime();
   const nightEnd = scheduleNightEnd(eventDate(event.event_date), event.start_time, event.timezone);
   // The relevant trip can be hours after the show, so keep an authorized
@@ -38,23 +48,31 @@ function readTransitSelection(input) {
   return { stopId, routeId, direction, headsign };
 }
 
-function createGettingHome({ transit = createMakeOutRoomTransit(), now = Date.now, env = process.env } = {}) {
+function createGettingHome({ transit = createMakeOutRoomTransit(), cityTransit = sfTransit, now = Date.now, env = process.env } = {}) {
+  function adapter(event) {
+    if (gettingHomeEligible(event, env, now())) return transit;
+    if (event?.sfWalks?.length && sfGettingHomeEligible(event, env, now())) return cityTransit;
+    return null;
+  }
   return {
     async getOptions(event) {
-      if (!gettingHomeEligible(event, env, now())) return { status: 'unsupported-event' };
-      const result = await transit.getOptions(event);
+      const selected = adapter(event);
+      if (!selected) return { status: 'unsupported-event' };
+      const result = await selected.getOptions(event);
       if (result.status !== 'available') return { status: result.status };
       return {
-        status: 'available', venue: PILOT.name, stops: result.stops, attribution: result.attribution,
+        status: 'available', venue: result.venue || PILOT.name, stops: result.stops, attribution: result.attribution,
+        ...(result.walkingAttribution && { walkingAttribution: result.walkingAttribution }),
         directionsUrl: `/e/${encodeURIComponent(event.slug)}#event-location-map`
       };
     },
     async getDeparture(event, form, { includeUpcoming = false } = {}) {
-      if (!gettingHomeEligible(event, env, now())) return { status: 'unsupported-event' };
+      const selected = adapter(event);
+      if (!selected) return { status: 'unsupported-event' };
       const selection = readTransitSelection(form);
       if (!selection) return { status: 'unsupported-selection' };
       const safetyBufferMinutes = RIDE_BUFFER_MINUTES;
-      const plan = await transit.getDeparture(event, selection, includeUpcoming ? { now, safetyBufferMinutes } : undefined);
+      const plan = await selected.getDeparture(event, selection, includeUpcoming ? { now, safetyBufferMinutes } : undefined);
       const { status, attribution, stopName, walkSeconds, timezone, timing, departureAt, fetchedAt, departsBeforeEventEnds } = plan;
       const upcoming = includeUpcoming && plan.upcoming;
       if (status !== 'scheduled') return { status, attribution, stopName, walkSeconds, timezone, ...(status === 'overnight' && upcoming && { upcoming }) };
@@ -65,7 +83,7 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), now = Date.no
       const proposed = leaveByAt - RIDE_NOTICE_MINUTES * MINUTE;
       return {
         status, timing, timezone, attribution, stopName, walkSeconds, safetyBufferMinutes, departureAt, leaveByAt,
-        proposedReminderAt: timing === 'scheduled' && proposed > checkedAt ? proposed : null,
+        proposedReminderAt: selected === transit && timing === 'scheduled' && proposed > checkedAt ? proposed : null,
         departsBeforeEventEnds, fetchedAt,
         ...(upcoming && { upcoming }),
         ...(includeUpcoming && { leaveByPassed: leaveByAt < checkedAt })
@@ -74,4 +92,4 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), now = Date.no
   };
 }
 
-module.exports = { gettingHomeEligible, gettingHomeEnabled, readTransitSelection, createGettingHome, RIDE_NOTICE_MINUTES };
+module.exports = { gettingHomeEligible, sfGettingHomeEligible, gettingHomeEnabled, readTransitSelection, createGettingHome, RIDE_NOTICE_MINUTES };

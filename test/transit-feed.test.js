@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const { deflateRawSync } = require('node:zlib');
 const { create511ScheduleSource, GTFS_511_ATTRIBUTION } = require('../src/lib/transit/gtfs-feed');
+const { compactStopTime } = require('../src/lib/transit/gtfs-schedule');
 
 const NOW = Date.parse('2026-11-25T07:59:00Z'); // 23:59 Nov 24 in San Francisco
 const FAKE_KEY = 'fixture-key-that-must-not-be-in-errors';
@@ -98,6 +99,21 @@ test('511 feed caches and coalesces loads; a matched stop retains the entire tri
   ]);
   assert.equal('ignored' in first.tables.stop_times[0], false);
   assert.deepEqual(GTFS_511_ATTRIBUTION, { label: 'data provided by 511.org', url: 'https://www.511.org/' });
+});
+
+test('city loader selects whole trips, reads pathways and publishes only the compiled snapshot', async () => {
+  const route = source({
+    fetchImpl: async () => new Response(zipFixture({ ...files,
+      'pathways.txt': 'pathway_id,from_stop_id,to_stop_id,is_bidirectional,pathway_mode\np,entrance,platform,0,1' })),
+    selectTripIds: tables => {
+      assert.equal(tables.pathways[0].from_stop_id, 'entrance');
+      return new Set(['t']);
+    },
+    formatStopTime: compactStopTime,
+    compileSnapshot: tables => ({ trips: tables.stop_times.map(row => [row.trip_id, row.stop_id, row.departure]) })
+  });
+  const snapshot = await route.getSchedule();
+  assert.deepEqual(snapshot, { trips: [['t', '22', 86460], ['t', 'elsewhere', 87600]], fetchedAt: NOW });
 });
 
 test('failed refresh never returns the old cache and throttles retries', async () => {

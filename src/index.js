@@ -329,6 +329,10 @@ async function start() {
   require('./jobs/flyer-publication-notifications').startFlyerPublicationNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
   require('./jobs/transit-ride-reminders').startTransitRideReminderCron();
+  const { sfTransit } = require('./lib/transit/sf-transit');
+  require('./jobs/sf-transit-coverage').createSfCoverageWorker({
+    db: pool, prepareVenue: sfTransit.prepareVenue, checkEvent: sfTransit.checkEvent
+  }).startCron();
   require('./jobs/managed-media-deletions').startManagedMediaDeletionCron();
   return server;
 }
