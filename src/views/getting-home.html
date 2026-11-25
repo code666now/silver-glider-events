@@ -96,7 +96,7 @@
           <label for="gh-destination">Destination station</label>
           <select id="gh-destination"></select>
         </div>
-        <button class="gh-primary" id="gh-check" type="submit">Check last departure</button>
+        <button class="gh-primary" id="gh-check" type="submit">Check departures</button>
       </form>
 
       <div class="gh-result-status" id="gh-result-status" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -105,7 +105,7 @@
         <dl>
           <div class="gh-timing gh-timing-main">
             <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-clock"></use></svg>
-            <div><dt id="gh-departure-label">Last scheduled departure</dt><dd id="gh-departure-time"></dd><span id="gh-boarding-stop" class="gh-timing-note"></span></div>
+            <div><dt id="gh-departure-label">Last scheduled departure</dt><dd id="gh-departure-time"></dd><span id="gh-boarding-stop" class="gh-timing-note"></span><span id="gh-last-next" class="gh-timing-note" hidden></span></div>
           </div>
           <div class="gh-timing" id="gh-leave-row" hidden>
             <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-walk"></use></svg>
@@ -117,6 +117,7 @@
           </div>
         </dl>
         <p class="gh-note" id="gh-show-warning" hidden>This departure may mean leaving before the show ends.</p>
+        <p class="gh-note" id="gh-leave-passed" hidden>It may be too late to reach this departure from the venue. Check the operator before leaving.</p>
         <div id="gh-trip-actions"></div>
         <section class="gh-reminder" id="gh-reminder-offer" aria-labelledby="gh-reminder-offer-title" hidden>
           <h3 id="gh-reminder-offer-title">One optional ride text</h3>
@@ -131,6 +132,11 @@
             <button class="gh-primary" type="submit" id="gh-reminder-submit">Set ride reminder</button>
           </form>
         </section>
+      </section>
+      <section class="gh-upcoming" id="gh-upcoming" aria-labelledby="gh-upcoming-title" hidden>
+        <h3 id="gh-upcoming-title"></h3>
+        <p class="gh-note" id="gh-upcoming-note"></p>
+        <ul id="gh-upcoming-times" role="list" hidden></ul>
       </section>
     </section>
 

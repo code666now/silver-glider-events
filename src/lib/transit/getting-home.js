@@ -49,22 +49,26 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), now = Date.no
         directionsUrl: `/e/${encodeURIComponent(event.slug)}#event-location-map`
       };
     },
-    async getDeparture(event, form) {
+    async getDeparture(event, form, { includeUpcoming = false } = {}) {
       if (!gettingHomeEligible(event, env, now())) return { status: 'unsupported-event' };
       const selection = readTransitSelection(form);
       if (!selection) return { status: 'unsupported-selection' };
-      const plan = await transit.getDeparture(event, selection);
-      const { status, attribution, stopName, walkSeconds, timezone, timing, departureAt, fetchedAt, departsBeforeEventEnds } = plan;
-      if (status !== 'scheduled') return { status, attribution, stopName, walkSeconds, timezone };
-      if (!Number.isSafeInteger(departureAt) || !Number.isSafeInteger(walkSeconds) || walkSeconds <= 0) return { status: 'schedule-unavailable' };
-      if (departureAt <= now()) return { status: 'no-service', attribution, stopName, timezone };
       const safetyBufferMinutes = RIDE_BUFFER_MINUTES;
+      const plan = await transit.getDeparture(event, selection, includeUpcoming ? { now, safetyBufferMinutes } : undefined);
+      const { status, attribution, stopName, walkSeconds, timezone, timing, departureAt, fetchedAt, departsBeforeEventEnds } = plan;
+      const upcoming = includeUpcoming && plan.upcoming;
+      if (status !== 'scheduled') return { status, attribution, stopName, walkSeconds, timezone, ...(status === 'overnight' && upcoming && { upcoming }) };
+      if (!Number.isSafeInteger(departureAt) || !Number.isSafeInteger(walkSeconds) || walkSeconds <= 0) return { status: 'schedule-unavailable' };
+      const checkedAt = now();
+      if (departureAt <= checkedAt) return { status: 'no-service', attribution, stopName, timezone };
       const leaveByAt = departureAt - (walkSeconds * 1000 + safetyBufferMinutes * MINUTE);
       const proposed = leaveByAt - RIDE_NOTICE_MINUTES * MINUTE;
       return {
         status, timing, timezone, attribution, stopName, walkSeconds, safetyBufferMinutes, departureAt, leaveByAt,
-        proposedReminderAt: timing === 'scheduled' && proposed > now() ? proposed : null,
-        departsBeforeEventEnds, fetchedAt
+        proposedReminderAt: timing === 'scheduled' && proposed > checkedAt ? proposed : null,
+        departsBeforeEventEnds, fetchedAt,
+        ...(upcoming && { upcoming }),
+        ...(includeUpcoming && { leaveByPassed: leaveByAt < checkedAt })
       };
     }
   };

@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.227
+
+Released November 25, 2026.
+
+* Getting Home shows up to two reachable scheduled departures for the selected bus direction and stop, alongside the last departure and venue leave-by time. Overnight service shows upcoming departures without claiming a last bus. Widen the direction and stop selectors on phones.
+
 ## 1.0.226
 
 Released November 24, 2026.

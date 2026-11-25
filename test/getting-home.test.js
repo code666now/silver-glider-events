@@ -96,6 +96,27 @@ test('leave-by subtracts walk and buffer, and proposed text is 30 minutes before
   assert.equal((await home.getDeparture(event, choice)).status, 'no-service');
 });
 
+test('only the planning request asks the schedule for next rides; overnight still has no last ride or text', async () => {
+  const calls = [];
+  const upcoming = { context: 'leaving-now', includesLast: false, departures: [{ departureAt: now() + 10 * 60_000, timing: 'scheduled' }] };
+  const raw = { status: 'overnight', timezone: event.timezone, stopName: 'Mission at 22nd', walkSeconds: 120, upcoming };
+  const home = createGettingHome({ env, now, transit: { getDeparture: async (...args) => { calls.push(args); return raw; } } });
+  const form = { ...choice, now: 0, safetyBufferMinutes: 0 };
+  const plain = await home.getDeparture(event, form);
+  assert.equal(plain.upcoming, undefined);
+  assert.equal(calls[0][2], undefined);
+  assert.deepEqual(calls[0][1], choice);
+  const planned = await home.getDeparture(event, form, { includeUpcoming: true });
+  assert.deepEqual(planned.upcoming, upcoming);
+  assert.equal(planned.departureAt, undefined);
+  assert.equal(planned.proposedReminderAt, undefined);
+  assert.deepEqual(calls[1][2], { now, safetyBufferMinutes: 5 });
+  Object.assign(raw, { status: 'scheduled', timing: 'scheduled', departureAt: now() + 5 * 60_000, upcoming: { ...upcoming, departures: [] } });
+  const soon = await home.getDeparture(event, form, { includeUpcoming: true });
+  assert.equal(soon.leaveByPassed, true);
+  assert.equal(soon.proposedReminderAt, null);
+});
+
 test('unverified regional stops and exact venue addresses do not leave the options handler', async () => {
   const home = createGettingHome({ env, now, transit: { getOptions: async () => ({ status: 'available', stops: [], unverifiedStops: [{}] }) } });
   const options = await home.getOptions(event);

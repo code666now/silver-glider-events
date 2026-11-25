@@ -174,7 +174,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   });
   router.post(`${API}/departure`, jsonMutation, gate(true), async (req, res) => {
     if (!readTransitSelection(req.body)) return res.status(400).json({ status: 'unsupported-selection' });
-    const plan = await home.getDeparture(req.gettingHome.event, req.body);
+    const plan = await home.getDeparture(req.gettingHome.event, req.body, { includeUpcoming: true });
     if (['scheduled', 'overnight'].includes(plan.status)) await record('route_selected', req.gettingHome);
     res.json(plan);
   });

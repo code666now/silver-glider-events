@@ -58,7 +58,7 @@ function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectSto
         return { status: 'schedule-unavailable' };
       }
     },
-    async getDeparture(event, { stopId, stationId, routeId, direction, headsign, destinationStationId } = {}) {
+    async getDeparture(event, { stopId, stationId, routeId, direction, headsign, destinationStationId } = {}, planning) {
       if (!eligible(event)) return { status: 'unsupported-event' };
       if (!event.start_time) return { status: 'schedule-unavailable' };
       try {
@@ -67,9 +67,12 @@ function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectSto
           ? stop.stationId === stationId && stop.routes.some(route => route.requiresDestination)
           : stop.stopId === stopId && stop.routes.some(route => route.routeId === routeId && route.direction === direction && route.headsign === headsign)));
         if (!stop) return { status: 'unsupported-selection' };
+        const ridePlanning = planning && {
+          nowMs: planning.now(), boardingLeadMs: stop.walkSeconds * 1000 + planning.safetyBufferMinutes * 60_000
+        };
         const result = schedule.departure({
           date: eventDate(event.event_date), startTime: event.start_time, endTime: event.end_time,
-          ...(stationId ? { stationId } : { stopId, routeId, direction, headsign }), destinationStationId
+          ...(stationId ? { stationId } : { stopId, routeId, direction, headsign }), destinationStationId, ridePlanning
         });
         return { ...result, stopName: stop.name, walkSeconds: stop.walkSeconds, fetchedAt: snapshot.fetchedAt, attribution: GTFS_511_ATTRIBUTION };
       } catch {

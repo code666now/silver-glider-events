@@ -132,6 +132,8 @@
       lookup?.abort();
       lookup = null;
       get('results').hidden = true;
+      get('upcoming').hidden = true;
+      get('last-next').hidden = true;
       resultStatus.textContent = '';
       check.removeAttribute('aria-disabled');
       form.removeAttribute('aria-busy');
@@ -170,6 +172,7 @@
       activeButton = button;
       clearResult();
       get('plan-title').textContent = route.label;
+      check.textContent = route.bart ? 'Check last departure' : 'Check departures';
       get('direction-field').hidden = route.bart;
       direction.disabled = route.bart;
       get('destination-field').hidden = !route.bart;
@@ -202,6 +205,35 @@
       return board ? { stopId: board.stopId, routeId: board.route.routeId, direction: board.route.direction || '', headsign: board.route.headsign || '' } : null;
     }
 
+    function showUpcoming({ upcoming, timezone, leaveByPassed }) {
+      if (!upcoming) return;
+      const { context, includesLast, departures } = upcoming;
+      const times = departures.map(ride => {
+        const label = formattedTime(ride.departureAt, timezone);
+        return label && (ride.timing === 'feed-estimate' ? `${label} · Estimated` : label);
+      }).filter(Boolean);
+      if (includesLast && !times.length) {
+        get('last-next').textContent = context === 'after-show' ? 'Also the next reachable departure after the show.' : 'Also the next reachable departure.';
+        get('last-next').hidden = false;
+        return;
+      }
+      // The missed leave-by note already explains why there are no earlier rides.
+      if (!times.length && leaveByPassed) return;
+      const title = context === 'after-show' ? 'Next after the show'
+        : context === 'from-show-start' ? 'Next scheduled from show start' : 'Next if you leave now';
+      const list = get('upcoming-times');
+      list.replaceChildren(...times.map(label => {
+        const item = win.document.createElement('li');
+        item.textContent = label;
+        return item;
+      }));
+      list.hidden = !times.length;
+      get('upcoming-title').textContent = title;
+      get('upcoming-note').textContent = !times.length ? 'No reachable scheduled departures found for this time.'
+        : includesLast ? 'Scheduled, not live. The last departure above comes next.' : 'Scheduled, not live.';
+      get('upcoming').hidden = false;
+    }
+
     function showResult(data, selection) {
       const messages = {
         overnight: 'This route runs overnight. There isn’t one last ride for this selection. Check the operator’s live schedule before you leave.',
@@ -213,7 +245,10 @@
       };
       if (data.status !== 'scheduled') {
         resultStatus.textContent = messages[data.status] || 'We couldn’t verify a departure. Check the operator directly before travelling.';
-        if (data.status === 'overnight') root.dispatchEvent(new win.CustomEvent('getting-home:plan', { detail: { selection, plan: data } }));
+        if (data.status === 'overnight') {
+          showUpcoming(data);
+          root.dispatchEvent(new win.CustomEvent('getting-home:plan', { detail: { selection, plan: data } }));
+        }
         return;
       }
       const departure = formattedTime(data.departureAt, data.timezone);
@@ -232,6 +267,8 @@
       get('preview-row').hidden = !preview;
       get('text-time').textContent = preview;
       get('show-warning').hidden = !data.departsBeforeEventEnds;
+      get('leave-passed').hidden = !data.leaveByPassed;
+      showUpcoming(data);
       get('results').hidden = false;
       get('results-title').focus();
       root.dispatchEvent(new win.CustomEvent('getting-home:plan', { detail: { selection, plan: data } }));

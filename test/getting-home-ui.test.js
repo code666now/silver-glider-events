@@ -54,6 +54,14 @@ test('departure, leave-by and text preview use the supplied local date even afte
   assert.equal(formattedTime(Date.parse('2026-11-28T09:41:00Z'), 'invalid'), '');
 });
 
+test('next departures supplement the last-departure card and phone controls get more room', () => {
+  assert.match(view, /Last scheduled departure[\s\S]*Leave the venue by[\s\S]*id="gh-upcoming" aria-labelledby="gh-upcoming-title" hidden/);
+  assert.match(view, /<ul id="gh-upcoming-times" role="list" hidden>/);
+  assert.match(view, /<button[^>]*id="gh-check"[^>]*>Check departures<\/button>/);
+  const css = readFileSync(join(__dirname, '../public/css/getting-home.css'), 'utf8');
+  assert.match(css, /@media \(max-width: 539px\)[^}]*\.gh-field select\s*{[^}]*width: calc\(100% \+ 12px\)[^}]*height: max\(54px, 3em\)/);
+});
+
 test('rideshare links use known providers and only prefill a valid public destination', () => {
   const defaultLinks = makeRideshareLinks(null);
   assert.equal(defaultLinks.uber, 'https://m.uber.com/looking');

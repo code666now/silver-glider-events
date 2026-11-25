@@ -44,6 +44,7 @@ const whenBus = (feed, options) => createGtfsSchedule(feed).departure({
   date: friday, stopId: origin, routeId: bus, direction: '0', startTime: '20:00', ...options
 });
 const iso = result => new Date(result.departureAt).toISOString();
+const planFrom = (timestamp, boardingLeadMs = 7 * 60_000) => ({ nowMs: Date.parse(timestamp), boardingLeadMs });
 
 test('a later trip after midnight beats civil-date 00:40, with warning when it leaves before the event ends', () => {
   const feed = tables();
@@ -65,6 +66,52 @@ test('a 1 AM event stays in the same night and not the following evening', () =>
   const result = whenBus(feed, { date: '2026-11-28', startTime: '01:00' });
   assert.equal(result.tripId, 'night-trip');
   assert.equal(iso(result), '2026-11-28T09:20:00.000Z');
+});
+
+test('next rides use the selected direction and stop, walk plus buffer, and chronological order across midnight', () => {
+  const feed = tables();
+  addBus(feed, 'already-gone', '23:48:00', '24:07:00');
+  addBus(feed, 'too-close', '23:56:00', '24:12:00');
+  addBus(feed, 'first', '23:57:00', '24:18:00');
+  addBus(feed, 'same-time', '23:57:00', '24:18:00');
+  addBus(feed, 'wrong-headsign', '23:59:00', '24:16:00', { headsign: 'Short turn' });
+  addTrip(feed, 'wrong-stop', [['SF:other', '24:00:00'], ['SF:end', '24:16:00']]);
+  addBus(feed, 'wrong-direction', '24:01:00', '24:23:00', { direction: '1' });
+  addBus(feed, 'no-pickup', '24:02:00', '24:17:00', undefined, { pickup_type: '1' });
+  addBus(feed, 'second', '24:03:00', '24:23:00', undefined, { timepoint: '0' });
+  addBus(feed, 'last', '24:50:00', '25:10:00');
+  const result = whenBus(feed, { headsign: 'Downtown', ridePlanning: planFrom('2026-11-28T07:50:00Z') });
+  assert.equal(result.tripId, 'last');
+  assert.deepEqual(result.upcoming, {
+    context: 'leaving-now', includesLast: false,
+    departures: [
+      { departureAt: Date.parse('2026-11-28T07:57:00Z'), timing: 'scheduled' },
+      { departureAt: Date.parse('2026-11-28T08:03:00Z'), timing: 'feed-estimate' }
+    ]
+  });
+});
+
+test('advance planning uses the event night and show end; without an end it falls back to the real start', () => {
+  const feed = tables();
+  addBus(feed, 'from-start', '20:08:00', '20:25:00');
+  addBus(feed, 'before-end', '24:59:00', '25:20:00');
+  addBus(feed, 'after-end', '25:09:00', '25:25:00');
+  addBus(feed, 'last', '25:45:00', '26:05:00');
+  addBus(feed, 'morning', '05:45:00', '06:05:00');
+  const ridePlanning = planFrom('2026-11-26T04:00:00Z');
+  const afterShow = whenBus(feed, { endTime: '01:00', ridePlanning });
+  assert.equal(afterShow.tripId, 'last');
+  assert.deepEqual(afterShow.upcoming, {
+    context: 'after-show', includesLast: true, departures: [{ departureAt: Date.parse('2026-11-28T09:09:00Z'), timing: 'scheduled' }]
+  });
+  const fromStart = whenBus(feed, { ridePlanning });
+  assert.equal(fromStart.upcoming.context, 'from-show-start');
+  assert.equal(iso(fromStart.upcoming.departures[0]), '2026-11-28T04:08:00.000Z');
+  assert.equal(fromStart.upcoming.departures.length, 2);
+  const onlyLast = whenBus(feed, { endTime: '01:22', ridePlanning });
+  assert.deepEqual(onlyLast.upcoming, { context: 'after-show', includesLast: true, departures: [] });
+  const missed = whenBus(feed, { ridePlanning: planFrom('2026-11-28T09:40:00Z') });
+  assert.deepEqual(missed.upcoming, { context: 'leaving-now', includesLast: false, departures: [] });
 });
 
 test('weekends and holidays follow the service calendar and dated overrides, not just weekdays', () => {
@@ -114,13 +161,20 @@ test('continuous service across the night is labeled overnight, not as the last 
     addBus(feed, `hour-${prefix}`, `${prefix}:00:00`, `${prefix}:20:00`);
   }
   assert.deepEqual(whenBus(feed), { status: 'overnight', timezone: 'America/Los_Angeles' });
+  const nearMorning = whenBus(feed, { ridePlanning: planFrom('2026-11-28T11:58:00Z') });
+  assert.equal(nearMorning.status, 'overnight');
+  assert.equal(nearMorning.departureAt, undefined);
+  assert.deepEqual(nearMorning.upcoming, {
+    context: 'leaving-now', includesLast: false,
+    departures: ['2026-11-28T13:00:00Z', '2026-11-28T14:00:00Z'].map(date => ({ departureAt: Date.parse(date), timing: 'scheduled' }))
+  });
 });
 
 test('a frequency without exact times never produces an invented last departure', () => {
   const feed = tables();
   addBus(feed, 'headway', '00:00:00', '00:10:00');
   feed.frequencies.push({ trip_id: 'headway', start_time: '21:00:00', end_time: '23:00:00', headway_secs: '900', exact_times: '0' });
-  assert.equal(whenBus(feed).status, 'schedule-unavailable');
+  assert.deepEqual(whenBus(feed, { ridePlanning: planFrom('2026-11-28T04:30:00Z') }), { status: 'schedule-unavailable' });
   feed.frequencies[0].exact_times = '1';
   assert.equal(iso(whenBus(feed)), '2026-11-28T06:45:00.000Z');
 });
@@ -134,8 +188,9 @@ test('BART requires a destination and finds the latest origin train with an onwa
   const options = { date: friday, startTime: '20:00', stationId: 'BA:24TH' };
   const schedule = createGtfsSchedule(feed);
   assert.equal(schedule.departure(options).status, 'destination-required');
-  const selection = { ...options, destinationStationId: 'BA:DEST' };
+  const selection = { ...options, destinationStationId: 'BA:DEST', ridePlanning: planFrom('2026-11-27T03:00:00Z') };
   assert.equal(schedule.departure(selection).tripId, 'last-viable');
+  assert.equal(schedule.departure(selection).upcoming, undefined);
   assert.deepEqual(schedule.departure(selection).itinerary.map(leg => leg.toStopId), ['BA:X:p', 'BA:DEST:p']);
   feed.transfers.push({ from_stop_id: 'BA:X', to_stop_id: 'BA:X', transfer_type: '3', from_route_id: 'blue', to_route_id: 'red' });
   assert.equal(createGtfsSchedule(feed).departure(selection).tripId, 'direct-but-earlier');
@@ -156,6 +211,9 @@ test('pilot service only loads approved events, refuses unverified stops, and re
   const trip = await transit.getDeparture(date, { stopId: origin, routeId: bus, direction: '0', headsign: 'Downtown' });
   assert.equal(trip.status, 'scheduled');
   assert.equal(trip.fetchedAt, 42);
+  const tooLate = await transit.getDeparture(date, { stopId: origin, routeId: bus, direction: '0', headsign: 'Downtown' },
+    { now: () => Date.parse('2026-11-28T08:24:00Z'), safetyBufferMinutes: 5 });
+  assert.deepEqual(tooLate.upcoming, { context: 'leaving-now', includesLast: false, departures: [] });
   assert.equal((await transit.getDeparture(date, { stopId: 'elsewhere' })).status, 'unsupported-selection');
   const unavailable = createMakeOutRoomTransit({ source: { getSchedule: async () => { throw new Error('raw upstream detail'); } } });
   assert.deepEqual(await unavailable.getOptions(date), { status: 'schedule-unavailable' });

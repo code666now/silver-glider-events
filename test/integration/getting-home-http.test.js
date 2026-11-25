@@ -25,6 +25,10 @@ const verifiedPlan = {
   leaveByAt: Date.parse('2026-11-28T08:43:00Z'), proposedReminderAt: Date.parse('2026-11-28T08:13:00Z'),
   fetchedAt: START, timezone: 'America/Los_Angeles', stopName: 'Mission at 22nd', walkSeconds: 120
 };
+const upcoming = { context: 'leaving-now', includesLast: false, departures: [
+  { departureAt: Date.parse('2026-11-28T05:00:00Z'), timing: 'scheduled' },
+  { departureAt: Date.parse('2026-11-28T05:30:00Z'), timing: 'scheduled' }
+] };
 const page = `/e/${scenario.slug}/getting-home`;
 const api = `/api/public/events/${scenario.slug}/getting-home`;
 const result = (...rows) => ({ rows, rowCount: rows.length });
@@ -89,9 +93,9 @@ async function fixture(t) {
   };
   const home = {
     async getOptions() { return { status: 'available', venue: 'Make-Out Room', stops: [] }; },
-    async getDeparture(_event, selection) {
+    async getDeparture(_event, selection, options) {
       assert.deepEqual(selection, choice);
-      return verifiedPlan;
+      return options?.includeUpcoming ? { ...verifiedPlan, upcoming } : verifiedPlan;
     }
   };
   const reminders = createRideReminders({ pool: db, getDeparture: home.getDeparture, env, now,
@@ -280,7 +284,7 @@ test('one test link opens the sample and schedules without real attendee authori
   assert.equal((await f.fetch(PREVIEW_PATH, { headers: { cookie } })).status, 200);
   denied(await f.fetch(page, { headers: { cookie } }));
   const plan = await f.fetch(`${previewApi}/departure`, json('POST', choice, { cookie }));
-  assert.equal((await plan.json()).status, 'scheduled');
+  assert.deepEqual(await plan.json(), { ...verifiedPlan, upcoming });
   const reminder = await f.fetch(`${previewApi}/reminder`, json('POST', { consent: true, selection: choice }, { cookie }));
   assert.equal((await reminder.json()).status, 'unavailable');
   const saved = await f.fetch(`${previewApi}/saved-route`, json('POST', { remember: true, selection: choice }, { cookie }));

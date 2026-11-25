@@ -66,6 +66,26 @@ const pickup = row => regularStop(row.pickup_type);
 const dropOff = row => regularStop(row.drop_off_type);
 const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const UNAVAILABLE = Object.freeze({ status: 'schedule-unavailable' });
+const boardingTiming = origin => origin.rows[origin.board].timepoint === '0' ? 'feed-estimate' : 'scheduled';
+
+function nextDepartures(origins, { ridePlanning, start, eventEndsAt, last, latest = last }) {
+  const { nowMs, boardingLeadMs } = ridePlanning ?? {};
+  if (!Number.isFinite(nowMs) || !Number.isFinite(boardingLeadMs) || boardingLeadMs <= 0) return undefined;
+  const advance = nowMs < start;
+  const context = advance ? (eventEndsAt === undefined ? 'from-show-start' : 'after-show') : 'leaving-now';
+  const earliest = (advance ? (eventEndsAt ?? start) : nowMs) + boardingLeadMs;
+  const next = [];
+  // Reuse the same boardable calls as the last-ride lookup, in chronological order.
+  for (let i = origins.length - 1; i >= 0 && next.length < 2; i--) {
+    const origin = origins[i];
+    const { departureAt } = origin;
+    if (departureAt < earliest || departureAt === next.at(-1)?.departureAt) continue;
+    if (departureAt > latest) break;
+    next.push({ departureAt, timing: boardingTiming(origin) });
+  }
+  const includesLast = next.some(ride => ride.departureAt === last);
+  return { context, includesLast, departures: next.filter(ride => ride.departureAt !== last) };
+}
 
 function createGtfsSchedule(tables) {
   const agencies = tables.agency ?? [];
@@ -228,7 +248,7 @@ function createGtfsSchedule(tables) {
     return null;
   }
 
-  function departure({ date, stopId, stationId, routeId, direction, headsign, destinationStationId, startTime, endTime }) {
+  function departure({ date, stopId, stationId, routeId, direction, headsign, destinationStationId, startTime, endTime, ridePlanning }) {
     date = civilDate(date);
     const bartOrigin = stationId ? stationOf(stationId) : null;
     const route = bartOrigin ? [...routes.values()].find(isBart) : routes.get(routeId);
@@ -333,7 +353,8 @@ function createGtfsSchedule(tables) {
       const first = night.findIndex(at => at >= midnight - 90 * MINUTE);
       if (first >= 0 && night[first] <= midnight && night.at(-1) >= morning - 90 * MINUTE &&
           night.slice(first + 1).every((at, i) => at - night[first + i] <= 90 * MINUTE)) {
-        return { status: 'overnight', timezone: zone };
+        const upcoming = nextDepartures(origins, { ridePlanning, start, eventEndsAt, latest: morning });
+        return { status: 'overnight', timezone: zone, ...(upcoming && { upcoming }) };
       }
     }
 
@@ -341,10 +362,12 @@ function createGtfsSchedule(tables) {
       if (origin.departureAt < start || origin.departureAt >= cutoff) continue;
       const itinerary = bart ? bartConnection(origin, destination, boards, morning) : undefined;
       if (bart && !itinerary) continue;
+      const upcoming = !bart && nextDepartures(origins, { ridePlanning, start, eventEndsAt, last: origin.departureAt });
       return {
         status: 'scheduled', departureAt: origin.departureAt, timezone: zone,
         stopId: origin.rows[origin.board].stop_id, routeId: origin.trip.route_id, tripId: origin.trip.trip_id,
-        timing: origin.rows[origin.board].timepoint === '0' ? 'feed-estimate' : 'scheduled',
+        timing: boardingTiming(origin),
+        ...(upcoming && { upcoming }),
         ...(itinerary && { itinerary }),
         ...(Number.isFinite(eventEndsAt) && { departsBeforeEventEnds: origin.departureAt < eventEndsAt })
       };
