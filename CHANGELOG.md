@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.225
+
+Released November 24, 2026.
+
+* Add the Getting Home planner for confirmed guests at eligible public Make-Out Room events. Show scheduled departures, walking estimates, and a leave-by time; guests can optionally save a route.
+* Keep the day-before email link and one-time ride texts separately gated. Ride texts require explicit consent and a separate capped budget; they never use organizer credits.
+
 ## 1.0.224
 
 Released November 24, 2026.
