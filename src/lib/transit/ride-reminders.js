@@ -191,7 +191,7 @@ function receipt(row, canRequest = false) {
   };
 }
 
-function createRideReminders({ pool, getDeparture, env = process.env, now = Date.now, sendSms = sms.sendSms } = {}) {
+function createRideReminders({ pool, getDeparture, env = process.env, now = Date.now, sendSms = sms.sendSms, onSent } = {}) {
   function checkIds(eventId, userId) {
     if (!validId(eventId) || !validId(userId)) throw notGoing();
   }
@@ -327,7 +327,7 @@ function createRideReminders({ pool, getDeparture, env = process.env, now = Date
       }, true);
       if (!claimed) return;
 
-      await withTransaction(client, async db => {
+      const accepted = await withTransaction(client, async db => {
         // Keep the live RSVP/event/phone rows locked for the bounded provider
         // call; consent and STOP for this phone use the same advisory locks.
         const fresh = await readCurrent(db, ids, true);
@@ -366,7 +366,11 @@ function createRideReminders({ pool, getDeparture, env = process.env, now = Date
         await db.query(`UPDATE transit_ride_reminders SET status=$2,outcome=$3,provider_message_sid=$4,
           sent_at=CASE WHEN $2='sent' THEN $5::timestamptz ELSE NULL END WHERE id=$1 AND status='sending'`,
         [row.id, status, outcome, sid, new Date(now())]);
+        return status === 'sent';
       }, true);
+      if (accepted && onSent) {
+        try { await onSent(ids); } catch { /* The durable queue row remains authoritative. */ }
+      }
     } finally {
       while (acquired > 0) {
         try { await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [locks[--acquired]]); }

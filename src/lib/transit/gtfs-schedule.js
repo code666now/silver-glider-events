@@ -37,6 +37,14 @@ const localHour = (date, hour, zone) => localTime(date, `${String(hour).padStart
 const parseClock = time => /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time ?? '')
   ? (time.length === 5 ? `${time}:00` : time) : null;
 
+function scheduleNightEnd(date, startTime, zone) {
+  date = civilDate(date);
+  const clock = parseClock(startTime);
+  if (!date || !clock || !zone) return null;
+  try { return localHour(clock < '04:00:00' ? date : addDays(date, 1), 4, zone); }
+  catch { return null; }
+}
+
 function gtfsSeconds(value) {
   const match = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(value ?? '');
   return match ? +match[1] * 3600 + +match[2] * 60 + +match[3] : null;
@@ -352,4 +360,4 @@ function createGtfsSchedule(tables) {
   };
 }
 
-module.exports = { createGtfsSchedule };
+module.exports = { createGtfsSchedule, scheduleNightEnd };

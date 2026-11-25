@@ -101,6 +101,8 @@ function reminderHarness({ retry = false, eligible = true, retryClaim = true, fa
       if (name === 'node-cron') return { schedule: () => {} };
       if (name === '../config/db') return { query };
       if (name === '../lib/mailer') return { sendDayBeforeReminder: sender, sendDayOfReminder: sender };
+      if (name === '../lib/post-event') return require('../src/lib/post-event');
+      if (name === '../lib/transit/ride-metrics') return { createRideMetrics: () => ({ prune: async () => 0 }) };
       if (name === '../lib/outbound-account-status') return {
         HOST_ACCOUNT_INACTIVE: 'host_account_inactive',
         withActiveHostAccount: async (_pool, _id, deliver) => {

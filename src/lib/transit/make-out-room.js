@@ -33,7 +33,8 @@ const PILOT_WALKS = Object.freeze([
   agency: 'muni', stopCode, lat, lon, walkSeconds: minutes * 60,
   source: WALK_SOURCE, stopSource: 'https://data.sf.gov/Transportation/Muni-Stops/i28k-bkz6', attribution: WALK_ATTRIBUTION
 })).concat(Object.freeze({
-  agency: 'bart', stationId: '24TH', lat: 37.75258328, lon: -122.4183299, walkSeconds: 360, source: WALK_SOURCE,
+  agency: 'bart', stationId: '24TH', regionalStationId: '901609', lat: 37.75258328, lon: -122.4183299,
+  walkSeconds: 360, source: WALK_SOURCE,
   stopSource: 'https://www.bart.gov/schedules/developers/gtfs', attribution: WALK_ATTRIBUTION
 })));
 
@@ -155,8 +156,14 @@ function discoverPilotStops(tables, { verifiedWalks = PILOT_WALKS } = {}) {
       seen.add(key);
       const walk = verifiedWalks.find(estimate => {
         if (estimate.agency !== kind || !(estimate.walkSeconds > 0) || !Number.isFinite(estimate.walkSeconds)) return false;
-        if (kind === 'bart') return stationId && localId(stationId, kind).toUpperCase() === identifier(estimate.stationId).toUpperCase()
-          && (!Number.isFinite(estimate.lat) || !Number.isFinite(estimate.lon) || distance(point(station) || coordinates, estimate) <= 150);
+        if (kind === 'bart') {
+          // The consolidated 511 feed assigns a different parent ID to this
+          // station than BART's own feed. Keep the coordinate check for both.
+          const knownStation = [estimate.stationId, estimate.regionalStationId]
+            .some(id => id && identifier(id).toUpperCase() === localId(stationId, kind).toUpperCase());
+          return stationId && knownStation
+            && (!Number.isFinite(estimate.lat) || !Number.isFinite(estimate.lon) || distance(point(station) || coordinates, estimate) <= 150);
+        }
         if (kind !== 'muni') return false;
         const ids = [stopId, stop.stop_code].map(id => localId(id, kind));
         // Require a close published position as well as a stable stop code so

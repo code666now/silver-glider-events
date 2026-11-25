@@ -80,3 +80,22 @@ test('before stop-time ingestion, all nearby boarding-stop IDs are retained for 
   assert.ok(rows.every(row => row.walkSeconds === null));
   assert.deepEqual(discoverPilotStops(undefined), { muni: [], bart: [], other: [] });
 });
+
+test('regional 511 BART parent ID matches only the verified station location and BART service', () => {
+  const regional = (latitude, longitude, agencyId = 'BA') => ({
+    agency: example.agency,
+    routes: [{ route_id: 'b', agency_id: agencyId, route_type: '1' }],
+    trips: [{ trip_id: 'b1', route_id: 'b' }],
+    stops: [
+      stop('901609', latitude, longitude, { location_type: '1', stop_name: '24th Street / Mission' }),
+      stop('901601', latitude, longitude, { location_type: '0', parent_station: '901609' })
+    ],
+    stop_times: [{ trip_id: 'b1', stop_id: '901601', pickup_type: '0' }]
+  });
+  assert.deepEqual(discoverPilotStops(regional(37.75242, -122.41847)).bart
+    .map(({ stopId, stationId, walkSeconds }) => ({ stopId, stationId, walkSeconds })), [
+    { stopId: '901601', stationId: '901609', walkSeconds: 360 }
+  ]);
+  assert.equal(discoverPilotStops(regional(37.7515, -122.42075)).bart[0].walkSeconds, null);
+  assert.equal(discoverPilotStops(regional(37.75242, -122.41847, 'AC')).other[0].walkSeconds, null);
+});

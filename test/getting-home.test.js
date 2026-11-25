@@ -24,6 +24,15 @@ test('pilot flag and exact public venue gate everything, even if there is an RSV
   }
 });
 
+test('authorized planning and send-time rechecks stay available after the show through the same service night', () => {
+  const evening = { ...event, event_date: '2026-11-27', start_time: '19:00', ends_at: '2026-11-28T05:00:00Z' };
+  assert.equal(gettingHomeEligible(evening, env, Date.parse('2026-11-28T08:00:00Z')), true);
+  assert.equal(gettingHomeEligible(evening, env, Date.parse('2026-11-28T12:00:00Z')), false);
+  const late = { ...evening, event_date: '2026-11-28', start_time: '01:30', ends_at: '2026-11-28T11:00:00Z' };
+  assert.equal(gettingHomeEligible(late, env, Date.parse('2026-11-28T11:59:00Z')), true);
+  assert.equal(gettingHomeEligible(late, env, Date.parse('2026-11-28T12:00:00Z')), false);
+});
+
 test('signed-in account wins over a stale other-guest cookie; signed-out attendee still needs a confirmed token', async () => {
   const cookie = `${attendeeCookieName(event.id)}=fixture-token`;
   const request = { params: { slug: event.slug }, headers: { cookie } };

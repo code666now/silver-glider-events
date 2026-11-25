@@ -2,6 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { randomBytes } = require('node:crypto');
 const { deflateRawSync } = require('node:zlib');
 const { create511ScheduleSource, GTFS_511_ATTRIBUTION } = require('../src/lib/transit/gtfs-feed');
 
@@ -149,6 +150,44 @@ test('511 feed rejects bad archives, missing schedule data and archive size limi
   ]) {
     const schedule = source({ fetchImpl: async () => goodResponse(), ...options });
     await assert.rejects(schedule.getSchedule(), { code });
+  }
+});
+
+function reflected511Html(key) {
+  return Buffer.from(`\r\n\r\n<!DOCTYPE html><html lang="en"><head><title>511</title></head><body><code>GET /transit/datafeeds?api_key=${key}&amp;operator_id=RG</code></body></html>\r\n`);
+}
+
+test('511 feed accepts only its reflected HTML trailer after an intact ZIP directory', async () => {
+  // Force the streaming writer to flush archive bytes far earlier than the
+  // footer, and split the source prefix/central records across chunks.
+  const archive = zipFixture({ ...files, 'not-schedule.txt': randomBytes(120000) });
+  const withFooter = Buffer.concat([archive, reflected511Html(FAKE_KEY)]);
+  const schedule = source({ fetchImpl: async () => {
+    let offset = 0;
+    return new Response(new ReadableStream({ pull(controller) {
+      if (offset >= withFooter.length) return controller.close();
+      const end = Math.min(withFooter.length, offset + (offset === 0 ? 2 : 1031));
+      controller.enqueue(withFooter.subarray(offset, end));
+      offset = end;
+    } }));
+  } });
+  assert.equal((await schedule.getSchedule()).tables.routes[0].route_short_name, '49');
+
+  const brokenDirectory = Buffer.from(archive);
+  const directoryOffset = archive.readUInt32LE(archive.length - 6);
+  brokenDirectory[directoryOffset] = 0;
+  for (const bytes of [
+    Buffer.concat([archive, reflected511Html('not-the-request-key')]),
+    Buffer.concat([archive, Buffer.from(`other text, even if it has api_key=${FAKE_KEY}`)]),
+    Buffer.concat([archive, Buffer.alloc(4500, 0x20), reflected511Html(FAKE_KEY)]),
+    Buffer.concat([brokenDirectory, reflected511Html(FAKE_KEY)])
+  ]) {
+    await assert.rejects(source({ fetchImpl: async () => new Response(bytes) }).getSchedule(), error => {
+      assert.equal(error.code, 'GTFS_511_INVALID');
+      assert.equal(error.cause, undefined);
+      assert.doesNotMatch(error.stack, new RegExp(FAKE_KEY));
+      return true;
+    });
   }
 });
 

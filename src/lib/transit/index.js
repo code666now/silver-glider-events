@@ -79,4 +79,4 @@ function createMakeOutRoomTransit({ source = create511ScheduleSource({ selectSto
   };
 }
 
-module.exports = { createMakeOutRoomTransit, selectPilotStopTimes };
+module.exports = { createMakeOutRoomTransit, selectPilotStopTimes, eventDate };

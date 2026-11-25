@@ -2,6 +2,10 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { sendDayBeforeReminder, sendDayOfReminder } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
+const { eventEndAtSql } = require('../lib/post-event');
+const { createRideMetrics } = require('../lib/transit/ride-metrics');
+
+const rideMetrics = createRideMetrics({ db: pool });
 
 let _running = false;
 
@@ -78,10 +82,10 @@ async function deliver(logId, messageType, event, rsvp) {
 // every delivery, including retries. Legacy reminder consent remains sufficient.
 async function sendCurrentReminder(client, logId, messageType, organizerId) {
   const { rows } = await client.query(
-    `SELECT e.*, o.org_name, o.public_slug AS organizer_public_slug,
+    `SELECT e.*, o.org_name, o.public_slug AS organizer_public_slug, ${eventEndAtSql('e')} AS ends_at,
             r.id AS current_rsvp_id, r.email AS current_email,
             r.user_id AS current_user_id, r.manage_token AS current_manage_token,
-            r.first_name AS current_first_name, r.last_name AS current_last_name
+            r.first_name AS current_first_name, r.last_name AS current_last_name, ml.created_at AS reminder_queued_at
        FROM message_log ml
        JOIN rsvps r ON r.id=ml.rsvp_id AND r.event_id=ml.event_id
        JOIN events e ON e.id=ml.event_id
@@ -105,6 +109,9 @@ async function sendCurrentReminder(client, logId, messageType, organizerId) {
   const event = rows[0];
   const rsvp = {
     id: event.current_rsvp_id,
+    event_id: event.id,
+    status: 'confirmed',
+    reminder_queued_at: event.reminder_queued_at,
     email: event.current_email,
     user_id: event.current_user_id,
     manage_token: event.current_manage_token,
@@ -186,6 +193,7 @@ async function runReminderPass({ dayBeforeHour = 16, dayOfHour = 9 } = {}) {
     await retryFailed();
     await processReminders('reminder_day_before', dayBeforeHour, 1);
     await processReminders('reminder_day_of', dayOfHour, 0);
+    await rideMetrics.prune();
   } catch (err) {
     console.error('[reminders] pass failed:', err.message);
   } finally {

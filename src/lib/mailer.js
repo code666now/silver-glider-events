@@ -2,6 +2,7 @@ const { Resend } = require('resend');
 const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { locationForViewer } = require('./event-location-privacy');
+const { rideEmailEntryPath } = require('./transit/ride-entry');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -973,7 +974,19 @@ function renderFlyerReminderEmail({ event, rsvp, kicker, headline }) {
   return renderEventReminderEmail({ event, rsvp, kicker, headline });
 }
 
-function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline = 'See you tomorrow.' }) {
+function rideHelpCallout(baseUrl, entryPath, theme) {
+  if (!entryPath) return '';
+  const url = safeHttpUrl(`${baseUrl}${entryPath}`);
+  if (!url) return '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#122424" style="width:100%;margin:0 0 20px;background:#122424;border:1px solid #385153;border-collapse:separate;border-radius:12px">
+    <tr><td style="padding:16px 18px;text-align:left">
+      <p style="color:#f0f0f0;font-size:16px;font-weight:800;margin:0 0 6px">Don't Miss Your Last Bus!</p>
+      <p style="color:#b6c8c7;font-size:14px;line-height:1.5;margin:0 0 9px">Taking transit home? Check nearby routes and the last scheduled ride.</p>
+      <a href="${esc(url)}" rel="noreferrer" style="display:inline-block;color:${theme.secondaryAccentColor};font-size:14px;font-weight:800;text-decoration:underline">Help me get home</a>
+    </td></tr></table>`;
+}
+
+function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline = 'See you tomorrow.', rideEntryPath = null }) {
   const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
   const manageUrl = `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}#email-settings`;
   const theme = eventEmailTheme(event);
@@ -985,7 +998,7 @@ function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline =
     bodyHtml: `${confirmationDetailsCard(event)}${confirmationMapLink(event, theme)}`,
     cta: event.comments_enabled ? 'View event & comments' : 'View event',
     ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `<p class="sg-email-secondary" style="color:#858585;font-size:14px;text-align:center;margin:0 0 24px;line-height:1.6"><a href="${esc(`${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`)}" style="color:${theme.secondaryAccentColor};font-weight:700;text-decoration:none">Add to Calendar</a></p>`,
+    secondaryHtml: `${rideHelpCallout(baseUrl, rideEntryPath, theme)}<p class="sg-email-secondary" style="color:#858585;font-size:14px;text-align:center;margin:0 0 24px;line-height:1.6"><a href="${esc(`${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`)}" style="color:${theme.secondaryAccentColor};font-weight:700;text-decoration:none">Add to Calendar</a></p>`,
     footerHtml: policyFooter({
       reason: 'You asked for reminders when you RSVP’d to this event. Replies are not monitored.',
       hostLabel: eventHostLabel(event),
@@ -995,6 +1008,11 @@ function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline =
     footerActionLabel: '',
     footerActionUrl: ''
   });
+}
+
+function renderDayBeforeReminderEmail({ event, rsvp, env = process.env, now = Date.now }) {
+  return renderEventReminderEmail({ event, rsvp, kicker: 'Tomorrow', headline: 'See you tomorrow.',
+    rideEntryPath: rideEmailEntryPath({ event, rsvp, env, now }) });
 }
 
 async function sendRsvpConfirmation({ to, event, rsvp, icsContent, addPhotoUrl }) {
@@ -1024,7 +1042,7 @@ async function sendDayBeforeReminder({ to, event, rsvp, idempotencyKey }) {
     idempotencyKey,
     timeoutMs: 15000,
     headers: oneClickHeaders(unsubscribeUrl),
-    html: renderEventReminderEmail({ event, rsvp, kicker: 'Tomorrow', headline: 'See you tomorrow.' })
+    html: renderDayBeforeReminderEmail({ event, rsvp })
   });
 }
 
@@ -1953,7 +1971,7 @@ module.exports = {
   renderPreviousGuestInvitationEmail,
   buildImportedGuestInvitationEmail, sendImportedGuestInvitation,
   buildAutomaticFollowerEmail, sendAutomaticFollowerEmail,
-  renderEventReminderEmail, renderEventAnnouncementEmail, renderSecurityEmailLayout: securityLayout,
+  renderEventReminderEmail, renderDayBeforeReminderEmail, renderEventAnnouncementEmail, renderSecurityEmailLayout: securityLayout,
   renderFlyerRsvpConfirmationEmail, renderFlyerReminderEmail,
   renderSharedEmailLayout: layout, renderEmailCodeBlock: signInCodeBlock, rsvpConfirmationSubject
 };

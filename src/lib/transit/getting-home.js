@@ -1,7 +1,8 @@
 'use strict';
 
 const { isMakeOutRoomEvent, PILOT } = require('./make-out-room');
-const { createMakeOutRoomTransit } = require('./index');
+const { createMakeOutRoomTransit, eventDate } = require('./index');
+const { scheduleNightEnd } = require('./gtfs-schedule');
 
 const MINUTE = 60_000;
 const RIDE_BUFFER_MINUTES = 5;
@@ -12,8 +13,13 @@ function gettingHomeEnabled(env = process.env) {
 }
 
 function gettingHomeEligible(event, env = process.env, now = Date.now()) {
-  return gettingHomeEnabled(env) && isMakeOutRoomEvent(event) && event.timezone === PILOT.timezone &&
-    Boolean(event.ends_at) && new Date(event.ends_at).getTime() > now;
+  if (!gettingHomeEnabled(env) || !isMakeOutRoomEvent(event) || event.timezone !== PILOT.timezone || !event.ends_at) return false;
+  const ends = new Date(event.ends_at).getTime();
+  const nightEnd = scheduleNightEnd(eventDate(event.event_date), event.start_time, event.timezone);
+  // The relevant trip can be hours after the show, so keep an authorized
+  // attendee's plan/cancellation and the send-time recheck available for the
+  // rest of that service night. The dashboard still hides ended show cards.
+  return Number.isFinite(ends) && Math.max(ends, nightEnd || 0) > now;
 }
 
 function readTransitSelection(input) {
