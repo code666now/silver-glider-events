@@ -17,6 +17,7 @@ const { rideReminders } = require('../jobs/transit-ride-reminders');
 const { createSavedRouteService } = require('../lib/transit/saved-route');
 const { createRideEntry, rideEntryCookieName } = require('../lib/transit/ride-entry');
 const { createRideMetrics } = require('../lib/transit/ride-metrics');
+const { createRidePreview, PREVIEW_SLUG, PREVIEW_PATH, PREVIEW_COOKIE } = require('../lib/transit/ride-preview');
 
 const PAGE = '/e/:slug/getting-home';
 const API = '/api/public/events/:slug/getting-home';
@@ -87,21 +88,27 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   home = createGettingHome({ env, now }), reminders = rideReminders,
   saved = createSavedRouteService({ db, transit: home, now }),
   rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }),
+  ridePreview = createRidePreview({ env, now }),
   metrics = createRideMetrics({ db, secret: env.SESSION_SECRET, now }) } = {}) {
   const router = express.Router();
   const metricsEnabled = () => env.TRANSIT_DISTRIBUTION_ENABLED === 'true';
   async function record(kind, { event, rsvp, signedInUserId }) {
-    if (metricsEnabled()) await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
+    if (rsvp && metricsEnabled()) await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
   }
   const limiter = createRateLimiter({ windowMs: 60_000, rules: [
     { name: 'network', max: 80, key: ctx => ctx.network },
-    { name: 'guest', max: 24, key: ctx => String(ctx.rsvp.id) }
+    { name: 'guest', max: 24, key: ctx => ctx.rsvp ? String(ctx.rsvp.id) : '' }
   ] });
   setInterval(() => limiter.prune(), 60_000).unref();
   const gate = api => async (req, res, next) => {
     protectResponse(res);
     try {
-      const ctx = await accessForGettingHome(db, req, { env, now, rideEntry });
+      // Never treat the synthetic preview slug as a real event, even if
+      // someone creates an event with that slug in the future.
+      const previewEvent = req.params.slug === PREVIEW_SLUG ? ridePreview.verifyCookie(readCookie(req, PREVIEW_COOKIE)) : null;
+      const ctx = req.params.slug === PREVIEW_SLUG
+        ? (previewEvent && { event: previewEvent, preview: true, readOnlyGrant: true })
+        : await accessForGettingHome(db, req, { env, now, rideEntry });
       if (!ctx) return api ? res.status(404).json({ status: 'unavailable' }) : res.status(404).send(render404());
       if (api) {
         const network = crypto.createHmac('sha256', networkKey).update(clientIp(req)).digest('hex');
@@ -119,6 +126,17 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
     next();
   };
 
+  router.get(`${PREVIEW_PATH}/from-test`, (req, res) => {
+    protectResponse(res);
+    if (req.method !== 'GET') return res.sendStatus(204);
+    const event = ridePreview.verifyLink(req.query.t);
+    const token = event && ridePreview.issueCookie(event.event_date);
+    if (!token) return res.status(404).send(render404());
+    res.cookie(PREVIEW_COOKIE, token, {
+      path: '/', httpOnly: true, sameSite: 'lax', secure: env.NODE_ENV === 'production', maxAge: event.ends_at - now()
+    });
+    res.redirect(303, PREVIEW_PATH);
+  });
   router.get(`${PAGE}/from-email`, async (req, res) => {
     protectResponse(res);
     if (req.method !== 'GET') return res.sendStatus(204);
@@ -150,7 +168,9 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
     return sendHtmlFile(res, VIEW);
   });
   router.get(`${API}/options`, gate(true), async (req, res) => {
-    res.json(await home.getOptions(req.gettingHome.event));
+    const { event, preview } = req.gettingHome;
+    const options = await home.getOptions(event);
+    res.json(preview ? { ...options, previewDate: event.event_date } : options);
   });
   router.post(`${API}/departure`, jsonMutation, gate(true), async (req, res) => {
     if (!readTransitSelection(req.body)) return res.status(400).json({ status: 'unsupported-selection' });
@@ -160,7 +180,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   });
 
   const reminderAction = action => async (req, res) => {
-    if (env.TRANSIT_RIDE_REMINDERS_ENABLED !== 'true') return res.json({ status: 'unavailable' });
+    if (req.gettingHome.preview || env.TRANSIT_RIDE_REMINDERS_ENABLED !== 'true') return res.json({ status: 'unavailable' });
     try {
       const userId = await verifiedRideUser(db, req);
       if (!userId) return res.json({ status: 'identity-required' });

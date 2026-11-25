@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const { createGettingHomeRouter } = require('../../src/routes/getting-home');
 const { createRideEntry, rideEmailEntryPath, rideEntryCookieName } = require('../../src/lib/transit/ride-entry');
+const { createRidePreview, PREVIEW_PATH, PREVIEW_SLUG, PREVIEW_COOKIE } = require('../../src/lib/transit/ride-preview');
 const { createRideReminders, CONSENT_VERSION, RIDE_SMS_CONSENT } = require('../../src/lib/transit/ride-reminders');
 
 const START = Date.parse('2026-11-28T03:00:00Z');
@@ -127,6 +128,7 @@ async function fixture(t) {
     events, rsvps, metricsCalls, savedCalls, writes, env, entry,
     advance(ms) { current += ms; },
     link() { return rideEmailEntryPath({ event: events.get(scenario.id), rsvp: rsvps.get(guest.id), env, now, entry }); },
+    previewLink() { return createRidePreview({ env, now }).issueLink('2026-11-27'); },
     fetch(url, options = {}) { return fetch(`${base}${url}`, { redirect: 'manual', ...options }); }
   };
 }
@@ -253,4 +255,41 @@ test('only a verified, same-origin, explicit opt-in queues the event-specific co
   assert.equal(f.writes.length, 1);
   assert.deepEqual(f.writes[0].args.slice(0, 3), [scenario.id, guest.user_id, guest.id]);
   assert.equal(f.writes[0].args[8], CONSENT_VERSION);
+});
+
+test('one test link opens the sample and schedules without real attendee authority', async t => {
+  const f = await fixture(t);
+  f.env.TRANSIT_TEST_PREVIEW_ENABLED = 'true';
+  f.env.TRANSIT_DISTRIBUTION_ENABLED = 'false';
+  const previewApi = `/api/public/events/${PREVIEW_SLUG}/getting-home`;
+  denied(await f.fetch(PREVIEW_PATH));
+  denied(await f.fetch(`${PREVIEW_PATH}/from-test?t=invalid`));
+  const url = f.previewLink();
+  const head = await f.fetch(url, { method: 'HEAD' });
+  assert.equal(head.headers.get('set-cookie'), null);
+  const response = await f.fetch(url);
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get('location'), PREVIEW_PATH);
+  const header = response.headers.get('set-cookie');
+  assert.match(header, new RegExp(`^${PREVIEW_COOKIE}=`));
+  assert.match(header, /HttpOnly/);
+  assert.match(header, /Secure/);
+  const cookie = header.split(';', 1)[0];
+  const options = await f.fetch(`${previewApi}/options`, { headers: { cookie } });
+  assert.equal((await options.json()).previewDate, '2026-11-27');
+  assert.equal((await f.fetch(PREVIEW_PATH, { headers: { cookie } })).status, 200);
+  denied(await f.fetch(page, { headers: { cookie } }));
+  const plan = await f.fetch(`${previewApi}/departure`, json('POST', choice, { cookie }));
+  assert.equal((await plan.json()).status, 'scheduled');
+  const reminder = await f.fetch(`${previewApi}/reminder`, json('POST', { consent: true, selection: choice }, { cookie }));
+  assert.equal((await reminder.json()).status, 'unavailable');
+  const saved = await f.fetch(`${previewApi}/saved-route`, json('POST', { remember: true, selection: choice }, { cookie }));
+  assert.equal((await saved.json()).status, 'not-eligible');
+  f.env.TRANSIT_DISTRIBUTION_ENABLED = 'true';
+  assert.equal((await f.fetch(PREVIEW_PATH, { headers: { cookie } })).status, 200);
+  assert.equal(f.metricsCalls.length, 0);
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.savedCalls.length, 0);
+  f.advance(Date.parse('2026-11-28T12:00:00Z') - START);
+  denied(await f.fetch(PREVIEW_PATH, { headers: { cookie } }));
 });

@@ -1,8 +1,10 @@
 const { Resend } = require('resend');
+const { createHash } = require('node:crypto');
 const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { locationForViewer } = require('./event-location-privacy');
 const { rideEmailEntryPath } = require('./transit/ride-entry');
+const { createRidePreview } = require('./transit/ride-preview');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -572,6 +574,30 @@ async function sendOptionalHostEmail({ to, subject, html, text, unsubscribeUrl, 
   if (!headers) throw new Error('Optional host email requires an unsubscribe URL');
   if (!idempotencyKey) throw new Error('Optional host email requires an idempotency key');
   return send({ to, subject, html, text, headers, idempotencyKey, timeoutMs: 15000 });
+}
+
+function buildGettingHomePreviewEmail({ date, env = process.env, now = Date.now }) {
+  const path = createRidePreview({ env, now }).issueLink(date);
+  if (!path) return null;
+  const url = safeHttpUrl(`${String(env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '')}${path}`);
+  if (!url) return null;
+  const when = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${date}T12:00:00Z`));
+  const subject = 'Test: Getting Home from Make-Out Room';
+  const explanation = `This is a read-only preview for a sample show on ${when}. It uses published 511 schedules, not live vehicle arrivals. No RSVP or text will be created.`;
+  return {
+    subject, url, text: `${explanation}\n\nOpen the preview: ${url}`,
+    html: securityLayout({ kicker: 'Test preview', headline: 'Getting Home from Make-Out Room', sub: explanation, cta: 'Open the Getting Home preview', ctaUrl: url })
+  };
+}
+
+async function sendGettingHomePreviewEmail({ to, date }) {
+  const address = String(to ?? '').trim();
+  if (typeof to !== 'string' || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(address)) throw new Error('A single email address is required');
+  const preview = buildGettingHomePreviewEmail({ date });
+  if (!preview) throw new Error('Getting Home preview is unavailable');
+  const idempotencyKey = `transit-test-preview:${createHash('sha256').update(`${date}:${address.toLowerCase()}`).digest('hex')}`;
+  return send({ to: address, subject: preview.subject, html: preview.html, text: preview.text, idempotencyKey, timeoutMs: 15000 });
 }
 
 // Internal workflow notices share one renderer so adding another flyer-state
@@ -1963,6 +1989,7 @@ module.exports = {
   devOutbox, sendVerificationCode, sendAccountVerificationCode, sendAdminPasscode,
   sendAdminIdentityChangeVerification, sendAdminFlyerNotification, sendAdminEventAlert,
   sendMagicLink, sendAccountClaimInvitation, sendDoneForYouWelcome, sendRsvpConfirmation, sendDayBeforeReminder, sendDayOfReminder,
+  buildGettingHomePreviewEmail, sendGettingHomePreviewEmail,
   sendEventUpdate, sendEventCancellation, sendEventAnnouncement, sendPreviousGuestInvitation, sendLineupClaim, sendLineupClaimOutcome,
   buildHostRecapEmail, sendHostRecap, buildPostEventThankYouEmail, sendPostEventThankYou,
   buildContributorInvitationEmail, sendContributorInvitation, buildContributorClaimEmail, sendContributorClaim,

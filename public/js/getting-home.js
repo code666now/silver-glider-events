@@ -117,8 +117,16 @@
     let queuedSelection = null;
     const routeButtons = new Map();
 
-    get('event-link').href = eventPath;
-    get('directions').href = `${eventPath}#event-location-map`;
+    const preview = slug === 'make-out-room-schedule-preview';
+    get('event-link').href = preview ? '/' : eventPath;
+    get('directions').href = preview
+      ? 'https://maps.google.com/?q=Make-Out%20Room%2C%203225%2022nd%20St%2C%20San%20Francisco%2C%20CA'
+      : `${eventPath}#event-location-map`;
+    if (preview) {
+      get('event-link').querySelector('span').textContent = 'Silver Glider Events';
+      get('preview-label').hidden = false;
+      get('preview-label').textContent = 'Test preview · Sample show, no RSVP or texts.';
+    }
 
     function clearResult() {
       lookup?.abort();
@@ -237,6 +245,13 @@
       try {
         const response = await win.fetch(`${api}/options`, { credentials: 'same-origin', cache: 'no-store' });
         const data = await response.json();
+        if (preview && /^\d{4}-\d{2}-\d{2}$/.test(data.previewDate || '')) {
+          const previewDay = new Date(`${data.previewDate}T12:00:00Z`);
+          if (Number.isFinite(previewDay.getTime())) {
+            const day = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(previewDay);
+            get('preview-label').textContent = `Test preview · Sample show on ${day}. No RSVP or texts.`;
+          }
+        }
         if (response.status === 404 || data.status === 'unsupported-event') {
           status.textContent = 'Getting Home is unavailable for this event.';
           return;
