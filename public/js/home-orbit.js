@@ -6,6 +6,7 @@
 const TURN = 2 * Math.PI;
 const BASE_SPEED = TURN / 49000;
 const BOOST_MS = 2900;
+const MOTION_KEY = 'sge-home-photo-motion';
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
 function measureOrbit(width, height, heroWidth, heroHeight) {
@@ -56,26 +57,86 @@ function boostOffset(elapsed) {
   return TURN * progress - Math.sin(TURN * progress);
 }
 
+function readPhotoMotion(win) {
+  const fallback = new URLSearchParams(win.location?.search || '').get('photo-motion');
+  if (fallback === 'off' || fallback === 'on') return fallback === 'on';
+  for (const storage of ['localStorage', 'sessionStorage']) {
+    try {
+      const choice = win[storage]?.getItem(MOTION_KEY);
+      if (choice === 'off' || choice === 'on') return choice === 'on';
+    } catch { /* Continue when browser storage is restricted. */ }
+  }
+  return true;
+}
+
+function setPhotoMotion(win, enabled) {
+  for (const storage of ['localStorage', 'sessionStorage']) {
+    try {
+      if (!win[storage]) continue;
+      win[storage].setItem(MOTION_KEY, enabled ? 'on' : 'off');
+      // A readable but unwritable local value can outrank a session write.
+      if (readPhotoMotion(win) === enabled) return true;
+    } catch { /* Fall back to the return link when storage is unavailable. */ }
+  }
+  return false;
+}
+
+function onMotionChange(reduce, handler) {
+  if (typeof reduce.addEventListener === 'function') reduce.addEventListener('change', handler);
+  else if (typeof reduce.addListener === 'function') reduce.addListener(handler);
+}
+
+function mountMotionControls(doc, win, reduce) {
+  const panel = doc.querySelector('[data-home-motion-controls]');
+  const input = doc.querySelector('[data-home-orbit-motion]');
+  if (!panel || !input) return;
+  const note = doc.querySelector('[data-home-motion-note]');
+  const homeLink = doc.querySelector('.home-how-back');
+  const defaultNote = note?.textContent;
+  let enabled = readPhotoMotion(win);
+  let returnLinkOnly = false;
+  function render() {
+    input.checked = enabled && !reduce.matches;
+    input.disabled = reduce.matches;
+    if (note) {
+      note.textContent = reduce.matches ? 'Animation is off because your device uses Reduce Motion.'
+        : returnLinkOnly ? 'Use Back to homepage to apply this choice; your browser didn’t save it.' : defaultNote;
+    }
+  }
+  input.addEventListener('change', () => {
+    if (reduce.matches) return render();
+    enabled = input.checked;
+    returnLinkOnly = !setPhotoMotion(win, enabled);
+    if (homeLink) homeLink.href = returnLinkOnly ? `/?photo-motion=${enabled ? 'on' : 'off'}` : '/';
+    render();
+  });
+  onMotionChange(reduce, render);
+  render();
+  panel.hidden = false;
+}
+
 function mountHomeOrbit(doc, win) {
   const stage = doc.querySelector('[data-home-orbit-stage]');
   const gallery = doc.querySelector('[data-home-orbit-gallery]');
   const hero = doc.querySelector('[data-home-orbit-hero]');
-  const pause = doc.querySelector('[data-home-orbit-pause]');
-  const dialog = doc.querySelector('[data-home-orbit-dialog]');
-  const trigger = doc.querySelector('[data-home-orbit-how]');
-  const close = doc.querySelector('[data-home-orbit-close]');
   const credits = doc.querySelector('.home-orbit-credits');
   const cards = gallery ? [...gallery.querySelectorAll('.home-orbit-photo')] : [];
   const reduce = typeof win.matchMedia === 'function' ? win.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  const ready = Boolean(stage && stage.parentElement && hero && pause && cards.length > 1 && typeof win.requestAnimationFrame === 'function');
-  const marker = pause?.querySelector('span');
+  mountMotionControls(doc, win, reduce);
+  const ready = Boolean(stage && stage.parentElement && hero && cards.length > 1 && typeof win.requestAnimationFrame === 'function');
   let angle = -Math.PI / 2 + .09;
   let raf = null;
   let last = null;
   let spin = null;
-  let playing = !reduce.matches;
+  let playing = !reduce.matches && readPhotoMotion(win);
   let dimensions;
-  const photos = cards.map(card => ({ card, ratio: Number(card.dataset.orbitRatio), properties: new Map() }));
+  const photos = cards.map(card => ({ card, label: card.getAttribute('aria-label'), ratio: Number(card.dataset.orbitRatio), properties: new Map() }));
+
+  function syncPhotoActions() {
+    for (const { card, label } of photos) {
+      if (label) card.setAttribute('aria-label', playing ? label : label.replace(/^Spin photo wheel/, 'Step photo wheel'));
+    }
+  }
 
   function setStyle(photo, name, value) {
     if (photo.properties.get(name) === value) return;
@@ -111,19 +172,9 @@ function mountHomeOrbit(doc, win) {
     draw();
   }
 
-  function syncPause() {
-    if (!ready) return;
-    const active = Boolean(playing || spin);
-    const label = active ? 'Pause animation' : 'Play animation';
-    pause.hidden = reduce.matches;
-    pause.title = label;
-    pause.setAttribute('aria-label', label);
-    if (marker) marker.textContent = active ? 'Ⅱ' : '▶';
-  }
-
   function shouldAnimate() {
-    return ready && !reduce.matches && !doc.hidden && !dialog?.open && !credits?.open
-      && (spin || (playing && !gallery.querySelector(':focus-visible')));
+    return ready && playing && !reduce.matches && !doc.hidden && !credits?.open
+      && (spin || !gallery.querySelector(':focus-visible'));
   }
 
   function reconcile() {
@@ -146,41 +197,13 @@ function mountHomeOrbit(doc, win) {
       const previous = boostOffset(spin.elapsed);
       spin.elapsed = Math.min(BOOST_MS, spin.elapsed + elapsed);
       advance += boostOffset(spin.elapsed) - previous;
-      if (spin.elapsed >= BOOST_MS) {
-        spin = null;
-        syncPause();
-      }
+      if (spin.elapsed >= BOOST_MS) spin = null;
     }
     if (advance) {
       angle = (angle + advance) % TURN;
       draw();
     }
     reconcile();
-  }
-
-  // The link doubles as a no-JS fragment navigation. Dialog controls are
-  // enhanced only when showModal is available (native focus trap and Escape).
-  if (dialog && trigger && close && typeof dialog.showModal === 'function') {
-    trigger.addEventListener('click', event => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      event.preventDefault();
-      if (dialog.open) return;
-      dialog.showModal();
-      close.focus();
-      reconcile();
-    });
-    close.addEventListener('click', event => {
-      if (!dialog.open) return;
-      event.preventDefault();
-      dialog.close();
-    });
-    dialog.addEventListener('click', event => {
-      if (dialog.open && event.target === dialog) dialog.close();
-    });
-    dialog.addEventListener('close', () => {
-      trigger.focus();
-      reconcile();
-    });
   }
 
   for (const card of cards) {
@@ -198,34 +221,36 @@ function mountHomeOrbit(doc, win) {
   for (const card of cards) {
     card.disabled = false;
     card.addEventListener('click', () => {
-      if (dialog?.open || spin) return;
-      if (reduce.matches) {
-        // Explicit navigation, no animation for a reduced-motion preference.
+      if (spin) return;
+      if (!playing || reduce.matches) {
+        // Explicit navigation without animation when motion is turned off.
         angle = (angle + TURN / cards.length) % TURN;
         draw();
         return;
       }
       spin = { elapsed: 0 };
-      syncPause();
       reconcile();
     });
   }
-  pause.addEventListener('click', () => {
-    playing = !spin && !playing;
-    spin = null;
-    syncPause();
-    reconcile();
-  });
   const onMotion = () => {
     if (reduce.matches) {
       spin = null;
       playing = false;
     }
-    syncPause();
+    syncPhotoActions();
     reconcile();
   };
-  if (typeof reduce.addEventListener === 'function') reduce.addEventListener('change', onMotion);
-  else if (typeof reduce.addListener === 'function') reduce.addListener(onMotion);
+  function syncSavedMotion() {
+    playing = !reduce.matches && readPhotoMotion(win);
+    if (!playing) spin = null;
+    syncPhotoActions();
+    reconcile();
+  }
+  onMotionChange(reduce, onMotion);
+  win.addEventListener('storage', event => {
+    if (event.key === MOTION_KEY || event.key === null) syncSavedMotion();
+  });
+  win.addEventListener('pageshow', event => { if (event.persisted) syncSavedMotion(); });
   gallery.addEventListener('focusin', reconcile);
   gallery.addEventListener('focusout', () => Promise.resolve().then(reconcile));
   doc.addEventListener('visibilitychange', reconcile);
@@ -238,7 +263,7 @@ function mountHomeOrbit(doc, win) {
     win.addEventListener('resize', measure);
   }
   measure();
-  syncPause();
+  syncPhotoActions();
   reconcile();
 }
 

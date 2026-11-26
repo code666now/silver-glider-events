@@ -69,51 +69,64 @@ class Element extends EventTarget {
     this.classList = { add: name => this.classes.add(name) };
   }
   setAttribute(key, value) { this.attributes.set(key, value); }
+  getAttribute(key) { return this.attributes.get(key); }
   querySelector(key) { return this.items.get(key) || null; }
   querySelectorAll(key) { return this.items.get(key) || []; }
-  focus() { this.focused = true; }
-  showModal() { this.open = true; }
-  close() { this.open = false; this.dispatchEvent(new Event('close')); }
 }
 
 const emit = (target, name) => target.dispatchEvent(new Event(name, { cancelable: true }));
 
-function mount({ number = 7, reduced = false } = {}) {
+const storage = () => {
+  const values = new Map();
+  return { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+};
+
+function mount({ number = 7, reduced = false, settings = false, store = storage(), sessionStore, search = '' } = {}) {
   const doc = new Element();
   const win = new Element();
   const stage = new Element();
   const gallery = new Element();
   const hero = new Element();
-  const pause = new Element();
   const motion = new Element();
-  const trigger = new Element();
-  const close = new Element();
-  const dialog = new Element();
   const credits = new Element();
+  const panel = new Element();
+  const input = new Element();
+  const note = new Element();
+  const homeLink = new Element();
   stage.parentElement = new Element();
   stage.clientWidth = 390;
   stage.clientHeight = 570;
   hero.offsetWidth = 285;
   hero.offsetHeight = 139;
-  pause.items.set('span', new Element());
-  pause.hidden = true;
+  panel.hidden = true;
+  note.textContent = 'You can still step through photos with animation off.';
+  homeLink.href = '/';
   motion.matches = reduced;
   win.matchMedia = () => motion;
+  win.localStorage = store;
+  win.sessionStorage = sessionStore;
+  win.location = { search };
   const cards = Array.from({ length: number }, () => {
     const card = new Element();
     const img = new Element();
     img.complete = true;
     img.naturalWidth = 120;
     card.disabled = true;
+    card.setAttribute('aria-label', 'Spin photo wheel — Example photo');
     card.items.set('img', img);
     card.dataset.orbitRatio = '.8';
     return card;
   });
   gallery.items.set('.home-orbit-photo', cards);
-  for (const [key, node] of Object.entries({ stage, gallery, hero, pause, how: trigger, close, dialog })) {
-    doc.items.set(`[data-home-orbit-${key}]`, node);
+  if (settings) {
+    doc.items.set('[data-home-motion-controls]', panel);
+    doc.items.set('[data-home-orbit-motion]', input);
+    doc.items.set('[data-home-motion-note]', note);
+    doc.items.set('.home-how-back', homeLink);
+  } else {
+    for (const [key, node] of Object.entries({ stage, gallery, hero })) doc.items.set(`[data-home-orbit-${key}]`, node);
+    doc.items.set('.home-orbit-credits', credits);
   }
-  doc.items.set('.home-orbit-credits', credits);
   let latest = 0;
   let now = 0;
   const queue = new Map();
@@ -129,14 +142,12 @@ function mount({ number = 7, reduced = false } = {}) {
     }
   };
   mountHomeOrbit(doc, win);
-  return { doc, stage, gallery, pause, motion, trigger, close, dialog, credits, cards, queue, tick };
+  return { doc, win, stage, gallery, motion, credits, cards, queue, tick, panel, input, note, homeLink };
 }
 
-test('the same loop respects user pause, frame visibility, keyboard and dialog focus', async () => {
-  const { doc, gallery, pause, trigger, close, dialog, credits, cards, queue, tick } = mount();
+test('the same loop respects visibility, keyboard focus and open credits; photo activation still boosts it', async () => {
+  const { doc, gallery, credits, cards, queue, tick } = mount();
   assert.equal(queue.size, 1);
-  assert.equal(pause.hidden, false);
-  assert.equal(pause.attributes.get('aria-label'), 'Pause animation');
   assert.ok(cards.every(card => !card.disabled && card.props.has('--ho-x')));
   const initial = cards[2].props.get('--ho-x');
   tick(6);
@@ -158,54 +169,78 @@ test('the same loop respects user pause, frame visibility, keyboard and dialog f
     emit(element, event);
     assert.equal(queue.size, 1);
   }
-  assert.equal(emit(trigger, 'click'), false, 'enhanced link opens native dialog without changing URL');
-  assert.equal(dialog.open, true);
-  assert.equal(close.focused, true);
-  assert.equal(queue.size, 0);
-  emit(close, 'click');
-  assert.equal(dialog.open, false);
-  assert.equal(trigger.focused, true);
-  assert.equal(queue.size, 1);
-
-  emit(pause, 'click');
-  assert.equal(pause.attributes.get('aria-label'), 'Play animation');
-  assert.equal(queue.size, 0);
-  const pausedAt = cards[2].props.get('--ho-x');
+  const before = cards[2].props.get('--ho-x');
   emit(cards[1], 'click');
-  emit(cards[3], 'click');
   tick(40);
-  assert.notEqual(cards[2].props.get('--ho-x'), pausedAt);
-  tick(200);
-  assert.equal(queue.size, 0);
-  assert.equal(cards[2].props.get('--ho-x'), pausedAt, 'one rotation only when base animation is paused');
+  assert.notEqual(cards[2].props.get('--ho-x'), before);
+  assert.equal(queue.size, 1);
 });
 
-test('reduced motion is static until a deliberate no-motion step; no gallery still keeps dialog functional', () => {
-  const { stage, cards, motion, pause, queue } = mount({ reduced: true });
+test('the standalone motion setting persists on return and cancels animation in an open homepage tab', () => {
+  const store = storage();
+  const { panel, input } = mount({ settings: true, store });
+  assert.equal(panel.hidden, false);
+  assert.equal(input.checked, true);
+  const open = mount({ store });
+  emit(open.cards[0], 'click');
+  assert.equal(open.queue.size, 1);
+  input.checked = false;
+  emit(input, 'change');
+  open.win.dispatchEvent(Object.assign(new Event('storage'), { key: 'sge-home-photo-motion' }));
+  assert.equal(open.queue.size, 0);
+  const loaded = mount({ store });
+  assert.equal(loaded.queue.size, 0);
+  assert.match(loaded.cards[0].getAttribute('aria-label'), /^Step photo wheel/);
+  const still = loaded.cards[2].props.get('--ho-x');
+  emit(loaded.cards[1], 'click');
+  assert.notEqual(loaded.cards[2].props.get('--ho-x'), still);
+  assert.equal(loaded.queue.size, 0, 'a deliberate step does not animate when disabled');
+  input.checked = true;
+  emit(input, 'change');
+  loaded.win.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  assert.equal(loaded.queue.size, 1, 'browser Back reads the latest setting');
+  assert.match(loaded.cards[0].getAttribute('aria-label'), /^Spin photo wheel/);
+});
+
+test('a direct return link still turns off motion when storage is blocked or a stale local value wins', () => {
+  const unavailable = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  const { input, homeLink, note } = mount({ settings: true, store: unavailable });
+  input.checked = false;
+  emit(input, 'change');
+  assert.equal(homeLink.href, '/?photo-motion=off');
+  assert.match(note.textContent, /Back to homepage/);
+  assert.equal(mount({ store: unavailable, search: '?photo-motion=off' }).queue.size, 0);
+  const readOnly = { ...unavailable, getItem: () => 'on' };
+  const mixed = mount({ settings: true, store: readOnly, sessionStore: storage() });
+  mixed.input.checked = false;
+  emit(mixed.input, 'change');
+  assert.equal(mixed.homeLink.href, '/?photo-motion=off');
+});
+
+test('device Reduce Motion wins and empty or single-photo galleries remain static', () => {
+  const { stage, cards, motion, queue } = mount({ reduced: true });
   assert.equal(stage.parentElement.classes.has('is-orbit-enhanced'), true);
   assert.equal(queue.size, 0);
-  assert.equal(pause.hidden, true);
   const before = cards[0].props.get('--ho-x');
   emit(cards[0], 'click');
   assert.notEqual(cards[0].props.get('--ho-x'), before);
   assert.equal(queue.size, 0);
   motion.matches = false;
   emit(motion, 'change');
-  assert.equal(pause.hidden, false);
   assert.equal(queue.size, 0, 'changing the system setting should not unexpectedly start movement');
-  emit(pause, 'click');
-  assert.equal(queue.size, 1);
-  emit(cards[4], 'click');
-  motion.matches = true;
-  emit(motion, 'change');
-  assert.equal(queue.size, 0);
+
+  const settings = mount({ settings: true, reduced: true });
+  assert.equal(settings.input.disabled, true);
+  assert.equal(settings.input.checked, false);
+  assert.match(settings.note.textContent, /Reduce Motion/);
+  settings.motion.matches = false;
+  emit(settings.motion, 'change');
+  assert.equal(settings.input.disabled, false);
+  assert.equal(settings.input.checked, true);
 
   for (const number of [0, 1]) {
     const idle = mount({ number });
     assert.equal(idle.stage.parentElement.classes.has('is-orbit-enhanced'), false);
-    assert.equal(idle.pause.hidden, true);
     assert.equal(idle.queue.size, 0);
-    emit(idle.trigger, 'click');
-    assert.equal(idle.dialog.open, true);
   }
 });

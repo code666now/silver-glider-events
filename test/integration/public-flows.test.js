@@ -7551,6 +7551,21 @@ test('operator roster protects self/final Super Admin and explicitly revokes tar
   assert.equal(audit[2].target_email, support.email);
 });
 
+test('the homepage links to a signed-out How it works page instead of a popup', async () => {
+  const homepage = await fetch(`${baseUrl}/`);
+  assert.equal(homepage.status, 200);
+  const landing = await homepage.text();
+  assert.match(landing, /href="\/how-it-works">How it works<\/a>/);
+  assert.doesNotMatch(landing, /home-how-dialog|data-home-orbit-pause/);
+  const response = await fetch(`${baseUrl}/how-it-works`, { redirect: 'manual' });
+  assert.equal(response.status, 200);
+  const page = await response.text();
+  assert.match(page, /<h1>How it works<\/h1>/);
+  assert.match(page, /Familiar Faces, remembered\./);
+  assert.match(page, /data-home-orbit-motion/);
+  assert.match(page, /href="\/login\?next=%2Fevents%2Fnew">Create your event/);
+});
+
 test('Homepage Photography is Super Admin only and changes the public gallery without redeploying', async t => {
   resetRateLimits();
   const pagePath = `${baseUrl}/admin/homepage-photography`;

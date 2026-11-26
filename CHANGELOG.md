@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.234
+
+Released November 26, 2026.
+
+* Match the homepage to the app's typography, pill buttons, teal-and-amber background, and legal-footer styles. Replace the heading label with the silver plane and remove footer region copy and decorative CTA arrows.
+* Make How it works a standalone page with the existing feature list and Familiar Faces. Move autoplay control off the homepage and honor browser and device motion preferences.
+
 ## 1.0.233
 
 Released November 26, 2026.

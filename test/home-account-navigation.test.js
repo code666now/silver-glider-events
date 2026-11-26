@@ -17,7 +17,7 @@ test('homepage gives returning users an account entry and keeps both real auth r
   assert.match(styles, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
   assert.doesNotMatch(styles, /data-loading="true"[^}]*visibility: hidden/);
   assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard">Sign in/);
-  assert.match(home, /class="home-orbit-cta" href="\/login\?next=%2Fevents%2Fnew">Create your event/);
+  assert.match(home, /class="sg-btn sg-btn-primary home-orbit-cta" href="\/login\?next=%2Fevents%2Fnew">Create your event<\/a>/);
   assert.match(home, /src="\/js\/api\.js" defer/);
   assert.match(home, /src="\/js\/home-account-nav\.js" defer/);
 
@@ -32,49 +32,79 @@ test('homepage gives returning users an account entry and keeps both real auth r
   assert.match(client, /signOutDestination: '\/'/);
 });
 
-test('homepage keeps its editorial features and Familiar Faces in one accessible How it works dialog', () => {
+test('How it works is a standalone public page with the original features, plane and Familiar Faces', () => {
   const home = read('src/views/index.html');
-  const styles = read('public/css/home-orbit.css');
-  const how = home.indexOf('<dialog class="home-orbit-dialog"');
-  assert.ok(how > home.indexOf('</main>') && how > home.indexOf('</footer>'));
-  assert.match(home, /href="#home-how-dialog" data-home-orbit-how aria-haspopup="dialog">How it works/);
-  assert.match(home, /id="home-how-dialog" aria-labelledby="home-how-title"/);
-  assert.match(styles, /\.home-orbit-dialog:target:not\(\[open\]\)/);
-  assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
-  assert.match(home, /id="feature-list-title">The good stuff<\/h3>/);
-  assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
-  assert.match(home, /<ol class="features">/);
+  const how = read('src/views/how-it-works.html');
+  assert.match(read('src/index.js'), /app\.get\('\/how-it-works', view\('how-it-works\.html'\)\)/);
+  assert.match(home, /href="\/how-it-works">How it works<\/a>/);
+  assert.doesNotMatch(home + how, /<dialog|home-how-dialog/);
+  assert.match(how, /class="home-how-back" href="\/"/);
+  assert.match(how, /<img src="\/logo\.png"[^>]*alt="">\s*<h1>How it works<\/h1>/);
+  assert.match(how, /data-home-motion-controls hidden[\s\S]*type="checkbox" data-home-orbit-motion[\s\S]*Animate homepage photos/);
+  assert.match(how, /<section class="feature-list" aria-labelledby="feature-list-title">/);
+  assert.match(how, /id="feature-list-title">The good stuff<\/h2>/);
+  assert.match(how, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
+  assert.match(how, /<ol class="features" role="list">/);
   for (const number of ['01', '02', '03', '04']) {
-    assert.ok(home.includes('<span class="feature-number" aria-hidden="true">' + number + '</span>'));
+    assert.ok(how.includes('<span class="feature-number" aria-hidden="true">' + number + '</span>'));
   }
-  assert.match(home, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
-  assert.ok(home.indexOf('<section class="home-regulars"') > home.indexOf('<section class="feature-list"'));
-  assert.match(home, /<h3 id="home-regulars-title">Familiar Faces, remembered\.<\/h3>/);
-  assert.match(home, /See who keeps coming back\. Invite them again in a tap\./);
-  assert.equal([...home.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join(''), 'GLIDE');
+  assert.match(how, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
+  assert.ok(how.indexOf('<section class="home-regulars"') > how.indexOf('<section class="feature-list"'));
+  assert.match(how, /<h2 id="home-regulars-title">Familiar Faces, remembered\.<\/h2>/);
+  assert.match(how, /See who keeps coming back\. Invite them again in a tap\./);
+  assert.equal([...how.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join(''), 'GLIDE');
+  assert.match(how, /href="\/login\?next=%2Fevents%2Fnew">Create your event<\/a>/);
 });
 
-test('homepage hero matches the orbit prototype without shipping prototype controls or embedded media', () => {
+test('homepage keeps the orbit composition without shipping prototype controls or embedded media', () => {
   const home = read('src/views/index.html');
   const styles = read('public/css/home-orbit.css');
   const hero = home.indexOf('class="home-orbit-hero"');
   const photos = home.indexOf('<!-- HOME_ORBIT_PHOTOS -->');
   assert.ok(hero > 0 && photos > hero && photos < home.indexOf('</main>'));
-  assert.match(home, /<h1 id="home-orbit-title">You have a personality\.<br><span>Your events should too\.<\/span><\/h1>/);
+  assert.match(home, /<h1 id="home-orbit-title">You have a&nbsp;personality\.<br><span>Your events should&nbsp;too\.<\/span><\/h1>/);
   assert.equal((home.split('</main>')[0].match(/href="\/login\?next=%2Fevents%2Fnew"/g) || []).length, 1);
   assert.match(home, /aria-label="Event photos"><!-- HOME_ORBIT_PHOTOS -->/);
   assert.match(home, /<summary>Photo credits<\/summary>[\s\S]*<!-- HOME_ORBIT_CREDITS -->/);
-  assert.match(home, /data-home-orbit-pause[^>]*hidden/);
+  assert.doesNotMatch(home, /data-home-orbit-pause|data-home-orbit-motion|home-orbit-footer-tools/);
   assert.match(home, /src="\/js\/home-orbit\.js" defer/);
   assert.doesNotMatch(home, /<style>|<script>|style=|onerror=|data:image|type="file"|Concept ·|Try your own photos|home-hero-tilt|home-glide/i);
-  assert.match(styles, /background: #f2f2ef/);
-  assert.match(styles, /\.home-orbit-cta:hover \{ background: var\(--sg-accent\)/);
   assert.match(styles, /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.is-orbit-enhanced \.home-orbit-photo:not\(:disabled\) \{ cursor: url\("\/img\/home\/orbit-cursor\.png"\) 29 6, pointer/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(styles, /data:image/);
   for (const href of ['/recs', '/privacy', '/terms', '/accessibility']) {
     assert.ok(home.includes('href="' + href + '"'));
   }
+});
+
+test('the homepage uses the shared logo, typography and pills with teal pointer, keyboard and press feedback', () => {
+  const home = read('src/views/index.html');
+  const styles = read('public/css/home-orbit.css');
+  assert.match(home, /<img class="home-orbit-hero-plane" src="\/logo\.png" width="54" height="54" alt="">\s*<h1/);
+  assert.doesNotMatch(home, /home-orbit-hero-label|San Francisco \/ Los Angeles|↗/);
+  assert.match(home, /<span class="home-orbit-weekly">Get weekly picks<\/span>/);
+  assert.match(home, /class="sg-btn sg-btn-ghost sg-home-signin"/);
+  assert.match(home, /class="sg-btn sg-btn-primary home-orbit-cta"/);
+  assert.match(styles, /\.sg-home-page \{[^}]*font-family: var\(--sg-font-body\)/);
+  assert.match(styles, /\.home-orbit-hero h1 \{[^}]*font: 700 [^;]*var\(--sg-font-display\)/);
+  assert.match(styles, /\.home-orbit-cta \{[^}]*background: #f2f2ef/);
+  assert.match(styles, /\.home-orbit-cta:active \{ background: var\(--sg-accent\); transition: none;/);
+  assert.match(styles, /\.home-orbit-cta:focus-visible \{ background: var\(--sg-accent\)/);
+  assert.match(styles, /@media \(hover: hover\) \{[^\n]*\n[^\n]*\n\s*\.home-orbit-cta:hover \{ background: var\(--sg-accent\)/);
+});
+
+test('both public pages reuse the app gradient and legal-footer typography', () => {
+  const sharedStyles = read('public/css/home-orbit.css');
+  for (const page of ['index', 'how-it-works', 'login']) {
+    const html = read(`src/views/${page}.html`);
+    assert.match(html, /class="sg-aurora" aria-hidden="true"/);
+    assert.match(html, /class="sg-aurora-veil" aria-hidden="true"/);
+    if (page === 'login') continue; // Signed-in app shell mounts these same classes automatically.
+    assert.match(html, /<nav class="sg-legal-links" aria-label="Legal links">/);
+    for (const href of ['/privacy', '/terms', '/accessibility']) assert.ok(html.includes(`class="sg-legal-link" href="${href}"`));
+  }
+  assert.match(sharedStyles, /\.sg-home-page \.sg-aurora \{ animation: none;/);
+  assert.doesNotMatch(sharedStyles, /\.home-orbit-legal/);
 });
 
 test('the weekly recs signup lives on /recs, and the homepage links to it quietly', () => {

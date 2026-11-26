@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e0e0e">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <title>How it works | Silver Glider Events</title>
+  <meta name="description" content="Create an event page, collect RSVPs and keep in touch with the people who show up.">
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/home-orbit.css">
+  <link rel="stylesheet" href="/css/home-how.css">
+  <script src="/js/home-orbit.js" defer></script>
+</head>
+<body class="sg-home-page home-how-page">
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
+
+  <header class="home-how-shell home-how-header">
+    <a class="home-how-back" href="/"><span aria-hidden="true">←</span> Back to homepage</a>
+    <a class="sg-btn sg-btn-ghost home-how-sign-in" href="/login?next=%2Fdashboard">Sign in</a>
+  </header>
+
+  <main class="home-how-shell home-orbit-info">
+    <header class="home-how-intro">
+      <img src="/logo.png" width="48" height="48" alt="">
+      <h1>How it works</h1>
+      <p>Create an event page, collect RSVPs and keep in touch with the people who show up.</p>
+    </header>
+
+    <section class="home-how-motion" aria-label="Homepage motion" data-home-motion-controls hidden>
+      <label class="home-how-motion-label">
+        <input type="checkbox" data-home-orbit-motion aria-describedby="home-how-motion-note">
+        <span>Animate homepage photos</span>
+      </label>
+      <p id="home-how-motion-note" data-home-motion-note>You can still step through photos with animation off.</p>
+    </section>
+
+    <section class="feature-list" aria-labelledby="feature-list-title">
+      <div class="feature-list-header">
+        <h2 class="feature-list-title" id="feature-list-title">The good stuff</h2>
+        <span class="feature-list-range" aria-hidden="true">01 — 04</span>
+      </div>
+      <ol class="features" role="list">
+        <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
+        <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
+        <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
+        <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>Your own follow page.</strong> Fans follow you and hear about the next show by email or text.</p></li>
+      </ol>
+    </section>
+
+    <section class="home-regulars" aria-labelledby="home-regulars-title">
+      <p class="home-regulars-kicker">Only on Silver Glider</p>
+      <h2 id="home-regulars-title">Familiar Faces, remembered.</h2>
+      <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
+      <div class="home-faces" aria-hidden="true">
+        <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
+        <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
+        <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
+        <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
+        <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
+      </div>
+    </section>
+
+    <a class="sg-btn sg-btn-primary home-how-create" href="/login?next=%2Fevents%2Fnew">Create your event</a>
+  </main>
+
+  <footer class="sg-global-footer home-how-footer" data-sg-legal-footer aria-label="Site information">
+    <nav class="sg-legal-links" aria-label="Legal links">
+      <a class="sg-legal-link" href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span>
+      <a class="sg-legal-link" href="/terms">Terms</a><span aria-hidden="true">·</span>
+      <a class="sg-legal-link" href="/accessibility">Accessibility</a>
+    </nav>
+  </footer>
+</body>
+</html>

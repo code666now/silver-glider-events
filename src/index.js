@@ -128,6 +128,7 @@ app.get('/', async (_req, res) => {
   return res.type('html').send(renderHomeOrbit(template, photos));
 });
 app.get('/recs', view('recs.html'));
+app.get('/how-it-works', view('how-it-works.html'));
 app.get('/flyer', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
   return sendHtmlFile(res, path.join(VIEWS, 'flyer-intake.html'));

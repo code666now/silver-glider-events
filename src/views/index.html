@@ -19,6 +19,8 @@
   <script src="/js/home-orbit.js" defer></script>
 </head>
 <body class="sg-home-page">
+  <div class="sg-aurora" aria-hidden="true"></div>
+  <div class="sg-aurora-veil" aria-hidden="true"></div>
   <div class="home-orbit-page" id="home-page">
     <header class="sg-home-header home-orbit-topbar">
       <a class="home-orbit-brand" href="/" aria-label="Silver Glider Events homepage">
@@ -26,16 +28,16 @@
         <span>Silver Glider<small>Events</small></span>
       </a>
       <nav class="sg-home-account-shell" data-home-account-shell data-loading="true" aria-label="Account">
-        <a class="sg-home-signin" data-home-signin href="/login?next=%2Fdashboard">Sign in</a>
+        <a class="sg-btn sg-btn-ghost sg-home-signin" data-home-signin href="/login?next=%2Fdashboard">Sign in</a>
         <div class="sg-home-authenticated" data-home-authenticated hidden></div>
       </nav>
     </header>
 
     <main class="home-orbit-stage" data-home-orbit-stage>
       <section class="home-orbit-hero" data-home-orbit-hero aria-labelledby="home-orbit-title">
-        <p class="home-orbit-hero-label">Silver Glider Events</p>
-        <h1 id="home-orbit-title">You have a personality.<br><span>Your events should too.</span></h1>
-        <a class="home-orbit-cta" href="/login?next=%2Fevents%2Fnew">Create your event <span aria-hidden="true">↗</span></a>
+        <img class="home-orbit-hero-plane" src="/logo.png" width="54" height="54" alt="">
+        <h1 id="home-orbit-title">You have a&nbsp;personality.<br><span>Your events should&nbsp;too.</span></h1>
+        <a class="sg-btn sg-btn-primary home-orbit-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
         <p class="home-orbit-free">Free to create and publish.</p>
       </section>
       <div class="home-orbit-gallery" data-home-orbit-gallery role="group" aria-label="Event photos"><!-- HOME_ORBIT_PHOTOS --></div>
@@ -43,21 +45,15 @@
 
     <footer class="home-orbit-footer" data-sg-legal-footer aria-label="Site information">
       <div class="home-orbit-footer-main">
-        <div class="home-orbit-footer-note">
-          <span>San Francisco / Los Angeles</span>
-          <details class="home-orbit-credits">
-            <summary>Photo credits</summary>
-            <ul class="home-orbit-credits-list"><!-- HOME_ORBIT_CREDITS --></ul>
-          </details>
-        </div>
+        <details class="home-orbit-credits">
+          <summary>Photo credits</summary>
+          <ul class="home-orbit-credits-list"><!-- HOME_ORBIT_CREDITS --></ul>
+        </details>
         <nav class="home-orbit-footer-nav" aria-label="About Silver Glider">
-          <a href="#home-how-dialog" data-home-orbit-how aria-haspopup="dialog">How it works</a>
+          <a href="/how-it-works">How it works</a>
           <span aria-hidden="true" class="home-orbit-footer-separator">·</span>
-          <a href="/recs">Going out instead? <span class="home-orbit-weekly">Get weekly picks <span aria-hidden="true">↗</span></span></a>
+          <a href="/recs">Going out instead? <span class="home-orbit-weekly">Get weekly picks</span></a>
         </nav>
-        <div class="home-orbit-footer-tools">
-          <button class="home-orbit-pause" type="button" data-home-orbit-pause aria-label="Pause animation" title="Pause animation" hidden><span aria-hidden="true">Ⅱ</span></button>
-        </div>
       </div>
       <div class="home-orbit-social">
         <a class="home-orbit-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
@@ -67,45 +63,14 @@
             <circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle>
           </svg>
         </a>
-        <nav class="home-orbit-legal" aria-label="Legal links">
-          <a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span>
-          <a href="/terms">Terms</a><span aria-hidden="true">·</span>
-          <a href="/accessibility">Accessibility</a>
+        <nav class="sg-legal-links" aria-label="Legal links">
+          <a class="sg-legal-link" href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span>
+          <a class="sg-legal-link" href="/terms">Terms</a><span aria-hidden="true">·</span>
+          <a class="sg-legal-link" href="/accessibility">Accessibility</a>
         </nav>
       </div>
     </footer>
   </div>
 
-  <dialog class="home-orbit-dialog" id="home-how-dialog" aria-labelledby="home-how-title" data-home-orbit-dialog>
-    <div class="home-orbit-info">
-      <a class="home-orbit-close" href="#home-page" data-home-orbit-close>Close <span aria-hidden="true">×</span></a>
-      <h2 id="home-how-title">How it works</h2>
-      <section class="feature-list" aria-labelledby="feature-list-title">
-        <div class="feature-list-header">
-          <h3 class="feature-list-title" id="feature-list-title">The good stuff</h3>
-          <span class="feature-list-range" aria-hidden="true">01 — 04</span>
-        </div>
-        <ol class="features">
-          <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
-          <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
-          <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
-          <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>Your own follow page.</strong> Fans follow you and hear about the next show by email or text.</p></li>
-        </ol>
-      </section>
-      <section class="home-regulars" aria-labelledby="home-regulars-title">
-        <p class="home-regulars-kicker">Only on Silver Glider</p>
-        <h3 id="home-regulars-title">Familiar Faces, remembered.</h3>
-        <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
-        <div class="home-faces" aria-hidden="true">
-          <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
-          <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
-          <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
-          <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
-          <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
-        </div>
-      </section>
-      <a class="home-orbit-cta home-orbit-dialog-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
-    </div>
-  </dialog>
 </body>
 </html>
