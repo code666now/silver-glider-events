@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { sendDayBeforeReminder, sendDayOfReminder } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { eventEndAtSql } = require('../lib/post-event');
+const { createReminderRideEntryPath } = require('../lib/transit/ride-entry');
 
 let _running = false;
 
@@ -120,7 +121,11 @@ async function sendCurrentReminder(client, logId, messageType, organizerId) {
     `UPDATE message_log SET recipient=$2, recipient_user_id=$3 WHERE id=$1`,
     [logId, rsvp.email, rsvp.user_id]
   );
-  return SENDERS[messageType]({ to: rsvp.email, event, rsvp, idempotencyKey: `reminder:${messageType}:${logId}` });
+  let rideEntryPath = null;
+  try {
+    rideEntryPath = await createReminderRideEntryPath({ db: client, event, rsvp });
+  } catch { /* Optional transportation coverage must not hold back a reminder. */ }
+  return SENDERS[messageType]({ to: rsvp.email, event, rsvp, rideEntryPath, idempotencyKey: `reminder:${messageType}:${logId}` });
 }
 
 // One retry per failed reminder within 20h; after that the error is prefixed

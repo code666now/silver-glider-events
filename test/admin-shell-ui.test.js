@@ -61,6 +61,8 @@ test('Transportation uses the shared switch, explicit save, and readable event a
   assert.match(html, /<input id="rollout-enabled" type="checkbox" role="switch" aria-describedby="rollout-description" disabled>/);
   assert.match(html, /id="rollout-save" type="submit" disabled/);
   assert.match(html, /data-metric="returningUsers45d"/);
+  assert.match(html, /<dt>Email planner visits<\/dt><dd data-metric="emailPlannerVisits">/);
+  assert.equal([...html.matchAll(/<th scope="col">Via email<\/th>/g)].length, 2);
   assert.match(html, /id="transportation-events-rows"/);
   assert.match(html, /id="transportation-hosts-rows"/);
   assert.match(html, /role="region" aria-labelledby="transportation-events-title" tabindex="0"/);
@@ -72,6 +74,7 @@ test('Transportation uses the shared switch, explicit save, and readable event a
   assert.match(script, /badge\.textContent = result\.enabled/);
   assert.match(script, /api\('\/api\/admin\/transportation\/rollout', \{ method: 'PATCH', body: \{ enabled \}/);
   assert.match(script, /cell\.textContent = value/);
+  assert.match(script, /metricFields = \['pageOpens', 'emailPlannerVisits', 'busClicks'/);
   assert.doesNotMatch(script, /\.innerHTML\s*=/);
 });
 

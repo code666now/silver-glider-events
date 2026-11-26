@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.230
+
+Released November 25, 2026.
+
+* Add Help me get home to the existing day-before and day-of emails for guests of covered public San Francisco events. Signed links work through the service night, and the Transportation report tracks verified planner visits from email separately. RSVP confirmations and ride texts are unchanged; the planner does not show a ride-text time while SMS is off.
+
 ## 1.0.229
 
 Released November 25, 2026.

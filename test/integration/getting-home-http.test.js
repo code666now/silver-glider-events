@@ -6,12 +6,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const { createGettingHomeRouter } = require('../../src/routes/getting-home');
-const { createRideEntry, rideEmailEntryPath, rideEntryCookieName } = require('../../src/lib/transit/ride-entry');
+const { createRideEntry, createReminderRideEntryPath, rideEntryCookieName } = require('../../src/lib/transit/ride-entry');
 const { createRidePreview, PREVIEW_PATH, PREVIEW_SLUG, PREVIEW_COOKIE } = require('../../src/lib/transit/ride-preview');
 const { createRideReminders, CONSENT_VERSION, RIDE_SMS_CONSENT } = require('../../src/lib/transit/ride-reminders');
+const { sfCoverageInput } = require('../../src/lib/transit/sf-coverage-store');
 
 const START = Date.parse('2026-11-28T03:00:00Z');
 const END = '2026-11-28T09:00:00Z';
+const SERVICE_NIGHT_END = Date.parse('2026-11-28T12:00:00Z');
 const JOIN_LINK_SECRET = 'synthetic-ride-email-link-secret';
 const scenario = {
   id: 10, slug: 'night-at-the-room', organizer_id: 50, status: 'published', visibility: 'public',
@@ -20,6 +22,9 @@ const scenario = {
 };
 const guest = { id: 21, event_id: scenario.id, user_id: 3, status: 'confirmed', wants_reminders: true, phone: '+14155550132' };
 const choice = { stopId: 'SF:15562', routeId: 'SF:14', direction: '0', headsign: 'Downtown' };
+const cityWalk = { stopId: choice.stopId, lat: 37.784, lon: -122.407, walkSeconds: 240 };
+const cityVenue = { ...scenario, venue_name: 'City fixture', venue_address: '801 Market St, San Francisco, CA 94103, USA',
+  venue_city: 'San Francisco', venue_state: 'CA', venue_latitude: 37.784, venue_longitude: -122.407, google_place_id: 'fixture-place' };
 const verifiedPlan = {
   status: 'scheduled', timing: 'scheduled', departureAt: Date.parse('2026-11-28T08:50:00Z'),
   leaveByAt: Date.parse('2026-11-28T08:43:00Z'), proposedReminderAt: Date.parse('2026-11-28T08:13:00Z'),
@@ -29,6 +34,7 @@ const upcoming = { context: 'leaving-now', includesLast: false, departures: [
   { departureAt: Date.parse('2026-11-28T05:00:00Z'), timing: 'scheduled' },
   { departureAt: Date.parse('2026-11-28T05:30:00Z'), timing: 'scheduled' }
 ] };
+const { proposedReminderAt: _smsTime, ...readOnlyPlan } = verifiedPlan;
 const page = `/e/${scenario.slug}/getting-home`;
 const api = `/api/public/events/${scenario.slug}/getting-home`;
 const result = (...rows) => ({ rows, rowCount: rows.length });
@@ -37,15 +43,17 @@ async function fixture(t) {
   const env = {
     NODE_ENV: 'production', SESSION_SECRET: JOIN_LINK_SECRET,
     TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_DISTRIBUTION_ENABLED: 'true', TRANSIT_RIDE_REMINDERS_ENABLED: 'true',
-    TRANSIT_SMS_DAILY_SEGMENT_CAP: '2', TRANSIT_SMS_LIFETIME_SEGMENT_CAP: '5'
+    TRANSIT_SMS_DAILY_SEGMENT_CAP: '2', TRANSIT_SMS_LIFETIME_SEGMENT_CAP: '5', TRANSIT_511_API_KEY: 'fixture-only-511-key'
   };
   const events = new Map([[scenario.id, { ...scenario }], [11, { ...scenario, id: 11, slug: 'another-night' }]]);
   const rsvps = new Map([[guest.id, { ...guest }]]);
   const metricsCalls = [];
   const savedCalls = [];
   const writes = [];
-  let cityReady = false;
+  const departures = [];
+  let cityReady = null;
   let cityEnabled = false;
+  let scheduleAvailable = true;
   let coverageReads = 0;
   let current = START;
   const now = () => current;
@@ -81,6 +89,12 @@ async function fixture(t) {
         });
         return row ? result(row) : result();
       }
+      if (/FROM transit_sf_rollout\b/.test(sql)) return result({ enabled: cityEnabled });
+      if (/FROM transit_sf_event_coverage\b/.test(sql)) {
+        coverageReads++;
+        return cityReady && args[0].includes(String(cityReady.event_id)) && args[1].getTime() < SERVICE_NIGHT_END
+          ? result(cityReady) : result();
+      }
       if (/FROM guest_sessions\b/.test(sql)) return result();
       if (/FROM user_identities\b/.test(sql)) return result({ id: 901, phone: guest.phone });
       if (/FROM transit_ride_sms_optouts\b/.test(sql)) return result();
@@ -95,9 +109,14 @@ async function fixture(t) {
     }
   };
   const home = {
-    async getOptions(event) { return { status: 'available', venue: event.venue_name, stops: event.sfWalks || [] }; },
-    async getDeparture(_event, selection, options) {
+    async getOptions(event) {
+      if (!scheduleAvailable) return { status: 'schedule-unavailable' };
+      const stops = (event.sfWalks || [cityWalk]).map(({ stopId, walkSeconds }) => ({ stopId, walkSeconds, routes: [choice] }));
+      return { status: 'available', venue: event.venue_name, stops };
+    },
+    async getDeparture(event, selection, options) {
       assert.deepEqual(selection, choice);
+      departures.push({ eventId: event.id, selection, options, at: now() });
       return options?.includeUpcoming ? { ...verifiedPlan, upcoming } : verifiedPlan;
     }
   };
@@ -113,15 +132,11 @@ async function fixture(t) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.sessionAccount = req.get('x-fixture-session') === 'owner' ? { id: 3, user_id: 3 } : null;
+    const session = req.get('x-fixture-session');
+    req.sessionAccount = session === 'owner' ? { id: 3, user_id: 3 } : session === 'other' ? { id: 4, user_id: 4 } : null;
     next();
   });
-  const sfCoverage = { async getReadyWalks() {
-    coverageReads++;
-    return cityReady ? [{ stopId: 'S', walkSeconds: 240 }] : null;
-  } };
-  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics, sfCoverage,
-    rolloutEnabled: async () => cityEnabled }));
+  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics }));
   let unexpected;
   app.use((error, _req, res, _next) => { unexpected = error; res.status(500).json({ error: 'fixture-error' }); });
   const server = await new Promise((resolve, reject) => {
@@ -137,12 +152,17 @@ async function fixture(t) {
   });
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
-    events, rsvps, metricsCalls, savedCalls, writes, env, entry,
-    setCityReady(value) { cityReady = value; },
+    events, rsvps, metricsCalls, savedCalls, writes, departures, env, entry,
+    setCityReady(value) {
+      const input = value && sfCoverageInput(events.get(scenario.id));
+      assert.ok(!value || input, 'only eligible event inputs have verified coverage');
+      cityReady = input ? { event_id: input.id, venue_key: input.venue.key, input_version: input.version, walks: [cityWalk] } : null;
+    },
     setCityEnabled(value) { cityEnabled = value; },
+    setScheduleAvailable(value) { scheduleAvailable = value; },
     coverageReads() { return coverageReads; },
     advance(ms) { current += ms; },
-    link() { return rideEmailEntryPath({ event: events.get(scenario.id), rsvp: rsvps.get(guest.id), env, now, entry }); },
+    link() { return createReminderRideEntryPath({ db, event: events.get(scenario.id), rsvp: rsvps.get(guest.id), env, now }); },
     previewLink() { return createRidePreview({ env, now }).issueLink('2026-11-27'); },
     fetch(url, options = {}) { return fetch(`${base}${url}`, { redirect: 'manual', ...options }); }
   };
@@ -158,9 +178,8 @@ const denied = response => {
 
 test('SF planner is for confirmed guests with ready public Places coverage; analytics do not enable messages', async t => {
   const f = await fixture(t);
-  const venue = f.events.get(scenario.id);
-  Object.assign(venue, { venue_name: 'City fixture', venue_address: '801 Market St, San Francisco, CA 94103, USA',
-    venue_city: 'San Francisco', venue_state: 'CA', venue_latitude: 37.784, venue_longitude: -122.407, google_place_id: 'fixture-place' });
+  const venue = { ...cityVenue };
+  f.events.set(scenario.id, venue);
   Object.assign(f.env, { TRANSIT_DISTRIBUTION_ENABLED: 'false', TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-key' });
   const headers = { 'x-fixture-session': 'owner' };
   denied(await f.fetch(`${api}/options`));
@@ -172,13 +191,15 @@ test('SF planner is for confirmed guests with ready public Places coverage; anal
   assert.equal(f.coverageReads(), 1);
   f.setCityReady(true);
   assert.equal((await f.fetch(page, { headers })).status, 200);
-  assert.deepEqual(await (await f.fetch(`${api}/options`, { headers })).json(), { status: 'available', venue: 'City fixture', stops: [{ stopId: 'S', walkSeconds: 240 }] });
+  assert.deepEqual(await (await f.fetch(`${api}/options`, { headers })).json(), { status: 'available', venue: 'City fixture',
+    stops: [{ stopId: choice.stopId, walkSeconds: 240, routes: [choice] }] });
   const response = await f.fetch(`${api}/departure`, json('POST', choice, headers));
   assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ...readOnlyPlan, upcoming });
   assert.deepEqual(f.metricsCalls.map(record => record.kind), ['page_open', 'route_selected']);
   assert.equal((await (await f.fetch(`${api}/reminder`, { headers })).json()).status, 'unavailable');
   assert.equal((await (await f.fetch(`${api}/saved-route`, { headers })).json()).status, 'not-eligible');
-  assert.equal(f.link(), null);
+  assert.equal(await f.link(), null);
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.savedCalls, []);
   f.setCityEnabled(false);
@@ -193,8 +214,8 @@ test('SF planner is for confirmed guests with ready public Places coverage; anal
   denied(await f.fetch(`${api}/options`, { headers }));
 });
 
-async function redeem(f) {
-  const url = f.link();
+async function redeem(f, original) {
+  const url = original || await f.link();
   assert.ok(url, 'event reminder should get a scoped link');
   const response = await f.fetch(url);
   assert.ok([302, 303].includes(response.status));
@@ -236,15 +257,19 @@ test('real pilot guests record allowlisted interactions with delivery off, never
   assert.deepEqual(f.metricsCalls, ['page_open', 'bus_click', 'uber_click', 'lyft_click'].map(kind => ({
     kind, eventId: scenario.id, rsvpId: guest.id, userId: guest.user_id
   })));
+  const departure = await f.fetch(`${api}/departure`, json('POST', choice, headers));
+  assert.deepEqual(await departure.json(), { ...readOnlyPlan, upcoming });
   assert.equal(f.writes.length, 0);
   f.rsvps.get(guest.id).status = 'declined';
   denied(await f.fetch(`${api}/interaction`, json('POST', { kind: 'bus_click' }, headers)));
 });
 
-test('a signed day-before link opens only this event’s ride plan without a sign-in redirect', async t => {
+test('a signed reminder link opens the planner directly; scraper GETs never increment email analytics', async t => {
   const f = await fixture(t);
   denied(await f.fetch(page));
   denied(await f.fetch(`${api}/options`));
+  const link = await f.link();
+  assert.equal((await f.fetch(link, { method: 'HEAD' })).headers.get('set-cookie'), null);
   const cookie = await redeem(f);
   const view = await f.fetch(page, { headers: { cookie } });
   assert.equal(view.status, 200);
@@ -252,19 +277,34 @@ test('a signed day-before link opens only this event’s ride plan without a sig
   assert.match(await view.text(), /Getting home/i);
   const options = await f.fetch(`${api}/options`, { headers: { cookie } });
   assert.equal(options.status, 200);
-  assert.deepEqual(await options.json(), { status: 'available', venue: 'Make-Out Room', stops: [] });
+  assert.deepEqual(await options.json(), { status: 'available', venue: 'Make-Out Room',
+    stops: [{ stopId: choice.stopId, walkSeconds: 240, routes: [choice] }], emailEntry: true });
+  f.setScheduleAvailable(false);
+  assert.deepEqual(await (await f.fetch(`${api}/options`, { headers: { cookie } })).json(), { status: 'schedule-unavailable' });
+  f.setScheduleAvailable(true);
+  assert.deepEqual(f.metricsCalls, []);
+  assert.deepEqual(f.departures, []);
+
+  denied(await f.fetch(`${api}/interaction?from=email`, json('POST', { kind: 'email_link_open', from: 'email' })));
+  denied(await f.fetch(`${api}/interaction?from=email`, json('POST', { kind: 'email_link_open', from: 'email' },
+    { 'x-fixture-session': 'owner' })));
+  f.rsvps.set(22, { ...guest, id: 22, user_id: 4 });
+  denied(await f.fetch(`${api}/interaction`, json('POST', { kind: 'email_link_open' },
+    { cookie, 'x-fixture-session': 'other' })));
+  assert.equal((await f.fetch(`${api}/interaction`, json('POST', { kind: 'email_link_open' }, { cookie }))).status, 204);
   const departure = await f.fetch(`${api}/departure`, json('POST', choice, { cookie }));
   assert.equal(departure.status, 200);
-  assert.equal((await departure.json()).proposedReminderAt, verifiedPlan.proposedReminderAt);
+  assert.deepEqual(await departure.json(), { ...readOnlyPlan, upcoming });
+  assert.deepEqual(f.departures, [{ eventId: scenario.id, selection: choice, options: { includeUpcoming: true }, at: START }]);
   denied(await f.fetch('/e/another-night/getting-home', { headers: { cookie } }));
-  assert.deepEqual(f.metricsCalls.map(({ kind }) => kind), ['email_link_open', 'page_open', 'route_selected']);
+  assert.deepEqual(f.metricsCalls.map(({ kind }) => kind), ['page_open', 'email_planner_open', 'route_selected']);
   assert.ok(f.metricsCalls.every(call => call.eventId === scenario.id && call.rsvpId === guest.id));
   assert.ok(f.metricsCalls.every(call => !Object.hasOwn(call, 'selection') && !Object.hasOwn(call, 'ip')));
 });
 
 test('wrong, expired, cancelled, and private event email links never mint or retain a ride grant', async t => {
   const f = await fixture(t);
-  const original = f.link();
+  const original = await f.link();
   denied(await f.fetch(original.replace(scenario.slug, 'another-night')));
   denied(await f.fetch(`${original.slice(0, -1)}${original.endsWith('A') ? 'B' : 'A'}`));
   const cookie = await redeem(f);
@@ -286,9 +326,62 @@ test('wrong, expired, cancelled, and private event email links never mint or ret
   denied(await f.fetch(original));
   denied(await f.fetch(page, { headers: { cookie } }));
   f.env.TRANSIT_DISTRIBUTION_ENABLED = 'true';
-  f.advance(Date.parse(END) - START + 1000);
+  f.advance(SERVICE_NIGHT_END - START);
   denied(await f.fetch(original));
   denied(await f.fetch(page, { headers: { cookie } }));
+});
+
+test('a citywide reminder requires a current verified public venue and reopens after the show', async t => {
+  const f = await fixture(t);
+  f.events.set(scenario.id, { ...cityVenue });
+  Object.assign(f.env, { TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-key',
+    TRANSIT_RIDE_REMINDERS_ENABLED: 'false' });
+  assert.equal(await f.link(), null);
+  f.setCityEnabled(true);
+  assert.equal(await f.link(), null);
+  f.setCityReady(true);
+  const original = await f.link();
+  assert.ok(original);
+  const cookie = await redeem(f, original);
+  assert.equal((await f.fetch(page, { headers: { cookie } })).status, 200);
+  const options = await f.fetch(`${api}/options`, { headers: { cookie } });
+  assert.deepEqual(await options.json(), { status: 'available', venue: 'City fixture', emailEntry: true,
+    stops: [{ stopId: choice.stopId, walkSeconds: 240, routes: [choice] }] });
+  assert.deepEqual(f.metricsCalls, []);
+  assert.equal((await f.fetch(`${api}/interaction`, json('POST', { kind: 'email_link_open' }, { cookie }))).status, 204);
+  assert.deepEqual(f.metricsCalls.map(call => call.kind), ['page_open', 'email_planner_open']);
+  const plan = await f.fetch(`${api}/departure`, json('POST', choice, { cookie }));
+  assert.deepEqual(await plan.json(), { ...readOnlyPlan, upcoming });
+  assert.equal((await (await f.fetch(`${api}/reminder`, { headers: { cookie } })).json()).status, 'unavailable');
+
+  f.setCityReady(false);
+  denied(await f.fetch(original));
+  denied(await f.fetch(`${api}/options`, { headers: { cookie } }));
+  f.setCityReady(true);
+  f.setCityEnabled(false);
+  denied(await f.fetch(original));
+  denied(await f.fetch(`${api}/options`, { headers: { cookie } }));
+  f.setCityEnabled(true);
+  for (const override of [
+    { visibility: 'private' }, { hide_address_until_rsvp: true }, { secret_show_enabled: true }, { google_place_id: null },
+    { start_time: '20:00' }, { venue_address: '802 Market St, San Francisco, CA 94103, USA' }
+  ]) {
+    f.events.set(scenario.id, { ...cityVenue, ...override });
+    assert.equal(await f.link(), null);
+    const unavailable = await f.fetch(original);
+    denied(unavailable);
+    assert.doesNotMatch(await unavailable.text(), /City fixture|801 Market St|802 Market St/);
+    denied(await f.fetch(page, { headers: { cookie } }));
+  }
+  f.events.set(scenario.id, { ...cityVenue });
+  f.advance(Date.parse(END) - START + 1_000);
+  const reopened = await redeem(f, original);
+  assert.equal((await f.fetch(page, { headers: { cookie: reopened } })).status, 200);
+  assert.equal((await (await f.fetch(`${api}/options`, { headers: { cookie: reopened } })).json()).emailEntry, true);
+  f.advance(SERVICE_NIGHT_END - Date.parse(END) - 1_000);
+  denied(await f.fetch(original));
+  denied(await f.fetch(page, { headers: { cookie: reopened } }));
+  assert.equal(f.writes.length, 0);
 });
 
 test('the email credential grants no saved-route or reminder authority', async t => {
@@ -355,7 +448,8 @@ test('one test link opens the sample and schedules without real attendee authori
   assert.equal((await f.fetch(PREVIEW_PATH, { headers: { cookie } })).status, 200);
   denied(await f.fetch(page, { headers: { cookie } }));
   const plan = await f.fetch(`${previewApi}/departure`, json('POST', choice, { cookie }));
-  assert.deepEqual(await plan.json(), { ...verifiedPlan, upcoming });
+  assert.deepEqual(await plan.json(), { ...readOnlyPlan, upcoming });
+  denied(await f.fetch(`${previewApi}/interaction`, json('POST', { kind: 'email_link_open' }, { cookie })));
   assert.equal((await f.fetch(`${previewApi}/interaction`, json('POST', { kind: 'uber_click' }, { cookie }))).status, 204);
   const reminder = await f.fetch(`${previewApi}/reminder`, json('POST', { consent: true, selection: choice }, { cookie }));
   assert.equal((await reminder.json()).status, 'unavailable');

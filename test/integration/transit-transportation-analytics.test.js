@@ -32,7 +32,7 @@ test.before(async () => {
       (4,3,'Private fixture','2026-12-04'),(5,3,'Hidden fixture','2026-12-05'),(6,3,'No use','2026-12-06');
     UPDATE events SET visibility='private' WHERE id=4;
     UPDATE events SET status='hidden' WHERE id=5;`);
-  for (const file of ['091_transit_ride_metrics.sql', '093_transit_transportation_metrics.sql']) {
+  for (const file of ['091_transit_ride_metrics.sql', '093_transit_transportation_metrics.sql', '095_transit_email_planner_metrics.sql']) {
     await db.query(fs.readFileSync(path.join(__dirname, '../../src/db/migrations', file), 'utf8'));
   }
 });
@@ -53,7 +53,7 @@ test('transportation reports dedupe real guest/event taps, group by host and cou
   });
   assert.deepEqual(await read(), {
     summary: { eventCount: 0, hostCount: 0, returningUsers45d: 0, pageOpens: 0, routeSelections: 0,
-      busClicks: 0, uberClicks: 0, lyftClicks: 0, repeatOpens: 0 }, events: [], hosts: []
+      emailPlannerVisits: 0, busClicks: 0, uberClicks: 0, lyftClicks: 0, repeatOpens: 0 }, events: [], hosts: []
   });
   assert.equal(await record('page_open', 1, 65601, 70101), true);
   assert.equal(await record('page_open', 1, 65601, 70101), false);
@@ -65,25 +65,29 @@ test('transportation reports dedupe real guest/event taps, group by host and cou
   assert.equal(await record('uber_click', 1, 65601, 70101), false);
   time += DAY;
   assert.equal(await record('page_open', 2, 65602, 70101), true);
+  assert.equal(await record('email_planner_open', 2, 65602), true);
+  assert.equal(await record('email_planner_open', 2, 65602, 70101), false);
   assert.equal(await record('bus_click', 2, 65602, 70101), true);
   assert.equal(await record('page_open', 2, 65603), true);
   time += DAY;
   assert.equal(await record('page_open', 3, 65604, 70101), true);
+  assert.equal(await record('email_planner_open', 3, 65604, 70101), true);
   assert.equal(await record('page_open', 3, 65605), true);
   assert.equal(await record('uber_click', 3, 65605), true);
   assert.equal(await record('page_open', 4, 65606), true);
+  assert.equal(await record('email_planner_open', 4, 65606), true);
   assert.equal(await record('page_open', 5, 65607), true);
   assert.equal(await record('email_link_open', 6, 65608), true);
 
   const analytics = await read();
   assert.deepEqual(analytics.summary, { eventCount: 3, hostCount: 2, returningUsers45d: 1,
-    pageOpens: 5, routeSelections: 1, busClicks: 2, uberClicks: 2, lyftClicks: 1, repeatOpens: 2 });
-  assert.deepEqual(analytics.events.map(event => [event.id, event.hostId, event.hostName, event.eventDate, event.pageOpens, event.repeatOpens]), [
-    [3, 2, 'By Name', '2026-12-03', 2, 1], [2, 1, 'Fixture Studio', '2026-12-02', 2, 1],
-    [1, 1, 'Fixture Studio', '2026-11-29', 1, 0]
+    pageOpens: 5, emailPlannerVisits: 2, routeSelections: 1, busClicks: 2, uberClicks: 2, lyftClicks: 1, repeatOpens: 2 });
+  assert.deepEqual(analytics.events.map(event => [event.id, event.hostId, event.hostName, event.eventDate, event.pageOpens, event.emailPlannerVisits, event.repeatOpens]), [
+    [3, 2, 'By Name', '2026-12-03', 2, 1, 1], [2, 1, 'Fixture Studio', '2026-12-02', 2, 1, 1],
+    [1, 1, 'Fixture Studio', '2026-11-29', 1, 0, 0]
   ]);
-  assert.deepEqual(analytics.hosts.map(host => [host.id, host.name, host.eventCount, host.busClicks, host.uberClicks, host.repeatOpens]), [
-    [2, 'By Name', 1, 0, 1, 1], [1, 'Fixture Studio', 2, 2, 1, 1]
+  assert.deepEqual(analytics.hosts.map(host => [host.id, host.name, host.eventCount, host.emailPlannerVisits, host.busClicks, host.uberClicks, host.repeatOpens]), [
+    [2, 'By Name', 1, 1, 0, 1, 1], [1, 'Fixture Studio', 2, 1, 2, 1, 1]
   ]);
   assert.doesNotMatch(JSON.stringify(analytics), /6560|70101|fixture private lane|Private Route|subject_key|first_event_key|Private fixture|Hidden fixture/);
   time = START + 46 * DAY;

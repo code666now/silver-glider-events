@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { renderEventReminderEmail, renderDayBeforeReminderEmail } = require('../src/lib/mailer');
+const { renderEventReminderEmail, renderDayBeforeReminderEmail, renderRsvpConfirmationEmail } = require('../src/lib/mailer');
 const { createRideEntry } = require('../src/lib/transit/ride-entry');
 
 const env = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_DISTRIBUTION_ENABLED: 'true', SESSION_SECRET: 'fixture-only-ride-email-key' };
@@ -13,32 +13,35 @@ const event = {
   event_date: '2026-11-27', start_time: '19:00', ends_at: '2026-11-28T07:30:00Z'
 };
 const rsvp = { id: 20, event_id: 10, status: 'confirmed', wants_reminders: true, manage_token: 'fixture-manage-secret', first_name: 'Guest' };
+const entry = createRideEntry({ secret: env.SESSION_SECRET, now });
+const token = entry.issue({ eventId: event.id, rsvpId: rsvp.id, expiresAt: Date.parse(event.ends_at) });
+const rideEntryPath = `/e/${event.slug}/getting-home/from-email?t=${token}`;
 
-test('eligible day-before email keeps the original actions and adds only a scoped ride entry', () => {
-  const html = renderDayBeforeReminderEmail({ event, rsvp, env, now });
-  assert.match(html, /Don't Miss Your Last Bus!/);
-  assert.match(html, /View event/);
-  assert.match(html, /Add to Calendar/);
-  assert.match(html, /Manage RSVP &amp; email settings/);
-  const href = /href="([^"]+\/getting-home\/from-email\?t=[^"]+)"/.exec(html)[1];
-  assert.doesNotMatch(href, /fixture-manage-secret|Guest/);
-  const claims = createRideEntry({ secret: env.SESSION_SECRET, now }).verify(new URL(href).searchParams.get('t'));
-  assert.deepEqual([claims.eventId, claims.rsvpId], [10, 20]);
-});
-
-test('day-of reminders, opted-out recipients and private/secret events do not get the ride link', () => {
-  const without = html => assert.doesNotMatch(html, /Help me get home|getting-home\/from-email/);
-  without(renderEventReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.' }));
-  without(renderDayBeforeReminderEmail({ event, rsvp, env: { ...env, TRANSIT_DISTRIBUTION_ENABLED: 'false' }, now }));
-  without(renderDayBeforeReminderEmail({ event, rsvp: { ...rsvp, wants_reminders: false }, env, now }));
-  for (const bits of [{ visibility: 'private' }, { secret_show_enabled: true }, { hide_address_until_rsvp: true }, { venue_address: '100 Main St, San Francisco CA' }]) {
-    without(renderDayBeforeReminderEmail({ event: { ...event, ...bits }, rsvp, env, now }));
+test('both reminder layouts keep the original actions and add only the scoped planner link', () => {
+  const variants = [
+    renderDayBeforeReminderEmail({ event, rsvp, rideEntryPath }),
+    renderEventReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.', rideEntryPath })
+  ];
+  for (const html of variants) {
+    assert.match(html, /Don't Miss Your Last Bus!/);
+    assert.match(html, /See the next scheduled buses, the last ride, and when to leave\. Save this email and tap the link again when you’re ready to head out\./);
+    assert.match(html, /View event/);
+    assert.match(html, /Add to Calendar/);
+    assert.match(html, /Manage RSVP &amp; email settings/);
+    assert.doesNotMatch(html, /text me|SMS|30 minutes before/i);
+    const href = /href="([^"]+\/getting-home\/from-email\?t=[^"]+)"/.exec(html)[1];
+    assert.doesNotMatch(href, /fixture-manage-secret|Guest/);
+    const claims = entry.verify(new URL(href).searchParams.get('t'));
+    assert.deepEqual([claims.eventId, claims.rsvpId], [10, 20]);
   }
 });
 
-test('a retried day-before reminder renders the same signed URL for the same delivery', () => {
-  const queued = { ...rsvp, reminder_queued_at: new Date(now() - 5000) };
-  const initial = renderDayBeforeReminderEmail({ event, rsvp: queued, env, now });
-  const retry = renderDayBeforeReminderEmail({ event, rsvp: queued, env, now: () => now() + 60_000 });
-  assert.equal(initial, retry);
+test('the callout is absent without an authorized path and confirmation is unchanged', () => {
+  const without = html => assert.doesNotMatch(html, /Help me get home|getting-home\/from-email/);
+  without(renderEventReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.' }));
+  without(renderDayBeforeReminderEmail({ event, rsvp }));
+  without(renderRsvpConfirmationEmail({ event, rsvp, rideEntryPath }));
+  for (const invalid of ['https://elsewhere.example/path', '@elsewhere.example/path', '/account', `${rideEntryPath}&to=untrusted`]) {
+    without(renderDayBeforeReminderEmail({ event, rsvp, rideEntryPath: invalid }));
+  }
 });

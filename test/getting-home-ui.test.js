@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice } = require('../public/js/getting-home');
+const { createEmailVisitTracker, formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice } = require('../public/js/getting-home');
 const view = readFileSync(join(__dirname, '../src/views/getting-home.html'), 'utf8');
 
 test('Getting Home groups buses by route/direction across verified boarding stops', () => {
@@ -68,6 +68,36 @@ test('departure, leave-by and text preview use the supplied local date even afte
   assert.equal(formattedTime(Date.parse('2026-11-28T09:41:00Z'), 'invalid'), '');
 });
 
+test('an email visit requires authorized available options and records only once when visible', () => {
+  const document = new EventTarget();
+  document.visibilityState = 'visible';
+  const kinds = [];
+  const track = createEmailVisitTracker(document, kind => kinds.push(kind));
+  track({ status: 'available' });
+  track({ status: 'available', emailEntry: 'true' });
+  track({ status: 'schedule-unavailable', emailEntry: true });
+  assert.deepEqual(kinds, []);
+  track({ status: 'available', emailEntry: true });
+  track({ status: 'available', emailEntry: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(kinds, ['email_link_open']);
+});
+
+test('a planner opened in a hidden tab does not count until the guest can see it', () => {
+  const document = new EventTarget();
+  document.visibilityState = 'hidden';
+  const kinds = [];
+  const track = createEmailVisitTracker(document, kind => kinds.push(kind));
+  track({ status: 'available', emailEntry: true });
+  track({ status: 'available', emailEntry: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(kinds, []);
+  document.visibilityState = 'visible';
+  document.dispatchEvent(new Event('visibilitychange'));
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(kinds, ['email_link_open']);
+});
+
 test('next departures supplement the last-departure card and phone controls get more room', () => {
   assert.match(view, /Last scheduled departure[\s\S]*Leave the venue by[\s\S]*id="gh-upcoming" aria-labelledby="gh-upcoming-title" hidden/);
   assert.match(view, /<ul id="gh-upcoming-times" role="list" hidden>/);
@@ -97,6 +127,9 @@ test('transit preview is optional, announces status and is not an SMS form', () 
   assert.match(view, /gh-status" role="status" aria-live="polite"/);
   assert.match(view, /for="gh-direction"/);
   assert.match(view, /for="gh-destination"/);
+  assert.match(view, /Choose a route to see scheduled departures and when to leave\./);
+  assert.match(view, /id="gh-preview-row" hidden/);
+  assert.match(view, /id="gh-reminder-offer"[^>]* hidden/);
   assert.match(view, /30 minutes before you need to leave\. No text is scheduled\./);
   assert.match(view, /name="referrer" content="no-referrer"/);
   assert.doesNotMatch(view, /type="tel"|send text|early bird/i);

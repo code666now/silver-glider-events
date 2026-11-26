@@ -7591,7 +7591,8 @@ test('Transportation is dedicated-admin only and its saved rollout is a same-ori
   assert.equal(report.summary.busClicks, 3);
   assert.equal(report.events[0].title, 'Transportation demo');
   assert.equal(report.hosts[0].busClicks, 3);
-  assert.doesNotMatch(JSON.stringify(report), /@example\.test|subject_key|email|latitude|longitude/);
+  assert.equal(report.summary.emailPlannerVisits, 0);
+  assert.doesNotMatch(JSON.stringify(report), /@example\.test|"[^"]*(?:subject_key|email_address|latitude|longitude)[^"]*"\s*:|"email"\s*:/i);
 
   const set = (cookie, enabled, site = 'same-origin') => fetch(`${apiRoot}/rollout`, {
     method: 'PATCH',

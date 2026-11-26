@@ -1,7 +1,9 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { gettingHomeEligible } = require('./getting-home');
+const { gettingHomeEligible, sfGettingHomeEligible, planningWindowEnd } = require('./getting-home');
+const { createSfCoverageStore } = require('./sf-coverage-store');
+const { isSfRolloutEnabled } = require('./sf-rollout');
 
 const RIDE_ENTRY_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const EMAIL_LINK = 'sge:transit-ride-email-link:v1';
@@ -25,7 +27,7 @@ function createRideEntry({ secret = process.env.SESSION_SECRET, now = Date.now }
     const start = issuedAt ?? current;
     if (!Number.isSafeInteger(current) || !Number.isSafeInteger(bound) || !Number.isSafeInteger(start) || start > current) return null;
     const issued = Math.floor(start / 1000);
-    // Keep the lifetime bounded by both the authorized event's end and the
+    // Keep the lifetime bounded by both the authorized planning window and the
     // general maximum, truncating sub-second precision rather than extending.
     const expiry = Math.min(Math.floor(bound / 1000), issued + RIDE_ENTRY_MAX_AGE_MS / 1000);
     if (!Number.isSafeInteger(issued) || !Number.isSafeInteger(expiry) || issued < 1 || expiry <= issued || expiry * 1000 <= current) return null;
@@ -61,15 +63,30 @@ function createRideEntry({ secret = process.env.SESSION_SECRET, now = Date.now }
 }
 
 function rideEmailEntryPath({ event, rsvp, env = process.env, now = Date.now,
-  entry = createRideEntry({ secret: env.SESSION_SECRET, now }) } = {}) {
-  if (env.TRANSIT_DISTRIBUTION_ENABLED !== 'true' || !gettingHomeEligible(event, env, now())
+  entry = createRideEntry({ secret: env.SESSION_SECRET, now }), cityReady = false } = {}) {
+  if (env.TRANSIT_DISTRIBUTION_ENABLED !== 'true' || event?.archived_at != null
+      || !(gettingHomeEligible(event, env, now()) || (cityReady && sfGettingHomeEligible(event, env, now())))
       || !validId(event.id) || typeof event.slug !== 'string' || !/^[a-z0-9-]{1,120}$/i.test(event.slug)
       || rsvp?.status !== 'confirmed' || rsvp.wants_reminders !== true || rsvp.event_id !== event.id) return null;
   // A retry with the same mail delivery key must render the same URL, not a
   // different token every time it re-renders the existing reminder.
   const queuedAt = rsvp.reminder_queued_at == null ? undefined : new Date(rsvp.reminder_queued_at).getTime();
-  const token = entry.issue({ eventId: event.id, rsvpId: rsvp.id, issuedAt: queuedAt, expiresAt: new Date(event.ends_at).getTime() });
+  const token = entry.issue({ eventId: event.id, rsvpId: rsvp.id, issuedAt: queuedAt, expiresAt: planningWindowEnd(event) });
   return token ? `/e/${encodeURIComponent(event.slug)}/getting-home/from-email?t=${encodeURIComponent(token)}` : null;
 }
 
-module.exports = { createRideEntry, rideEntryCookieName, rideEmailEntryPath, RIDE_ENTRY_MAX_AGE_MS };
+// No provider calls in the mail worker. The pilot has curated walks; city
+// venues must have current event coverage from the background worker.
+async function createReminderRideEntryPath({ db, event, rsvp, env = process.env, now = Date.now,
+  coverage = createSfCoverageStore({ db, now }), rolloutEnabled = isSfRolloutEnabled } = {}) {
+  if (env.TRANSIT_DISTRIBUTION_ENABLED !== 'true' || rsvp?.status !== 'confirmed' || rsvp.wants_reminders !== true
+      || rsvp.event_id !== event?.id) return null;
+  if (gettingHomeEligible(event, env, now())) return rideEmailEntryPath({ event, rsvp, env, now });
+  if (!sfGettingHomeEligible(event, env, now())) return null;
+  try {
+    if (!await rolloutEnabled({ db, env }) || !(await coverage.getReadyWalks(event))?.length) return null;
+    return rideEmailEntryPath({ event, rsvp, env, now, cityReady: true });
+  } catch { return null; }
+}
+
+module.exports = { createRideEntry, rideEntryCookieName, rideEmailEntryPath, createReminderRideEntryPath, RIDE_ENTRY_MAX_AGE_MS };

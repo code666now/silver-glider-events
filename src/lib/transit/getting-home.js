@@ -22,14 +22,19 @@ function sfGettingHomeEligible(event, env = process.env, now = Date.now()) {
   return sfTransitEnabled(env) && Boolean(sfCoverageInput(event)) && planningWindowOpen(event, now);
 }
 
-function planningWindowOpen(event, now) {
-  if (event.timezone !== PILOT.timezone || !event.ends_at) return false;
+function planningWindowEnd(event) {
+  if (event?.timezone !== PILOT.timezone || !event.ends_at) return null;
   const ends = new Date(event.ends_at).getTime();
   const nightEnd = scheduleNightEnd(eventDate(event.event_date), event.start_time, event.timezone);
   // The relevant trip can be hours after the show, so keep an authorized
   // attendee's plan/cancellation and the send-time recheck available for the
   // rest of that service night. The dashboard still hides ended show cards.
-  return Number.isFinite(ends) && Math.max(ends, nightEnd || 0) > now;
+  return Number.isFinite(ends) ? Math.max(ends, nightEnd || 0) : null;
+}
+
+function planningWindowOpen(event, now) {
+  const end = planningWindowEnd(event);
+  return end !== null && end > now;
 }
 
 function readTransitSelection(input) {
@@ -92,4 +97,4 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), cityTransit =
   };
 }
 
-module.exports = { gettingHomeEligible, sfGettingHomeEligible, gettingHomeEnabled, readTransitSelection, createGettingHome, RIDE_NOTICE_MINUTES };
+module.exports = { gettingHomeEligible, sfGettingHomeEligible, gettingHomeEnabled, planningWindowEnd, readTransitSelection, createGettingHome, RIDE_NOTICE_MINUTES };

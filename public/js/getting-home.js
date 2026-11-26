@@ -89,6 +89,22 @@
     return { uber: uber.href, lyft: lyft.href, prefilled };
   }
 
+  function createEmailVisitTracker(document, track) {
+    let queued = false;
+    return options => {
+      if (queued || options?.status !== 'available' || options.emailEntry !== true) return;
+      queued = true;
+      // A redirect alone isn't a visit. Don't count a hidden prerender.
+      const recordWhenVisible = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', recordWhenVisible);
+        track('email_link_open');
+      };
+      document.addEventListener('visibilitychange', recordWhenVisible);
+      recordWhenVisible();
+    };
+  }
+
   function mount(root, win) {
     if (!root) return;
     const get = key => root.querySelector(`#gh-${key}`);
@@ -117,7 +133,8 @@
     let queuedSelection = null;
     const routeButtons = new Map();
 
-    const preview = slug === 'make-out-room-schedule-preview';
+    const pilotPreview = slug === 'make-out-room-schedule-preview';
+    const preview = pilotPreview || slug === 'san-francisco-schedule-preview';
     const submittedInteractions = new Set();
     function trackInteraction(kind) {
       if (preview || submittedInteractions.has(kind)) return;
@@ -129,15 +146,16 @@
       })).then(response => { if (!response.ok) submittedInteractions.delete(kind); })
         .catch(() => submittedInteractions.delete(kind));
     }
+    const trackEmailVisit = createEmailVisitTracker(win.document, trackInteraction);
 
     for (const provider of ['uber', 'lyft']) {
       get(provider).addEventListener('click', () => trackInteraction(`${provider}_click`));
       get(provider).addEventListener('auxclick', event => { if (event.button === 1) trackInteraction(`${provider}_click`); });
     }
     get('event-link').href = preview ? '/' : eventPath;
-    get('directions').href = preview
+    get('directions').href = !preview ? `${eventPath}#event-location-map` : pilotPreview
       ? 'https://maps.google.com/?q=Make-Out%20Room%2C%203225%2022nd%20St%2C%20San%20Francisco%2C%20CA'
-      : `${eventPath}#event-location-map`;
+      : 'https://maps.google.com/?q=San%20Francisco%2C%20CA';
     if (preview) {
       get('event-link').querySelector('span').textContent = 'Silver Glider Events';
       get('preview-label').hidden = false;
@@ -337,6 +355,7 @@
         routeList.replaceChildren(fragment);
         picker.hidden = false;
         status.textContent = '';
+        trackEmailVisit(data);
       } catch {
         status.textContent = 'Transit schedules are unavailable right now. Try again or check directions below.';
         retry.hidden = false;
@@ -418,5 +437,5 @@
     loadRoutes();
   }
 
-  return { formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice, mount };
+  return { createEmailVisitTracker, formattedTime, makeRouteChoices, makeRideshareLinks, matchSavedChoice, mount };
 });

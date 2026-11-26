@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createRideEntry, rideEntryCookieName, rideEmailEntryPath, RIDE_ENTRY_MAX_AGE_MS } = require('../src/lib/transit/ride-entry');
+const { createRideEntry, rideEntryCookieName, rideEmailEntryPath, createReminderRideEntryPath, RIDE_ENTRY_MAX_AGE_MS } = require('../src/lib/transit/ride-entry');
 const { createRideMetrics } = require('../src/lib/transit/ride-metrics');
 
 const SECRET = 'test-key-for-transit-scope-only';
@@ -71,6 +71,44 @@ test('day-before helper issues only a public eligible, current, opted-in RSVP UR
   for (const flag of ['TRANSIT_GETTING_HOME_ENABLED', 'TRANSIT_DISTRIBUTION_ENABLED', 'SESSION_SECRET']) {
     assert.equal(getPath({ env: { ...env, [flag]: '' } }), null);
   }
+});
+
+test('city reminder links require confirmed coverage and survive the show, not the service night', async () => {
+  let current = START;
+  let ready = true;
+  let allowed = true;
+  let lookups = 0;
+  const cityEvent = { ...event, venue_name: 'Public room', venue_address: '1725 Haight St, San Francisco, CA, USA',
+    venue_city: 'San Francisco', venue_state: 'CA', google_place_id: 'venue-fixture',
+    venue_latitude: 37.77, venue_longitude: -122.45, event_date: '2026-11-27', start_time: '19:00',
+    end_time: '22:00', ends_at: '2026-11-28T06:00:00Z' };
+  const cityEnv = { ...env, TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture' };
+  const input = { event: cityEvent, rsvp: { ...rsvp, reminder_queued_at: new Date(START) }, env: cityEnv, now: () => current,
+    rolloutEnabled: async () => allowed, coverage: { async getReadyWalks() { lookups++; return ready ? [{ stopId: 'fixture' }] : []; } } };
+  const path = await createReminderRideEntryPath(input);
+  assert.match(path, /\/from-email\?t=/);
+  const token = new URL(path, 'https://example.test').searchParams.get('t');
+  const entry = createRideEntry({ secret: SECRET, now: () => current });
+  current += 60_000;
+  assert.equal(await createReminderRideEntryPath(input), path, 'the same claimed send produces the same link on retry');
+  ready = false;
+  assert.equal(await createReminderRideEntryPath(input), null);
+  ready = true;
+  allowed = false;
+  assert.equal(await createReminderRideEntryPath(input), null);
+  assert.equal(lookups, 3);
+  allowed = true;
+  for (const patch of [{ visibility: 'private' }, { hide_address_until_rsvp: true }, { archived_at: '2026-11-25' }, { google_place_id: null }]) {
+    assert.equal(await createReminderRideEntryPath({ ...input, event: { ...cityEvent, ...patch } }), null);
+  }
+  for (const patch of [{ wants_reminders: false }, { status: 'declined' }, { event_id: 1 }]) {
+    assert.equal(await createReminderRideEntryPath({ ...input, rsvp: { ...input.rsvp, ...patch } }), null);
+  }
+  assert.equal(lookups, 3);
+  current = Date.parse('2026-11-28T07:00:00Z');
+  assert.equal(entry.verify(token).expiresAt, Date.parse('2026-11-28T12:00:00Z'));
+  current = Date.parse('2026-11-28T12:00:00Z');
+  assert.equal(entry.verify(token), null);
 });
 
 function analyticsFixture() {

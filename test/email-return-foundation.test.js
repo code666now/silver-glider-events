@@ -52,22 +52,26 @@ function transportHarness() {
   return { mailer: module.exports, deliveries };
 }
 
-function reminderHarness({ retry = false, eligible = true, retryClaim = true, failProvider = false } = {}) {
+function reminderHarness({ retry = false, eligible = true, retryClaim = true, failProvider = false,
+  dayOffset = 1, rideEntryPath = null, failRideEntry = false } = {}) {
   const calls = [];
   const sent = [];
   const errors = [];
+  const messageType = dayOffset === 1 ? 'reminder_day_before' : 'reminder_day_of';
   const fresh = {
     ...event, title: 'Fresh event details',
+    ...(rideEntryPath && { visibility: 'public' }),
     current_rsvp_id: rsvp.id, current_user_id: rsvp.user_id,
     current_email: rsvp.email, current_manage_token: 'fresh-private-token',
-    current_first_name: 'Synthetic', current_last_name: 'Guest'
+    current_first_name: 'Synthetic', current_last_name: 'Guest',
+    reminder_queued_at: '2030-12-11T21:00:00Z'
   };
   const query = async (sql, params) => {
     calls.push({ sql, params });
     if (sql.includes('FROM message_log ml') && sql.includes("ml.status='failed'")) {
-      return { rows: retry ? [{ ...event, log_id: 31, message_type: 'reminder_day_before' }] : [] };
+      return { rows: retry ? [{ ...event, log_id: 31, message_type: messageType }] : [] };
     }
-    if (sql.includes('EXTRACT(HOUR')) return { rows: !retry && params[0] === 1 ? [event] : [] };
+    if (sql.includes('EXTRACT(HOUR')) return { rows: !retry && params[0] === dayOffset ? [event] : [] };
     if (sql.includes('SELECT * FROM rsvps')) return { rows: [rsvp] };
     if (sql.includes('INSERT INTO message_log')) return { rows: [{ id: 31 }] };
     if (sql.includes("error='retried: delivery pending'")) return { rows: retryClaim ? [{ id: 31 }] : [] };
@@ -81,7 +85,7 @@ function reminderHarness({ retry = false, eligible = true, retryClaim = true, fa
       assert.match(sql, /e\.event_date = \(\(NOW\(\) AT TIME ZONE e\.timezone\)::date \+ \$4::int\)/);
       assert.doesNotMatch(sql, /event_email_optin|organizer_optin/);
       assert.equal(params[2], event.organizer_id);
-      assert.equal(params[3], 1);
+      assert.equal(params[3], dayOffset);
       return { rows: eligible ? [fresh] : [] };
     }
     if (sql.includes('UPDATE message_log')) return { rows: [] };
@@ -102,6 +106,14 @@ function reminderHarness({ retry = false, eligible = true, retryClaim = true, fa
       if (name === '../config/db') return { query };
       if (name === '../lib/mailer') return { sendDayBeforeReminder: sender, sendDayOfReminder: sender };
       if (name === '../lib/post-event') return require('../src/lib/post-event');
+      if (name === '../lib/transit/ride-entry') return {
+        createReminderRideEntryPath: async ({ db, event: current, rsvp: guest }) => {
+          assert.equal(db.query, query);
+          calls.push({ phase: 'ride-coverage', current, guest });
+          if (failRideEntry) throw new Error('synthetic coverage database unavailable');
+          return rideEntryPath;
+        }
+      };
       if (name === '../lib/transit/ride-metrics') return { createRideMetrics: () => ({ prune: async () => 0 }) };
       if (name === '../lib/outbound-account-status') return {
         HOST_ACCOUNT_INACTIVE: 'host_account_inactive',
@@ -128,6 +140,32 @@ test('first reminders re-read live eligibility under the active-host gate and re
   assert.ok(harness.calls.findIndex(call => call.phase === 'host-gate') < eligibilityIndex);
   assert.ok(eligibilityIndex < harness.calls.findIndex(call => call.phase === 'provider'));
   assert.match(harness.calls.find(call => call.sql?.includes('EXTRACT(HOUR')).sql, /AT TIME ZONE e\.timezone\) > NOW\(\)/);
+});
+
+test('day-before, day-of and retried reminders resolve the optional link from their current delivery details', async () => {
+  const rideEntryPath = '/e/next-night/getting-home/from-email?t=fixture-signed-link';
+  for (const options of [{}, { dayOffset: 0 }, { retry: true }]) {
+    const harness = reminderHarness({ ...options, rideEntryPath });
+    await harness.run();
+    assert.equal(harness.errors.length, 0);
+    assert.equal(harness.sent.length, 1);
+    assert.equal(harness.sent[0].rideEntryPath, rideEntryPath);
+    assert.equal(harness.sent[0].idempotencyKey, `reminder:reminder_day_${options.dayOffset === 0 ? 'of' : 'before'}:31`);
+    const delivery = harness.calls.find(call => call.phase === 'ride-coverage');
+    assert.equal(delivery.current.title, 'Fresh event details');
+    assert.equal(delivery.guest.status, 'confirmed');
+    assert.equal(delivery.guest.wants_reminders, true);
+    assert.equal(delivery.guest.reminder_queued_at, '2030-12-11T21:00:00Z');
+    assert.ok(harness.calls.indexOf(delivery) < harness.calls.findIndex(call => call.phase === 'provider'));
+  }
+});
+
+test('an optional transportation lookup failure still delivers the unchanged reminder', async () => {
+  const harness = reminderHarness({ failRideEntry: true });
+  await harness.run();
+  assert.equal(harness.errors.length, 0);
+  assert.equal(harness.sent.length, 1);
+  assert.equal(harness.sent[0].rideEntryPath, null);
 });
 
 test('a stale first-reminder candidate is permanently suppressed without a provider call', async () => {
@@ -254,6 +292,19 @@ test('day-of sender uses daytime or evening copy and keeps the stable reminder k
   assert.match(deliveries[1].payload.html, /See you tonight\./);
   assert.equal(deliveries[0].options.idempotencyKey, 'reminder:day-of:1');
   assert.ok(deliveries[0].options.signal instanceof AbortSignal);
+});
+
+test('both existing sender envelopes retain unsubscribe and idempotency when they include the planner', async () => {
+  const { mailer, deliveries } = transportHarness();
+  const rideEntryPath = '/e/next-night/getting-home/from-email?t=fixture-signed-link';
+  for (const [sender, key] of [['sendDayBeforeReminder', 'reminder:day-before:1'], ['sendDayOfReminder', 'reminder:day-of:1']]) {
+    await mailer[sender]({ to: rsvp.email, event: { ...event, visibility: 'public' }, rsvp, idempotencyKey: key, rideEntryPath });
+    const { payload, options } = deliveries.at(-1);
+    assert.match(payload.html, /getting-home\/from-email\?t=fixture-signed-link/);
+    assert.equal(payload.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
+    assert.equal(options.idempotencyKey, key);
+  }
+  assert.equal(deliveries.length, 2);
 });
 
 test('follower Reply-To preserves a real address and rejects missing or header-injected values', async () => {

@@ -16,7 +16,7 @@
   const metrics = el('transportation-metrics');
   const breakdown = el('transportation-breakdown');
   const countsNote = el('analytics-counts-note');
-  const metricFields = ['pageOpens', 'busClicks', 'uberClicks', 'lyftClicks', 'repeatOpens'];
+  const metricFields = ['pageOpens', 'emailPlannerVisits', 'busClicks', 'uberClicks', 'lyftClicks', 'repeatOpens'];
   let rollout = null;
   let canManage = false;
   let rolloutBusy = false;

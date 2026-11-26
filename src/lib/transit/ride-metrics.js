@@ -4,7 +4,7 @@ const { createHmac } = require('node:crypto');
 
 const RETENTION_MS = 45 * 24 * 60 * 60 * 1000;
 const TRANSPORTATION_INTERACTION_KINDS = Object.freeze(['bus_click', 'uber_click', 'lyft_click']);
-const KINDS = new Set(['page_open', 'route_selected', 'reminder_requested', 'reminder_sent', 'email_link_open', 'text_link_open',
+const KINDS = new Set(['page_open', 'route_selected', 'reminder_requested', 'reminder_sent', 'email_link_open', 'email_planner_open', 'text_link_open',
   ...TRANSPORTATION_INTERACTION_KINDS]);
 const validId = id => Number.isInteger(id) && id > 0 && id <= 2147483647;
 
@@ -79,7 +79,7 @@ function createRideMetrics({ db, secret = process.env.SESSION_SECRET, now = Date
 }
 
 const REPORT_COUNTS = Object.freeze({
-  page_open: 'pageOpens', route_selected: 'routeSelections', bus_click: 'busClicks', uber_click: 'uberClicks',
+  page_open: 'pageOpens', email_planner_open: 'emailPlannerVisits', route_selected: 'routeSelections', bus_click: 'busClicks', uber_click: 'uberClicks',
   lyft_click: 'lyftClicks', repeat_open: 'repeatOpens'
 });
 const reportKinds = Object.keys(REPORT_COUNTS);
