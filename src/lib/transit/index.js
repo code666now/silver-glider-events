@@ -42,7 +42,7 @@ function createVenueTransit({ load, eligible, venueName }) {
     },
     async getDeparture(event, { stopId, stationId, routeId, direction, headsign, destinationStationId } = {}, planning) {
       if (!eligible(event)) return { status: 'unsupported-event' };
-      if (!event.start_time) return { status: 'schedule-unavailable' };
+      if (!event.start_time && !planning?.leaveNow) return { status: 'schedule-unavailable' };
       try {
         const { snapshot, schedule, stops } = await load(event);
         const stop = stops.find(stop => stop.walkSeconds !== null && (stationId
@@ -50,7 +50,8 @@ function createVenueTransit({ load, eligible, venueName }) {
           : stop.stopId === stopId && stop.routes.some(route => route.routeId === routeId && route.direction === direction && route.headsign === headsign)));
         if (!stop) return { status: 'unsupported-selection' };
         const ridePlanning = planning && {
-          nowMs: planning.now(), boardingLeadMs: stop.walkSeconds * 1000 + planning.safetyBufferMinutes * 60_000
+          nowMs: planning.now(), boardingLeadMs: stop.walkSeconds * 1000 + planning.safetyBufferMinutes * 60_000,
+          leaveNow: planning.leaveNow === true
         };
         const result = schedule.departure({
           date: eventDate(event.event_date), startTime: event.start_time, endTime: event.end_time,

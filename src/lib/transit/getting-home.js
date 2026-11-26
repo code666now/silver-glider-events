@@ -2,7 +2,7 @@
 
 const { isMakeOutRoomEvent, PILOT } = require('./make-out-room');
 const { createMakeOutRoomTransit, eventDate } = require('./index');
-const { scheduleNightEnd } = require('./gtfs-schedule');
+const { scheduleNightEnd, currentServiceNight } = require('./gtfs-schedule');
 const { sfTransit, sfTransitEnabled } = require('./sf-transit');
 const { sfCoverageInput } = require('./sf-coverage-store');
 
@@ -71,13 +71,13 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), cityTransit =
         directionsUrl: `/e/${encodeURIComponent(event.slug)}#event-location-map`
       };
     },
-    async getDeparture(event, form, { includeUpcoming = false } = {}) {
+    async getDeparture(event, form, { includeUpcoming = false, leaveNow = includeUpcoming } = {}) {
       const selected = adapter(event);
       if (!selected) return { status: 'unsupported-event' };
       const selection = readTransitSelection(form);
       if (!selection) return { status: 'unsupported-selection' };
       const safetyBufferMinutes = RIDE_BUFFER_MINUTES;
-      const plan = await selected.getDeparture(event, selection, includeUpcoming ? { now, safetyBufferMinutes } : undefined);
+      const plan = await selected.getDeparture(event, selection, includeUpcoming || leaveNow ? { now, safetyBufferMinutes, leaveNow } : undefined);
       const { status, attribution, stopName, walkSeconds, timezone, timing, departureAt, fetchedAt, departsBeforeEventEnds } = plan;
       const upcoming = includeUpcoming && plan.upcoming;
       if (status !== 'scheduled') return { status, attribution, stopName, walkSeconds, timezone, ...(status === 'overnight' && upcoming && { upcoming }) };
@@ -86,9 +86,11 @@ function createGettingHome({ transit = createMakeOutRoomTransit(), cityTransit =
       if (departureAt <= checkedAt) return { status: 'no-service', attribution, stopName, timezone };
       const leaveByAt = departureAt - (walkSeconds * 1000 + safetyBufferMinutes * MINUTE);
       const proposed = leaveByAt - RIDE_NOTICE_MINUTES * MINUTE;
+      const nowNight = leaveNow ? currentServiceNight(checkedAt, event.timezone) : null;
+      const sameEventNight = !leaveNow || (nowNight !== null && nowNight.endsAt === scheduleNightEnd(eventDate(event.event_date), event.start_time, event.timezone));
       return {
         status, timing, timezone, attribution, stopName, walkSeconds, safetyBufferMinutes, departureAt, leaveByAt,
-        proposedReminderAt: selected === transit && timing === 'scheduled' && proposed > checkedAt ? proposed : null,
+        proposedReminderAt: selected === transit && sameEventNight && timing === 'scheduled' && proposed > checkedAt ? proposed : null,
         departsBeforeEventEnds, fetchedAt,
         ...(upcoming && { upcoming }),
         ...(includeUpcoming && { leaveByPassed: leaveByAt < checkedAt })

@@ -74,6 +74,32 @@
 .transportation-panel .sg-btn { min-height: 44px; white-space: normal; }
 #rollout-refresh { margin-top: 10px; }
 
+.transportation-venue-test { max-width: 660px; }
+.transportation-back { display: inline-flex; align-items: center; min-height: 44px; color: var(--sg-accent); }
+.transportation-venue-form { display: grid; gap: 8px; }
+.transportation-venue-form label { font-weight: 700; }
+.transportation-venue-form .sg-input { font-size: 16px; min-height: 48px; }
+.transportation-venue-form .transportation-note,
+.transportation-venue-form .transportation-feedback { margin: 0; }
+.transportation-venue-form .transportation-actions { margin-top: 6px; }
+.transportation-venue-form [data-loading="true"]::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  margin-right: 7px;
+  border: 2px solid var(--sg-accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: transportation-spin .7s linear infinite;
+}
+@keyframes transportation-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .transportation-venue-form [data-loading="true"]::before { animation: none; }
+}
+
 .transportation-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

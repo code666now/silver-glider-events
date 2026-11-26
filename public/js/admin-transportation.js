@@ -44,6 +44,7 @@
         typeof result.requested !== 'boolean' || typeof data.canManage !== 'boolean') throw new Error('Unconfirmed rollout status');
     rollout = result;
     canManage = data.canManage;
+    el('transportation-tester').hidden = !canManage;
     refreshRequired = false;
     toggle.checked = result.requested;
     badge.textContent = result.enabled ? 'On' : (result.allowed ? 'Off' : 'Off · Not ready');

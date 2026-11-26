@@ -165,7 +165,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
       protectResponse(res);
       if (req.method !== 'GET') return res.sendStatus(204);
       const event = preview.verifyLink(req.query.t);
-      const token = event && preview.issueCookie(event.event_date, event.sfWalks);
+      const token = event && preview.issueCookie(event.event_date, event.sfWalks, event.testVenue);
       if (!token) return unavailableEmailPlan(res);
       res.cookie(name, token, {
         path: '/', httpOnly: true, sameSite: 'lax', secure: env.NODE_ENV === 'production', maxAge: event.ends_at - now()
@@ -210,7 +210,9 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   router.get(`${API}/options`, gate(true), async (req, res) => {
     const { event, preview, emailEntry } = req.gettingHome;
     const options = await home.getOptions(event);
-    res.json(preview ? { ...options, previewDate: event.event_date }
+    res.json(preview ? (event.testVenue === 'kilowatt' ? { ...options,
+      directionsUrl: `https://maps.google.com/?q=${encodeURIComponent(event.venue_address)}` }
+      : { ...options, previewDate: event.event_date })
       : emailEntry && options.status === 'available' ? { ...options, emailEntry: true } : options);
   });
   router.post(`${API}/departure`, jsonMutation, gate(true), async (req, res) => {

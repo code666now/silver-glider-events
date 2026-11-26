@@ -7,7 +7,8 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const { createGettingHomeRouter } = require('../../src/routes/getting-home');
 const { createRideEntry, createReminderRideEntryPath, rideEntryCookieName } = require('../../src/lib/transit/ride-entry');
-const { createRidePreview, PREVIEW_PATH, PREVIEW_SLUG, PREVIEW_COOKIE } = require('../../src/lib/transit/ride-preview');
+const { createRidePreview, PREVIEW_PATH, PREVIEW_SLUG, PREVIEW_COOKIE,
+  createCityRidePreview, CITY_PREVIEW_PATH, CITY_PREVIEW_SLUG, CITY_PREVIEW_COOKIE } = require('../../src/lib/transit/ride-preview');
 const { createRideReminders, CONSENT_VERSION, RIDE_SMS_CONSENT } = require('../../src/lib/transit/ride-reminders');
 const { sfCoverageInput } = require('../../src/lib/transit/sf-coverage-store');
 
@@ -175,6 +176,36 @@ const denied = response => {
   assert.match(response.headers.get('cache-control') || '', /no-store/);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
 };
+
+test('the Kilowatt email opens the guest layout and verified route lookup without a fake show date', async t => {
+  const f = await fixture(t);
+  Object.assign(f.env, { TRANSIT_TEST_PREVIEW_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'true',
+    GEOAPIFY_API_KEY: 'fixture-only', TRANSIT_RIDE_REMINDERS_ENABLED: 'false' });
+  const signer = createCityRidePreview({ env: f.env, now: () => START });
+  const testEntry = signer.issueLink('2026-11-27', [cityWalk], 'kilowatt');
+  assert.ok(testEntry);
+  denied(await f.fetch(CITY_PREVIEW_PATH));
+  const entered = await f.fetch(testEntry);
+  assert.equal(entered.status, 303);
+  assert.equal(entered.headers.get('location'), CITY_PREVIEW_PATH);
+  const cookie = entered.headers.getSetCookie().find(row => row.startsWith(`${CITY_PREVIEW_COOKIE}=`))?.split(';')[0];
+  assert.ok(cookie);
+  assert.equal((await f.fetch(CITY_PREVIEW_PATH, { headers: { cookie } })).status, 200);
+  const prefix = `/api/public/events/${CITY_PREVIEW_SLUG}/getting-home`;
+  const options = await (await f.fetch(`${prefix}/options`, { headers: { cookie } })).json();
+  assert.equal(options.venue, 'Kilowatt');
+  assert.equal(options.previewDate, undefined);
+  assert.equal(options.emailEntry, undefined);
+  assert.match(options.directionsUrl, /3160%2016th%20St/);
+  const departures = await f.fetch(`${prefix}/departure`, json('POST', choice, { cookie }));
+  assert.equal(departures.status, 200);
+  const plan = await departures.json();
+  assert.equal(plan.upcoming.departures.length, 2);
+  assert.equal(plan.proposedReminderAt, undefined);
+  assert.equal((await (await f.fetch(`${prefix}/reminder`, { headers: { cookie } })).json()).status, 'unavailable');
+  assert.equal(f.metricsCalls.length, 0);
+  assert.equal(f.writes.length, 0);
+});
 
 test('SF planner is for confirmed guests with ready public Places coverage; analytics do not enable messages', async t => {
   const f = await fixture(t);

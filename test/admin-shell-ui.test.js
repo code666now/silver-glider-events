@@ -96,3 +96,22 @@ test('team controls use target-bound fresh verification and the operator roster 
   assert.match(stepUp, /\/api\/admin\/auth\/step-up\/start/);
   assert.match(stepUp, /\/api\/admin\/auth\/step-up\/complete/);
 });
+
+test('venue tester is an explicit Super Admin action with the existing Places picker and honest progress', () => {
+  const main = read('src/views/admin-transportation.html');
+  const controller = read('public/js/admin-transportation.js');
+  const picker = read('src/views/admin-transportation-venue-test.html');
+  const script = read('public/js/admin-transportation-venue-test.js');
+  const style = read('public/css/admin-transportation.css');
+  assert.match(main, /id="transportation-tester"[^>]+hidden[\s\S]+href="\/admin\/transportation\/venue-test"/);
+  assert.match(controller, /el\('transportation-tester'\)\.hidden = !canManage/);
+  assert.match(picker, /<label for="venue-test-search">Venue or address/);
+  assert.match(picker, /Find nearby routes/);
+  assert.match(picker, /creates no event, RSVP, email, text, or guest analytics/);
+  assert.match(script, /SGLocation\.recordForPlace/);
+  assert.match(script, /new window\.google\.maps\.places\.Autocomplete/);
+  assert.match(script, /\/api\/admin\/transportation\/venue-test/);
+  assert.match(script, /Finding nearby buses and trains…/);
+  assert.match(script, /window\.location\.assign\('\/admin\/transportation\/venue-test\/plan'\)/);
+  assert.match(style, /prefers-reduced-motion: reduce[\s\S]*transportation-venue-form[\s\S]*animation: none/);
+});

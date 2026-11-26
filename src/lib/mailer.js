@@ -3,7 +3,7 @@ const { createHash } = require('node:crypto');
 const { DEFAULT_ACCENT, createEmailTheme } = require('../../public/js/artwork-color');
 const LocationUtils = require('../../public/js/location-utils');
 const { locationForViewer } = require('./event-location-privacy');
-const { createRidePreview, createCityRidePreview } = require('./transit/ride-preview');
+const { createRidePreview, createCityRidePreview, cityRidePreviewEvent } = require('./transit/ride-preview');
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.RESEND_FROM || 'events@silverglidertickets.com';
@@ -575,18 +575,28 @@ async function sendOptionalHostEmail({ to, subject, html, text, unsubscribeUrl, 
   return send({ to, subject, html, text, headers, idempotencyKey, timeoutMs: 15000 });
 }
 
-function buildGettingHomePreviewEmail({ date, walks, env = process.env, now = Date.now }) {
+function buildGettingHomePreviewEmail({ date, walks, venue, env = process.env, now = Date.now }) {
   const city = walks !== undefined;
-  const path = city ? createCityRidePreview({ env, now }).issueLink(date, walks) : createRidePreview({ env, now }).issueLink(date);
+  const path = city ? createCityRidePreview({ env, now }).issueLink(date, walks, venue) : createRidePreview({ env, now }).issueLink(date);
   if (!path) return null;
-  const url = safeHttpUrl(`${String(env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '')}${path}`);
+  const baseUrl = String(env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
+  const url = safeHttpUrl(`${baseUrl}${path}`);
   if (!url) return null;
+  if (city && venue === 'kilowatt') {
+    const event = { ...cityRidePreviewEvent(date, venue), title: 'Kilowatt', org_name: 'Silver Glider Events' };
+    return {
+      subject: 'Test reminder: Getting home from Kilowatt', url,
+      text: `Help me get home from Kilowatt: ${url}\n\nChoose your route and direction. This is a test of the guest link, not an event invitation.`,
+      html: renderEventReminderEmail({ event, baseUrl, kicker: 'Test reminder', headline: 'Getting home from Kilowatt',
+        rideEntryPath: path, testVenueOnly: true })
+    };
+  }
   const when = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
     .format(new Date(`${date}T12:00:00Z`));
   const headline = city ? 'Getting Home from Haight Street' : 'Getting Home from Make-Out Room';
   const subject = `Test: ${headline}`;
-  const venue = city ? ' at 1725 Haight St, San Francisco' : '';
-  const explanation = `This is a read-only preview for a sample show${venue} on ${when}. It uses published 511 schedules, not live vehicle arrivals. No RSVP or text will be created.`;
+  const sampleAddress = city ? ' at 1725 Haight St, San Francisco' : '';
+  const explanation = `This is a read-only preview for a sample show${sampleAddress} on ${when}. It uses published 511 schedules, not live vehicle arrivals. No RSVP or text will be created.`;
   const cta = city ? 'Help me get home' : 'Open the Getting Home preview';
   return {
     subject, url, text: `${explanation}\n\n${city ? cta : 'Open the preview'}: ${url}`,
@@ -594,12 +604,12 @@ function buildGettingHomePreviewEmail({ date, walks, env = process.env, now = Da
   };
 }
 
-async function sendGettingHomePreviewEmail({ to, date, walks }) {
+async function sendGettingHomePreviewEmail({ to, date, walks, venue }) {
   const address = String(to ?? '').trim();
   if (typeof to !== 'string' || !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(address)) throw new Error('A single email address is required');
-  const preview = buildGettingHomePreviewEmail({ date, walks });
+  const preview = buildGettingHomePreviewEmail({ date, walks, venue });
   if (!preview) throw new Error('Getting Home preview is unavailable');
-  const variant = walks === undefined ? 'transit-test-preview' : 'transit-sf-test-preview';
+  const variant = venue === 'kilowatt' ? 'transit-kilowatt-guest-test' : walks === undefined ? 'transit-test-preview' : 'transit-sf-test-preview';
   const idempotencyKey = `${variant}:${createHash('sha256').update(`${date}:${address.toLowerCase()}`).digest('hex')}`;
   return send({ to: address, subject: preview.subject, html: preview.html, text: preview.text, idempotencyKey, timeoutMs: 15000 });
 }
@@ -1004,35 +1014,42 @@ function renderFlyerReminderEmail({ event, rsvp, kicker, headline, rideEntryPath
   return renderEventReminderEmail({ event, rsvp, kicker, headline, rideEntryPath });
 }
 
-function rideHelpCallout(baseUrl, entryPath, theme) {
-  if (typeof entryPath !== 'string' || !/^\/e\/[a-z0-9-]{1,120}\/getting-home\/(?:from-email|from-test)\?t=[a-z0-9_.-]{1,180}$/i.test(entryPath)) return '';
+function rideHelpCallout(baseUrl, entryPath, theme, { venueName, testVenueOnly } = {}) {
+  if (typeof entryPath !== 'string') return '';
+  const reminder = /^\/e\/[a-z0-9-]{1,120}\/getting-home\/(?:from-email|from-test)\?t=[a-z0-9_.-]{1,180}$/i.test(entryPath);
+  const test = testVenueOnly && /^\/e\/san-francisco-schedule-preview\/getting-home\/from-test\?t=[a-z0-9_.-]{1,3000}$/i.test(entryPath);
+  if (!reminder && !test) return '';
   const url = safeHttpUrl(`${baseUrl}${entryPath}`);
   if (!url) return '';
+  const from = typeof venueName === 'string' && venueName.trim() ? `See buses and trains from ${esc(venueName.trim())}. ` : '';
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#122424" style="width:100%;margin:0 0 20px;background:#122424;border:1px solid #385153;border-collapse:separate;border-radius:12px">
     <tr><td style="padding:16px 18px;text-align:left">
       <p style="color:#f0f0f0;font-size:16px;font-weight:800;margin:0 0 6px">Don't Miss Your Last Bus!</p>
-      <p style="color:#b6c8c7;font-size:14px;line-height:1.5;margin:0 0 9px">See the next scheduled buses, the last ride, and when to leave. Save this email and tap the link again when you’re ready to head out.</p>
+      <p style="color:#b6c8c7;font-size:14px;line-height:1.5;margin:0 0 9px">${from}See the next scheduled buses, the last ride, and when to leave. Save this email and tap the link again when you’re ready to head out.</p>
       <a href="${esc(url)}" rel="noreferrer" style="display:inline-block;color:${theme.secondaryAccentColor};font-size:14px;font-weight:800;text-decoration:underline">Help me get home</a>
     </td></tr></table>`;
 }
 
-function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline = 'See you tomorrow.', rideEntryPath = null }) {
-  const baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, '');
-  const manageUrl = `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}#email-settings`;
+function renderEventReminderEmail({ event, rsvp, kicker = 'Reminder', headline = 'See you tomorrow.', rideEntryPath = null,
+  baseUrl = String(process.env.APP_URL || 'https://silvergliderevents.com').replace(/\/$/, ''), testVenueOnly = false }) {
+  const manageUrl = testVenueOnly ? null : `${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}#email-settings`;
   const theme = eventEmailTheme(event);
+  const showRide = event.visibility === 'public' && !event.hide_address_until_rsvp && !event.secret_show_enabled;
+  const calendar = testVenueOnly ? '' : `<p class="sg-email-secondary" style="color:#858585;font-size:14px;text-align:center;margin:0 0 24px;line-height:1.6"><a href="${esc(`${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`)}" style="color:${theme.secondaryAccentColor};font-weight:700;text-decoration:none">Add to Calendar</a></p>`;
+  const venueUrl = testVenueOnly ? `https://maps.google.com/?q=${encodeURIComponent(event.venue_address)}` : null;
   return rsvpConfirmationLayout({
     event,
     theme,
     kicker,
     sub: headline,
-    bodyHtml: `${confirmationDetailsCard(event)}${confirmationMapLink(event, theme)}`,
-    cta: event.comments_enabled ? 'View event & comments' : 'View event',
-    ctaUrl: attendeeEventUrl(event, rsvp),
-    secondaryHtml: `${rideHelpCallout(baseUrl, rideEntryPath, theme)}<p class="sg-email-secondary" style="color:#858585;font-size:14px;text-align:center;margin:0 0 24px;line-height:1.6"><a href="${esc(`${baseUrl}/r/${encodeURIComponent(rsvp.manage_token)}/calendar.ics`)}" style="color:${theme.secondaryAccentColor};font-weight:700;text-decoration:none">Add to Calendar</a></p>`,
+    bodyHtml: testVenueOnly ? `<p style="color:#d7d7d7;text-align:center;margin:0 0 20px">${esc(event.venue_address)}</p>` : `${confirmationDetailsCard(event)}${confirmationMapLink(event, theme)}`,
+    cta: testVenueOnly ? 'View venue' : event.comments_enabled ? 'View event & comments' : 'View event',
+    ctaUrl: venueUrl || attendeeEventUrl(event, rsvp),
+    secondaryHtml: `${showRide ? rideHelpCallout(baseUrl, rideEntryPath, theme, { venueName: event.venue_name, testVenueOnly }) : ''}${calendar}`,
     footerHtml: policyFooter({
-      reason: 'You asked for reminders when you RSVP’d to this event. Replies are not monitored.',
+      reason: testVenueOnly ? 'This is a test of the Getting Home link, not an event invitation.' : 'You asked for reminders when you RSVP’d to this event. Replies are not monitored.',
       hostLabel: eventHostLabel(event),
-      links: [{ label: 'Manage RSVP & email settings', url: manageUrl }]
+      links: manageUrl ? [{ label: 'Manage RSVP & email settings', url: manageUrl }] : []
     }),
     showListening: false,
     footerActionLabel: '',

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <title>Test a venue — Transportation — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-transportation.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="transportation">
+  <div class="sg-shell" data-admin-section="transportation">
+    <nav id="nav"></nav>
+    <main id="main-content" tabindex="-1" class="transportation-main transportation-venue-test">
+      <header class="transportation-header">
+        <a class="transportation-back" href="/admin/transportation">← Transportation</a>
+        <h1 class="sg-page-title">Test a venue</h1>
+        <p class="sg-page-sub">See scheduled buses and trains from a public San Francisco venue if you leave now. This test creates no event, RSVP, email, text, or guest analytics.</p>
+      </header>
+      <section class="transportation-panel" aria-label="Choose a venue to test">
+        <form id="venue-test-form" class="transportation-venue-form" aria-busy="false">
+          <label for="venue-test-search">Venue or address</label>
+          <input class="sg-input" id="venue-test-search" type="text" maxlength="250" placeholder="e.g. Kilowatt" autocomplete="off" aria-describedby="venue-test-help venue-test-status" required disabled>
+          <p class="transportation-note" id="venue-test-help">Choose a San Francisco result from Google Places.</p>
+          <p class="transportation-feedback" id="venue-test-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <noscript><p class="transportation-note">Turn on JavaScript to look up venues and departures.</p></noscript>
+          <div class="transportation-actions">
+            <button class="sg-btn sg-btn-primary" id="venue-test-submit" type="submit" disabled>Find nearby routes</button>
+            <button class="sg-btn sg-btn-ghost" id="venue-test-retry" type="button" hidden>Try again</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/location-utils.js"></script>
+  <script src="/js/admin-transportation-venue-test.js"></script>
+</body>
+</html>

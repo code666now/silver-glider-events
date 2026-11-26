@@ -15,17 +15,20 @@ function addDays(date, days) {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 }
 
-function localTime(date, time, zone) {
+function localParts(instant, zone) {
   if (!formats.has(zone)) formats.set(zone, new Intl.DateTimeFormat('en-GB', {
     timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
   }));
-  const format = formats.get(zone);
+  return Object.fromEntries(formats.get(zone).formatToParts(instant).map(({ type, value }) => [type, value]));
+}
+
+function localTime(date, time, zone) {
   const target = Date.parse(`${date}T${time}Z`);
   if (!Number.isFinite(target)) throw new RangeError('Invalid local transit time');
   let instant = target;
   for (let i = 0; i < 3; i++) {
-    const p = Object.fromEntries(format.formatToParts(instant).map(({ type, value }) => [type, value]));
+    const p = localParts(instant, zone);
     const displayed = Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`);
     if (displayed === target) return instant;
     instant += target - displayed;
@@ -43,6 +46,18 @@ function scheduleNightEnd(date, startTime, zone) {
   if (!date || !clock || !zone) return null;
   try { return localHour(clock < '04:00:00' ? date : addDays(date, 1), 4, zone); }
   catch { return null; }
+}
+
+// A 1 a.m. trip is still part of the preceding evening; use SF local dates,
+// not the server's calendar date or a fixed UTC offset across DST.
+function currentServiceNight(nowMs, zone) {
+  if (!Number.isFinite(nowMs) || !zone) return null;
+  try {
+    const parts = localParts(nowMs, zone);
+    const date = `${parts.year}-${parts.month}-${parts.day}`;
+    const anchor = Number(parts.hour) < 4 ? addDays(date, -1) : date;
+    return { anchor, startAt: localHour(anchor, 4, zone), endsAt: localHour(addDays(anchor, 1), 4, zone) };
+  } catch { return null; }
 }
 
 function gtfsSeconds(value) {
@@ -88,7 +103,7 @@ function routeMode(routeType) {
 function nextDepartures(origins, { ridePlanning, start, eventEndsAt, last, latest = last }) {
   const { nowMs, boardingLeadMs } = ridePlanning ?? {};
   if (!Number.isFinite(nowMs) || !Number.isFinite(boardingLeadMs) || boardingLeadMs <= 0) return undefined;
-  const advance = nowMs < start;
+  const advance = !ridePlanning.leaveNow && nowMs < start;
   const context = advance ? (eventEndsAt === undefined ? 'from-show-start' : 'after-show') : 'leaving-now';
   const earliest = (advance ? (eventEndsAt ?? start) : nowMs) + boardingLeadMs;
   const next = [];
@@ -271,28 +286,31 @@ function createGtfsSchedule(tables) {
 
   function departure({ date, stopId, stationId, routeId, direction, headsign, destinationStationId, startTime, endTime, ridePlanning, boardingOnly = false }) {
     date = civilDate(date);
+    const leaveNow = ridePlanning?.leaveNow === true;
     const bartOrigin = stationId ? stationOf(stationId) : null;
     const route = bartOrigin ? [...routes.values()].find(isBart) : routes.get(routeId);
     const agency = agencyFor(route);
-    if (!date || !(bartOrigin ? bartStations.has(bartOrigin) : stops.has(stopId)) || !route || !agency?.agency_timezone) return UNAVAILABLE;
+    if ((!date && !leaveNow) || !(bartOrigin ? bartStations.has(bartOrigin) : stops.has(stopId)) || !route || !agency?.agency_timezone) return UNAVAILABLE;
     const bart = isBart(route);
     if (bart && !boardingOnly && !destinationStationId) return { status: 'destination-required' };
     const destination = bart ? stationOf(destinationStationId) : null;
     if (bart && !boardingOnly && (!bartStations.has(destination) || destination === (bartOrigin || stationOf(stopId)))) return { status: 'invalid-destination' };
     const zone = agency.agency_timezone;
-    const startClock = parseClock(startTime);
-    const endClock = parseClock(endTime);
-    if ((startTime && !startClock) || (endTime && !endClock)) return UNAVAILABLE;
-    const anchor = startClock && startClock < '04:00:00' ? addDays(date, -1) : date;
+    const startClock = leaveNow ? null : parseClock(startTime);
+    const endClock = leaveNow ? null : parseClock(endTime);
+    if (!leaveNow && ((startTime && !startClock) || (endTime && !endClock))) return UNAVAILABLE;
+    const activeNight = leaveNow ? currentServiceNight(ridePlanning.nowMs, zone) : null;
+    if (leaveNow && !activeNight) return UNAVAILABLE;
+    const anchor = activeNight?.anchor ?? (startClock && startClock < '04:00:00' ? addDays(date, -1) : date);
     const nightEnd = addDays(anchor, 1);
     if (!covered(agency, anchor, nightEnd)) return UNAVAILABLE;
     let start, midnight, cutoff, morning, eventEndsAt;
     const epochs = new Map();
     try {
-      start = startClock ? localTime(date, startClock, zone) : localHour(date, 0, zone);
+      start = activeNight?.startAt ?? (startClock ? localTime(date, startClock, zone) : localHour(date, 0, zone));
       if (endClock && startClock) eventEndsAt = localTime(endClock <= startClock ? addDays(date, 1) : date, endClock, zone);
       midnight = localHour(nightEnd, 0, zone);
-      cutoff = localHour(nightEnd, 4, zone);
+      cutoff = activeNight?.endsAt ?? localHour(nightEnd, 4, zone);
       morning = localHour(nightEnd, 6, zone);
       for (let offset = -4; offset <= 1; offset++) {
         const serviceDate = addDays(anchor, offset);
@@ -409,4 +427,4 @@ function createGtfsSchedule(tables) {
   };
 }
 
-module.exports = { createGtfsSchedule, scheduleNightEnd, compactStopTime };
+module.exports = { createGtfsSchedule, scheduleNightEnd, currentServiceNight, compactStopTime };

@@ -130,3 +130,22 @@ test('city preview email has a distinct label and the same scoped Getting Home b
   assert.equal(new URL(buildGettingHomePreviewEmail(options).url).pathname, `${PREVIEW_PATH}/from-test`);
   assert.equal(buildGettingHomePreviewEmail({ ...options, walks: [] }), null);
 });
+
+test('Kilowatt test uses the reminder layout and signed guest planner without inventing an event', () => {
+  const options = { date, walks: publicWalks, venue: 'kilowatt', env: cityEnv, now: () => stamp };
+  const email = buildGettingHomePreviewEmail(options);
+  assert.equal(email.subject, 'Test reminder: Getting home from Kilowatt');
+  assert.match(email.html, /See buses and trains from Kilowatt\./);
+  assert.match(email.html, />Help me get home<\/a>/);
+  assert.match(email.html, /View venue/);
+  assert.doesNotMatch(email.html, /sample show|read-only|Add to Calendar|Manage RSVP|\/r\/undefined/i);
+  const signer = createCityRidePreview({ env: cityEnv, now: options.now });
+  const grant = new URL(email.url).searchParams.get('t');
+  const event = signer.verifyLink(grant);
+  assert.equal(event.venue_name, 'Kilowatt');
+  assert.equal(event.testVenue, 'kilowatt');
+  assert.match(event.venue_address, /^3160 16th St/);
+  assert.deepEqual(signer.verifyCookie(signer.issueCookie(date, event.sfWalks, event.testVenue)), event);
+  assert.equal(signer.verifyCookie(grant), null);
+  assert.equal(signer.issueLink(date, publicWalks, 'unrecognized-venue'), null);
+});

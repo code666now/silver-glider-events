@@ -44,13 +44,12 @@
       <img class="gh-logo" src="/logo.png" alt="Silver Glider Events" width="44" height="44">
     </header>
     <div class="gh-intro">
-      <h1>Getting home</h1>
-      <p class="gh-venue" id="gh-venue" hidden></p>
+      <h1 id="gh-heading">Getting home</h1>
       <p class="gh-note" id="gh-preview-label" hidden></p>
       <p class="gh-helper">Choose a route to see scheduled departures and when to leave. Check again before you head out.</p>
     </div>
 
-    <div class="gh-status" id="gh-status" role="status" aria-live="polite" aria-atomic="true">Checking nearby transit…</div>
+    <div class="gh-status" id="gh-status" role="status" aria-live="polite" aria-atomic="true" data-loading>Finding nearby buses and trains…</div>
     <noscript><p class="gh-note">Turn on JavaScript to check transit schedules, or return to the event for directions.</p></noscript>
     <button class="gh-secondary gh-retry" type="button" id="gh-retry" hidden>Try again</button>
 
@@ -88,24 +87,35 @@
           <label for="gh-direction">Direction</label>
           <select id="gh-direction"></select>
         </div>
-        <div class="gh-field">
-          <label id="gh-stop-label" for="gh-stop">Boarding stop</label>
-          <select id="gh-stop"></select>
-        </div>
         <div class="gh-field" id="gh-destination-field" hidden>
           <label for="gh-destination">Destination station</label>
           <select id="gh-destination"></select>
         </div>
+        <div class="gh-stop-summary" id="gh-stop-summary" hidden>
+          <div><span class="gh-stop-label" id="gh-stop-kind">Boarding stop</span><p id="gh-stop-picked"></p></div>
+          <button class="gh-change" id="gh-change-stop" type="button" aria-expanded="false" aria-controls="gh-stop-field">Change stop</button>
+        </div>
+        <div class="gh-field" id="gh-stop-field" hidden>
+          <label id="gh-stop-label" for="gh-stop">Boarding stop</label>
+          <select id="gh-stop"></select>
+        </div>
         <button class="gh-primary" id="gh-check" type="submit">Check departures</button>
       </form>
 
-      <div class="gh-result-status" id="gh-result-status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <div class="gh-result-status gh-sr-status" id="gh-result-status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <button class="gh-secondary gh-retry" type="button" id="gh-retry-departure" hidden>Try again</button>
+      <section class="gh-upcoming" id="gh-upcoming" aria-labelledby="gh-upcoming-title" hidden>
+        <h3 id="gh-upcoming-title" tabindex="-1">Next buses if you leave now</h3>
+        <p class="gh-note" id="gh-upcoming-note"></p>
+        <ol id="gh-upcoming-times" role="list" hidden></ol>
+      </section>
       <section class="gh-results" id="gh-results" aria-labelledby="gh-results-title" hidden>
-        <h3 id="gh-results-title" tabindex="-1">Your ride home</h3>
-        <dl>
+        <h3 id="gh-results-title" tabindex="-1">Last bus tonight</h3>
+        <p class="gh-note" id="gh-last-note" hidden></p>
+        <dl id="gh-last-details" hidden>
           <div class="gh-timing gh-timing-main">
             <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-clock"></use></svg>
-            <div><dt id="gh-departure-label">Last scheduled departure</dt><dd id="gh-departure-time"></dd><span id="gh-boarding-stop" class="gh-timing-note"></span><span id="gh-last-next" class="gh-timing-note" hidden></span></div>
+            <div><dt id="gh-departure-label">Last scheduled departure</dt><dd id="gh-departure-time"></dd><span id="gh-boarding-stop" class="gh-timing-note"></span></div>
           </div>
           <div class="gh-timing" id="gh-leave-row" hidden>
             <svg class="gh-icon" aria-hidden="true"><use href="#gh-icon-walk"></use></svg>
@@ -133,11 +143,6 @@
           </form>
         </section>
       </section>
-      <section class="gh-upcoming" id="gh-upcoming" aria-labelledby="gh-upcoming-title" hidden>
-        <h3 id="gh-upcoming-title"></h3>
-        <p class="gh-note" id="gh-upcoming-note"></p>
-        <ul id="gh-upcoming-times" role="list" hidden></ul>
-      </section>
     </section>
 
     <section class="gh-reminder" id="gh-reminder-management" aria-labelledby="gh-reminder-title" hidden>
@@ -157,7 +162,7 @@
     <div class="gh-note" id="gh-saved-status" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <aside class="gh-alternatives" aria-labelledby="gh-alternatives-title">
-      <h2 id="gh-alternatives-title">Another way home</h2>
+      <h2 id="gh-alternatives-title">Prefer rideshare?</h2>
       <p id="gh-rideshare-note" class="gh-note">Choose your pickup and destination with the provider.</p>
       <div class="gh-alternative-links">
         <a class="gh-secondary" id="gh-uber" href="https://m.uber.com/looking" target="_blank" rel="noopener noreferrer" aria-label="Open Uber (new tab)">

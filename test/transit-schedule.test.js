@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createGtfsSchedule } = require('../src/lib/transit/gtfs-schedule');
+const { createGtfsSchedule, currentServiceNight } = require('../src/lib/transit/gtfs-schedule');
 const { createMakeOutRoomTransit, selectPilotStopTimes } = require('../src/lib/transit');
 
 const bus = 'SF:14';
@@ -126,6 +126,41 @@ test('advance planning uses the event night and show end; without an end it fall
   assert.deepEqual(missed.upcoming, { context: 'leaving-now', includesLast: false, departures: [] });
 });
 
+test('leave now uses the current local night, even from an event shared a day ahead', () => {
+  const feed = tables();
+  addBus(feed, 'too-close', '14:06:00', '14:15:00');
+  addBus(feed, 'early-first', '14:07:00', '14:25:00');
+  addBus(feed, 'early-second', '14:20:00', '14:40:00');
+  addBus(feed, 'night-last', '24:45:00', '25:00:00');
+  const ridePlanning = { ...planFrom('2026-11-27T22:00:00Z'), leaveNow: true };
+  const result = whenBus(feed, { date: '2026-11-28', endTime: '23:00', ridePlanning });
+  assert.equal(iso(result), '2026-11-28T08:45:00.000Z');
+  assert.equal(result.departsBeforeEventEnds, undefined);
+  assert.deepEqual(result.upcoming, {
+    context: 'leaving-now', includesLast: false,
+    departures: ['2026-11-27T22:07:00Z', '2026-11-27T22:20:00Z'].map(departure => ({ departureAt: Date.parse(departure), timing: 'scheduled' }))
+  });
+});
+
+test('leave now preserves the only reachable last bus and rolls the night at 4 a.m.', () => {
+  const feed = tables();
+  addBus(feed, 'last', '25:05:00', '25:30:00');
+  const from = date => ({ ridePlanning: { ...planFrom(date), leaveNow: true } });
+  const late = whenBus(feed, from('2026-11-28T08:50:00Z'));
+  assert.equal(iso(late), '2026-11-28T09:05:00.000Z');
+  assert.deepEqual(late.upcoming, { context: 'leaving-now', includesLast: true, departures: [] });
+  const missed = whenBus(feed, from('2026-11-28T09:00:00Z'));
+  assert.equal(iso(missed), '2026-11-28T09:05:00.000Z');
+  assert.deepEqual(missed.upcoming, { context: 'leaving-now', includesLast: false, departures: [] });
+  const zone = 'America/Los_Angeles';
+  assert.equal(currentServiceNight(Date.parse('2026-11-28T11:59:59Z'), zone).anchor, friday);
+  assert.equal(currentServiceNight(Date.parse('2026-11-28T12:00:00Z'), zone).anchor, '2026-11-28');
+  const dstNight = currentServiceNight(Date.parse('2026-11-01T09:20:00Z'), zone);
+  assert.equal(dstNight.anchor, '2026-10-31');
+  assert.equal(dstNight.endsAt - dstNight.startAt, 25 * 60 * 60_000);
+  assert.equal(iso(whenBus(feed, from('2026-11-28T12:00:00Z'))), '2026-11-29T09:05:00.000Z');
+});
+
 test('weekends and holidays follow the service calendar and dated overrides, not just weekdays', () => {
   const feed = tables();
   feed.calendar = [{ ...regular, saturday: '0', sunday: '0' }];
@@ -180,6 +215,8 @@ test('continuous service across the night is labeled overnight, not as the last 
     context: 'leaving-now', includesLast: false,
     departures: ['2026-11-28T13:00:00Z', '2026-11-28T14:00:00Z'].map(date => ({ departureAt: Date.parse(date), timing: 'scheduled' }))
   });
+  const leaveNow = whenBus(feed, { date: '2026-11-30', ridePlanning: { ...planFrom('2026-11-28T11:58:00Z'), leaveNow: true } });
+  assert.deepEqual(leaveNow, nearMorning);
 });
 
 test('a frequency without exact times never produces an invented last departure', () => {
@@ -226,6 +263,11 @@ test('pilot service only loads approved events, refuses unverified stops, and re
   const tooLate = await transit.getDeparture(date, { stopId: origin, routeId: bus, direction: '0', headsign: 'Downtown' },
     { now: () => Date.parse('2026-11-28T08:24:00Z'), safetyBufferMinutes: 5 });
   assert.deepEqual(tooLate.upcoming, { context: 'leaving-now', includesLast: false, departures: [] });
+  const leaveNow = await transit.getDeparture({ ...date, event_date: '2026-11-28', start_time: '20:00' },
+    { stopId: origin, routeId: bus, direction: '0', headsign: 'Downtown' },
+    { now: () => Date.parse('2026-11-28T08:00:00Z'), safetyBufferMinutes: 5, leaveNow: true });
+  assert.equal(iso(leaveNow), '2026-11-28T08:30:00.000Z');
+  assert.deepEqual(leaveNow.upcoming, { context: 'leaving-now', includesLast: true, departures: [] });
   assert.equal((await transit.getDeparture(date, { stopId: 'elsewhere' })).status, 'unsupported-selection');
   const unavailable = createMakeOutRoomTransit({ source: { getSchedule: async () => { throw new Error('raw upstream detail'); } } });
   assert.deepEqual(await unavailable.getOptions(date), { status: 'schedule-unavailable' });

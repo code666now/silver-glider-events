@@ -7631,6 +7631,74 @@ test('Transportation is dedicated-admin only and its saved rollout is a same-ori
     { before_state: { enabled: true }, after_state: { enabled: false } }]);
 });
 
+test('the venue tester requires Super Admin, opens the shared planner, and creates no guest-facing records', async t => {
+  const { selectedSfVenue } = require('../../src/lib/transit/sf-venue-address');
+  const flags = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'true',
+    TRANSIT_511_API_KEY: 'venue-tester-fixture', GEOAPIFY_API_KEY: 'venue-tester-fixture', GOOGLE_PLACES_API_KEY: 'venue-picker-fixture' };
+  const original = Object.fromEntries(Object.keys(flags).map(key => [key, process.env[key]]));
+  Object.assign(process.env, flags);
+  t.after(() => {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  const pagePath = `${baseUrl}/admin/transportation/venue-test`;
+  const api = `${baseUrl}/api/admin/transportation/venue-test`;
+  const signIn = async (name, role) => signInAdminOperator((await createAdminOperator(`${name}@example.test`, role)).email);
+  const cookie = await signIn('transportation-tester', 'super_admin');
+  const other = await signIn('transportation-tester-other', 'super_admin');
+  const support = await signIn('transportation-tester-support', 'support');
+  const show = url => fetch(url, { redirect: 'manual', headers: { cookie } });
+  assert.equal((await fetch(`${pagePath}/plan`, { redirect: 'manual' })).status, 302);
+  assert.equal((await fetch(`${api}/options`)).status, 401);
+  assert.equal((await fetch(`${api}/places/config`, { headers: { cookie: support } })).status, 403);
+  assert.equal((await fetch(pagePath, { redirect: 'manual', headers: { cookie: support } })).headers.get('location'), '/admin/accounts');
+  assert.match(await (await show(pagePath)).text(), /<h1[^>]*>Test a venue<\/h1>/);
+  assert.match(await (await show(`${pagePath}/plan`)).text(), /data-getting-home/);
+  assert.equal((await show(`${api}/options`)).status, 404);
+  assert.deepEqual(await (await show(`${api}/places/config`)).json(), { enabled: true, apiKey: 'venue-picker-fixture' });
+
+  const choice = { name: 'Venue Tester Kilowatt', address: '3160 16th St, San Francisco, CA 94103, USA',
+    city: 'San Francisco', state: 'CA', placeId: 'fixture-venue-tester', lat: 37.765, lng: -122.42 };
+  const selected = selectedSfVenue({ status: 'published', visibility: 'public', timezone: 'America/Los_Angeles',
+    venue_address: choice.address, venue_city: choice.city, venue_state: choice.state, google_place_id: choice.placeId,
+    venue_latitude: choice.lat, venue_longitude: choice.lng });
+  // Seed an empty verified-walk result so neither 511 nor a walking provider is contacted by this HTTP test.
+  await pool.query(`INSERT INTO transit_sf_venue_coverage(venue_key,walks,expires_at) VALUES ($1,'[]',now()+interval '2 hours')`, [selected.key]);
+  const snapshot = () => pool.query(`SELECT (SELECT count(*) FROM events) AS events, (SELECT count(*) FROM rsvps) AS rsvps,
+    (SELECT count(*) FROM message_log) AS messages, (SELECT count(*) FROM transit_ride_totals) AS analytics,
+    (SELECT count(*) FROM transit_sf_walk_reservations) AS charges`).then(result => result.rows[0]);
+  const before = await snapshot();
+  const post = (endpoint, input, token = cookie, site = 'same-origin') => fetch(`${api}/${endpoint}`, {
+    method: 'POST', headers: { cookie: token, 'content-type': 'application/json', 'sec-fetch-site': site }, body: JSON.stringify(input)
+  });
+  assert.equal((await post('prepare', choice, support)).status, 403);
+  assert.equal((await post('prepare', choice, cookie, 'cross-site')).status, 403);
+  assert.equal((await post('prepare', { ...choice, city: 'Oakland' })).status, 400);
+  const prepared = await post('prepare', choice);
+  assert.equal(prepared.status, 200);
+  assert.deepEqual(await prepared.json(), { status: 'ready' });
+  const claim = prepared.headers.getSetCookie().find(value => value.startsWith('sge_admin_venue_test='));
+  assert.match(claim, /Path=\/api\/admin\/transportation\/venue-test.*HttpOnly.*SameSite=Strict/);
+  const token = claim.split(';')[0];
+  assert.equal((await fetch(`${api}/options`, { headers: { cookie: `${other}; ${token}` } })).status, 404);
+  const scoped = `${cookie}; ${token}`;
+  const options = await fetch(`${api}/options`, { headers: { cookie: scoped } });
+  assert.equal(options.status, 200);
+  assert.match(options.headers.get('cache-control'), /no-store/);
+  const data = await options.json();
+  assert.equal(data.status, 'empty');
+  assert.equal(data.tester, true);
+  assert.equal(data.venue, choice.name);
+  assert.equal(new URL(data.directionsUrl).searchParams.get('query'), choice.address);
+  assert.equal((await post('departure', { venue: 'arbitrary address' }, scoped)).status, 400);
+  assert.deepEqual(await (await fetch(`${api}/reminder`, { headers: { cookie: scoped } })).json(), { status: 'unavailable' });
+  assert.deepEqual(await (await fetch(`${api}/saved-route`, { headers: { cookie: scoped } })).json(), { status: 'not-eligible' });
+  assert.equal((await post('interaction', { kind: 'bus_click' }, scoped)).status, 404);
+  assert.deepEqual(await snapshot(), before);
+});
+
 test('dedicated admin mutations enforce same-origin and retain the operator audit actor', async () => {
   resetRateLimits();
   const operator = await createAdminOperator('audited-operator@example.test', 'super_admin');

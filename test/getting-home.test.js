@@ -110,11 +110,20 @@ test('only the planning request asks the schedule for next rides; overnight stil
   assert.deepEqual(planned.upcoming, upcoming);
   assert.equal(planned.departureAt, undefined);
   assert.equal(planned.proposedReminderAt, undefined);
-  assert.deepEqual(calls[1][2], { now, safetyBufferMinutes: 5 });
+  assert.deepEqual(calls[1][2], { now, safetyBufferMinutes: 5, leaveNow: true });
   Object.assign(raw, { status: 'scheduled', timing: 'scheduled', departureAt: now() + 5 * 60_000, upcoming: { ...upcoming, departures: [] } });
   const soon = await home.getDeparture(event, form, { includeUpcoming: true });
   assert.equal(soon.leaveByPassed, true);
   assert.equal(soon.proposedReminderAt, null);
+});
+
+test('a leave-now plan will not offer an event reminder for a different service night', async () => {
+  const raw = { status: 'scheduled', timing: 'scheduled', departureAt: now() + 60 * 60_000, timezone: event.timezone, walkSeconds: 120 };
+  const home = createGettingHome({ env, now, transit: { getDeparture: async () => raw } });
+  const later = { ...event, event_date: '2026-11-28', start_time: '19:00', ends_at: '2026-11-29T06:00:00Z' };
+  assert.equal((await home.getDeparture(later, choice, { includeUpcoming: true })).proposedReminderAt, null);
+  const today = { ...event, event_date: '2026-11-27', start_time: '19:00' };
+  assert.equal((await home.getDeparture(today, choice, { includeUpcoming: true })).proposedReminderAt, now() + 23 * 60_000);
 });
 
 test('unverified regional stops and exact venue addresses do not leave the options handler', async () => {

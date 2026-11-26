@@ -24,6 +24,7 @@ test('both reminder layouts keep the original actions and add only the scoped pl
   ];
   for (const html of variants) {
     assert.match(html, /Don't Miss Your Last Bus!/);
+    assert.match(html, /See buses and trains from Make-Out Room\./);
     assert.match(html, /See the next scheduled buses, the last ride, and when to leave\. Save this email and tap the link again when you’re ready to head out\./);
     assert.match(html, /View event/);
     assert.match(html, /Add to Calendar/);
@@ -43,5 +44,8 @@ test('the callout is absent without an authorized path and confirmation is uncha
   without(renderRsvpConfirmationEmail({ event, rsvp, rideEntryPath }));
   for (const invalid of ['https://elsewhere.example/path', '@elsewhere.example/path', '/account', `${rideEntryPath}&to=untrusted`]) {
     without(renderDayBeforeReminderEmail({ event, rsvp, rideEntryPath: invalid }));
+  }
+  for (const fields of [{ visibility: 'private' }, { hide_address_until_rsvp: true }, { secret_show_enabled: true }]) {
+    without(renderDayBeforeReminderEmail({ event: { ...event, ...fields }, rsvp, rideEntryPath }));
   }
 });

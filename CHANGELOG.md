@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.231
+
+Released November 26, 2026.
+
+* Getting Home uses the current local time. Guests see reachable upcoming buses first, then the last ride and when to leave, with rideshare links below. The planner names the venue, defaults to the closest stop in the chosen direction, and provides accessible loading, empty, and retry states.
+* Super Admins can test a selected San Francisco venue from Transportation using the shared planner without publishing an event or sending a message.
+
 ## 1.0.230
 
 Released November 25, 2026.

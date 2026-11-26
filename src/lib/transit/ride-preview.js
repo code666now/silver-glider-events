@@ -65,8 +65,16 @@ function createRidePreview({ env = process.env, now = Date.now } = {}) {
   };
 }
 
-function cityRidePreviewEvent(date) {
+const CITY_PREVIEW_VENUES = Object.freeze({
+  haight: Object.freeze({ venue_name: 'Haight Street (sample venue)', venue_address: '1725 Haight St, San Francisco, CA, USA',
+    google_place_id: 'sge-sf-preview-haight', venue_latitude: 37.769, venue_longitude: -122.451 }),
+  kilowatt: Object.freeze({ venue_name: 'Kilowatt', venue_address: '3160 16th St, San Francisco, CA 94103, USA',
+    google_place_id: 'sge-sf-preview-kilowatt', venue_latitude: 37.765, venue_longitude: -122.423 })
+});
+
+function cityRidePreviewEvent(date, testVenue = 'haight') {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (!Object.hasOwn(CITY_PREVIEW_VENUES, testVenue)) return null;
   const start_time = '20:00';
   const ends_at = scheduleNightEnd(date, start_time, PILOT.timezone);
   if (!ends_at) return null;
@@ -74,10 +82,8 @@ function cityRidePreviewEvent(date) {
     // Sentinel id and selection metadata only. The preview never looks up
     // this id; the walking preparer independently resolves the address.
     id: 2147483647,
-    slug: CITY_PREVIEW_SLUG, event_date: date, start_time, end_time: '22:00', ends_at,
-    venue_name: 'Haight Street (sample venue)', venue_address: '1725 Haight St, San Francisco, CA, USA',
-    venue_city: 'San Francisco', venue_state: 'CA', google_place_id: 'sge-sf-preview-haight',
-    venue_latitude: 37.769, venue_longitude: -122.451,
+    slug: CITY_PREVIEW_SLUG, event_date: date, start_time, end_time: '22:00', ends_at, testVenue,
+    ...CITY_PREVIEW_VENUES[testVenue], venue_city: 'San Francisco', venue_state: 'CA',
     status: 'published', visibility: 'public', timezone: PILOT.timezone
   };
 }
@@ -95,14 +101,14 @@ function createCityRidePreview({ env = process.env, now = Date.now } = {}) {
   const enabled = () => Boolean(key) && ridePreviewEnabled(env) && env.TRANSIT_SF_GETTING_HOME_ENABLED === 'true';
   const sign = (kind, payload) => createHmac('sha256', key)
     .update(`sge:transit-sf-preview:${kind}:v1\0`).update(payload).digest('base64url');
-  const eventInWindow = date => {
-    const event = cityRidePreviewEvent(date);
+  const eventInWindow = (date, venue) => {
+    const event = cityRidePreviewEvent(date, venue);
     const remaining = event?.ends_at - now();
     return remaining > 0 && remaining <= PREVIEW_MAX_AGE_MS ? event : null;
   };
 
-  function issue(kind, date, value) {
-    if (!enabled() || !eventInWindow(date)) return null;
+  function issue(kind, date, value, venue = 'haight') {
+    if (!enabled() || !eventInWindow(date, venue)) return null;
     const walks = cityPreviewWalks(value);
     if (!walks) return null;
     const stops = walks.sort((a, b) => a.walkSeconds - b.walkSeconds).slice(0, CITY_PREVIEW_MAX_WALKS)
@@ -110,7 +116,7 @@ function createCityRidePreview({ env = process.env, now = Date.now } = {}) {
     // Keep the nearest verified walks if unusually long feed identifiers
     // would make the URL/cookie too long. Typical feed IDs fit all 12.
     while (stops.length) {
-      const payload = Buffer.from(JSON.stringify([date, stops])).toString('base64url');
+      const payload = Buffer.from(JSON.stringify(venue === 'haight' ? [date, stops] : [date, stops, venue])).toString('base64url');
       if (payload.length + 44 <= CITY_PREVIEW_MAX_TOKEN) return `${payload}.${sign(kind, payload)}`;
       stops.pop();
     }
@@ -126,9 +132,9 @@ function createCityRidePreview({ env = process.env, now = Date.now } = {}) {
     let claims;
     try { claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')); }
     catch { return null; }
-    if (!Array.isArray(claims) || claims.length !== 2) return null;
-    const [date, stops] = claims;
-    const event = eventInWindow(date);
+    if (!Array.isArray(claims) || ![2, 3].includes(claims.length)) return null;
+    const [date, stops, venue = 'haight'] = claims;
+    const event = eventInWindow(date, venue);
     if (!event || !Array.isArray(stops) || stops.length > CITY_PREVIEW_MAX_WALKS ||
       stops.some(stop => !Array.isArray(stop) || stop.length !== 5)) return null;
     const sfWalks = cityPreviewWalks(stops.map(([stopId, stationId, lat, lon, walkSeconds]) => (
@@ -138,12 +144,12 @@ function createCityRidePreview({ env = process.env, now = Date.now } = {}) {
   }
 
   return {
-    issueLink: (date, walks) => {
-      const token = issue('link', date, walks);
+    issueLink: (date, walks, venue) => {
+      const token = issue('link', date, walks, venue);
       return token ? `${CITY_PREVIEW_PATH}/from-test?t=${encodeURIComponent(token)}` : null;
     },
     verifyLink: value => verify('link', value),
-    issueCookie: (date, walks) => issue('cookie', date, walks),
+    issueCookie: (date, walks, venue) => issue('cookie', date, walks, venue),
     verifyCookie: value => verify('cookie', value)
   };
 }
