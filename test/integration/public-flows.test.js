@@ -191,6 +191,7 @@ async function resetDatabase() {
   await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');
+  await pool.query('INSERT INTO transit_sf_rollout(singleton) VALUES (TRUE) ON CONFLICT (singleton) DO NOTHING');
   await pool.query(
     `INSERT INTO event_background_availability (background_key)
      SELECT UNNEST($1::text[]) ON CONFLICT (background_key) DO UPDATE SET active=TRUE,updated_by_admin_operator_id=NULL`,
@@ -4512,7 +4513,7 @@ test('RSVP confirmation photo links verify one guest and reuse their persistent 
 });
 
 test('Going dashboard uses a ready SF venue cache but never returns the prep metadata', async t => {
-  const flags = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-only' };
+  const flags = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'true', GEOAPIFY_API_KEY: 'fixture-only', TRANSIT_511_API_KEY: 'fixture-only' };
   const current = Object.fromEntries(Object.keys(flags).map(key => [key, process.env[key]]));
   t.after(() => {
     for (const [key, value] of Object.entries(current)) {
@@ -4542,6 +4543,8 @@ test('Going dashboard uses a ready SF venue cache but never returns the prep met
     [venue.key, JSON.stringify([{ stopId: 'SF:fixture', lat: 37.784, lon: -122.407, walkSeconds: 215 }])]);
   await pool.query(`INSERT INTO transit_sf_event_coverage(event_id,venue_key,input_version,retry_at,ready_until)
       VALUES ($1,$2,$3,NOW()+interval '15 minutes',NOW()+interval '30 minutes')`, [city.id, venue.key, version]);
+  assert.equal((await getPlan()).getting_home, undefined);
+  await pool.query('UPDATE transit_sf_rollout SET enabled=TRUE WHERE singleton');
   assert.equal((await getPlan()).getting_home, true);
   await pool.query(`UPDATE events SET venue_address='802 Market St, San Francisco, CA 94103' WHERE id=$1`, [city.id]);
   assert.equal((await getPlan()).getting_home, undefined);
@@ -7545,6 +7548,86 @@ test('operator roster protects self/final Super Admin and explicitly revokes tar
   ]);
   assert.equal(audit[2].actor_email, actor.email);
   assert.equal(audit[2].target_email, support.email);
+});
+
+test('Transportation is dedicated-admin only and its saved rollout is a same-origin Super Admin action', async t => {
+  resetRateLimits();
+  const flags = { TRANSIT_GETTING_HOME_ENABLED: 'true', TRANSIT_SF_GETTING_HOME_ENABLED: 'false',
+    TRANSIT_511_API_KEY: 'fixture-only', GEOAPIFY_API_KEY: 'fixture-only' };
+  const original = Object.fromEntries(Object.keys(flags).map(key => [key, process.env[key]]));
+  Object.assign(process.env, flags);
+  t.after(() => {
+    for (const [key, value] of Object.entries(original)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  const apiRoot = `${baseUrl}/api/admin/transportation`;
+  const signedOutPage = await fetch(`${baseUrl}/admin/transportation`, { redirect: 'manual' });
+  assert.equal(signedOutPage.status, 302);
+  assert.match(signedOutPage.headers.get('location'), /^\/admin\/login\?next=%2Fadmin%2Ftransportation/);
+  assert.equal((await fetch(`${apiRoot}/analytics`)).status, 401);
+  assert.equal((await fetch(`${apiRoot}/rollout`, { headers: { cookie: `sge_session=${signSession(organizerId)}` } })).status, 401);
+
+  const support = await createAdminOperator('transportation-support@example.test', 'support');
+  const supportCookie = await signInAdminOperator(support.email);
+  const page = await fetch(`${baseUrl}/admin/transportation`, { headers: { cookie: supportCookie } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /data-admin-section="transportation"/);
+  const rollout = await fetch(`${apiRoot}/rollout`, { headers: { cookie: supportCookie } });
+  assert.equal(rollout.status, 200);
+  assert.match(rollout.headers.get('cache-control'), /no-store/);
+  const { canManage, rollout: status } = await rollout.json();
+  assert.equal(canManage, false);
+  assert.equal(status.enabled, false);
+  assert.equal(status.allowed, false);
+
+  const event = await createEvent({ slug: 'admin-transportation-demo', title: 'Transportation demo' });
+  await pool.query(`INSERT INTO transit_ride_totals(event_id,metric,unique_count) VALUES ($1,'bus_click',3)`, [event.id]);
+  const analytics = await fetch(`${apiRoot}/analytics`, { headers: { cookie: supportCookie } });
+  assert.equal(analytics.status, 200);
+  assert.match(analytics.headers.get('cache-control'), /no-store/);
+  const report = await analytics.json();
+  assert.equal(report.summary.busClicks, 3);
+  assert.equal(report.events[0].title, 'Transportation demo');
+  assert.equal(report.hosts[0].busClicks, 3);
+  assert.doesNotMatch(JSON.stringify(report), /@example\.test|subject_key|email|latitude|longitude/);
+
+  const set = (cookie, enabled, site = 'same-origin') => fetch(`${apiRoot}/rollout`, {
+    method: 'PATCH',
+    headers: { cookie, origin: site === 'same-origin' ? baseUrl : 'https://other.example', 'sec-fetch-site': site, 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  });
+  assert.equal((await set(supportCookie, false)).status, 403);
+  const operator = await createAdminOperator('transportation-super@example.test', 'super_admin');
+  const cookie = await signInAdminOperator(operator.email);
+  assert.equal((await set(cookie, false, 'cross-site')).status, 403);
+  assert.equal((await set(cookie, 'false')).status, 400);
+  const blocked = await set(cookie, true);
+  assert.ok([409, 423].includes(blocked.status), 'a Super Admin cannot bypass the rollout gate');
+  process.env.TRANSIT_SF_GETTING_HOME_ENABLED = 'true';
+  const on = await set(cookie, true);
+  assert.equal(on.status, 200);
+  const saved = (await on.json()).rollout;
+  assert.equal(saved.enabled, true);
+  assert.equal(saved.requested, true);
+  assert.ok(saved.updatedAt);
+  assert.equal((await (await set(cookie, true)).json()).rollout.updatedAt, saved.updatedAt);
+  assert.equal((await (await fetch(`${apiRoot}/rollout`, { headers: { cookie: supportCookie } })).json()).rollout.enabled, true);
+  process.env.TRANSIT_SF_GETTING_HOME_ENABLED = 'false';
+  const held = (await (await fetch(`${apiRoot}/rollout`, { headers: { cookie } })).json()).rollout;
+  assert.equal(held.enabled, false);
+  assert.equal(held.requested, true);
+  const disabled = await set(cookie, false);
+  assert.equal(disabled.status, 200);
+  const response = await disabled.json();
+  assert.equal(response.canManage, true);
+  assert.equal(response.rollout.requested, false);
+  assert.equal(response.rollout.enabled, false);
+  const audit = (await pool.query(`SELECT before_state, after_state FROM admin_account_audit_log
+    WHERE action_type='transportation_sf_rollout_changed' AND actor_admin_operator_id=$1 ORDER BY id`, [operator.id])).rows;
+  assert.deepEqual(audit, [{ before_state: { enabled: false }, after_state: { enabled: true } },
+    { before_state: { enabled: true }, after_state: { enabled: false } }]);
 });
 
 test('dedicated admin mutations enforce same-origin and retain the operator audit actor', async () => {

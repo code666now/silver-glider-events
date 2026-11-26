@@ -13,11 +13,12 @@ const { render404 } = require('../lib/public-html');
 const { sameOriginMutation } = require('../middleware/requireOrganizer');
 const { createGettingHome, gettingHomeEnabled, gettingHomeEligible, sfGettingHomeEligible, readTransitSelection } = require('../lib/transit/getting-home');
 const { createSfCoverageStore } = require('../lib/transit/sf-coverage-store');
+const { isSfRolloutEnabled } = require('../lib/transit/sf-rollout');
 const { RideReminderError, RIDE_SMS_CONSENT } = require('../lib/transit/ride-reminders');
 const { rideReminders } = require('../jobs/transit-ride-reminders');
 const { createSavedRouteService } = require('../lib/transit/saved-route');
 const { createRideEntry, rideEntryCookieName } = require('../lib/transit/ride-entry');
-const { createRideMetrics } = require('../lib/transit/ride-metrics');
+const { createRideMetrics, TRANSPORTATION_INTERACTION_KINDS } = require('../lib/transit/ride-metrics');
 const { createRidePreview, PREVIEW_SLUG, PREVIEW_PATH, PREVIEW_COOKIE } = require('../lib/transit/ride-preview');
 
 const PAGE = '/e/:slug/getting-home';
@@ -51,7 +52,7 @@ async function confirmedEmailRsvp(db, eventId, rsvpId) {
 }
 
 async function accessForGettingHome(db, req, { env, now, rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }),
-  sfCoverage = createSfCoverageStore({ db, now }) }) {
+  sfCoverage = createSfCoverageStore({ db, now }), rolloutEnabled = isSfRolloutEnabled }) {
   const event = await loadEligibleGettingHomeEvent(db, req.params.slug, { env, now, allowSf: true });
   if (!event) return null;
   const city = !gettingHomeEligible(event, env, now());
@@ -70,6 +71,7 @@ async function accessForGettingHome(db, req, { env, now, rideEntry = createRideE
       ORDER BY id DESC LIMIT 1`, [event.id, userId, accountId, token]);
     if (rsvp) {
       if (city) {
+        if (!await rolloutEnabled({ db, env })) return null;
         const sfWalks = await sfCoverage.getReadyWalks(event);
         return sfWalks?.length ? { event: { ...event, sfWalks }, rsvp, signedInUserId: userId, city } : null;
       }
@@ -99,12 +101,16 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
   saved = createSavedRouteService({ db, transit: home, now }),
   rideEntry = createRideEntry({ secret: env.SESSION_SECRET, now }),
   ridePreview = createRidePreview({ env, now }),
-  metrics = createRideMetrics({ db, secret: env.SESSION_SECRET, now }), sfCoverage = createSfCoverageStore({ db, now }) } = {}) {
+  metrics = createRideMetrics({ db, secret: env.SESSION_SECRET, now }), sfCoverage = createSfCoverageStore({ db, now }),
+  rolloutEnabled = isSfRolloutEnabled } = {}) {
   const router = express.Router();
   const metricsEnabled = () => env.TRANSIT_DISTRIBUTION_ENABLED === 'true';
-  async function record(kind, { event, rsvp, signedInUserId, city }) {
-    const plannerMetric = kind === 'page_open' || kind === 'route_selected';
-    if (rsvp && (city ? plannerMetric : metricsEnabled())) await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
+  async function record(kind, { event, rsvp, signedInUserId, city, preview }) {
+    const plannerMetric = kind === 'page_open' || kind === 'route_selected' || TRANSPORTATION_INTERACTION_KINDS.includes(kind);
+    if (!rsvp || preview || (!plannerMetric && (city || !metricsEnabled()))) return;
+    try {
+      await metrics.record({ kind, eventId: event.id, rsvpId: rsvp.id, userId: signedInUserId || undefined });
+    } catch { /* Measurement never gates trip access. */ }
   }
   const limiter = createRateLimiter({ windowMs: 60_000, rules: [
     { name: 'network', max: 80, key: ctx => ctx.network },
@@ -119,7 +125,7 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
       const previewEvent = req.params.slug === PREVIEW_SLUG ? ridePreview.verifyCookie(readCookie(req, PREVIEW_COOKIE)) : null;
       const ctx = req.params.slug === PREVIEW_SLUG
         ? (previewEvent && { event: previewEvent, preview: true, readOnlyGrant: true })
-        : await accessForGettingHome(db, req, { env, now, rideEntry, sfCoverage });
+        : await accessForGettingHome(db, req, { env, now, rideEntry, sfCoverage, rolloutEnabled });
       if (!ctx) return api ? res.status(404).json({ status: 'unavailable' }) : res.status(404).send(render404());
       if (api) {
         const network = crypto.createHmac('sha256', networkKey).update(clientIp(req)).digest('hex');
@@ -188,6 +194,12 @@ function createGettingHomeRouter({ db = pool, env = process.env, now = Date.now,
     const plan = await home.getDeparture(req.gettingHome.event, req.body, { includeUpcoming: true });
     if (['scheduled', 'overnight'].includes(plan.status)) await record('route_selected', req.gettingHome);
     res.json(plan);
+  });
+  router.post(`${API}/interaction`, jsonMutation, gate(true), async (req, res) => {
+    const kind = req.body?.kind;
+    if (!TRANSPORTATION_INTERACTION_KINDS.includes(kind)) return res.status(400).end();
+    await record(kind, req.gettingHome);
+    return res.status(204).end();
   });
 
   const reminderAction = action => async (req, res) => {

@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.229
+
+Released November 25, 2026.
+
+* Add Admin → Transportation with a Super Admin rollout switch and aggregate opens, bus, Uber and Lyft clicks, and return visits by event and host. Test previews do not count. Citywide Getting Home, ride emails, and ride texts remain off.
+
 ## 1.0.228
 
 Released November 25, 2026.

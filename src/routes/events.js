@@ -30,6 +30,7 @@ const { locationForViewer } = require('../lib/event-location-privacy');
 const { eventEndAtSql } = require('../lib/post-event');
 const { gettingHomeEligible, sfGettingHomeEligible } = require('../lib/transit/getting-home');
 const { createSfCoverageStore } = require('../lib/transit/sf-coverage-store');
+const { isSfRolloutEnabled } = require('../lib/transit/sf-rollout');
 const { recordDraftHostActivity } = require('../lib/draft-reminders');
 const { invitationSelectionKey } = require('../lib/invitation-selection-key');
 const {
@@ -158,7 +159,8 @@ router.get('/api/events/going', async (req, res, next) => {
         google_place_id: transit_place_id, archived_at: transit_archived_at }
     }));
     const city = plans.filter(({ event, candidate }) => !event.playing && sfGettingHomeEligible(candidate)).map(({ candidate }) => candidate);
-    const ready = city.length ? await createSfCoverageStore({ db: pool }).readyEvents(city) : new Set();
+    const ready = city.length && await isSfRolloutEnabled({ db: pool })
+      ? await createSfCoverageStore({ db: pool }).readyEvents(city) : new Set();
     res.json({ events: plans.map(({ event, candidate }) => ({
       ...event,
       ...(!event.playing && (gettingHomeEligible(candidate) || ready.has(String(event.id))) && { getting_home: true })

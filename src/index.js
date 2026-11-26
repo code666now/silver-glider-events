@@ -102,6 +102,7 @@ app.use(require('./routes/host-onboarding'));
 app.use(require('./routes/public-hosts'));
 app.use(require('./routes/getting-home').createGettingHomeRouter());
 app.use(require('./routes/public'));
+app.use(require('./routes/admin-transportation'));
 app.use(require('./routes/admin'));
 app.use(require('./routes/admin-identity-changes'));
 app.use(require('./routes/admin-accounts'));
@@ -276,6 +277,10 @@ app.get('/admin/done-for-you/:id', requireAdmin, requireAdmin.requireDedicatedAd
 });
 app.get('/admin/hosts', requireAdmin, view('admin-hosts.html'));
 app.get('/admin/events', requireAdmin, view('admin-events.html'));
+app.get('/admin/transportation', requireAdmin, requireAdmin.requireDedicatedAdmin, (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  return sendHtmlFile(res, path.join(VIEWS, 'admin-transportation.html'));
+});
 app.get('/admin/backgrounds', requireAdmin, requireAdmin.requireSuperAdmin, view('admin-backgrounds.html'));
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
@@ -329,6 +334,7 @@ async function start() {
   require('./jobs/flyer-publication-notifications').startFlyerPublicationNotificationCron();
   require('./jobs/sms-notifications').startSmsNotificationCron();
   require('./jobs/transit-ride-reminders').startTransitRideReminderCron();
+  require('./jobs/transit-ride-metrics').startTransitRideMetricsCron();
   const { sfTransit } = require('./lib/transit/sf-transit');
   require('./jobs/sf-transit-coverage').createSfCoverageWorker({
     db: pool, prepareVenue: sfTransit.prepareVenue, checkEvent: sfTransit.checkEvent

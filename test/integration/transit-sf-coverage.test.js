@@ -59,7 +59,7 @@ test('it prepares once per verified venue, validates each date, and keeps privat
     UPDATE events SET venue_name='Make-Out Room',venue_address='3225 22nd Street, San Francisco, CA 94110' WHERE id=8`);
   let prepares = 0;
   const checked = [];
-  const make = overrides => createSfCoverageWorker({ db: pool, now: () => time, env,
+  const make = overrides => createSfCoverageWorker({ db: pool, now: () => time, env, rolloutEnabled: async () => true,
     prepareVenue: async (_event, venue, reserveCredits) => {
       prepares++;
       assert.equal(venue.address, '2170 MARKET ST');
@@ -72,6 +72,7 @@ test('it prepares once per verified venue, validates each date, and keeps privat
       return event.id === 1;
     }, ...overrides });
   assert.deepEqual(await make({ env: {} }).runPass(), { checked: 0, ready: 0 });
+  assert.deepEqual(await make({ rolloutEnabled: async () => false }).runPass(), { checked: 0, ready: 0 });
   assert.deepEqual(await make().runPass(), { checked: 2, ready: 1 });
   assert.deepEqual(new Set(checked), new Set([1, 2]));
   assert.equal(prepares, 1);
@@ -89,7 +90,7 @@ test('location and time edits invalidate old coverage; an address hidden mid-che
   await pool.query('INSERT INTO events(id) VALUES (1)');
   const store = createSfCoverageStore({ db: pool, now: () => time });
   let prepares = 0;
-  const worker = createSfCoverageWorker({ db: pool, now: () => time, env,
+  const worker = createSfCoverageWorker({ db: pool, now: () => time, env, rolloutEnabled: async () => true,
     prepareVenue: async (_event, _venue, reserveCredits) => {
       prepares++;
       if (prepares === 2) {
@@ -123,7 +124,7 @@ test('workers do not overlap and the durable rolling cap includes failed walking
   let notify;
   const readyToBlock = new Promise(resolve => { notify = resolve; });
   const releasesBlock = new Promise(resolve => { unblock = resolve; });
-  const first = createSfCoverageWorker({ db: pool, now: () => time, env,
+  const first = createSfCoverageWorker({ db: pool, now: () => time, env, rolloutEnabled: async () => true,
     prepareVenue: async (_event, _venue, reserveCredits) => {
       assert.equal(await reserveCredits(40), true);
       notify();
@@ -131,7 +132,7 @@ test('workers do not overlap and the durable rolling cap includes failed walking
       throw new Error('sensitive fixture payload');
     }, checkEvent: async () => assert.fail('No estimate after provider failure') });
   let secondChecks = 0;
-  const second = clock => createSfCoverageWorker({ db: pool, now: () => clock, env,
+  const second = clock => createSfCoverageWorker({ db: pool, now: () => clock, env, rolloutEnabled: async () => true,
     prepareVenue: async (_event, _venue, reserveCredits) => {
       secondChecks++;
       assert.equal(await reserveCredits(1), false);

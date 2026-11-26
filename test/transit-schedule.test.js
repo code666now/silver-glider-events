@@ -46,6 +46,18 @@ const whenBus = (feed, options) => createGtfsSchedule(feed).departure({
 const iso = result => new Date(result.departureAt).toISOString();
 const planFrom = (timestamp, boardingLeadMs = 7 * 60_000) => ({ nowMs: Date.parse(timestamp), boardingLeadMs });
 
+test('GTFS route choices mark bus, trolleybus and light rail using the feed mode', () => {
+  const feed = tables();
+  feed.routes.push({ route_id: 'M', agency_id: 'SF', route_type: '0', route_short_name: 'M' },
+    { route_id: '49', agency_id: 'SF', route_type: '800', route_short_name: '49' });
+  addBus(feed, 'bus', '22:00:00', '23:00:00');
+  addBus(feed, 'rail', '22:00:00', '23:00:00', { route: 'M' });
+  addBus(feed, 'trolleybus', '22:00:00', '23:00:00', { route: '49' });
+  assert.deepEqual(createGtfsSchedule(feed).choices(origin).map(({ name, mode }) => [name, mode]), [
+    ['14', 'bus'], ['M', 'rail'], ['49', 'bus']
+  ]);
+});
+
 test('a later trip after midnight beats civil-date 00:40, with warning when it leaves before the event ends', () => {
   const feed = tables();
   addBus(feed, 'extended', '25:10:00', '25:35:00');

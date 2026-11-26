@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const pool = require('../config/db');
 const { eventEndAtSql } = require('../lib/post-event');
 const { sfCoverageInput, cleanCachedWalks, MAX_WALKS } = require('../lib/transit/sf-coverage-store');
+const { isSfRolloutEnabled } = require('../lib/transit/sf-rollout');
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -26,7 +27,8 @@ const publishedSfCandidates = `e.status='published' AND e.visibility='public' AN
   AND lower(btrim(e.venue_city))='san francisco' AND lower(btrim(e.venue_state)) IN ('ca','california')
   AND nullif(btrim(e.google_place_id),'') IS NOT NULL AND e.venue_latitude IS NOT NULL AND e.venue_longitude IS NOT NULL`;
 
-function createSfCoverageWorker({ db = pool, now = Date.now, prepareVenue, checkEvent, env = process.env } = {}) {
+function createSfCoverageWorker({ db = pool, now = Date.now, prepareVenue, checkEvent, env = process.env,
+  rolloutEnabled = isSfRolloutEnabled } = {}) {
   function enabled() {
     return env.TRANSIT_GETTING_HOME_ENABLED === 'true' && env.TRANSIT_SF_GETTING_HOME_ENABLED === 'true'
       && Boolean(env.GEOAPIFY_API_KEY?.trim()) && typeof prepareVenue === 'function' && typeof checkEvent === 'function';
@@ -34,7 +36,7 @@ function createSfCoverageWorker({ db = pool, now = Date.now, prepareVenue, check
 
   async function runPass() {
     const report = { checked: 0, ready: 0 };
-    if (!enabled()) return report;
+    if (!enabled() || !await rolloutEnabled({ db, env })) return report;
     const client = await db.connect();
     let locked;
     try {
@@ -69,6 +71,7 @@ function createSfCoverageWorker({ db = pool, now = Date.now, prepareVenue, check
       }
 
       async function stillEligible(input) {
+        if (!await rolloutEnabled({ db: client, env })) return false;
         const { rows } = await client.query(`SELECT ${eventColumns} FROM events e WHERE e.id=$1 AND ${publishedSfCandidates}`, [input.id]);
         return sfCoverageInput(rows[0])?.version === input.version;
       }

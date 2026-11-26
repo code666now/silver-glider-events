@@ -22,7 +22,7 @@
         if (!grouped.has(key)) grouped.set(key, {
           key, label: bart ? 'BART' : muni ? `Muni ${route.name}` : route.name || 'Transit',
           icon: bart || route.mode === 'rail' || (muni && /^[A-Z](?:\s|$)/.test(route.name)) ? 'train' : 'bus',
-          bart, closest: stop,
+          bart, bus: !bart && route.mode === 'bus', closest: stop,
           directions: new Map(), stations: [], destinations: Array.isArray(stop.destinations) ? stop.destinations : []
         });
         const group = grouped.get(key);
@@ -118,6 +118,22 @@
     const routeButtons = new Map();
 
     const preview = slug === 'make-out-room-schedule-preview';
+    const submittedInteractions = new Set();
+    function trackInteraction(kind) {
+      if (preview || submittedInteractions.has(kind)) return;
+      submittedInteractions.add(kind);
+      // A tracked link still opens normally even if this best-effort request fails.
+      Promise.resolve().then(() => win.fetch(`${api}/interaction`, {
+        method: 'POST', credentials: 'same-origin', keepalive: true,
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind })
+      })).then(response => { if (!response.ok) submittedInteractions.delete(kind); })
+        .catch(() => submittedInteractions.delete(kind));
+    }
+
+    for (const provider of ['uber', 'lyft']) {
+      get(provider).addEventListener('click', () => trackInteraction(`${provider}_click`));
+      get(provider).addEventListener('auxclick', event => { if (event.button === 1) trackInteraction(`${provider}_click`); });
+    }
     get('event-link').href = preview ? '/' : eventPath;
     get('directions').href = preview
       ? 'https://maps.google.com/?q=Make-Out%20Room%2C%203225%2022nd%20St%2C%20San%20Francisco%2C%20CA'
@@ -311,7 +327,10 @@
           button.querySelector('strong').textContent = choice.label;
           button.querySelector('.gh-route-copy span').textContent = [choice.closest.name, walkLabel(choice.closest.walkSeconds)].filter(Boolean).join(' · ');
           button.querySelector('use').setAttribute('href', `#gh-icon-${choice.icon}`);
-          button.addEventListener('click', () => showPlan(choice, button));
+          button.addEventListener('click', () => {
+            if (choice.bus) trackInteraction('bus_click');
+            showPlan(choice, button);
+          });
           routeButtons.set(choice, button);
           fragment.append(item);
         }

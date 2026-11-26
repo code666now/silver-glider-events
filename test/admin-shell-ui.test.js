@@ -10,7 +10,7 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
   const shell = read('public/js/admin-shell.js');
   const api = read('public/js/api.js');
   const settings = read('public/js/settings.js');
-  const pages = ['accounts', 'hosts', 'events', 'ticketing', 'feedback', 'invitations'];
+  const pages = ['accounts', 'hosts', 'events', 'transportation', 'ticketing', 'feedback', 'invitations'];
 
   for (const page of pages) {
     const html = read(`src/views/admin-${page}.html`);
@@ -20,7 +20,7 @@ test('admin shell replaces duplicated tabs with one capability-gated workspace s
     assert.doesNotMatch(html, />The Line</);
   }
 
-  for (const destination of ['/admin', '/admin/accounts', '/admin/done-for-you', '/admin/hosts', '/admin/events', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
+  for (const destination of ['/admin', '/admin/accounts', '/admin/done-for-you', '/admin/hosts', '/admin/events', '/admin/transportation', '/admin/ticketing', '/admin/feedback', '/admin/invitations', '/admin/team']) {
     assert.equal(shell.includes(`'${destination}'`), true, `${destination} should be in the workspace sidebar`);
   }
   assert.doesNotMatch(shell, /\/admin\/line/);
@@ -50,6 +50,29 @@ test('overview uses released account and operator endpoints only', () => {
   assert.doesNotMatch(`${html}\n${script}`, /identity-changes|pending-verifications/);
   assert.match(html, /\/admin\/accounts\?type=host/);
   assert.match(html, /href="\/admin\/events"/);
+  assert.match(html, /href="\/admin\/transportation"/);
+});
+
+test('Transportation uses the shared switch, explicit save, and readable event and host analytics', () => {
+  const html = read('src/views/admin-transportation.html');
+  const script = read('public/js/admin-transportation.js');
+  const style = read('public/css/admin-transportation.css');
+  assert.match(html, /id="rollout-state"/);
+  assert.match(html, /<input id="rollout-enabled" type="checkbox" role="switch" aria-describedby="rollout-description" disabled>/);
+  assert.match(html, /id="rollout-save" type="submit" disabled/);
+  assert.match(html, /data-metric="returningUsers45d"/);
+  assert.match(html, /id="transportation-events-rows"/);
+  assert.match(html, /id="transportation-hosts-rows"/);
+  assert.match(html, /role="region" aria-labelledby="transportation-events-title" tabindex="0"/);
+  assert.match(html, /data-metric="uberClicks"[\s\S]*data-metric="lyftClicks"/);
+  assert.match(html, /No event activity yet\./);
+  assert.match(style, /\.transportation-table-scroll\s*\{[\s\S]*overflow-x: auto/);
+  assert.match(script, /Turn on citywide/);
+  assert.match(script, /toggle\.checked = result\.requested/);
+  assert.match(script, /badge\.textContent = result\.enabled/);
+  assert.match(script, /api\('\/api\/admin\/transportation\/rollout', \{ method: 'PATCH', body: \{ enabled \}/);
+  assert.match(script, /cell\.textContent = value/);
+  assert.doesNotMatch(script, /\.innerHTML\s*=/);
 });
 
 test('team controls use target-bound fresh verification and the operator roster API', () => {

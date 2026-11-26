@@ -45,6 +45,7 @@ async function fixture(t) {
   const savedCalls = [];
   const writes = [];
   let cityReady = false;
+  let cityEnabled = false;
   let coverageReads = 0;
   let current = START;
   const now = () => current;
@@ -119,7 +120,8 @@ async function fixture(t) {
     coverageReads++;
     return cityReady ? [{ stopId: 'S', walkSeconds: 240 }] : null;
   } };
-  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics, sfCoverage }));
+  app.use(createGettingHomeRouter({ db, env, now, home, reminders, saved, metrics, sfCoverage,
+    rolloutEnabled: async () => cityEnabled }));
   let unexpected;
   app.use((error, _req, res, _next) => { unexpected = error; res.status(500).json({ error: 'fixture-error' }); });
   const server = await new Promise((resolve, reject) => {
@@ -137,6 +139,7 @@ async function fixture(t) {
   return {
     events, rsvps, metricsCalls, savedCalls, writes, env, entry,
     setCityReady(value) { cityReady = value; },
+    setCityEnabled(value) { cityEnabled = value; },
     coverageReads() { return coverageReads; },
     advance(ms) { current += ms; },
     link() { return rideEmailEntryPath({ event: events.get(scenario.id), rsvp: rsvps.get(guest.id), env, now, entry }); },
@@ -163,6 +166,9 @@ test('SF planner is for confirmed guests with ready public Places coverage; anal
   denied(await f.fetch(`${api}/options`));
   assert.equal(f.coverageReads(), 0);
   denied(await f.fetch(`${api}/options`, { headers }));
+  assert.equal(f.coverageReads(), 0);
+  f.setCityEnabled(true);
+  denied(await f.fetch(`${api}/options`, { headers }));
   assert.equal(f.coverageReads(), 1);
   f.setCityReady(true);
   assert.equal((await f.fetch(page, { headers })).status, 200);
@@ -175,6 +181,9 @@ test('SF planner is for confirmed guests with ready public Places coverage; anal
   assert.equal(f.link(), null);
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.savedCalls, []);
+  f.setCityEnabled(false);
+  denied(await f.fetch(`${api}/options`, { headers }));
+  f.setCityEnabled(true);
   for (const override of [{ visibility: 'private' }, { hide_address_until_rsvp: true }, { secret_show_enabled: true }, { google_place_id: null }]) {
     f.events.set(scenario.id, { ...venue, ...override });
     denied(await f.fetch(`${api}/options`, { headers }));
@@ -208,6 +217,29 @@ async function redeem(f) {
 function json(method, body, headers = {}) {
   return { method, headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin', ...headers }, body: JSON.stringify(body) };
 }
+
+test('real pilot guests record allowlisted interactions with delivery off, never analytics metadata', async t => {
+  const f = await fixture(t);
+  f.env.TRANSIT_DISTRIBUTION_ENABLED = 'false';
+  f.env.TRANSIT_RIDE_REMINDERS_ENABLED = 'false';
+  const headers = { 'x-fixture-session': 'owner' };
+  denied(await f.fetch(`${api}/interaction`, json('POST', { kind: 'bus_click' })));
+  denied(await f.fetch(`${api}/interaction`, json('POST', { kind: 'lyft_click' }, { ...headers, 'sec-fetch-site': 'cross-site' })));
+  assert.equal((await f.fetch(`${api}/interaction`, json('POST', { kind: 'reminder_sent' }, headers))).status, 400);
+  assert.equal(f.metricsCalls.length, 0);
+  assert.equal((await f.fetch(page, { headers })).status, 200);
+  for (const kind of ['bus_click', 'uber_click', 'lyft_click']) {
+    const tracked = await f.fetch(`${api}/interaction`, json('POST', { kind, destination: 'must not be recorded', userId: 1000 }, headers));
+    assert.equal(tracked.status, 204);
+    assert.equal(await tracked.text(), '');
+  }
+  assert.deepEqual(f.metricsCalls, ['page_open', 'bus_click', 'uber_click', 'lyft_click'].map(kind => ({
+    kind, eventId: scenario.id, rsvpId: guest.id, userId: guest.user_id
+  })));
+  assert.equal(f.writes.length, 0);
+  f.rsvps.get(guest.id).status = 'declined';
+  denied(await f.fetch(`${api}/interaction`, json('POST', { kind: 'bus_click' }, headers)));
+});
 
 test('a signed day-before link opens only this event’s ride plan without a sign-in redirect', async t => {
   const f = await fixture(t);
@@ -324,6 +356,7 @@ test('one test link opens the sample and schedules without real attendee authori
   denied(await f.fetch(page, { headers: { cookie } }));
   const plan = await f.fetch(`${previewApi}/departure`, json('POST', choice, { cookie }));
   assert.deepEqual(await plan.json(), { ...verifiedPlan, upcoming });
+  assert.equal((await f.fetch(`${previewApi}/interaction`, json('POST', { kind: 'uber_click' }, { cookie }))).status, 204);
   const reminder = await f.fetch(`${previewApi}/reminder`, json('POST', { consent: true, selection: choice }, { cookie }));
   assert.equal((await reminder.json()).status, 'unavailable');
   const saved = await f.fetch(`${previewApi}/saved-route`, json('POST', { remember: true, selection: choice }, { cookie }));

@@ -3,9 +3,6 @@ const pool = require('../config/db');
 const { sendDayBeforeReminder, sendDayOfReminder } = require('../lib/mailer');
 const { HOST_ACCOUNT_INACTIVE, withActiveHostAccount } = require('../lib/outbound-account-status');
 const { eventEndAtSql } = require('../lib/post-event');
-const { createRideMetrics } = require('../lib/transit/ride-metrics');
-
-const rideMetrics = createRideMetrics({ db: pool });
 
 let _running = false;
 
@@ -193,7 +190,6 @@ async function runReminderPass({ dayBeforeHour = 16, dayOfHour = 9 } = {}) {
     await retryFailed();
     await processReminders('reminder_day_before', dayBeforeHour, 1);
     await processReminders('reminder_day_of', dayOfHour, 0);
-    await rideMetrics.prune();
   } catch (err) {
     console.error('[reminders] pass failed:', err.message);
   } finally {

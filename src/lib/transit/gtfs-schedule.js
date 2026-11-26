@@ -77,6 +77,14 @@ const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'fri
 const UNAVAILABLE = Object.freeze({ status: 'schedule-unavailable' });
 const boardingTiming = origin => origin.rows[origin.board].timepoint === '0' ? 'feed-estimate' : 'scheduled';
 
+function routeMode(routeType) {
+  if (!/^\d{1,4}$/.test(String(routeType))) return 'other';
+  const type = Number(routeType);
+  if (type === 3 || type === 11 || (type >= 700 && type < 900)) return 'bus';
+  if ([0, 1, 2, 5, 6, 7, 12].includes(type) || (type >= 100 && type < 700) || (type >= 900 && type < 1000)) return 'rail';
+  return 'other';
+}
+
 function nextDepartures(origins, { ridePlanning, start, eventEndsAt, last, latest = last }) {
   const { nowMs, boardingLeadMs } = ridePlanning ?? {};
   if (!Number.isFinite(nowMs) || !Number.isFinite(boardingLeadMs) || boardingLeadMs <= 0) return undefined;
@@ -180,6 +188,7 @@ function createGtfsSchedule(tables) {
     const route = routes.get(trip.route_id);
     if (!rows?.length || !route) continue;
     const rail = isBart(route);
+    const mode = rail ? 'rail' : routeMode(route.route_type);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       if (rail && dropOff(row)) {
@@ -201,7 +210,7 @@ function createGtfsSchedule(tables) {
         choicesByStop.get(row.stop_id).set(key, {
           routeId: route.route_id, name: route.route_short_name || route.route_long_name || route.route_id,
           agencyId: agencyFor(route)?.agency_id ?? '', agency: agencyFor(route)?.agency_name ?? '',
-          direction, headsign, requiresDestination: rail
+          direction, headsign, mode, requiresDestination: rail
         });
       }
     }

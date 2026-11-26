@@ -47,6 +47,20 @@ test('saved selections only use the exact route, direction and verified stop', (
   assert.equal(matchSavedChoice(choices, { ...route, stopId: 'wrong' }), null);
 });
 
+test('only an authoritative GTFS bus mode marks a route tile as a countable bus', () => {
+  const stop = { stopId: 'a', stationId: '24', name: 'Mission', walkSeconds: 120 };
+  const [bus, rail, bart, unknown] = makeRouteChoices([{ ...stop, routes: [
+    { routeId: 'bus', name: '14', mode: 'bus' },
+    { routeId: 'rail', name: '99', mode: 'rail' },
+    { routeId: 'bart', name: 'Red', mode: 'rail', requiresDestination: true },
+    { routeId: 'old', name: 'Older route' }
+  ] }]);
+  assert.equal(bus.bus, true);
+  assert.equal(rail.bus, false);
+  assert.equal(bart.bus, false);
+  assert.equal(unknown.bus, false);
+});
+
 test('departure, leave-by and text preview use the supplied local date even after midnight', () => {
   assert.equal(formattedTime(Date.parse('2026-11-28T08:47:00Z'), 'America/Los_Angeles'), 'Sat, Nov 28 · 12:47 AM PST');
   assert.equal(formattedTime(Date.parse('2026-11-28T09:41:00Z'), 'America/Los_Angeles'), 'Sat, Nov 28 · 1:41 AM PST');

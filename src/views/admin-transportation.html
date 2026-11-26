@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <title>Transportation — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-transportation.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="transportation">
+  <div class="sg-shell" data-admin-section="transportation">
+    <nav id="nav"></nav>
+    <main id="main-content" tabindex="-1" class="transportation-main">
+      <header class="transportation-header">
+        <h1 class="sg-page-title">Transportation</h1>
+        <p class="sg-page-sub">Manage Getting Home and see how guests use it after events.</p>
+      </header>
+
+      <section class="transportation-panel" aria-labelledby="rollout-title">
+        <div class="transportation-section-head">
+          <div>
+            <h2 id="rollout-title">San Francisco rollout</h2>
+            <p id="rollout-description">Only public San Francisco events with a venue selected in Google Places and verified transit coverage are eligible. This does not turn on emails or texts, or change the Make-Out Room pilot.</p>
+          </div>
+          <span class="transportation-badge" role="status" id="rollout-state">Checking status…</span>
+        </div>
+        <p class="transportation-note" id="rollout-reason" hidden></p>
+        <p class="transportation-note" id="rollout-saved-note" hidden>The saved setting is on. Citywide coverage stays off while it’s blocked.</p>
+
+        <form id="rollout-form" hidden>
+          <label class="sg-switch-field transportation-switch">
+            <input id="rollout-enabled" type="checkbox" role="switch" aria-describedby="rollout-description" disabled>
+            <span>Citywide Getting Home</span>
+            <span class="sg-switch-track" aria-hidden="true"></span>
+          </label>
+          <div class="transportation-actions">
+            <button class="sg-btn sg-btn-primary" id="rollout-save" type="submit" disabled>Save rollout</button>
+            <span class="transportation-note" id="rollout-draft" hidden>Change not saved</span>
+          </div>
+        </form>
+        <p class="transportation-note" id="rollout-permission" hidden>Only Super Admins can change this setting.</p>
+        <p class="transportation-feedback" id="rollout-feedback" role="status" aria-live="polite"></p>
+        <button class="sg-btn sg-btn-ghost" id="rollout-refresh" type="button" hidden>Refresh rollout status</button>
+      </section>
+
+      <section class="transportation-panel" aria-labelledby="analytics-title" id="transportation-analytics" aria-busy="true">
+        <div class="transportation-section-head">
+          <div>
+            <h2 id="analytics-title">Getting Home activity</h2>
+            <p>Activity from real guests on eligible public events. Preview tests aren't counted.</p>
+          </div>
+          <button class="sg-btn sg-btn-ghost" id="analytics-refresh" type="button">Refresh analytics</button>
+        </div>
+        <p class="transportation-feedback" id="analytics-feedback" role="status" aria-live="polite">Loading transportation activity…</p>
+        <dl class="transportation-metrics" id="transportation-metrics" hidden>
+          <div><dt>Planner opens</dt><dd data-metric="pageOpens">—</dd></div>
+          <div><dt>Routes checked</dt><dd data-metric="routeSelections">—</dd></div>
+          <div><dt>Bus clicks</dt><dd data-metric="busClicks">—</dd></div>
+          <div><dt>Uber clicks</dt><dd data-metric="uberClicks">—</dd></div>
+          <div><dt>Lyft clicks</dt><dd data-metric="lyftClicks">—</dd></div>
+          <div><dt>Returning guests</dt><dd data-metric="returningUsers45d">—</dd></div>
+          <div><dt>Events with activity</dt><dd data-metric="eventCount">—</dd></div>
+          <div><dt>Hosts with activity</dt><dd data-metric="hostCount">—</dd></div>
+        </dl>
+        <p class="transportation-note transportation-counts-note" id="analytics-counts-note" hidden>Opens and clicks count once per guest per event within 45 days. Returning guests are distinct signed-in guests who opened the planner for another event in their current 45-day window. These counts don’t measure attendance or ride bookings.</p>
+      </section>
+
+      <section class="transportation-panel" id="transportation-breakdown" aria-labelledby="transportation-breakdown-title" hidden>
+        <h2 id="transportation-breakdown-title">Activity by event and host</h2>
+        <p class="transportation-note">Up to 50 events and 50 hosts. Host counts add use across each event, so the same guest can count at different shows.</p>
+        <p class="transportation-note transportation-scroll-help">Scroll tables to see more columns.</p>
+        <div class="transportation-table-block">
+          <h3 id="transportation-events-title">Events</h3>
+          <p id="transportation-events-empty" class="transportation-note" hidden>No event activity yet.</p>
+          <div id="transportation-events-scroll" class="transportation-table-scroll" role="region" aria-labelledby="transportation-events-title" tabindex="0" hidden>
+            <table>
+              <thead><tr><th scope="col">Event</th><th scope="col">Host</th><th scope="col">Opens</th><th scope="col">Bus</th><th scope="col">Uber</th><th scope="col">Lyft</th><th scope="col">Repeat opens</th></tr></thead>
+              <tbody id="transportation-events-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="transportation-table-block">
+          <h3 id="transportation-hosts-title">Hosts</h3>
+          <p id="transportation-hosts-empty" class="transportation-note" hidden>No host activity yet.</p>
+          <div id="transportation-hosts-scroll" class="transportation-table-scroll" role="region" aria-labelledby="transportation-hosts-title" tabindex="0" hidden>
+            <table>
+              <thead><tr><th scope="col">Host</th><th scope="col">Events</th><th scope="col">Opens</th><th scope="col">Bus</th><th scope="col">Uber</th><th scope="col">Lyft</th><th scope="col">Repeat opens</th></tr></thead>
+              <tbody id="transportation-hosts-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-transportation.js"></script>
+</body>
+</html>
