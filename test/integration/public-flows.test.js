@@ -187,7 +187,7 @@ function resetRateLimits() {
 }
 
 async function resetDatabase() {
-  await pool.query('TRUNCATE guest_import_budget, guest_import_budget_config RESTART IDENTITY CASCADE');
+  await pool.query('TRUNCATE guest_import_budget, guest_import_budget_config, transit_sf_venue_coverage, transit_sf_walk_reservations RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE sms_provider_cost_facts, sms_welcome_campaigns RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE contributor_profiles RESTART IDENTITY CASCADE');
   await pool.query('TRUNCATE admin_operators, phone_auth_challenges, stripe_sms_webhook_events, paypal_webhook_events, organizers, users RESTART IDENTITY CASCADE');

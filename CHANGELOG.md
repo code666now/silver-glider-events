@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.228
+
+Released November 25, 2026.
+
+* Prepare Getting Home for public, Places-selected San Francisco venues. The new city flag remains off pending live walking and feed-capacity checks. Make-Out Room remains available, and this release does not turn on transit email or texts.
+
 ## 1.0.227
 
 Released November 25, 2026.
