@@ -23,13 +23,16 @@ test('both reminder layouts keep the original actions and add only the scoped pl
     renderEventReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.', rideEntryPath })
   ];
   for (const html of variants) {
-    assert.match(html, /Don't Miss Your Last Bus!/);
-    assert.match(html, /See buses and trains from Make-Out Room\./);
-    assert.match(html, /See the next scheduled buses, the last ride, and when to leave\. Save this email and tap the link again when you’re ready to head out\./);
+    assert.match(html, />Need help getting home\?<\/a>/);
+    assert.match(html, /Save this link for when you’re ready to leave\./);
     assert.match(html, /View event/);
+    assert.match(html, /Make-Out Room/);
     assert.match(html, /Add to Calendar/);
     assert.match(html, /Manage RSVP &amp; email settings/);
-    assert.doesNotMatch(html, /text me|SMS|30 minutes before/i);
+    assert.doesNotMatch(html, /Don.t Miss Your Last Bus|See buses and trains from|View venue|text me|SMS|30 minutes before/i);
+    assert.equal((html.match(/Need help getting home\?/g) || []).length, 1);
+    assert.ok(html.indexOf('>View event<') < html.indexOf('>Need help getting home?') &&
+      html.indexOf('>Need help getting home?') < html.indexOf('>Add to Calendar<'));
     const href = /href="([^"]+\/getting-home\/from-email\?t=[^"]+)"/.exec(html)[1];
     assert.doesNotMatch(href, /fixture-manage-secret|Guest/);
     const claims = entry.verify(new URL(href).searchParams.get('t'));
@@ -37,8 +40,16 @@ test('both reminder layouts keep the original actions and add only the scoped pl
   }
 });
 
+test('the Getting Home link is the only markup added to the original reminder', () => {
+  const original = renderDayBeforeReminderEmail({ event, rsvp });
+  const extended = renderDayBeforeReminderEmail({ event, rsvp, rideEntryPath });
+  const linkMarkup = /<p class="sg-email-secondary"[^>]*>\s*<a [^>]*>Need help getting home\?<\/a><br>\s*Save this link for when you’re ready to leave\.\s*<\/p>/;
+  assert.match(extended, linkMarkup);
+  assert.equal(extended.replace(linkMarkup, ''), original);
+});
+
 test('the callout is absent without an authorized path and confirmation is unchanged', () => {
-  const without = html => assert.doesNotMatch(html, /Help me get home|getting-home\/from-email/);
+  const without = html => assert.doesNotMatch(html, /Need help getting home|Save this link|getting-home\/from-email/);
   without(renderEventReminderEmail({ event, rsvp, kicker: 'Today', headline: 'See you tonight.' }));
   without(renderDayBeforeReminderEmail({ event, rsvp }));
   without(renderRsvpConfirmationEmail({ event, rsvp, rideEntryPath }));

@@ -1,11 +1,11 @@
 .gh-body {
   color-scheme: dark;
-  background: radial-gradient(ellipse at top, #122525 0, #0d1112 520px);
-  color: #edf6f5;
-  --gh-surface: #131d1f;
-  --gh-border: #385153;
-  --gh-muted: #b6c8c7;
-  --gh-teal: #62e4dc;
+  --gh-surface: var(--sg-card);
+  --gh-border: var(--sg-border);
+  --gh-muted: var(--sg-text-dim);
+  --gh-teal: var(--sg-accent);
+  --gh-highlight-surface: #14201f;
+  --gh-highlight-border: rgba(28, 197, 190, .24);
 }
 
 .gh-body [hidden] { display: none !important; }
@@ -41,12 +41,12 @@
 .gh-retry { margin-top: 10px; }
 .gh-route-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
 .gh-route, .gh-secondary, .gh-primary {
-  cursor: pointer; border: 1px solid var(--gh-border); border-radius: 14px; color: #edf6f5; background: var(--gh-surface);
+  cursor: pointer; border: 1px solid var(--gh-border); border-radius: 14px; color: var(--sg-text); background: var(--gh-surface);
   min-height: 48px; font: 700 .94rem/1.3 var(--sg-font-body);
 }
 .gh-route { width: 100%; min-height: 62px; padding: 8px 12px; display: flex; align-items: center; text-align: start; gap: 12px; }
 .gh-icon { width: 22px; height: 22px; flex: 0 0 auto; color: var(--gh-teal); fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-.gh-icon-tile { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px; background: #143033; }
+.gh-icon-tile { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 10px; background: rgba(28, 197, 190, .09); }
 .gh-route-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .gh-route-copy :is(strong, span) { display: block; }
 .gh-route-copy span { color: var(--gh-muted); margin-top: 2px; font-size: .79rem; font-weight: 500; }
@@ -64,9 +64,9 @@
 .gh-stop-summary button { flex: 0 0 auto; }
 .gh-field select {
   width: 100%; min-height: 48px; padding: 7px 12px; border: 1px solid var(--gh-border); border-radius: 12px;
-  background: var(--gh-surface); color: #edf6f5; font: 600 1rem/1.3 var(--sg-font-body);
+  background: var(--gh-surface); color: var(--sg-text); font: 600 1rem/1.3 var(--sg-font-body);
 }
-.gh-primary { padding: 11px 15px; color: #092121; background: var(--gh-teal); border-color: var(--gh-teal); }
+.gh-primary { padding: 11px 15px; color: #0a0a0a; background: var(--gh-teal); border-color: var(--gh-teal); }
 .gh-primary[aria-disabled="true"] { cursor: wait; }
 .gh-results { margin-top: 20px; }
 .gh-results dl { margin-top: 10px; display: grid; gap: 8px; }
@@ -74,12 +74,12 @@
 .gh-timing > div { min-width: 0; }
 .gh-timing dt { font-weight: 700; }
 .gh-timing dd { font: 700 clamp(1.2rem, 4vw, 1.47rem)/1.15 var(--sg-font-display); margin-top: 3px; overflow-wrap: anywhere; }
-.gh-timing-main { border-color: #338a86; background: #112627; }
+.gh-timing-main { border-color: var(--gh-highlight-border); background: var(--gh-highlight-surface); }
 .gh-timing-main dd { font-size: clamp(1.38rem, 5.2vw, 2rem); }
 .gh-timing-note, .gh-note { font-size: .83rem; line-height: 1.55; color: var(--gh-muted); overflow-wrap: anywhere; }
 .gh-timing-note { display: block; margin-top: 5px; }
 .gh-note { margin-top: 8px; }
-.gh-upcoming { margin-top: 17px; padding: 14px; border: 1px solid #338a86; border-radius: 14px; background: #112627; }
+.gh-upcoming { margin-top: 17px; padding: 14px; border: 1px solid var(--gh-highlight-border); border-radius: 14px; background: var(--gh-highlight-surface); }
 .gh-body .gh-upcoming h3 { font-size: 1.2rem; }
 .gh-upcoming .gh-note { margin-top: 4px; }
 .gh-upcoming ol { list-style: none; padding: 0; margin: 9px 0 0; }
@@ -131,8 +131,8 @@
   }
 }
 @media (hover: hover) {
-  .gh-route:hover, .gh-secondary:hover { border-color: var(--gh-teal); background: #1d2d30; }
-  .gh-primary:hover { background: #82f1e9; }
+  .gh-route:hover, .gh-secondary:hover { border-color: var(--gh-teal); background: var(--sg-surface); }
+  .gh-primary:hover { background: var(--sg-accent-press); }
   .gh-back:hover, .gh-directions:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 @media (forced-colors: active) {

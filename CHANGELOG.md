@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.232
+
+Released November 26, 2026.
+
+* Match Getting Home to the shared charcoal and ambient background used by My Events, without changing transit behavior.
+* Keep the original event reminder format and replace the Getting Home callout with one link and a short note to save it for later. Remove the extra venue display from the test email.
+
 ## 1.0.231
 
 Released November 26, 2026.

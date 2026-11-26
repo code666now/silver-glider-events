@@ -108,6 +108,18 @@ test('mobile planner shows next departures, last / leave-by, then rideshare in d
   assert.match(css, /@media \(max-width: 539px\)[^}]*\.gh-field select\s*{[^}]*width: calc\(100% \+ 12px\)[^}]*height: max\(54px, 3em\)/);
 });
 
+test('planner uses the shared app background and neutral brand surfaces', () => {
+  const css = readFileSync(join(__dirname, '../public/css/getting-home.css'), 'utf8');
+  const brand = readFileSync(join(__dirname, '../public/css/brand.css'), 'utf8');
+  assert.match(view, /name="theme-color" content="#0E0E0E"/);
+  assert.match(view, /class="sg-aurora" aria-hidden="true"[\s\S]*class="sg-aurora-veil" aria-hidden="true"/);
+  assert.match(brand, /@media \(prefers-reduced-motion: reduce\) \{ \.sg-aurora \{ animation: none; \} \}/);
+  const body = /^\.gh-body \{([^}]+)\}/m.exec(css)[1];
+  assert.doesNotMatch(body, /\bbackground\s*:/);
+  assert.match(body, /--gh-surface: var\(--sg-card\)/);
+  assert.match(body, /--gh-teal: var\(--sg-accent\)/);
+});
+
 test('upcoming restores and marks the last bus if it is one of the two reachable rides', () => {
   const first = Date.parse('2026-11-28T08:47:00Z');
   const last = Date.parse('2026-11-28T09:41:00Z');
