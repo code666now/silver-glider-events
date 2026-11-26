@@ -2,6 +2,13 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.233
+
+Released November 26, 2026.
+
+* Refresh the public homepage with an editorial headline, a seven-photo Polaroid wheel, and a simpler route to creating an event. Tapping a photo spins the wheel; pause and reduced-motion controls are available.
+* Add Super Admin → Homepage Photography to upload, replace, reorder, remove, credit, or hide homepage images without a redeploy.
+
 ## 1.0.232
 
 Released November 26, 2026.

@@ -6,18 +6,18 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('homepage gives returning users a real account entry without changing the create CTA', () => {
+test('homepage gives returning users an account entry and keeps both real auth routes available without scripts', () => {
   const home = read('src/views/index.html');
+  const styles = read('public/css/home-orbit.css');
   const client = read('public/js/home-account-nav.js');
 
   assert.match(home, /class="sg-home-page"/);
-  assert.match(home, /\.sg-home-header \{[\s\S]*?width: 100%;[\s\S]*?padding: 14px clamp\(24px, 3vw, 64px\)/);
+  assert.match(home, /href="\/css\/home-orbit\.css"/);
   assert.match(home, /data-home-account-shell data-loading="true"/);
-  assert.match(home, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
-  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);
-  assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event/);
-  assert.match(home, /class="sg-btn sg-btn-primary home-primary-cta"/);
-  assert.match(home, /\.home-primary-cta \{[\s\S]*?border-radius: 12px;/);
+  assert.match(styles, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
+  assert.doesNotMatch(styles, /data-loading="true"[^}]*visibility: hidden/);
+  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard">Sign in/);
+  assert.match(home, /class="home-orbit-cta" href="\/login\?next=%2Fevents%2Fnew">Create your event/);
   assert.match(home, /src="\/js\/api\.js" defer/);
   assert.match(home, /src="\/js\/home-account-nav\.js" defer/);
 
@@ -32,91 +32,56 @@ test('homepage gives returning users a real account entry without changing the c
   assert.match(client, /signOutDestination: '\/'/);
 });
 
-test('homepage presents its value as a numbered editorial list', () => {
+test('homepage keeps its editorial features and Familiar Faces in one accessible How it works dialog', () => {
   const home = read('src/views/index.html');
-
+  const styles = read('public/css/home-orbit.css');
+  const how = home.indexOf('<dialog class="home-orbit-dialog"');
+  assert.ok(how > home.indexOf('</main>') && how > home.indexOf('</footer>'));
+  assert.match(home, /href="#home-how-dialog" data-home-orbit-how aria-haspopup="dialog">How it works/);
+  assert.match(home, /id="home-how-dialog" aria-labelledby="home-how-title"/);
+  assert.match(styles, /\.home-orbit-dialog:target:not\(\[open\]\)/);
   assert.match(home, /<section class="feature-list" aria-labelledby="feature-list-title">/);
-  assert.match(home, /id="feature-list-title">The good stuff<\/h2>/);
+  assert.match(home, /id="feature-list-title">The good stuff<\/h3>/);
   assert.match(home, /<span class="feature-list-range" aria-hidden="true">01 — 04<\/span>/);
   assert.match(home, /<ol class="features">/);
   for (const number of ['01', '02', '03', '04']) {
-    assert.match(home, new RegExp(`<span class="feature-number" aria-hidden="true">${number}<\\/span>`));
+    assert.ok(home.includes('<span class="feature-number" aria-hidden="true">' + number + '</span>'));
   }
   assert.match(home, /<strong>Your own follow page\.<\/strong> Fans follow you and hear about the next show by email or text\./);
-  // Familiar Faces has its own spotlight after the list, before the recs signup.
-  const regulars = home.indexOf('<section class="home-regulars"');
-  assert.ok(regulars > home.indexOf('<section class="feature-list"') && regulars < home.indexOf('class="home-recs-link"'));
-  assert.match(home, /<h2 id="home-regulars-title">Familiar Faces, remembered\.<\/h2>/);
+  assert.ok(home.indexOf('<section class="home-regulars"') > home.indexOf('<section class="feature-list"'));
+  assert.match(home, /<h3 id="home-regulars-title">Familiar Faces, remembered\.<\/h3>/);
   assert.match(home, /See who keeps coming back\. Invite them again in a tap\./);
-  assert.equal((home.match(/class="home-face"/g) || []).length, 5);
-  // Muted monograms, not emoji.
-  // The five monograms spell GLIDE, so all five show on phones too.
-  const initials = [...home.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join('');
-  assert.equal(initials, 'GLIDE');
-  assert.doesNotMatch(home, /\.home-face:nth-child\(n\+5\) \{ display: none; \}/);
-  assert.doesNotMatch(home, /Apple Color Emoji/);
-  assert.match(home, /--face-tone/);
-  assert.doesNotMatch(home, /class="tick"/);
-  assert.doesNotMatch(home, /\.features\s*\{[^}]*backdrop-filter/);
+  assert.equal([...home.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join(''), 'GLIDE');
 });
 
-test('homepage hero is one line, one button, and a real event page on a phone, before The good stuff', () => {
+test('homepage hero matches the orbit prototype without shipping prototype controls or embedded media', () => {
   const home = read('src/views/index.html');
-  const hero = home.indexOf('<div class="home-hero">');
-  const phone = home.indexOf('<figure class="home-hero-phone">');
-  assert.ok(hero > 0 && phone > home.indexOf('home-primary-cta'));
-  assert.ok(home.indexOf('<section class="feature-list"') > phone);
-  assert.match(home, /src="\/img\/home\/event-phone-party\.jpg" width="390" height="844" alt="A Silver Glider event page on a phone/);
-  assert.ok(fs.existsSync(path.join(root, 'public/img/home/event-phone-party.jpg')));
-  assert.doesNotMatch(home, /class="tagline"/);
-  assert.equal((home.match(/class="sg-btn sg-btn-primary/g) || []).length, 1);
-  assert.match(home, /\.home-hero-phone \{ position: relative; width: min\(270px, 69vw\); margin: 44px auto 0; \}/);
-  assert.match(home, /@media \(min-width: 960px\) \{\s*\.home-hero-phone \{ width: 310px; margin-top: 56px; \}/);
-});
-
-test('homepage phone turns toward the pointer, floats on touch screens, and respects reduced motion', () => {
-  const home = read('src/views/index.html');
-  const tilt = read('public/js/home-hero-tilt.js');
-  assert.match(home, /src="\/js\/home-hero-tilt\.js" defer/);
-  assert.match(home, /rotateX\(var\(--rx\)\) rotateY\(var\(--ry\)\) rotate\(var\(--lean\)\)/);
-  assert.match(home, /@media \(hover: none\)[\s\S]*home-phone-float/);
-  assert.match(home, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.home-hero-phone \{ animation: none; \}/);
-  assert.match(tilt, /const MAX_TILT = 8;/);
-  assert.match(tilt, /prefers-reduced-motion: reduce/);
-  assert.match(tilt, /\(hover: hover\) and \(pointer: fine\)/);
-  assert.match(tilt, /event\.pointerType !== 'mouse'/);
-  assert.match(tilt, /requestAnimationFrame/);
-  // Hidden delight: one click spins it to show the logo on the back.
-  assert.match(home, /class="home-phone-back" aria-hidden="true"><img src="\/logo\.png" alt="" draggable="false">/);
-  assert.match(home, /touch-action: manipulation/);
-  assert.match(tilt, /setTimeout\(settle, SPIN_MS \+ SPIN_GRACE_MS\)/);
-  assert.match(tilt, /list\.addListener\(onChange\)/);
-  assert.match(home, /rotate\(var\(--lean\)\) rotateY\(var\(--spin\)\)/);
-  assert.match(home, /\.home-phone-back \{[\s\S]*backface-visibility: hidden/);
-  assert.match(tilt, /if \(spinning \|\| reducedMotion\.matches\) return;/);
-  assert.match(tilt, /setProperty\('--spin', '360deg'\)/);
-});
-
-test('homepage fly-over keeps GLIDE ordered and the replay control outside the decorative row', () => {
-  const home = read('src/views/index.html');
-  const row = home.match(/<div class="home-faces" aria-hidden="true">([\s\S]*?)<\/div>\s*<\/div>/)?.[1];
-  assert.ok(row);
-  assert.equal([...row.matchAll(/<span class="home-face-avatar">([A-Z])<\/span>/g)].map(match => match[1]).join(''), 'GLIDE');
-  assert.match(row, /<div class="home-faces-flight"><img class="home-faces-glider" src="\/logo\.png" alt=""/);
-  for (let index = 0; index < 5; index++) {
-    assert.match(home, new RegExp(`\\.home-face:nth-of-type\\(${index + 1}\\) \\{ --face-tone: #[0-9a-f]{6}; --face-i: ${index}; \\}`));
+  const styles = read('public/css/home-orbit.css');
+  const hero = home.indexOf('class="home-orbit-hero"');
+  const photos = home.indexOf('<!-- HOME_ORBIT_PHOTOS -->');
+  assert.ok(hero > 0 && photos > hero && photos < home.indexOf('</main>'));
+  assert.match(home, /<h1 id="home-orbit-title">You have a personality\.<br><span>Your events should too\.<\/span><\/h1>/);
+  assert.equal((home.split('</main>')[0].match(/href="\/login\?next=%2Fevents%2Fnew"/g) || []).length, 1);
+  assert.match(home, /aria-label="Event photos"><!-- HOME_ORBIT_PHOTOS -->/);
+  assert.match(home, /<summary>Photo credits<\/summary>[\s\S]*<!-- HOME_ORBIT_CREDITS -->/);
+  assert.match(home, /data-home-orbit-pause[^>]*hidden/);
+  assert.match(home, /src="\/js\/home-orbit\.js" defer/);
+  assert.doesNotMatch(home, /<style>|<script>|style=|onerror=|data:image|type="file"|Concept ·|Try your own photos|home-hero-tilt|home-glide/i);
+  assert.match(styles, /background: #f2f2ef/);
+  assert.match(styles, /\.home-orbit-cta:hover \{ background: var\(--sg-accent\)/);
+  assert.match(styles, /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.is-orbit-enhanced \.home-orbit-photo:not\(:disabled\) \{ cursor: url\("\/img\/home\/orbit-cursor\.png"\) 29 6, pointer/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.doesNotMatch(styles, /data:image/);
+  for (const href of ['/recs', '/privacy', '/terms', '/accessibility']) {
+    assert.ok(home.includes('href="' + href + '"'));
   }
-  assert.match(home, /src="\/js\/home-glide\.js" defer/);
-  assert.match(home, /<\/div>\s*<\/div>\s*<button class="home-faces-replay" type="button" hidden>Replay fly-over<\/button>/);
-  assert.match(home, /\.home-faces-replay:focus-visible/);
-  assert.match(home, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\}\s*\.home-faces\.is-gliding[^}]*animation: none/);
 });
 
 test('the weekly recs signup lives on /recs, and the homepage links to it quietly', () => {
   const homepage = read('src/views/index.html');
   const server = read('src/index.js');
   assert.match(server, /app\.get\('\/recs', view\('recs\.html'\)\)/);
-  assert.match(homepage, /<p class="home-recs-link"><a href="\/recs">Going out instead\?/);
+  assert.match(homepage, /<a href="\/recs">Going out instead\?/);
   assert.doesNotMatch(homepage, /data-sg-email-signup|home-email-signup/);
 
   const home = read('src/views/recs.html');

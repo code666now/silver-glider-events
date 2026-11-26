@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0E0E0E">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101010">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
@@ -12,375 +12,100 @@
   <meta property="og:description" content="Create a beautiful event page, collect RSVPs or connect ticket sales, and keep your guest list organized in one place.">
   <link rel="stylesheet" href="/css/brand.css">
   <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/home-orbit.css">
   <script src="/js/legal-footer.js" defer></script>
   <script src="/js/api.js" defer></script>
   <script src="/js/home-account-nav.js" defer></script>
-  <script src="/js/home-hero-tilt.js" defer></script>
-  <script src="/js/home-glide.js" defer></script>
-  <style>
-    /* Aurora — moving gradient background (Partiful-style) */
-    .aurora {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      overflow: hidden;
-      pointer-events: none;
-    }
-    /* Layer 1: full-screen flowing gradient, clearly in motion */
-    .aurora::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 90% 70% at 15% 20%, rgba(28,197,190,.5), transparent 55%),
-        radial-gradient(ellipse 80% 70% at 85% 30%, rgba(255,138,42,.55), transparent 55%),
-        radial-gradient(ellipse 90% 80% at 60% 90%, rgba(255,92,58,.42), transparent 55%),
-        radial-gradient(ellipse 70% 60% at 30% 75%, rgba(255,193,92,.38), transparent 55%);
-      background-size: 200% 200%;
-      animation: flow 14s ease-in-out infinite;
-      filter: blur(40px) saturate(130%);
-    }
-    @keyframes flow {
-      0%   { background-position: 0% 0%,     100% 0%,   50% 100%,  0% 100%; }
-      25%  { background-position: 60% 30%,   40% 60%,   90% 40%,   40% 60%; }
-      50%  { background-position: 100% 100%, 0% 100%,   30% 0%,    100% 0%; }
-      75%  { background-position: 40% 70%,   70% 20%,   0% 70%,    60% 30%; }
-      100% { background-position: 0% 0%,     100% 0%,   50% 100%,  0% 100%; }
-    }
-    /* Layer 2: two drifting orbs for depth */
-    .aurora span {
-      position: absolute;
-      width: 55vmax;
-      height: 55vmax;
-      border-radius: 50%;
-      mix-blend-mode: screen;
-      opacity: .55;
-      filter: blur(70px);
-      will-change: transform;
-    }
-    .aurora .b1 {
-      background: radial-gradient(circle, rgba(28,197,190,.85), transparent 60%);
-      top: -20%; left: -15%;
-      animation: drift1 11s ease-in-out infinite alternate;
-    }
-    .aurora .b2 {
-      background: radial-gradient(circle, rgba(255,138,42,.7), transparent 60%);
-      bottom: -25%; right: -15%;
-      animation: drift2 13s ease-in-out infinite alternate;
-    }
-    @keyframes drift1 {
-      from { transform: translate(0, 0) scale(1); }
-      to   { transform: translate(45vw, 30vh) scale(1.3); }
-    }
-    @keyframes drift2 {
-      from { transform: translate(0, 0) scale(1.2); }
-      to   { transform: translate(-40vw, -28vh) scale(.85); }
-    }
-    /* darken center just enough for text contrast */
-    .vignette {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background: radial-gradient(ellipse at 50% 40%, rgba(14,14,14,.55) 0%, rgba(14,14,14,.25) 60%, rgba(14,14,14,.5) 100%);
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .aurora::before, .aurora span { animation: none; }
-    }
-
-    .sg-home-header {
-      position: relative;
-      z-index: 12;
-      width: 100%;
-      min-height: 78px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      margin: 0 auto;
-      padding: 14px clamp(24px, 3vw, 64px);
-      box-sizing: border-box;
-    }
-    .sg-home-account-shell { min-width: 86px; min-height: 48px; display: flex; align-items: center; justify-content: flex-end; }
-    .sg-home-account-shell [hidden] { display: none !important; }
-    .sg-home-account-shell[data-loading="true"] { visibility: hidden; }
-    .sg-home-signin { min-height: 44px; padding: 11px 20px; font-size: 13px; }
-    .sg-home-authenticated { display: flex; align-items: center; }
-    .sg-home-mobile-controls { display: none; align-items: center; gap: 8px; }
-    .sg-home-mobile-profile {
-      width: 44px;
-      height: 44px;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-      border: 1px solid var(--sg-border);
-      border-radius: 50%;
-      background: rgba(255,255,255,.035);
-      color: var(--sg-text);
-    }
-    .sg-home-mobile-profile img { width: 100%; height: 100%; object-fit: cover; }
-    .sg-home-mobile-profile [data-sg-initials] { font-size: 12px; font-weight: 800; }
-    .sg-home-page .feedback-bubble { display: none; }
-    .landing { position: relative; z-index: 1; max-width: 560px; margin: 0 auto; padding: clamp(34px, 6vh, 72px) 24px 80px; text-align: center; }
-    .logo { width: 56px; height: 56px; margin-bottom: 40px; opacity: .95; }
-    /* Hero, the Apple way: one line, one button, then the product shown big.
-       It steps out of the 560px column so the line can breathe on desktop. */
-    .home-hero { width: min(920px, calc(100vw - 48px)); margin-left: 50%; transform: translateX(-50%); text-align: center; }
-    h1 { max-width: 13em; margin: 0 auto 36px; font-size: clamp(34px, 8.6vw, 76px); line-height: 1.04; letter-spacing: -0.03em; text-wrap: balance; }
-    h1 span { display: block; color: var(--sg-accent); }
-    .home-primary-cta {
-      border-radius: 12px;
-      font-size: 16px;
-      padding: 16px 44px;
-    }
-    @media (hover: hover) {
-      .home-primary-cta:hover {
-        box-shadow: 0 8px 26px rgba(28,197,190,.16);
-      }
-    }
-    .offer-note { color: var(--sg-text-dim); font-size: 13px; margin-top: 14px; }
-    /* Keep the preview centered, close enough to the copy to feel connected. */
-    .home-hero-phone { position: relative; width: min(270px, 69vw); margin: 44px auto 0; }
-    .home-hero-phone::before {
-      content: ''; position: absolute; inset: 12% -10% 4%; z-index: -1;
-      background: radial-gradient(closest-side, rgba(28,197,190,.22), transparent);
-      filter: blur(20px);
-    }
-    .home-phone-frame {
-      padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 44px; background: #050505;
-      box-shadow: 0 40px 90px rgba(0,0,0,.55);
-      /* A slight lean toward the headline, like a phone set down on a table.
-         On desktop it also turns toward the pointer (--rx/--ry, set by
-         home-hero-tilt.js); a sheen follows the same angle. */
-      --lean: 0deg; --rx: 0deg; --ry: 0deg; --sheen: 50%; --spin: 0deg;
-      position: relative; transform-style: preserve-3d; -webkit-transform-style: preserve-3d; cursor: pointer;
-      /* A tap spins it: no double-tap zoom, tap flash or text selection. */
-      touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
-      transform: perspective(1000px) rotateX(var(--rx)) rotateY(var(--ry)) rotate(var(--lean)) rotateY(var(--spin));
-      transition: transform .6s cubic-bezier(.2, .8, .2, 1);
-    }
-    /* Hidden delight: a click or tap spins the phone once (home-hero-tilt.js)
-       and shows its back, dark glass with the logo. */
-    .home-hero .home-phone-frame.is-spinning { transition: transform 1.2s cubic-bezier(.45, .05, .2, 1); }
-    .home-hero .home-phone-frame.is-settling { transition: none; }
-    .home-phone-screen { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
-    .home-phone-back {
-      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-      border-radius: 44px; transform: rotateY(180deg); -webkit-backface-visibility: hidden; backface-visibility: hidden;
-      background: radial-gradient(circle at 50% 38%, rgba(28,197,190,.22), transparent 55%), linear-gradient(160deg, #161818, #050505 70%);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
-    }
-    .home-phone-back img { width: 72px; height: 72px; opacity: .92; border-radius: 0; }
-    .home-phone-back span { color: var(--sg-text-dim); font: 800 10px var(--sg-font-body); letter-spacing: .3em; text-transform: uppercase; }
-    .home-phone-frame.is-tracking { transition: transform .12s ease-out; }
-    .home-phone-frame::after {
-      content: ''; position: absolute; inset: 9px; border-radius: 35px; pointer-events: none; opacity: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden;
-      background: linear-gradient(115deg, transparent calc(var(--sheen) - 22%), rgba(255,255,255,.14) var(--sheen), transparent calc(var(--sheen) + 22%));
-      transition: opacity .4s ease;
-    }
-    .home-phone-frame.is-tracking::after { opacity: 1; }
-    /* Phones: no pointer to follow, so the phone floats gently instead. */
-    @media (hover: none) {
-      .home-hero-phone { animation: home-phone-float 6s ease-in-out infinite alternate; }
-    }
-    @keyframes home-phone-float { from { transform: translateY(0); } to { transform: translateY(-10px); } }
-    @media (prefers-reduced-motion: reduce) {
-      .home-hero-phone { animation: none; }
-      .home-phone-frame { transition: none; }
-    }
-    .home-phone-screen { display: block; width: 100%; height: auto; border-radius: 35px; }
-    @media (min-width: 960px) {
-      .home-hero-phone { width: 310px; margin-top: 56px; }
-      .home-hero-phone::before { inset: 10% -40% 0; }
-    }
-    /* Familiar Faces gets its own spotlight: it's the one thing only Silver
-       Glider does. The row is staged, floating like the manage page's
-       faces on phones. */
-    .home-regulars { margin: 64px 0 0; text-align: left; }
-    .home-regulars-kicker { margin: 0 0 16px; color: var(--sg-text); }
-    .home-regulars h2 { margin: 0; font-size: clamp(26px, 5vw, 32px); line-height: 1.1; letter-spacing: -.02em; }
-    .home-regulars-intro { margin: 10px 0 22px; color: var(--sg-text-dim); font-size: 15px; line-height: 1.6; }
-    .home-faces { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 6px; padding-top: 24px; }
-    .home-faces[data-glide-ready] { cursor: pointer; }
-    .home-face { min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .home-face-avatar {
-      width: 64px; height: 64px; display: grid; place-items: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 50%;
-      /* Monograms in muted tones: each guest gets a quiet colour of their own. */
-      background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), transparent 60%), var(--face-tone, #3a3d40);
-      color: rgba(255,255,255,.88); font: 600 22px/1 var(--sg-font-display); letter-spacing: .02em;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 14px 30px rgba(0,0,0,.28);
-    }
-    .home-face:nth-of-type(1) { --face-tone: #4a3f36; --face-i: 0; }
-    .home-face:nth-of-type(2) { --face-tone: #33414a; --face-i: 1; }
-    .home-face:nth-of-type(3) { --face-tone: #463a47; --face-i: 2; }
-    .home-face:nth-of-type(4) { --face-tone: #3c4637; --face-i: 3; }
-    .home-face:nth-of-type(5) { --face-tone: #3a3a4c; --face-i: 4; }
-    .home-face-name { max-width: 100%; overflow: hidden; color: var(--sg-text); font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-    .home-face-visit { margin-top: 3px; color: var(--sg-text-faint); font-size: 11px; font-weight: 700; white-space: nowrap; }
-    .home-face-visit.is-returning { color: var(--sg-accent); }
-    /* Clip only the glider's path, so it can fly off without widening the page. */
-    .home-faces-flight { position: absolute; inset: -8px 0 0; z-index: 1; overflow: hidden; pointer-events: none; }
-    .home-faces-glider {
-      position: absolute; top: 8px; left: 0; opacity: 0;
-      filter: drop-shadow(0 6px 10px rgba(0,0,0,.45));
-    }
-    .home-faces.is-gliding .home-faces-glider { animation: home-glide-fly 1150ms linear both; }
-    .home-faces.is-gliding .home-face-avatar {
-      animation: home-face-hop 460ms cubic-bezier(.16,1,.3,1) both, home-face-light 900ms ease-out both;
-      /* The five equally spaced faces sit near 10%, 30%, 50%, 70% and 90%. */
-      animation-delay: calc(115ms + var(--face-i, 0) * 230ms);
-    }
-    @keyframes home-glide-fly {
-      0%   { opacity: 0; transform: translate(-30px, 26px) rotate(-16deg); }
-      10%  { opacity: 1; }
-      25%  { transform: translate(calc(var(--glide-w, 320px) * .25 - 16px), 0) rotate(-7deg); }
-      50%  { transform: translate(calc(var(--glide-w, 320px) * .5 - 16px), -4px); }
-      75%  { transform: translate(calc(var(--glide-w, 320px) * .75 - 16px), 0) rotate(7deg); }
-      90%  { opacity: 1; }
-      100% { opacity: 0; transform: translate(calc(var(--glide-w, 320px) + 10px), 22px) rotate(15deg); }
-    }
-    @keyframes home-face-hop {
-      0%, 100% { transform: translateY(0); }
-      35% { transform: translateY(-8px) scale(.96, 1.04); }
-      70% { transform: translateY(0) scale(1.04, .96); }
-    }
-    @keyframes home-face-light {
-      25% { border-color: var(--sg-accent); box-shadow: 0 0 0 4px rgba(28,197,190,.18), 0 14px 30px rgba(0,0,0,.28); }
-    }
-    .home-faces-replay {
-      min-height: 44px; margin: 6px 0 0 -8px; padding: 0 8px; border: 0; border-radius: 6px;
-      background: transparent; color: var(--sg-text); font: inherit; font-size: 13px;
-      text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
-    }
-    .home-faces-replay:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 2px; }
-    @media (prefers-reduced-motion: reduce) {
-      .home-faces { padding-top: 0; }
-      .home-faces.is-gliding .home-faces-glider, .home-faces.is-gliding .home-face-avatar { animation: none; }
-      .home-faces-replay { display: none; }
-    }
-    @media (max-width: 480px) {
-      /* All five stay on phones: the initials spell GLIDE. */
-      .home-faces { gap: 6px; }
-      .home-face-avatar { width: 52px; height: 52px; font-size: 18px; }
-      .home-regulars { margin-top: 56px; }
-    }
-    .feature-list { margin: 62px 0 0; text-align: left; }
-    .feature-list-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 12px;
-    }
-    .feature-list-title { margin: 0; color: var(--sg-text); }
-    .feature-list-range {
-      color: var(--sg-accent);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .14em;
-    }
-    .features { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--sg-border-soft); }
-    .feature {
-      display: grid;
-      grid-template-columns: 42px minmax(0, 1fr);
-      gap: 14px;
-      padding: 21px 0;
-      border-top: 1px solid var(--sg-border-soft);
-    }
-    .feature-number {
-      color: var(--sg-accent);
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: .08em;
-      line-height: 1.45;
-    }
-    .feature p { margin: 0; color: var(--sg-text-dim); font-size: 14px; line-height: 1.55; }
-    .feature p strong { display: block; margin-bottom: 4px; color: var(--sg-text); font-size: 15px; font-weight: 650; }
-    .home-recs-link { margin: 72px 0 0; font-size: 14px; text-align: center; }
-    .home-recs-link a { color: var(--sg-text-dim); text-decoration: none; border-bottom: 1px solid rgba(255,255,255,.18); padding-bottom: 2px; transition: color 150ms ease, border-color 150ms ease; }
-    @media (hover: hover) { .home-recs-link a:hover { color: var(--sg-text); border-bottom-color: rgba(255,255,255,.5); } }
-    @media (max-width: 879px) {
-      .sg-home-header {
-        width: 100%;
-        min-height: 72px;
-        padding: max(10px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 8px max(18px, env(safe-area-inset-left));
-      }
-      .sg-home-authenticated > .sg-account-menu { display: none; }
-      .sg-home-mobile-controls { display: flex; }
-      .landing { padding-top: clamp(28px, 5vh, 52px); }
-      .logo { margin-bottom: 28px; }
-    }
-  </style>
+  <script src="/js/home-orbit.js" defer></script>
 </head>
 <body class="sg-home-page">
-  <div class="aurora" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
-  <div class="vignette" aria-hidden="true"></div>
-  <header class="sg-home-header">
-    <nav class="sg-home-account-shell" data-home-account-shell data-loading="true" aria-label="Account">
-      <a class="sg-btn sg-btn-ghost sg-home-signin" data-home-signin href="/login?next=%2Fdashboard" hidden>Sign in</a>
-      <div class="sg-home-authenticated" data-home-authenticated hidden></div>
-    </nav>
-  </header>
-  <main class="landing">
-    <div class="home-hero">
-      <div class="home-hero-copy">
-        <img class="logo" src="/logo.png" alt="Silver Glider Events">
-        <h1>You have a personality. <span>Your events should too.</span></h1>
-        <a class="sg-btn sg-btn-primary home-primary-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
-        <p class="offer-note">Free to create and publish.</p>
-      </div>
-      <figure class="home-hero-phone">
-        <div class="home-phone-frame">
-          <div class="home-phone-back" aria-hidden="true"><img src="/logo.png" alt="" draggable="false"><span>Silver Glider</span></div>
-          <img class="home-phone-screen" draggable="false" src="/img/home/event-phone-party.jpg" width="390" height="844" alt="A Silver Glider event page on a phone: Halloween Party, Friday, October 30, with its flyer and an RSVP button" fetchpriority="high">
-        </div>
-      </figure>
-    </div>
-
-    <section class="feature-list" aria-labelledby="feature-list-title">
-      <div class="feature-list-header">
-        <h2 class="sg-label feature-list-title" id="feature-list-title">The good stuff</h2>
-        <span class="feature-list-range" aria-hidden="true">01 — 04</span>
-      </div>
-      <ol class="features">
-        <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
-        <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
-        <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
-        <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>Your own follow page.</strong> Fans follow you and hear about the next show by email or text.</p></li>
-      </ol>
-    </section>
-    <section class="home-regulars" aria-labelledby="home-regulars-title">
-      <p class="sg-label sg-display home-regulars-kicker">Only on Silver Glider</p>
-      <h2 id="home-regulars-title">Familiar Faces, remembered.</h2>
-      <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
-      <!-- An illustration of Familiar Faces with made-up guests; the copy above says what it shows. Their initials spell GLIDE. -->
-      <div class="home-faces" aria-hidden="true">
-            <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
-            <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
-            <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
-            <div class="home-faces-flight"><img class="home-faces-glider" src="/logo.png" alt="" width="32" height="32" draggable="false"></div>
-      </div>
-      <button class="home-faces-replay" type="button" hidden>Replay fly-over</button>
-    </section>
-    <!-- Recs is for guests, so it lives on its own page; hosts keep the one button above. -->
-    <p class="home-recs-link"><a href="/recs">Going out instead? Get weekly picks <span aria-hidden="true">&rarr;</span></a></p>
-    <footer class="sg-social-footer" data-sg-legal-footer>
-      <a class="sg-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="5"></rect>
-          <circle cx="12" cy="12" r="4"></circle>
-          <circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle>
-        </svg>
+  <div class="home-orbit-page" id="home-page">
+    <header class="sg-home-header home-orbit-topbar">
+      <a class="home-orbit-brand" href="/" aria-label="Silver Glider Events homepage">
+        <img src="/logo.png" width="45" height="45" alt="">
+        <span>Silver Glider<small>Events</small></span>
       </a>
-      <div class="sg-legal-links">
-        <a href="/privacy" class="sg-legal-link">Privacy Policy</a>
-        <span aria-hidden="true">·</span>
-        <a href="/terms" class="sg-legal-link">Terms</a>
-        <span aria-hidden="true">·</span>
-        <a href="/accessibility" class="sg-legal-link">Accessibility</a>
+      <nav class="sg-home-account-shell" data-home-account-shell data-loading="true" aria-label="Account">
+        <a class="sg-home-signin" data-home-signin href="/login?next=%2Fdashboard">Sign in</a>
+        <div class="sg-home-authenticated" data-home-authenticated hidden></div>
+      </nav>
+    </header>
+
+    <main class="home-orbit-stage" data-home-orbit-stage>
+      <section class="home-orbit-hero" data-home-orbit-hero aria-labelledby="home-orbit-title">
+        <p class="home-orbit-hero-label">Silver Glider Events</p>
+        <h1 id="home-orbit-title">You have a personality.<br><span>Your events should too.</span></h1>
+        <a class="home-orbit-cta" href="/login?next=%2Fevents%2Fnew">Create your event <span aria-hidden="true">↗</span></a>
+        <p class="home-orbit-free">Free to create and publish.</p>
+      </section>
+      <div class="home-orbit-gallery" data-home-orbit-gallery role="group" aria-label="Event photos"><!-- HOME_ORBIT_PHOTOS --></div>
+    </main>
+
+    <footer class="home-orbit-footer" data-sg-legal-footer aria-label="Site information">
+      <div class="home-orbit-footer-main">
+        <div class="home-orbit-footer-note">
+          <span>San Francisco / Los Angeles</span>
+          <details class="home-orbit-credits">
+            <summary>Photo credits</summary>
+            <ul class="home-orbit-credits-list"><!-- HOME_ORBIT_CREDITS --></ul>
+          </details>
+        </div>
+        <nav class="home-orbit-footer-nav" aria-label="About Silver Glider">
+          <a href="#home-how-dialog" data-home-orbit-how aria-haspopup="dialog">How it works</a>
+          <span aria-hidden="true" class="home-orbit-footer-separator">·</span>
+          <a href="/recs">Going out instead? <span class="home-orbit-weekly">Get weekly picks <span aria-hidden="true">↗</span></span></a>
+        </nav>
+        <div class="home-orbit-footer-tools">
+          <button class="home-orbit-pause" type="button" data-home-orbit-pause aria-label="Pause animation" title="Pause animation" hidden><span aria-hidden="true">Ⅱ</span></button>
+        </div>
+      </div>
+      <div class="home-orbit-social">
+        <a class="home-orbit-social-link" href="https://www.instagram.com/silverglidertix/" target="_blank" rel="noopener noreferrer" aria-label="Follow Silver Glider on Instagram at @silverglidertix">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+            <circle cx="12" cy="12" r="4"></circle>
+            <circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </a>
+        <nav class="home-orbit-legal" aria-label="Legal links">
+          <a href="/privacy">Privacy Policy</a><span aria-hidden="true">·</span>
+          <a href="/terms">Terms</a><span aria-hidden="true">·</span>
+          <a href="/accessibility">Accessibility</a>
+        </nav>
       </div>
     </footer>
-  </main>
+  </div>
+
+  <dialog class="home-orbit-dialog" id="home-how-dialog" aria-labelledby="home-how-title" data-home-orbit-dialog>
+    <div class="home-orbit-info">
+      <a class="home-orbit-close" href="#home-page" data-home-orbit-close>Close <span aria-hidden="true">×</span></a>
+      <h2 id="home-how-title">How it works</h2>
+      <section class="feature-list" aria-labelledby="feature-list-title">
+        <div class="feature-list-header">
+          <h3 class="feature-list-title" id="feature-list-title">The good stuff</h3>
+          <span class="feature-list-range" aria-hidden="true">01 — 04</span>
+        </div>
+        <ol class="features">
+          <li class="feature"><span class="feature-number" aria-hidden="true">01</span><p><strong>Designed to be shared.</strong> Upload your artwork and publish a polished page for every screen.</p></li>
+          <li class="feature"><span class="feature-number" aria-hidden="true">02</span><p><strong>Simple for guests.</strong> RSVP without creating an account.</p></li>
+          <li class="feature"><span class="feature-number" aria-hidden="true">03</span><p><strong>Public, private, or secret.</strong> Choose open access, private access through a link, or protection with an access code.</p></li>
+          <li class="feature"><span class="feature-number" aria-hidden="true">04</span><p><strong>Your own follow page.</strong> Fans follow you and hear about the next show by email or text.</p></li>
+        </ol>
+      </section>
+      <section class="home-regulars" aria-labelledby="home-regulars-title">
+        <p class="home-regulars-kicker">Only on Silver Glider</p>
+        <h3 id="home-regulars-title">Familiar Faces, remembered.</h3>
+        <p class="home-regulars-intro">See who keeps coming back. Invite them again in a tap.</p>
+        <div class="home-faces" aria-hidden="true">
+          <span class="home-face"><span class="home-face-avatar">G</span><span class="home-face-name">Gram</span><span class="home-face-visit is-returning">3rd time</span></span>
+          <span class="home-face"><span class="home-face-avatar">L</span><span class="home-face-name">Lou</span><span class="home-face-visit is-returning">2nd time</span></span>
+          <span class="home-face"><span class="home-face-avatar">I</span><span class="home-face-name">Iggy</span><span class="home-face-visit">First time</span></span>
+          <span class="home-face"><span class="home-face-avatar">D</span><span class="home-face-name">David</span><span class="home-face-visit is-returning">2nd time</span></span>
+          <span class="home-face"><span class="home-face-avatar">E</span><span class="home-face-name">Etta</span><span class="home-face-visit is-returning">4th time</span></span>
+        </div>
+      </section>
+      <a class="home-orbit-cta home-orbit-dialog-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>
+    </div>
+  </dialog>
 </body>
 </html>

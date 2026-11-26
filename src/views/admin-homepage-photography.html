@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0E0E0E">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <title>Homepage Photography — Admin — Silver Glider Events</title>
+  <link rel="stylesheet" href="/css/brand.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/admin-shell.css">
+  <link rel="stylesheet" href="/css/admin-homepage-photography.css">
+  <script src="/js/legal-footer.js" defer></script>
+</head>
+<body data-admin-section="homepage-photography">
+  <div class="sg-shell" data-admin-section="homepage-photography">
+    <nav id="nav"></nav>
+    <main id="main-content" tabindex="-1" class="hp-main">
+      <header class="hp-section-head">
+        <div>
+          <h1 class="sg-page-title">Homepage Photography</h1>
+          <p class="sg-page-sub">Choose the images on the public homepage. Saved changes appear without a redeploy.</p>
+        </div>
+        <a href="/" class="sg-btn sg-btn-ghost" target="_blank" rel="noopener">View homepage <span aria-hidden="true">↗</span><span class="hp-sr"> (opens a new tab)</span></a>
+      </header>
+
+      <p id="hp-status" class="hp-status" role="status" aria-live="polite">Loading photos…</p>
+      <p id="hp-error" class="hp-status hp-error" role="alert" hidden></p>
+      <button id="hp-retry" type="button" class="sg-btn sg-btn-ghost" hidden>Reload photos</button>
+
+      <section class="hp-panel" aria-labelledby="hp-gallery-title">
+        <header class="hp-section-head">
+          <div>
+            <h2 id="hp-gallery-title">Photo wheel</h2>
+            <p id="hp-count">Only visible photos appear on the homepage.</p>
+          </div>
+        </header>
+        <p id="hp-empty" hidden>No photos yet. Add one below to start the wheel.</p>
+        <ol id="hp-photos" class="hp-photos" aria-label="Photos in wheel order"></ol>
+      </section>
+
+      <section class="hp-panel" aria-labelledby="hp-add-title">
+        <h2 id="hp-add-title">Add a photo</h2>
+        <p id="hp-upload-note">Choose a still JPG, PNG, or WebP up to 12 MB.</p>
+        <form id="hp-add" class="hp-fields">
+          <fieldset id="hp-add-fields" disabled>
+            <label>Photo<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
+            <label>Title<input type="text" class="sg-input" name="title" maxlength="100" required></label>
+            <label>Image description<input type="text" class="sg-input" name="altText" maxlength="180" required></label>
+            <label>Photographer credit <span>(optional)</span><input type="text" class="sg-input" name="credit" maxlength="120"></label>
+            <label class="sg-switch-field"><input name="active" type="checkbox" role="switch" checked><span>Visible on homepage</span><span class="sg-switch-track" aria-hidden="true"></span></label>
+            <button type="submit" class="sg-btn sg-btn-primary">Add photo</button>
+          </fieldset>
+        </form>
+      </section>
+
+      <template id="hp-photo-template">
+        <li class="hp-photo">
+          <div class="hp-summary">
+            <div class="hp-thumb"><img data-field="preview" alt="" width="80" height="80" loading="lazy" hidden><span data-field="no-preview" aria-hidden="true">No image</span></div>
+            <div class="hp-photo-copy">
+              <h3 data-field="title" tabindex="-1"></h3>
+              <p data-field="credit"></p>
+              <p data-field="visibility" class="hp-visibility"></p>
+            </div>
+            <div class="hp-controls">
+              <button type="button" class="sg-btn sg-btn-ghost" data-action="up">Move up</button>
+              <button type="button" class="sg-btn sg-btn-ghost" data-action="down">Move down</button>
+            </div>
+          </div>
+          <details class="hp-details">
+            <summary data-action="edit">Edit photo</summary>
+            <form class="hp-fields" data-form="edit">
+              <fieldset>
+                <label>Title<input type="text" class="sg-input" name="title" maxlength="100" required></label>
+                <label>Image description<input type="text" class="sg-input" name="altText" maxlength="180" required></label>
+                <label>Photographer credit <span>(optional)</span><input type="text" class="sg-input" name="credit" maxlength="120"></label>
+                <label class="sg-switch-field"><input name="active" type="checkbox" role="switch"><span>Visible on homepage</span><span class="sg-switch-track" aria-hidden="true"></span></label>
+                <button type="submit" data-action="save" class="sg-btn sg-btn-primary">Save details</button>
+              </fieldset>
+            </form>
+            <form class="hp-fields hp-replace" data-form="replace">
+              <fieldset>
+                <label>Replacement photo<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>
+                <button type="submit" data-action="replace" class="sg-btn sg-btn-ghost">Replace image</button>
+              </fieldset>
+            </form>
+            <button type="button" data-action="remove" class="sg-btn sg-btn-danger">Remove from gallery</button>
+          </details>
+        </li>
+      </template>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin-shell.js"></script>
+  <script src="/js/admin-homepage-photography.js"></script>
+</body>
+</html>

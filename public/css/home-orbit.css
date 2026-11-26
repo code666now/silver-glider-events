@@ -1,0 +1,501 @@
+/* The homepage is an editorial canvas, separate from the signed-in shell. */
+.sg-home-page {
+  --ho-canvas: #101010;
+  --ho-ink: #f6f5f2;
+  --ho-muted: #aaa;
+  --ho-line: #ffffff20;
+  --ho-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --ho-gutter: clamp(18px, 4vw, 64px);
+  color-scheme: dark;
+  background: var(--ho-canvas);
+  color: var(--ho-ink);
+  min-width: 280px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.sg-home-page .feedback-bubble { display: none; }
+.home-orbit-page {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100svh;
+  flex-direction: column;
+  background: radial-gradient(ellipse at center, #1c1c1c 0%, #121212 54%, #0d0d0d 100%);
+}
+.home-orbit-page.is-orbit-enhanced {
+  height: 100vh;
+  height: 100svh;
+  min-height: 650px;
+}
+.home-orbit-page :is(a, button, summary):focus-visible,
+.home-orbit-dialog :is(a, button):focus-visible {
+  outline: 2px solid var(--sg-accent);
+  outline-offset: 4px;
+}
+
+/* Signed-out is also the useful no-JS navigation. The account shell
+   replaces it with the existing responsive menu after a session check. */
+.home-orbit-topbar {
+  position: relative;
+  z-index: 12;
+  display: flex;
+  flex: 0 0 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-inline: var(--ho-gutter);
+}
+.home-orbit-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ho-ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -.045em;
+  white-space: nowrap;
+}
+.home-orbit-brand img { width: 45px; height: 45px; object-fit: contain; }
+.home-orbit-brand small {
+  display: block;
+  margin-top: 3px;
+  color: #b6b6b6;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .21em;
+  text-transform: uppercase;
+}
+.sg-home-account-shell { min-width: 86px; min-height: 48px; display: flex; justify-content: flex-end; align-items: center; }
+.sg-home-account-shell [hidden] { display: none !important; }
+.sg-home-signin {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ffffff40;
+  border-radius: 30px;
+  padding: 9px 20px;
+  color: var(--ho-ink);
+  font-size: 13px;
+  transition: background-color .2s, color .2s;
+}
+.sg-home-authenticated { display: flex; align-items: center; }
+.sg-home-mobile-controls { display: none; align-items: center; gap: 8px; }
+.sg-home-mobile-profile {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--sg-border);
+  border-radius: 50%;
+  background: #ffffff09;
+  color: var(--sg-text);
+}
+.sg-home-mobile-profile img { width: 100%; height: 100%; object-fit: cover; }
+.sg-home-mobile-profile [data-sg-initials] { font-size: 12px; font-weight: 800; }
+
+.home-orbit-stage { position: relative; isolation: isolate; flex: 1; min-height: 0; }
+.home-orbit-hero {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  width: min(650px, calc(100% - 36px));
+  margin: clamp(36px, 8vh, 110px) auto 30px;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.home-orbit-hero-label {
+  margin: 0 0 19px;
+  color: #b9c6c8;
+  font: 10px/1.5 var(--ho-mono);
+  letter-spacing: .24em;
+  text-transform: uppercase;
+}
+.home-orbit-hero h1 {
+  margin: 0;
+  font: 750 clamp(39px, 4.5vw, 78px)/.99 Arial, Helvetica, sans-serif;
+  letter-spacing: -.068em;
+  text-wrap: balance;
+}
+.home-orbit-hero h1 span { color: #b9bdbe; }
+.home-orbit-cta {
+  display: inline-flex;
+  min-height: 47px;
+  margin-top: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 25px;
+  padding: 13px 25px;
+  border-radius: 7px;
+  background: #f2f2ef;
+  color: #101010;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  transition: background-color .2s, transform .2s;
+}
+.home-orbit-cta span { font-size: 17px; font-weight: 400; }
+.home-orbit-cta:active { background: var(--sg-accent); }
+.home-orbit-free { margin: 12px 0 0; color: var(--ho-muted); font-size: 12px; }
+
+/* Static gallery first. With scripts disabled (or an empty/one-photo setup)
+   the headline and event action still lead, and the pictures don't move. */
+.home-orbit-gallery {
+  display: grid;
+  width: min(890px, calc(100% - 36px));
+  margin: 0 auto 44px;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 124px));
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+.home-orbit-gallery:empty { display: none; }
+.home-orbit-photo {
+  --ho-frame-edge: clamp(4px, .6vw, 8px);
+  --ho-frame-bottom: clamp(10px, 1.5vw, 20px);
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: var(--ho-frame-edge) var(--ho-frame-edge) var(--ho-frame-bottom);
+  overflow: hidden;
+  border: 0;
+  border-radius: 1px;
+  background: #eeeae1;
+  color: #141414;
+  box-shadow: 0 10px 28px #0007;
+  font: inherit;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.home-orbit-photo:not(:disabled) { cursor: pointer; }
+.home-orbit-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+  background: #252525;
+  filter: saturate(.75) contrast(1.06);
+  pointer-events: none;
+}
+.home-orbit-photo img[hidden] { display: none; }
+.home-orbit-photo-label {
+  position: absolute;
+  inset: auto var(--ho-frame-edge) var(--ho-frame-bottom);
+  padding: 15px 8px 7px;
+  background: linear-gradient(transparent, #000d);
+  color: white;
+  font: 8px/1.4 var(--ho-mono);
+  letter-spacing: .08em;
+  text-align: left;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.home-orbit-photo:is(:hover, :focus-visible) .home-orbit-photo-label { opacity: 1; }
+.home-orbit-photo.is-image-missing .home-orbit-photo-label {
+  position: static;
+  display: block;
+  padding: 8px;
+  background: transparent;
+  color: #272727;
+  opacity: 1;
+}
+
+/* One rotating ring in a 3D plane. Per-frame geometry is assigned by the
+   trusted local script via CSS properties, with no inline handlers. */
+.is-orbit-enhanced .home-orbit-stage {
+  overflow: hidden;
+  perspective: 1600px;
+  perspective-origin: 50% 50%;
+}
+.is-orbit-enhanced .home-orbit-hero {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: min(54vw, 650px);
+  margin: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.is-orbit-enhanced .home-orbit-hero::before {
+  position: absolute;
+  inset: -45px -30px;
+  z-index: -1;
+  background: radial-gradient(ellipse, #151515 0%, #151515ed 45%, #15151500 75%);
+  content: "";
+}
+.is-orbit-enhanced .home-orbit-hero a { pointer-events: auto; }
+.is-orbit-enhanced .home-orbit-gallery {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: auto;
+  margin: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.is-orbit-enhanced .home-orbit-photo {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: var(--ho-depth, 1);
+  width: var(--ho-photo-width, 100px);
+  height: var(--ho-photo-height, 100px);
+  opacity: var(--ho-opacity, 1);
+  box-shadow: 0 var(--ho-shadow-y, 10px) var(--ho-shadow-blur, 28px) rgb(0 0 0 / var(--ho-shadow-opacity, .45));
+  transform: translate(-50%, -50%) translate3d(var(--ho-x, 0px), var(--ho-y, 0px), var(--ho-z, 0px))
+    rotate(var(--ho-tilt, 0deg)) scale(var(--ho-scale, 1));
+  transform-origin: center;
+  backface-visibility: hidden;
+  filter: brightness(var(--ho-brightness, 1));
+  will-change: transform, opacity;
+  pointer-events: auto;
+}
+.is-orbit-enhanced .home-orbit-photo img { height: 100%; }
+.is-orbit-enhanced .home-orbit-photo:focus-visible {
+  z-index: 200;
+  opacity: 1;
+  filter: none;
+  transform: translate(-50%, -50%) translate3d(var(--ho-focus-x), var(--ho-focus-y), var(--ho-z))
+    rotate(var(--ho-tilt)) scale(var(--ho-scale));
+}
+@media (hover: hover) and (pointer: fine) {
+  .is-orbit-enhanced .home-orbit-photo:not(:disabled) { cursor: url("/img/home/orbit-cursor.png") 29 6, pointer; }
+}
+@media (hover: hover) {
+  .is-orbit-enhanced .home-orbit-photo:hover { box-shadow: 0 0 0 1px #ffffffba, 0 12px 40px #000b; }
+  .sg-home-signin:hover { background: white; color: #101010; }
+  .home-orbit-cta:hover { background: var(--sg-accent); transform: translateY(-2px); }
+}
+
+.home-orbit-footer {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  padding: 0 var(--ho-gutter) 8px;
+}
+.home-orbit-footer-main {
+  display: grid;
+  min-height: 47px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 14px;
+}
+.home-orbit-footer-note {
+  color: var(--ho-muted);
+  font: 9px/1.5 var(--ho-mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.home-orbit-credits { position: relative; width: fit-content; }
+.home-orbit-credits:has(.home-orbit-credits-list:empty) { display: none; }
+.home-orbit-credits summary {
+  display: flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.home-orbit-credits summary::-webkit-details-marker { display: none; }
+.home-orbit-credits-list {
+  position: absolute;
+  inset: auto auto calc(100% + 6px) 0;
+  width: min(290px, 82vw);
+  max-height: min(300px, 42vh);
+  overflow: auto;
+  padding: 12px 16px;
+  border: 1px solid var(--ho-line);
+  border-radius: 8px;
+  background: #181818;
+  color: #ddd;
+  font: 12px/1.5 Arial, Helvetica, sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+.home-orbit-credits-list li + li { margin-top: 7px; }
+.home-orbit-credits-list a { color: var(--ho-ink); text-decoration: underline; }
+.home-orbit-footer-nav { display: flex; align-items: center; justify-content: center; gap: 16px; white-space: nowrap; }
+.home-orbit-footer-nav a {
+  padding: 10px 0;
+  color: #d7d7d4;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.home-orbit-footer-separator { color: #777; font-size: 12px; }
+.home-orbit-weekly { color: var(--ho-muted); }
+.home-orbit-footer-nav a:hover .home-orbit-weekly { color: inherit; }
+.home-orbit-footer-tools { justify-self: end; }
+.home-orbit-pause {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ho-ink);
+  cursor: pointer;
+  font: 12px/1 Arial, Helvetica, sans-serif;
+}
+.home-orbit-pause[hidden] { display: none; }
+.home-orbit-pause span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #ffffff40;
+  border-radius: 50%;
+}
+.home-orbit-pause:hover span { border-color: white; }
+.home-orbit-social { display: flex; flex-direction: column; align-items: center; }
+.home-orbit-social-link { display: grid; width: 44px; height: 36px; place-items: center; color: var(--ho-muted); }
+.home-orbit-social-link svg { width: 20px; height: 20px; }
+.home-orbit-legal { display: flex; align-items: center; justify-content: center; gap: 9px; color: #727272; }
+.home-orbit-legal a { padding: 5px 0 7px; color: var(--ho-muted); font-size: 10px; }
+.home-orbit-footer a:hover, .home-orbit-credits summary:hover { color: var(--sg-accent); }
+
+.home-orbit-dialog {
+  width: min(92vw, 580px);
+  max-width: none;
+  max-height: 90svh;
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #161616;
+  color: var(--ho-ink);
+}
+.home-orbit-dialog::backdrop { background: #000d; }
+/* A footer fragment link still exposes the editorial content without JS. */
+.home-orbit-dialog:target:not([open]) {
+  position: relative;
+  inset: auto;
+  display: block;
+  max-height: none;
+  margin: 0 auto 28px;
+}
+.home-orbit-info { padding: 24px clamp(18px, 5vw, 38px) 34px; }
+.home-orbit-dialog :is(h2, h3) { font-family: Arial, Helvetica, sans-serif; }
+.home-orbit-close {
+  display: flex;
+  width: fit-content;
+  min-height: 44px;
+  margin: 0 0 12px auto;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid #555;
+  border-radius: 5px;
+  color: var(--ho-ink);
+  font-size: 13px;
+}
+.home-orbit-info > h2 { margin: 4px 0 26px; font-size: 34px; letter-spacing: -.055em; }
+.home-orbit-info .feature-list-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.home-orbit-info :is(.feature-list-title, .feature-list-range, .home-regulars-kicker) {
+  color: var(--ho-muted);
+  font: 10px/1.5 var(--ho-mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.home-orbit-info .features { padding: 0; margin: 10px 0 0; border-bottom: 1px solid var(--ho-line); list-style: none; }
+.home-orbit-info .feature {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding: 15px 0;
+  border-top: 1px solid var(--ho-line);
+}
+.home-orbit-info .feature-number { color: var(--sg-accent); font: 12px/1.5 var(--ho-mono); }
+.home-orbit-info .feature p { color: #b7b7b4; font-size: 13px; line-height: 1.55; }
+.home-orbit-info .feature strong { display: block; color: var(--ho-ink); font-size: 14px; }
+.home-orbit-info .home-regulars { margin: 29px 0 25px; }
+.home-orbit-info .home-regulars h3 { margin: 9px 0; font-size: 25px; letter-spacing: -.045em; }
+.home-orbit-info .home-regulars-intro { color: var(--ho-muted); font-size: 13px; line-height: 1.5; }
+.home-orbit-info .home-faces { display: grid; margin: 20px 0 0; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.home-orbit-info .home-face { display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+.home-orbit-info .home-face-avatar {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid #ffffff26;
+  border-radius: 50%;
+  background: #292929;
+  color: #eee;
+  font-size: 19px;
+  font-weight: bold;
+}
+.home-orbit-info .home-face-name { font-size: 11px; font-weight: bold; }
+.home-orbit-info .home-face-visit { color: var(--ho-muted); font-size: 9px; }
+.home-orbit-info .home-face-visit.is-returning { color: var(--sg-accent); }
+.home-orbit-dialog-cta { margin: 0; }
+
+@media (max-width: 900px) {
+  .home-orbit-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; }
+  .home-orbit-footer-main { display: contents; }
+  .home-orbit-footer-nav { grid-area: 1 / 1 / 2 / -1; flex-wrap: wrap; gap: 12px; white-space: normal; }
+  .home-orbit-social { grid-area: 2 / 1 / 3 / -1; justify-self: center; }
+  .home-orbit-footer-note { grid-area: 3 / 1 / 4 / 2; margin: 4px 0; }
+  .home-orbit-footer-tools { grid-area: 3 / 2 / 4 / 3; margin: 4px 0; }
+  .home-orbit-footer-nav a { padding: 8px 0; }
+}
+@media (max-width: 879px) {
+  .sg-home-authenticated > .sg-account-menu { display: none; }
+  .sg-home-mobile-controls { display: flex; }
+}
+@media (max-width: 700px) {
+  .sg-home-page { --ho-gutter: 17px; }
+  .home-orbit-page.is-orbit-enhanced { min-height: 660px; }
+  .home-orbit-topbar { flex-basis: 62px; }
+  .home-orbit-brand { gap: 6px; font-size: 13px; }
+  .home-orbit-brand img { width: 39px; height: 39px; }
+  .home-orbit-brand small { font-size: 8px; }
+  .sg-home-signin { padding: 8px 15px; font-size: 12px; }
+  .is-orbit-enhanced .home-orbit-hero { width: min(76vw, 355px); }
+  .is-orbit-enhanced .home-orbit-hero::before { inset: -35px -20px; }
+  .home-orbit-hero-label { margin-bottom: 15px; font-size: 9px; letter-spacing: .2em; }
+  .home-orbit-hero h1 { font-size: clamp(32px, 8.7vw, 50px); line-height: 1.02; }
+  .home-orbit-cta { min-height: 44px; margin-top: 22px; gap: 16px; padding: 11px 19px; font-size: 13px; }
+  .home-orbit-dialog-cta { margin-top: 0; }
+  .home-orbit-free { margin-top: 9px; font-size: 11px; }
+  .home-orbit-photo { --ho-frame-edge: 4px; --ho-frame-bottom: 11px; }
+  .home-orbit-footer { padding-bottom: 6px; }
+  .home-orbit-footer-nav { gap: 9px; }
+  .home-orbit-footer-nav a { font-size: 11px; }
+  .home-orbit-footer-note { font-size: 8px; letter-spacing: .04em; }
+  .home-orbit-footer-separator { font-size: 10px; }
+  .home-orbit-legal { gap: 6px; }
+  .home-orbit-pause span { width: 29px; height: 29px; }
+  .home-orbit-info .home-face-avatar { width: 36px; height: 36px; }
+  .home-orbit-info .home-face-visit { font-size: 8px; }
+}
+@media (max-height: 650px) and (min-width: 701px) {
+  .home-orbit-page.is-orbit-enhanced { min-height: 580px; }
+  .home-orbit-topbar { flex-basis: 56px; }
+  .home-orbit-hero h1 { font-size: clamp(36px, 4vw, 60px); }
+  .home-orbit-hero-label { margin-bottom: 12px; }
+  .home-orbit-cta { margin-top: 18px; }
+  .home-orbit-dialog-cta { margin-top: 0; }
+  .home-orbit-free { margin-top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-orbit-page *, .home-orbit-dialog * { transition: none !important; }
+  .home-orbit-cta:hover { transform: none; }
+  .is-orbit-enhanced .home-orbit-photo { will-change: auto; }
+}

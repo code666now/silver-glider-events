@@ -6909,7 +6909,7 @@ test('a bookmarked /events/:id lands on the manage page, and Create your event o
 
   // Unchanged flow: the home CTA still goes through sign-in, but lands in the builder.
   const home = await (await fetch(`${baseUrl}/`)).text();
-  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard" hidden>Sign in/);
+  assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard">Sign in/);
   assert.match(home, /href="\/login\?next=%2Fevents%2Fnew"[^>]*>Create your event</);
   const signedInLogin = await fetch(`${baseUrl}/login?next=%2Fevents%2Fnew`, { headers: { cookie }, redirect: 'manual' });
   assert.equal(signedInLogin.headers.get('location'), '/events/new');
@@ -7141,6 +7141,7 @@ test('dedicated admin operators sign in without enumerating unknown or disabled 
       manageFlyerIntake: true,
       manageOperators: true,
       manageBackgrounds: true,
+      manageHomepagePhotography: true,
       moderateEvents: true
     }
   });
@@ -7548,6 +7549,45 @@ test('operator roster protects self/final Super Admin and explicitly revokes tar
   ]);
   assert.equal(audit[2].actor_email, actor.email);
   assert.equal(audit[2].target_email, support.email);
+});
+
+test('Homepage Photography is Super Admin only and changes the public gallery without redeploying', async t => {
+  resetRateLimits();
+  const pagePath = `${baseUrl}/admin/homepage-photography`;
+  const apiPath = `${baseUrl}/api/admin/homepage-photography`;
+  const signedOut = await fetch(pagePath, { redirect: 'manual' });
+  assert.equal(signedOut.status, 302);
+  assert.equal(signedOut.headers.get('location'), '/admin/login?next=%2Fadmin%2Fhomepage-photography');
+  const helper = await createAdminOperator('homepage-gallery-support@example.test', 'support');
+  const supportCookie = await signInAdminOperator(helper.email);
+  assert.equal((await fetch(pagePath, { redirect: 'manual', headers: { cookie: supportCookie } })).headers.get('location'), '/admin/accounts');
+  assert.equal((await fetch(apiPath, { headers: { cookie: supportCookie } })).status, 403);
+  const admin = await createAdminOperator('homepage-gallery-super@example.test');
+  const cookie = await signInAdminOperator(admin.email);
+  const page = await fetch(pagePath, { headers: { cookie } });
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('cache-control'), /no-store/);
+  assert.match(await page.text(), /Homepage Photography/);
+  const { photos } = await (await fetch(apiPath, { headers: { cookie } })).json();
+  assert.equal(photos.length, 7);
+  const poster = photos.at(-1);
+  assert.match(poster.imageUrl, /hqdr-make-out-room\.webp$/);
+  t.after(() => pool.query('UPDATE homepage_photos SET active=$2, credit=$3 WHERE id=$1', [poster.id, poster.active, poster.credit]));
+  const homepage = async () => {
+    const response = await fetch(`${baseUrl}/`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('cache-control'), /no-cache/);
+    return response.text();
+  };
+  assert.equal((await homepage()).match(/class="home-orbit-photo"/g).length, 7);
+  const update = fields => fetch(`${apiPath}/${poster.id}`, { method: 'PATCH',
+    headers: { cookie, origin: baseUrl, 'content-type': 'application/json' }, body: JSON.stringify(fields) });
+  assert.equal((await update({ credit: 'A & <Photographer>' })).status, 200);
+  assert.match(await homepage(), /A &amp; &lt;Photographer&gt;/);
+  assert.equal((await update({ active: false })).status, 200);
+  const hidden = await homepage();
+  assert.equal(hidden.match(/class="home-orbit-photo"/g).length, 6);
+  assert.doesNotMatch(hidden, /hqdr-make-out-room\.webp|&lt;Photographer&gt;/);
 });
 
 test('Transportation is dedicated-admin only and its saved rollout is a same-origin Super Admin action', async t => {

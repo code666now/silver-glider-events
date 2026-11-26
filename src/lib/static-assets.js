@@ -62,6 +62,7 @@ function sendHtmlFile(res, filePath) {
 
 module.exports = {
   markVersionedAssetRequest,
+  readHtmlFile,
   sendHtmlFile,
   setStaticCacheHeaders,
   versionAssetUrls,

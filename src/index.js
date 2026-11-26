@@ -10,9 +10,12 @@ const { renderLegalPage } = require('./lib/legal-pages');
 const { registerLegalPolicyVersions, legalAcceptanceState, acceptanceRedirect } = require('./lib/legal-acceptance');
 const { esc } = require('./lib/public-html');
 const { inspectCriticalPublicAssets } = require('./lib/critical-assets');
+const { listActive: listHomepagePhotos } = require('./lib/homepage-photography');
+const { renderHomeOrbit } = require('./lib/home-orbit-html');
 const { version: APP_VERSION } = require('../package.json');
 const {
   markVersionedAssetRequest,
+  readHtmlFile,
   sendHtmlFile,
   setStaticCacheHeaders,
   versionHtmlResponses
@@ -103,6 +106,7 @@ app.use(require('./routes/public-hosts'));
 app.use(require('./routes/getting-home').createGettingHomeRouter());
 app.use(require('./routes/public'));
 app.use(require('./routes/admin-transportation'));
+app.use(require('./routes/admin-homepage-photography'));
 app.use(require('./routes/admin'));
 app.use(require('./routes/admin-identity-changes'));
 app.use(require('./routes/admin-accounts'));
@@ -115,7 +119,14 @@ const { clearSessionCookie } = require('./lib/session');
 const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-session');
 
 // Public pages
-app.get('/', view('index.html'));
+app.get('/', async (_req, res) => {
+  const template = readHtmlFile(path.join(VIEWS, 'index.html'));
+  // A temporary gallery failure must not block login or creating an event.
+  // Do not restore seed photos at runtime after an admin hides or removes them.
+  const photos = await listHomepagePhotos({ db: pool }).catch(() => []);
+  res.set('Cache-Control', 'no-cache');
+  return res.type('html').send(renderHomeOrbit(template, photos));
+});
 app.get('/recs', view('recs.html'));
 app.get('/flyer', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
@@ -282,6 +293,10 @@ app.get('/admin/transportation', requireAdmin, requireAdmin.requireDedicatedAdmi
   return sendHtmlFile(res, path.join(VIEWS, 'admin-transportation.html'));
 });
 app.get('/admin/backgrounds', requireAdmin, requireAdmin.requireSuperAdmin, view('admin-backgrounds.html'));
+app.get('/admin/homepage-photography', requireAdmin, requireAdmin.requireDedicatedAdmin, requireAdmin.requireSuperAdmin, (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  return sendHtmlFile(res, path.join(VIEWS, 'admin-homepage-photography.html'));
+});
 app.get('/admin/ticketing', requireAdmin, view('admin-ticketing.html'));
 app.get('/admin/feedback', requireAdmin, view('admin-feedback.html'));
 app.get('/admin/invitations', requireAdmin, view('admin-invitations.html'));

@@ -10,6 +10,7 @@
     '/admin/events': 'events',
     '/admin/transportation': 'transportation',
     '/admin/backgrounds': 'backgrounds',
+    '/admin/homepage-photography': 'homepage-photography',
     '/admin/ticketing': 'ticketing',
     '/admin/feedback': 'feedback',
     '/admin/invitations': 'invitations',
@@ -23,6 +24,7 @@
     ['events', '/admin/events', 'Events'],
     ['transportation', '/admin/transportation', 'Transportation'],
     ['backgrounds', '/admin/backgrounds', 'Backgrounds'],
+    ['homepage-photography', '/admin/homepage-photography', 'Homepage Photography'],
     ['ticketing', '/admin/ticketing', 'Ticketing'],
     ['feedback', '/admin/feedback', 'Feedback'],
     ['invitations', '/admin/invitations', 'Invitations'],
@@ -45,7 +47,7 @@
   sidebar.innerHTML = `
     <span class="admin-sidebar-label">Workspace</span>
     <nav class="admin-sidebar-links">
-      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${['team', 'done-for-you', 'backgrounds'].includes(key) ? ' hidden' : ''}>${label}</a>`).join('')}
+      ${links.map(([key, href, label]) => `<a class="admin-sidebar-link" data-admin-link="${key}" href="${href}"${key === active ? ' aria-current="page"' : ''}${['team', 'done-for-you', 'backgrounds', 'homepage-photography'].includes(key) ? ' hidden' : ''}>${label}</a>`).join('')}
     </nav>`;
 
   const content = document.createElement('div');
@@ -77,6 +79,11 @@
     if (doneForYouLink) doneForYouLink.hidden = !canManageDoneForYou;
     const backgroundsLink = sidebar.querySelector('[data-admin-link="backgrounds"]');
     if (backgroundsLink) backgroundsLink.hidden = capabilities.manageBackgrounds !== true;
+    const photographyLink = sidebar.querySelector('[data-admin-link="homepage-photography"]');
+    if (photographyLink) photographyLink.hidden = capabilities.manageHomepagePhotography !== true;
+    if (active === 'homepage-photography' && photographyLink && !photographyLink.hidden && window.matchMedia('(max-width: 960px)').matches) {
+      photographyLink.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
+    }
     if (active === 'backgrounds' && backgroundsLink && !backgroundsLink.hidden && window.matchMedia('(max-width: 960px)').matches) {
       backgroundsLink.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'auto' });
     }

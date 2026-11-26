@@ -1,5 +1,6 @@
 const cloudinary = require('cloudinary').v2;
 const { Readable } = require('stream');
+const { randomBytes } = require('node:crypto');
 
 const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 const configured = !!(cloudName && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
@@ -17,6 +18,7 @@ const eventPhotoFolder = process.env.CLOUDINARY_EVENT_PHOTO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/event-photos' : 'sg-events-dev/event-photos');
 const vibePhotoFolder = process.env.CLOUDINARY_VIBE_PHOTO_FOLDER ||
   (process.env.NODE_ENV === 'production' ? 'sg-events/vibes' : 'sg-events-dev/vibes');
+const homepagePhotoFolder = process.env.NODE_ENV === 'production' ? 'sg-events/homepage-photography' : 'sg-events-dev/homepage-photography';
 
 if (configured) {
   cloudinary.config({
@@ -142,6 +144,40 @@ async function uploadVibePhoto(buffer) {
   });
 }
 
+async function uploadHomepagePhoto(buffer) {
+  if (!configured) throw Object.assign(new Error('Image uploads are not configured'), { status: 503 });
+  const publicId = `${homepagePhotoFolder}/${randomBytes(16).toString('hex')}`;
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { public_id: publicId, overwrite: false, resource_type: 'image', type: 'upload', format: 'webp', timeout: 25_000 },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    Readable.from(buffer).pipe(stream);
+  });
+}
+
+function homepagePhotoPublicIdFromUrl(value) {
+  if (typeof value !== 'string' || value.length > 600 || !value.startsWith('https://res.cloudinary.com/') || /[\s\\%]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (!cloudName || url.href !== value || url.origin !== 'https://res.cloudinary.com' || url.username || url.password || url.search || url.hash) return null;
+    const prefix = `/${cloudName}/image/upload/`;
+    if (!url.pathname.startsWith(prefix)) return null;
+    const matched = /^v\d+\/(.+)\.webp$/.exec(url.pathname.slice(prefix.length));
+    return matched && isHomepagePhotoPublicId(matched[1]) ? matched[1] : null;
+  } catch { return null; }
+}
+
+function isHomepagePhotoPublicId(publicId) {
+  return typeof publicId === 'string' && publicId.startsWith(`${homepagePhotoFolder}/`) && /^[0-9a-f]{32}$/.test(publicId.slice(homepagePhotoFolder.length + 1));
+}
+
+async function deleteUnattachedHomepagePhoto(publicId) {
+  if (!configured || !isHomepagePhotoPublicId(publicId)) return false;
+  await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+  return true;
+}
+
 function isManagedVibePhotoUrl(value) {
   try {
     const url = new URL(String(value || ''));
@@ -235,6 +271,7 @@ async function deleteManagedImageUrl(value) {
 module.exports = {
   setManagedImageDelivery,
   uploadCover, uploadFlyer, uploadHostHeader, uploadHostLogo, uploadAccountAvatar,
-  uploadEventPhoto, uploadVibePhoto, deleteEventPhoto, deleteManagedImageUrl, deleteManagedPublicId,
+  uploadEventPhoto, uploadVibePhoto, uploadHomepagePhoto, homepagePhotoPublicIdFromUrl, deleteUnattachedHomepagePhoto,
+  deleteEventPhoto, deleteManagedImageUrl, deleteManagedPublicId,
   isManagedFlyerUrl, isManagedVibePhotoUrl, isManagedPublicId, managedPublicIdFromUrl, configured
 };
