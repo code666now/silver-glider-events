@@ -119,14 +119,19 @@ const { clearSessionCookie } = require('./lib/session');
 const { loadAdminOperator, clearAdminSessionCookie } = require('./lib/admin-session');
 
 // Public pages
-app.get('/', async (_req, res) => {
-  const template = readHtmlFile(path.join(VIEWS, 'index.html'));
-  // A temporary gallery failure must not block login or creating an event.
-  // Do not restore seed photos at runtime after an admin hides or removes them.
-  const photos = await listHomepagePhotos({ db: pool }).catch(() => []);
-  res.set('Cache-Control', 'no-cache');
-  return res.type('html').send(renderHomeOrbit(template, photos));
-});
+function homeOrbitPage({ flyerIntake = false } = {}) {
+  return async (_req, res) => {
+    const template = readHtmlFile(path.join(VIEWS, 'index.html'));
+    // A temporary gallery failure must not block the page's primary action.
+    // Do not restore seed photos at runtime after an admin hides or removes them.
+    const photos = await listHomepagePhotos({ db: pool }).catch(() => []);
+    res.set('Cache-Control', 'no-cache');
+    if (flyerIntake) res.set('X-Robots-Tag', 'noindex, follow');
+    return res.type('html').send(renderHomeOrbit(template, photos, { flyerIntake }));
+  };
+}
+app.get('/', homeOrbitPage());
+app.get('/send-your-flyer', homeOrbitPage({ flyerIntake: true }));
 app.get('/recs', view('recs.html'));
 app.get('/how-it-works', view('how-it-works.html'));
 app.get('/flyer', (req, res) => {

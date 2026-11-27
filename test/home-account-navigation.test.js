@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { renderHomeOrbit } = require('../src/lib/home-orbit-html');
 
 const root = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -17,7 +18,7 @@ test('homepage gives returning users an account entry and keeps both real auth r
   assert.match(styles, /\.sg-home-account-shell \[hidden\] \{ display: none !important; \}/);
   assert.doesNotMatch(styles, /data-loading="true"[^}]*visibility: hidden/);
   assert.match(home, /data-home-signin href="\/login\?next=%2Fdashboard">Sign in/);
-  assert.match(home, /class="sg-btn sg-btn-primary home-orbit-cta" href="\/login\?next=%2Fevents%2Fnew">Create your event<\/a>/);
+  assert.match(renderHomeOrbit(home, []), /class="sg-btn sg-btn-primary home-orbit-cta" href="\/login\?next=%2Fevents%2Fnew">Create your event<\/a>/);
   assert.match(home, /src="\/js\/api\.js" defer/);
   assert.match(home, /src="\/js\/home-account-nav\.js" defer/);
 
@@ -63,7 +64,7 @@ test('homepage keeps the orbit composition without shipping prototype controls o
   const photos = home.indexOf('<!-- HOME_ORBIT_PHOTOS -->');
   assert.ok(hero > 0 && photos > hero && photos < home.indexOf('</main>'));
   assert.match(home, /<h1 id="home-orbit-title">You have a&nbsp;personality\.<br><span>Your events should&nbsp;too\.<\/span><\/h1>/);
-  assert.equal((home.split('</main>')[0].match(/href="\/login\?next=%2Fevents%2Fnew"/g) || []).length, 1);
+  assert.equal((renderHomeOrbit(home, []).split('</main>')[0].match(/href="\/login\?next=%2Fevents%2Fnew"/g) || []).length, 1);
   assert.match(home, /aria-label="Event photos"><!-- HOME_ORBIT_PHOTOS -->/);
   assert.match(home, /<summary>Photo credits<\/summary>[\s\S]*<!-- HOME_ORBIT_CREDITS -->/);
   assert.doesNotMatch(home, /data-home-orbit-pause|data-home-orbit-motion|home-orbit-footer-tools/);

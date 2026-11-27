@@ -7566,6 +7566,34 @@ test('the homepage links to a signed-out How it works page instead of a popup', 
   assert.match(page, /href="\/login\?next=%2Fevents%2Fnew">Create your event/);
 });
 
+test('the separate flyer landing page reuses the homepage with only its primary action changed', async () => {
+  const home = await fetch(`${baseUrl}/`, { redirect: 'manual' });
+  const landing = await fetch(`${baseUrl}/send-your-flyer`, { redirect: 'manual' });
+  assert.equal(home.status, 200);
+  assert.equal(landing.status, 200);
+  assert.equal(home.headers.get('x-robots-tag'), null);
+  assert.equal(landing.headers.get('x-robots-tag'), 'noindex, follow');
+  assert.equal(landing.headers.get('cache-control'), home.headers.get('cache-control'));
+
+  const homeHtml = await home.text();
+  const landingHtml = await landing.text();
+  const createAction = 'class="sg-btn sg-btn-primary home-orbit-cta" href="/login?next=%2Fevents%2Fnew">Create your event</a>';
+  const flyerAction = 'class="sg-btn sg-btn-primary home-orbit-cta" href="/flyer">Send us your flyer</a>';
+  assert.ok(homeHtml.includes(createAction));
+  assert.equal(landingHtml.split(flyerAction).length, 2);
+  assert.equal(landingHtml, homeHtml.replace(createAction, flyerAction));
+  assert.equal(await (await fetch(`${baseUrl}/`)).text(), homeHtml);
+  assert.equal(await (await fetch(`${baseUrl}/send-your-flyer/`)).text(), landingHtml);
+
+  const intake = await fetch(new URL('/flyer', landing.url), { redirect: 'manual' });
+  assert.equal(intake.status, 200);
+  const intakeHtml = await intake.text();
+  for (const heading of ['Share your own event page', 'Collect RSVPs', 'Grow your following']) {
+    assert.ok(intakeHtml.includes(`<h2>${heading}</h2>`));
+  }
+  assert.match(intakeHtml, /id="flyer-intake-form"/);
+});
+
 test('Homepage Photography is Super Admin only and changes the public gallery without redeploying', async t => {
   resetRateLimits();
   const pagePath = `${baseUrl}/admin/homepage-photography`;

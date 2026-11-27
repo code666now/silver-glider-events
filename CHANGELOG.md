@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.236
+
+Released November 27, 2026.
+
+* Add the shareable `/send-your-flyer` page. It matches the homepage, with **Send us your flyer** as its main button. The main homepage and the existing flyer intake page stay unchanged.
+
 ## 1.0.235
 
 Released November 26, 2026.

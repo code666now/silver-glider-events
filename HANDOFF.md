@@ -2,6 +2,11 @@
 
 **Last updated:** November 18, 2026 (Desktop portrait background composition, v1.0.210)
 
+## Flyer landing page (v1.0.236)
+
+- `/send-your-flyer` is a direct-link-only version of the current Polaroid homepage. Both routes use `src/views/index.html`, the same active photos and credits, and the same assets and account navigation. Only the main action differs: **Send us your flyer** links to `/flyer`. The original `/` still says **Create your event** and does not promote the new page.
+- `/flyer` retains the three illustrated benefit cards and existing intake form, consent, validation and API. No tracking, redirects, migrations or messaging changes. Keep live verification read-only; do not submit a flyer.
+
 ## Current release — Desktop portrait background composition (v1.0.210)
 
 User rejected the narrow portrait strip/black gutters in 1.0.209 and approved correcting desktop appearance, testing and deployment. This supersedes the earlier note that dark side space is expected.
