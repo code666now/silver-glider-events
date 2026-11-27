@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.235
+
+Released November 26, 2026.
+
+* Use the local Arial font stack across the web app. Keep tighter editorial typography on the homepage headline and the existing spacing in forms and app screens. Email templates, event artwork, and the brand palette stay as they are.
+
 ## 1.0.234
 
 Released November 26, 2026.

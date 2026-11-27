@@ -86,11 +86,19 @@ test('the homepage uses the shared logo, typography and pills with teal pointer,
   assert.match(home, /class="sg-btn sg-btn-ghost sg-home-signin"/);
   assert.match(home, /class="sg-btn sg-btn-primary home-orbit-cta"/);
   assert.match(styles, /\.sg-home-page \{[^}]*font-family: var\(--sg-font-body\)/);
-  assert.match(styles, /\.home-orbit-hero h1 \{[^}]*font: 700 [^;]*var\(--sg-font-display\)/);
+  assert.match(styles, /\.home-orbit-hero h1 \{[^}]*font: 750 [^;]*var\(--sg-font-display\);\s*letter-spacing: -\.068em/);
   assert.match(styles, /\.home-orbit-cta \{[^}]*background: #f2f2ef/);
   assert.match(styles, /\.home-orbit-cta:active \{ background: var\(--sg-accent\); transition: none;/);
   assert.match(styles, /\.home-orbit-cta:focus-visible \{ background: var\(--sg-accent\)/);
   assert.match(styles, /@media \(hover: hover\) \{[^\n]*\n[^\n]*\n\s*\.home-orbit-cta:hover \{ background: var\(--sg-accent\)/);
+});
+
+test('the web app shares the local Arial stack, including the theme swatches', () => {
+  const brand = read('public/css/brand.css');
+  assert.match(brand, /--sg-font-body: Arial, Helvetica, sans-serif;/);
+  assert.match(brand, /--sg-font-display: var\(--sg-font-body\);/);
+  assert.match(brand, /\.sg-swatch-name \{[^}]*font-family: var\(--sg-font-body\);/);
+  assert.doesNotMatch(brand, /Montserrat|Sulphur Point|fonts\.googleapis\.com/);
 });
 
 test('both public pages reuse the app gradient and legal-footer typography', () => {
