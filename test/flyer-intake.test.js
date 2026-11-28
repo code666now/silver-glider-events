@@ -118,13 +118,11 @@ test('secure flyer previews expose look, fix, and verified auto-publish controls
   assert.match(script, /showShare\(result, \{ celebrate: true \}\)/);
   assert.match(script, /showShare\(current, \{ celebrate: true \}\)/);
   assert.match(script, /load\(true\)\.then\(showShare\)/);
-  assert.match(script, />Share your event<\/h2>/);
-  assert.match(script, /Your event is live\. Here’s your link!/);
-  assert.match(script, />Your event link<\/span>/);
-  assert.match(script, />Copy link<\/span>/);
-  assert.match(script, />Share event<\/span>/);
-  assert.match(script, /Your event is published and ready to share\./);
-  assert.match(script, /state\.eventUrl\.replace\(\/\^https\?:/);
+  assert.match(script, />Your event is live!<\/h2>/);
+  assert.match(script, /nativeShare \? 'Share event' : 'Copy link'/);
+  assert.match(script, /id="flyer-publish-url" hidden/);
+  assert.match(script, /class="flyer-publish-view"[^>]*>View event<\/a>/);
+  assert.doesNotMatch(script, /flyer-copy-event-link|Share your event<\/h2>|published and ready to share/);
   assert.doesNotMatch(script, /showCelebration|flyer-publish-continue|Your event is published!/);
   assert.match(script, /navigator\.share/);
   assert.match(script, /navigator\.clipboard|execCommand\(['"]copy['"]\)/);
@@ -132,7 +130,7 @@ test('secure flyer previews expose look, fix, and verified auto-publish controls
   assert.doesNotMatch(script, /Home Base/i);
   assert.match(script, /flyer-publish-share/);
   assert.match(css, /\.flyer-publish-step/);
-  assert.match(css, /\.flyer-publish-confirmation/);
+  assert.match(css, /\.flyer-publish-url\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.flyer-publish-confetti/);
   assert.match(css, /@media\s*\(max-width:\s*720px\)/);
   assert.match(`${script}\n${css}`, /prefers-reduced-motion/);

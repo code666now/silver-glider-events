@@ -120,11 +120,23 @@
     textarea.value = value;
     textarea.setAttribute('readonly', '');
     textarea.className = 'flyer-preview-copy-helper';
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    if (!copied) throw new Error('Copy did not work. Press and hold the link to copy it.');
+    const active = document.activeElement;
+    // Don't put the selection outside the native dialog's focus boundary.
+    const host = dialog.open ? dialog : document.body;
+    host.appendChild(textarea);
+    try {
+      textarea.select();
+      if (!document.execCommand('copy')) throw new Error('Automatic copy did not work.');
+    } finally {
+      textarea.remove();
+      active?.focus({ preventScroll: true });
+    }
+  }
+
+  function canShareEvent(shareData) {
+    if (typeof navigator.share !== 'function') return false;
+    try { return typeof navigator.canShare !== 'function' || navigator.canShare(shareData); }
+    catch (_) { return false; }
   }
 
   function showShare(data, { celebrate = false } = {}) {
@@ -136,51 +148,42 @@
     payload = data;
     markPublished();
     const safeUrl = escapeHtml(state.eventUrl);
-    const displayUrl = escapeHtml(state.eventUrl.replace(/^https?:\/\//i, ''));
+    const shareData = { title: state.eventTitle, text: `Come to ${state.eventTitle}`, url: state.eventUrl };
+    const nativeShare = canShareEvent(shareData);
+    const actionLabel = nativeShare ? 'Share event' : 'Copy link';
+    const actionIcon = nativeShare
+      ? '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/>'
+      : '<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>';
     open(`<section class="flyer-publish-step flyer-publish-share" aria-labelledby="flyer-preview-dialog-title">
       ${celebrate ? confettiHtml() : ''}
       <div class="flyer-publish-share-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="m4 22 4.4-12.7 6.3 6.3L4 22Z"/><path d="m8.4 9.3 6.3 6.3M14 4l.7-2M18.2 7.2l2-.8M17 2.5l1.5-1.5M20.5 12l2 .7M11.5 5.5 10 4"/></svg>
       </div>
-      <h2 id="flyer-preview-dialog-title" tabindex="-1">Share your event</h2>
-      <p>Your event is live. Here’s your link!</p>
-      <div class="flyer-publish-url">
-        <span>Your event link</span>
-        <a href="${safeUrl}" target="_blank" rel="noopener">${displayUrl}</a>
-      </div>
-      <div class="flyer-publish-share-actions">
-        <button class="flyer-preview-submit is-secondary" type="button" id="flyer-copy-event-link">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
-          <span>Copy link</span>
-        </button>
-        <button class="flyer-preview-submit" type="button" id="flyer-share-event">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
-          <span>Share event</span>
-        </button>
-      </div>
+      <h2 id="flyer-preview-dialog-title" tabindex="-1">Your event is live!</h2>
+      <button class="flyer-preview-submit flyer-publish-primary" type="button" id="flyer-share-event">
+        <svg viewBox="0 0 24 24" aria-hidden="true">${actionIcon}</svg>
+        <span>${actionLabel}</span>
+      </button>
       <p class="flyer-preview-message" id="flyer-preview-message" role="status" aria-live="polite"></p>
-      <p class="flyer-publish-confirmation">Your event is published and ready to share.</p>
+      <div class="flyer-publish-url" id="flyer-publish-url" hidden>
+        <label for="flyer-event-link">Event link</label>
+        <input type="url" id="flyer-event-link" value="${safeUrl}" readonly>
+      </div>
+      <a class="flyer-publish-view" href="${safeUrl}">View event</a>
     </section>`, { completion: true, dismissible: false });
 
     const confetti = body.querySelector('.flyer-publish-confetti');
     if (confetti) confettiTimer = window.setTimeout(() => confetti.remove(), 1800);
 
-    const copyButton = document.getElementById('flyer-copy-event-link');
-    const copyLabel = copyButton.querySelector('span');
+    const fallback = document.getElementById('flyer-publish-url');
+    const linkInput = document.getElementById('flyer-event-link');
     const shareButton = document.getElementById('flyer-share-event');
-    copyButton.addEventListener('click', async () => {
-      try {
-        await copyText(state.eventUrl);
-        copyLabel.textContent = 'Copied!';
-        message('Event link copied.');
-        window.setTimeout(() => { if (copyButton.isConnected) copyLabel.textContent = 'Copy link'; }, 2200);
-      } catch (error) { message(error.message, true); }
-    });
     shareButton.addEventListener('click', async () => {
-      if (navigator.share) {
+      fallback.hidden = true;
+      message('');
+      if (nativeShare) {
         try {
-          await navigator.share({ title: state.eventTitle, text: `Come to ${state.eventTitle}`, url: state.eventUrl });
-          message('Share menu opened.');
+          await navigator.share(shareData);
           return;
         } catch (error) {
           if (error?.name === 'AbortError') return;
@@ -188,8 +191,13 @@
       }
       try {
         await copyText(state.eventUrl);
-        message('Event link copied. Paste it anywhere you want to share it.');
-      } catch (error) { message(error.message, true); }
+        message('Event link copied.');
+      } catch (_) {
+        fallback.hidden = false;
+        message('Couldn’t copy automatically. Copy the event link below.', true);
+        linkInput.focus({ preventScroll: true });
+        linkInput.select();
+      }
     });
   }
 
