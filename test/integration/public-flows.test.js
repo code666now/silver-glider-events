@@ -10669,6 +10669,7 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.doesNotMatch(recipientHtml, /event-owner-editor\.js/);
   assert.match(recipientHtml, /class="flyer-poster">[\s\S]*class="flyer-details"[\s\S]*<\/main>\s*<section[^>]*id="flyer-preview-looks"[\s\S]*>Add your vibe<\/h2>/);
   assert.match(recipientHtml, /id="flyer-vibe-track"[\s\S]*data-preview-action="approve"/);
+  assert.doesNotMatch(recipientHtml, /data-vibe-motion|Show all backgrounds|Resume motion/);
   assert.equal((await fetch(`${baseUrl}${firstExchange.headers.get('location')}`)).status, 404);
 
   const changedLook = await fetch(`${baseUrl}/api/flyer-preview/look`, {

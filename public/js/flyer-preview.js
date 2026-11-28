@@ -226,8 +226,7 @@
     const track = document.getElementById('flyer-vibe-track');
     const status = document.getElementById('flyer-vibe-status');
     const stage = picker?.querySelector('.flyer-vibe-stage');
-    const motionButton = picker?.querySelector('[data-vibe-motion]');
-    if (!picker || !track || !status || !stage || !motionButton) return;
+    if (!picker || !track || !status || !stage) return;
 
     // The API owns availability and labels; the catalog supplies still art only.
     // The actual event background owns playback, never the cards on the line.
@@ -247,7 +246,7 @@
     let copies = [];
     let loading = false;
     let blockedActions = [];
-    let showAll = false;
+    let keyboardBrowsing = false;
     let heldPointer = null;
     let releaseTimer = 0;
 
@@ -257,10 +256,12 @@
     }
 
     function updateMotion() {
-      const canDrift = !motion.matches && options.length > 1;
-      picker.classList.toggle('is-drifting', canDrift && !showAll);
-      motionButton.hidden = !canDrift;
-      motionButton.textContent = showAll ? 'Resume motion' : 'Show all backgrounds';
+      picker.classList.toggle('is-drifting', !motion.matches && options.length > 1 && !keyboardBrowsing);
+    }
+
+    function startKeyboardBrowsing() {
+      keyboardBrowsing = true;
+      updateMotion();
     }
 
     function changeSelection(key) {
@@ -352,7 +353,7 @@
       try {
         window.sessionStorage.setItem(scrollKey, JSON.stringify({
           top: window.scrollY,
-          showAll,
+          keyboardBrowsing,
           time: Date.now(),
           focus: !picker.classList.contains('is-drifting') && track.contains(document.activeElement) ? key : null
         }));
@@ -370,7 +371,7 @@
       } catch (_) { return; }
       if (!saved || !Number.isFinite(saved.top) || !Number.isFinite(saved.time) ||
           Math.abs(Date.now() - saved.time) > 60000) return;
-      showAll = saved.showAll === true;
+      keyboardBrowsing = saved.keyboardBrowsing === true;
       updateMotion();
       requestAnimationFrame(() => {
         cards.find(card => card.dataset.look === saved.focus)?.focus({ preventScroll: true });
@@ -490,25 +491,19 @@
     }
 
     retry.addEventListener('click', populate);
-    motionButton.addEventListener('click', () => {
-      showAll = !showAll;
-      updateMotion();
-    });
     motion.addEventListener?.('change', updateMotion);
     track.addEventListener('click', event => {
       const card = event.target.closest('[data-look], [data-vibe-copy]');
       if (!card) return;
       // Some assistive technology activates a button without moving DOM focus.
       if (event.detail === 0 && card.dataset.look && picker.classList.contains('is-drifting')) {
-        showAll = true;
-        updateMotion();
+        startKeyboardBrowsing();
       }
       choose(card.dataset.look || card.dataset.vibeCopy);
     });
     track.addEventListener('focusin', event => {
       if (!picker.classList.contains('is-drifting') || !event.target.matches('[data-look]:focus-visible')) return;
-      showAll = true;
-      updateMotion();
+      startKeyboardBrowsing();
       event.target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     });
     stage.addEventListener('pointerdown', event => {

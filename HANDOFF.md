@@ -2,9 +2,9 @@
 
 **Last updated:** November 18, 2026 (Desktop portrait background composition, v1.0.210)
 
-## Done For You: Add your vibe (v1.0.237)
+## Done For You: Add your vibe (v1.0.237–1.0.238)
 
-- Private recipient previews show the optional rightward-drifting clothesline after the complete, unchanged event-page layout. The existing availability endpoint supplies enabled looks, with a still thumbnail per video and static options. The shared background renderer supplies the real backdrop for both draft selection and published viewing. Only the selected effect plays. Show all backgrounds or Reduce Motion turns the clothesline into a still, fully browsable set of choices.
+- Private recipient previews show the optional rightward-drifting clothesline after the complete, unchanged event-page layout. The existing availability endpoint supplies enabled looks, with a still thumbnail per video and static options. The shared background renderer supplies the real backdrop for both draft selection and published viewing. Only the selected effect plays. There is no separate gallery button: keyboard focus on a choice or Reduce Motion turns the clothesline into a still, fully browsable set of choices.
 - The existing draft-only save updates just the background. No changes to the flyer intake, underlying artwork, event details, RSVP flow, review, verification text, publication, claim, or Home Base. Normal public pages never show the clothesline. Local no-send testing can use a synthetic preview; never publish or text a real promoter for QA.
 
 ## Flyer landing page (v1.0.236)

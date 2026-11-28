@@ -506,12 +506,9 @@ function renderFlyerPreviewLooks(preview) {
   return `
     <section class="flyer-vibe" id="flyer-preview-looks" aria-labelledby="flyer-vibe-title">
       <div class="flyer-vibe-head">
-        <div>
-          <p class="flyer-vibe-kicker">Private preview · Not visible to guests</p>
-          <h2 id="flyer-vibe-title">Add your vibe</h2>
-          <p>Try a different background, or keep the look we picked.</p>
-        </div>
-        <button type="button" data-vibe-motion aria-controls="flyer-vibe-track" hidden>Show all backgrounds</button>
+        <p class="flyer-vibe-kicker">Private preview · Not visible to guests</p>
+        <h2 id="flyer-vibe-title">Add your vibe</h2>
+        <p>Try a different background, or keep the look we picked.</p>
       </div>
       <div class="flyer-vibe-stage">
         <ul class="flyer-vibe-track" id="flyer-vibe-track" role="list" aria-label="Backgrounds"></ul>
