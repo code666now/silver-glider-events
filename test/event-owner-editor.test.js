@@ -375,7 +375,7 @@ test('guest experience switches preview owner-only page sections without saving'
   const publicClient = read('public/js/public-event.js');
   const styles = read('public/css/event-owner-editor.css');
 
-  assert.match(route, /renderGuestList\(event, rows, \{ ownerPreview = false, viewerIdentityId = null \} = \{\}\)/);
+  assert.match(route, /renderGuestList\(event, rows, \{ ownerPreview = false, viewerIdentityId = null, readOnlyDraft = false \} = \{\}\)/);
   assert.match(route, /data-owner-preview-section="guest-list"/);
   assert.match(route, /data-owner-preview-section="guest-fields"/);
   assert.match(route, /data-owner-preview-section="comments"/);

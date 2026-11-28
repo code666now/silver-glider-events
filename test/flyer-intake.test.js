@@ -140,6 +140,26 @@ test('secure flyer previews expose look, fix, and verified auto-publish controls
   assert.doesNotMatch(route, /setSessionCookie|attachIdentity|account_phone_credentials/);
 });
 
+test('private flyer preview has an unboxed edge-to-edge clothesline and a branded glass approval bar', () => {
+  const css = read('public/css/flyer-preview.css');
+  const script = read('public/js/flyer-preview.js');
+  const flyerCss = read('public/css/event-public-flyer.css');
+  const route = read('src/routes/public.js');
+  const rule = selector => css.split(selector + ' {')[1].split('}')[0];
+  assert.doesNotMatch(rule('.flyer-preview-intro'), /background|border/);
+  assert.match(rule('.flyer-vibe-stage'), /width:\s*100%/);
+  assert.match(rule('.flyer-vibe'), /width:\s*100%/);
+  assert.doesNotMatch(rule('.flyer-vibe'), /background|border/);
+  assert.match(script, /Math\.ceil\(stage\.clientWidth \/ stride\) \+ 1/);
+  assert.match(script, /resize', \(\) => fillDriftingTrack\(\)/);
+  assert.match(rule('.flyer-preview-bar'), /background:\s*rgb\(231 232 229 \/ \.68\)/);
+  assert.match(route, /<img class="flyer-preview-mark" src="\/images\/flyer-preview-mark\.webp"/);
+  const mark = fs.readFileSync(path.join(root, 'public/images/flyer-preview-mark.webp'));
+  assert.equal(mark.subarray(8, 12).toString(), 'WEBP');
+  assert.ok(mark.length < 12000, 'keep the mark inexpensive');
+  assert.match(flyerCss, /\.event-wall\s*\{[^}]*background:\s*rgb\(226 227 224 \/ \.68\)/);
+});
+
 test('verified flyer approval auto-publishes once and exposes a public retry without another OTP', () => {
   const migration = read('src/db/migrations/064_flyer_publish_handoff.sql');
   const route = read('src/routes/flyer-intake.js');

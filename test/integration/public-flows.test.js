@@ -10629,6 +10629,7 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.equal((await pool.query(
     'SELECT status FROM events WHERE id=$1', [createdBody.event.id]
   )).rows[0].status, 'draft', 'review readiness never publishes the event');
+  await pool.query('UPDATE events SET show_guest_list=FALSE, comments_enabled=FALSE WHERE id=$1', [createdBody.event.id]);
 
   const sentPreview = await fetch(`${baseUrl}/api/admin/done-for-you/flyer-intake/${request.id}/send-preview`, {
     method: 'POST',
@@ -10670,6 +10671,34 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.match(recipientHtml, /class="flyer-poster">[\s\S]*class="flyer-details"[\s\S]*<\/main>\s*<section[^>]*id="flyer-preview-looks"[\s\S]*>Add your vibe<\/h2>/);
   assert.match(recipientHtml, /id="flyer-vibe-track"[\s\S]*data-preview-action="approve"/);
   assert.doesNotMatch(recipientHtml, /data-vibe-motion|Show all backgrounds|Resume motion/);
+  assert.doesNotMatch(recipientHtml, /aria-labelledby="guest-list-title"|id="event-wall"/);
+  assert.match(recipientHtml, /class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" type="button" aria-disabled="true">RSVP/);
+  const previewHeaders = { cookie: firstPreviewCookie };
+  const previewAddress = `${baseUrl}${firstExchange.headers.get('location')}`;
+  const updateDraftSections = (guestList, comments) => pool.query(
+    'UPDATE events SET show_guest_list=$2, comments_enabled=$3 WHERE id=$1',
+    [createdBody.event.id, guestList, comments]
+  );
+  await updateDraftSections(true, false);
+  const guestListOnly = await (await fetch(previewAddress, { headers: previewHeaders })).text();
+  assert.match(guestListOnly, /class="public-guest-list"[\s\S]*0 people are going[\s\S]*Be the first to RSVP\./);
+  assert.doesNotMatch(guestListOnly, /id="event-wall"/);
+  await updateDraftSections(false, true);
+  const commentsOnly = await (await fetch(previewAddress, { headers: previewHeaders })).text();
+  assert.match(commentsOnly, /id="event-wall"[\s\S]*id="comment-count">0[\s\S]*No comments yet\.[\s\S]*Confirmed attendees can comment/);
+  assert.doesNotMatch(commentsOnly, /aria-labelledby="guest-list-title"|id="comment-form"|Loading comments…|data-open-rsvp/);
+  await updateDraftSections(true, true);
+  const bothSections = await (await fetch(previewAddress, { headers: previewHeaders })).text();
+  assert.match(bothSections, /class="public-guest-list"[\s\S]*id="event-wall"[\s\S]*<\/main>\s*<section[^>]*id="flyer-preview-looks"/);
+  const draftCommunityUrl = `${baseUrl}/api/public/events/${createdBody.event.slug}`;
+  assert.equal((await fetch(`${draftCommunityUrl}/comments`, { headers: previewHeaders })).status, 404);
+  assert.equal((await fetch(`${draftCommunityUrl}/comments`, {
+    method: 'POST', headers: { ...previewHeaders, 'content-type': 'application/json' }, body: '{"message":"Draft comment"}'
+  })).status, 404);
+  assert.equal((await fetch(`${draftCommunityUrl}/rsvp`, {
+    method: 'POST', headers: { ...previewHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ full_name: 'Draft Tester', email: 'draft-preview@example.test', wants_reminders: false })
+  })).status, 404);
   assert.equal((await fetch(`${baseUrl}${firstExchange.headers.get('location')}`)).status, 404);
 
   const changedLook = await fetch(`${baseUrl}/api/flyer-preview/look`, {
@@ -10804,6 +10833,11 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.equal(publishedPage.status, 200);
   assert.ok(publishedHtml.includes(appearance.fxMedia));
   assert.doesNotMatch(publishedHtml, /flyer-preview-intro|flyer-preview-looks|Add your vibe/);
+  const guestSection = html => html.match(/<section class="public-guest-list"[\s\S]*?<\/section>/)?.[0];
+  assert.equal(guestSection(publishedHtml), guestSection(bothSections), 'the authorized draft reuses the launch-day guest list');
+  assert.match(publishedHtml, /id="event-wall"[\s\S]*id="comment-form" hidden/);
+  const publishedWall = await (await fetch(`${draftCommunityUrl}/comments`)).json();
+  assert.deepEqual(publishedWall, { canComment: false, canModerate: false, comments: [] });
   assert.ok(['pending', 'sending', 'sent'].includes(publishedBody.liveSms.status));
   assert.ok(['pending', 'sending', 'failed'].includes(publishedBody.claimInvitation.status));
   assert.equal(publishedBody.retryNeeded, true);

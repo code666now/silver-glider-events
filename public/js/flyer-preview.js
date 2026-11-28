@@ -249,6 +249,7 @@
     let keyboardBrowsing = false;
     let heldPointer = null;
     let releaseTimer = 0;
+    let fillDriftingTrack = () => {};
 
     function announce(text, error = false) {
       status.textContent = text;
@@ -257,6 +258,7 @@
 
     function updateMotion() {
       picker.classList.toggle('is-drifting', !motion.matches && options.length > 1 && !keyboardBrowsing);
+      fillDriftingTrack();
     }
 
     function startKeyboardBrowsing() {
@@ -284,7 +286,7 @@
       cards = [];
       copies = [];
       const fragment = document.createDocumentFragment();
-      function addPrint(option, index, copy) {
+      function addPrint(destination, option, index, copy) {
         const item = document.createElement('li');
         item.className = 'flyer-vibe-item';
         item.style.setProperty('--vibe-angle', ['-1.2deg', '1.4deg', '-.5deg'][index % 3]);
@@ -326,19 +328,32 @@
         badge.textContent = '✓ Current';
         card.append(media, label, badge);
         item.append(card);
-        fragment.append(item);
+        destination.append(item);
       }
 
       // Start at the real buttons and move right by one full set. Additional
-      // visual sets let that same loop fill the panel even for a small catalog.
-      const addCopySet = () => options.forEach((option, index) => addPrint(option, index, true));
-      if (options.length > 1) addCopySet();
-      options.forEach((option, index) => addPrint(option, index, false));
-      // Eight places cover the widest stage even at the minimum print width.
-      for (let count = options.length; options.length > 1 && count < 8; count += options.length) {
-        addCopySet();
-      }
+      // visual sets fill the screen even if there are only two active looks.
+      const addCopySet = destination => options.forEach((option, index) => addPrint(destination, option, index, true));
+      if (options.length > 1) addCopySet(fragment);
+      options.forEach((option, index) => addPrint(fragment, option, index, false));
       track.replaceChildren(fragment);
+      let visibleSlots = options.length;
+      fillDriftingTrack = () => {
+        if (!picker.classList.contains('is-drifting')) return;
+        const first = cards[0]?.parentElement;
+        if (!first) return;
+        const stride = first.offsetWidth + parseFloat(window.getComputedStyle(first).marginInlineEnd);
+        if (!(stride > 0)) return;
+        const neededSlots = Math.ceil(stage.clientWidth / stride) + 1;
+        if (visibleSlots >= neededSlots) return;
+        const added = document.createDocumentFragment();
+        while (visibleSlots < neededSlots) {
+          addCopySet(added);
+          visibleSlots += options.length;
+        }
+        track.append(added);
+        changeSelection(currentKey);
+      };
       track.style.setProperty('--vibe-count', options.length);
       track.style.setProperty('--vibe-duration', `${options.length * 4.8}s`);
       changeSelection(key);
@@ -492,6 +507,7 @@
 
     retry.addEventListener('click', populate);
     motion.addEventListener?.('change', updateMotion);
+    window.addEventListener('resize', () => fillDriftingTrack());
     track.addEventListener('click', event => {
       const card = event.target.closest('[data-look], [data-vibe-copy]');
       if (!card) return;

@@ -1422,10 +1422,11 @@ async function loadComments() {
   $('comment-locked').hidden = data.canComment;
 }
 
-if ((EVENT.commentsEnabled || EVENT.ownerPreview) && $('event-wall')) {
+const commentForm = $('comment-form');
+if ((EVENT.commentsEnabled || EVENT.ownerPreview) && commentForm) {
   const message = $('comment-message');
   message.addEventListener('input', () => { $('comment-length').textContent = `${message.value.length}/300`; });
-  $('comment-form').addEventListener('submit', async event => {
+  commentForm.addEventListener('submit', async event => {
     event.preventDefault();
     const button = $('comment-submit');
     const error = $('comment-error');

@@ -296,9 +296,9 @@ function rejectLockedSecret(res) {
   return res.status(404).json({ error: 'Event not found' });
 }
 
-function renderGuestList(event, rows, { ownerPreview = false, viewerIdentityId = null } = {}) {
+function renderGuestList(event, rows, { ownerPreview = false, viewerIdentityId = null, readOnlyDraft = false } = {}) {
   if (!event.show_guest_list && !ownerPreview) return '';
-  const names = publicGuestNames(rows);
+  const names = readOnlyDraft ? [] : publicGuestNames(rows);
   const showPreviewNames = names.length > 0 && names.length <= 5;
   const visibleLimit = 8;
   const avatarContents = entry => `<span aria-hidden="true">${esc(entry.avatarEmoji)}</span>${entry.avatarUrl
@@ -319,7 +319,7 @@ function renderGuestList(event, rows, { ownerPreview = false, viewerIdentityId =
   const modalItems = names.map(entry => {
     return `<li>${avatar(entry)}<span>${esc(entry.firstName)}</span></li>`;
   }).join('');
-  const count = Number(event.total_attendance) || 0;
+  const count = readOnlyDraft ? 0 : Number(event.total_attendance) || 0;
   const attendanceLabel = event.is_past
     ? `${count} ${count === 1 ? 'person' : 'people'} went`
     : `${count} ${count === 1 ? 'person is' : 'people are'} going`;
@@ -365,20 +365,21 @@ function renderGuestFields(event, { ownerPreview = false } = {}) {
   </div></div>`;
 }
 
-function renderComments(event, { ownerPreview = false } = {}) {
+function renderComments(event, { ownerPreview = false, readOnlyDraft = false } = {}) {
   if (!event.comments_enabled && !ownerPreview) return '';
+  const count = readOnlyDraft ? 0 : Number(event.comment_count) || 0;
   return `<section class="event-wall" id="event-wall"${ownerPreview ? ` data-owner-preview-section="comments"${event.comments_enabled ? '' : ' hidden'}` : ''} aria-labelledby="event-wall-title">
     <div class="section-heading">
       <h2 id="event-wall-title">Comments</h2>
-      <span id="comment-count">${Number(event.comment_count) || 0}</span>
+      <span id="comment-count">${count}</span>
     </div>
-    <div id="comment-list" class="comment-list"><p class="section-empty">Loading comments…</p></div>
-    <form id="comment-form" hidden>
+    <div id="comment-list" class="comment-list"><p class="section-empty">${readOnlyDraft ? 'No comments yet.' : 'Loading comments…'}</p></div>
+    ${readOnlyDraft ? '' : `<form id="comment-form" hidden>
       <label for="comment-message">Add a comment</label>
       <textarea id="comment-message" class="sg-textarea" maxlength="300" placeholder="Say something to the group"></textarea>
       <div class="comment-compose-foot"><span id="comment-length">0/300</span><button class="sg-btn sg-btn-ghost" id="comment-submit" type="submit">Post</button></div>
       <p class="comment-error" id="comment-error"></p>
-    </form>
+    </form>`}
     <p class="comment-locked" id="comment-locked">Confirmed attendees can comment. Open your RSVP confirmation link to join in.</p>
   </section>`;
 }
@@ -478,7 +479,7 @@ function renderFlyerPreviewTools(preview) {
       : `<button type="button" data-preview-action="fix">Request a fix</button>
          <button class="is-primary" type="button" data-preview-action="approve">Approve and publish</button>`;
   return `<aside class="flyer-preview-bar" id="flyer-preview-tools" data-preview-status="${esc(preview.status)}" aria-label="${published ? 'Published event controls' : 'Unpublished preview controls'}">
-    <div class="flyer-preview-status"><span class="flyer-preview-mark" aria-hidden="true">SG</span><p>${statusCopy}</p></div>
+    <div class="flyer-preview-status"><img class="flyer-preview-mark" src="/images/flyer-preview-mark.webp" width="48" height="48" alt="" decoding="async"><p>${statusCopy}</p></div>
     <div class="flyer-preview-actions">${actions}</div>
   </aside>
   <dialog class="flyer-preview-dialog" id="flyer-preview-dialog" aria-labelledby="flyer-preview-dialog-title">
@@ -831,6 +832,10 @@ router.get('/e/:slug', async (req, res, next) => {
       return res.redirect(303, `/account/review?next=${encodeURIComponent(req.originalUrl)}`);
     }
     const rsvpEnabled = event.status === 'published' && !isSilverGliderTickets(event);
+    const recipientDraft = ownerDraft && !ownerPreview && Boolean(flyerPreview);
+    // Mirror the launch-day empty sections on a recipient draft, not its data
+    // or interaction permissions. The RSVP/guest queries remain publish-only.
+    const showRsvpSections = rsvpEnabled || (recipientDraft && !isSilverGliderTickets(event));
     const invitationToken = typeof req.query.invite === 'string' ? req.query.invite.trim() : '';
     const rsvpToken = typeof req.query.rsvp === 'string' ? req.query.rsvp.trim() : '';
     // Keep resolving confirmed attendee ownership after the event has ended so
@@ -950,7 +955,9 @@ router.get('/e/:slug', async (req, res, next) => {
       : isCommerceTicketed
       ? `<div class="dock-row">${dockWhenHtml}<a class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" href="/e/${encodeURIComponent(event.slug)}/tickets">Get Tickets</a></div>`
       : `<div class="dock-row">${dockWhenHtml}<button class="sg-btn sg-btn-primary sg-btn-block" id="mobile-rsvp-cta" data-open-rsvp type="button" aria-controls="rsvp-form-box">RSVP</button></div>`;
-    const flyerPrimaryActionHtml = ownerDraft
+    const flyerPrimaryActionHtml = recipientDraft && !event.is_past
+      ? `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" type="button" aria-disabled="true">${esc(flyerAction.label)}</button>`
+      : ownerDraft
       ? '<p class="event-ended-note">Draft preview · Only you can see this</p>'
       : event.is_past
       ? endedActionHtml
@@ -959,10 +966,10 @@ router.get('/e/:slug', async (req, res, next) => {
       : flyerAction.type === 'commerce_ticket'
       ? `<a class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="ticket-cta" data-primary-action="ticket" href="${esc(flyerAction.url)}">${esc(flyerAction.label)}</a>`
       : `<button class="sg-btn sg-btn-primary sg-btn-block flyer-primary-cta" id="rsvp-cta" data-primary-action="rsvp" data-open-rsvp type="button">${esc(flyerAction.label)}</button>`;
-    const flyerSecondaryActionHtml = !ownerDraft && !event.is_past && flyerAction.secondaryRsvp
-      ? '<button class="flyer-secondary-rsvp" id="rsvp-cta" data-open-rsvp type="button">RSVP instead</button>'
+    const flyerSecondaryActionHtml = (!ownerDraft || recipientDraft) && !event.is_past && flyerAction.secondaryRsvp
+      ? `<button class="flyer-secondary-rsvp" ${recipientDraft ? 'aria-disabled="true"' : 'id="rsvp-cta" data-open-rsvp'} type="button">RSVP instead</button>`
       : '';
-    const flyerActionSupportHtml = !ownerDraft && !event.is_past && flyerAction.supportingText
+    const flyerActionSupportHtml = (!ownerDraft || recipientDraft) && !event.is_past && flyerAction.supportingText
       ? `<p${flyerAction.type === 'ticket' ? ' id="flyer-ticket-seller"' : ''} class="primary-action-support${isPaid && flyerAction.type === 'rsvp' ? ' is-admission-price' : ''}">${esc(flyerAction.supportingText)}</p>`
       : '';
     const flyerMobileActionHtml = ownerDraft
@@ -1123,8 +1130,8 @@ router.get('/e/:slug', async (req, res, next) => {
         location: locationDisplay,
         friendShareAllowed
       }))
-      .replace(/{{GUEST_LIST_HTML}}/g, rsvpEnabled ? renderGuestList(event, publicGuestRows, { ownerPreview, viewerIdentityId: req.sessionAccount?.id }) : '')
-      .replace(/{{COMMENTS_HTML}}/g, rsvpEnabled ? renderComments(event, { ownerPreview }) : '')
+      .replace(/{{GUEST_LIST_HTML}}/g, showRsvpSections ? renderGuestList(event, publicGuestRows, { ownerPreview, viewerIdentityId: req.sessionAccount?.id, readOnlyDraft: recipientDraft }) : '')
+      .replace(/{{COMMENTS_HTML}}/g, showRsvpSections ? renderComments(event, { ownerPreview, readOnlyDraft: recipientDraft }) : '')
       .replace(/{{RECAP_GALLERY_HTML}}/g, renderFeaturedPhotos(event, featuredPhotos))
       .replace(/{{CATEGORY}}/g, esc(event.category || ''))
       .replace(/{{STANDARD_PRIMARY_ACTION_HTML}}/g, standardPrimaryActionHtml)
