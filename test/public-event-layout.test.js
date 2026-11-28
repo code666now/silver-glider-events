@@ -36,6 +36,21 @@ test('public event sections follow the guest-first vertical hierarchy', () => {
   assert.match(view, /legal-footer\.js/);
 });
 
+test('Standard and Flyer use one Standard comment wall style', () => {
+  const standard = source('src/views/event-public.html');
+  const flyer = source('src/views/event-public-flyer.html');
+  const flyerStyles = source('public/css/event-public-flyer.css');
+  const comments = source('public/css/event-comments.css');
+  for (const view of [standard, flyer]) {
+    assert.match(view, /<link rel="stylesheet" href="\/css\/event-comments\.css">/);
+    assert.match(view, /\{\{COMMENTS_HTML\}\}/);
+  }
+  assert.match(comments, /\.event-wall\s*\{[^}]*padding:\s*22px;[^}]*background:\s*rgba\(17,17,17,\.42\)/);
+  assert.match(comments, /\.comment-card\s*\{[^}]*background:\s*rgba\(255,255,255,\.035\)/);
+  assert.match(comments, /\.event-bg\.fx-saloon ~ :is\(\.layout, \.flyer-layout\) :is\(\.event-wall, \.comment-card\)/);
+  assert.doesNotMatch(standard + flyerStyles, /\.comment-card\s*\{|#comment-message/);
+});
+
 test('guest-list attendance copy uses past tense after an event passes', () => {
   const route = source('src/routes/public.js');
   assert.match(route, /AS is_past/);

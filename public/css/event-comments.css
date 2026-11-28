@@ -1,0 +1,51 @@
+/* The Standard comment wall, shared by both public event layouts and drafts. */
+.event-wall {
+  margin: 0 0 38px;
+  padding: 22px;
+  border: 1px solid var(--sg-border-soft);
+  border-radius: 20px;
+  background: rgba(17,17,17,.42);
+}
+.event-wall .section-empty, .comment-locked { color: var(--sg-text-faint); font-size: 12px; line-height: 1.6; }
+.comment-list { display: grid; gap: 12px; }
+.comment-card { padding: 14px; border-radius: 14px; background: rgba(255,255,255,.035); }
+.comment-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+.comment-meta strong { color: var(--sg-text); font-size: 12px; }
+.comment-meta span { color: var(--sg-text-faint); font-size: 10px; }
+.comment-card p { color: var(--sg-text-dim); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-delete {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sg-text-faint);
+  font: 600 10px var(--sg-font-body);
+  cursor: pointer;
+}
+#comment-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--sg-border-soft); }
+#comment-form > label { display: block; margin-bottom: 8px; color: var(--sg-text-dim); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+#comment-message { min-height: 86px; }
+.comment-compose-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.comment-compose-foot span { color: var(--sg-text-faint); font-size: 10px; }
+.comment-compose-foot .sg-btn { padding: 8px 18px; font-size: 11px; }
+.comment-error { display: none; margin-top: 9px; color: var(--sg-danger); font-size: 11px; }
+.comment-locked { margin-top: 16px; }
+
+/* Keep Standard's warmer adaptation when the saloon artwork is selected. */
+.event-bg.fx-saloon ~ :is(.layout, .flyer-layout) .event-wall :is(.section-empty, .comment-locked) {
+  color: rgba(255,255,255,.78);
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0,0,0,.92);
+}
+.event-bg.fx-saloon ~ :is(.layout, .flyer-layout) :is(.event-wall, .comment-card) {
+  background: rgba(10,7,5,.68);
+  border-color: rgba(255,255,255,.13);
+  backdrop-filter: blur(4px);
+}
+@media (max-width: 767px) {
+  /* The flyer disables this blur on mobile to avoid scrolling repaints. */
+  .flyer-public-page .event-bg.fx-saloon ~ .flyer-layout :is(.event-wall, .comment-card) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
