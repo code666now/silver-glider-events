@@ -230,8 +230,8 @@ test('advanced editor availability fails closed and stale choices refresh withou
   assert.match(form, /err\.code === 'background_unavailable'\) loadThemeAvailability/);
   assert.match(form, /savedBackgroundTheme = data\.event\?\.background_theme \|\| body\.background_theme/);
   assert.match(source('public/js/event-owner-editor.js'), /error\.code === 'background_unavailable'\) loadThemeAvailability/);
-  assert.match(source('public/js/flyer-preview.js'), /const data = await load\(true\)/);
-  assert.match(source('public/js/flyer-preview.js'), /error\.code === 'background_unavailable'[\s\S]*await showLooks\(error\.message\)/);
+  assert.match(source('public/js/flyer-preview.js'), /const data = await requestVibe\('\/api\/flyer-preview'\)/);
+  assert.match(source('public/js/flyer-preview.js'), /error\.code === 'background_unavailable'[\s\S]*await refreshLooks\(\)/);
 });
 
 test('background manager keeps accessibility landmarks, touch targets and scoped mobile layout', () => {

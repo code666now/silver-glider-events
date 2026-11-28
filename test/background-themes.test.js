@@ -64,7 +64,7 @@ test('Match Photo reuses the artwork palette as an explicit adaptive background'
 test('seasonal video effects are accepted and render from dedicated assets', () => {
   const catalog = require('../public/js/event-backgrounds');
   for (const effect of ['halloween', 'liquid-stardust', 'color-static', 'last-guest']) assert.ok(catalog.effectKeys.includes(effect));
-  const publicRoute = source('src/routes/public.js');
+  const publicRoute = source('src/lib/event-background-render.js');
   assert.match(publicRoute, /halloween: 'sg-events\/effects\/halloween'/);
   assert.match(publicRoute, /'liquid-stardust': 'sg-events\/effects\/liquid-stardust'/);
   assert.match(publicRoute, /'color-static': 'sg-events\/effects\/color-static'/);
@@ -98,6 +98,25 @@ test('seasonal video effects are accepted and render from dedicated assets', () 
   assert.match(source('src/lib/mailer.js'), /sg-events\/effects\/halloween\.jpg/);
 });
 
+test('the shared renderer supplies the preview and live backgrounds for every catalog choice', () => {
+  const { renderEventBackground } = require('../src/lib/event-background-render');
+  const { options } = require('../public/js/event-backgrounds');
+  for (const option of options) {
+    const appearance = renderEventBackground(option.key);
+    const hasVideo = option.thumbnail?.includes('/video/upload/') === true;
+    assert.equal(appearance.fxMedia.includes('<video '), hasVideo, option.key);
+    assert.equal(appearance.bgClass, `${option.group === 'effect' ? 'fx' : 'bg'}-${option.key}`);
+    assert.equal(appearance.bgEffect, option.group === 'effect' ? option.key : null);
+    if (hasVideo) {
+      assert.ok(appearance.fxMedia.includes(option.thumbnail.split('/').at(-1).replace('.jpg', '.mp4')));
+      assert.match(appearance.fxMedia, /preload="auto"[^>]+poster="https:\/\/res\.cloudinary\.com/);
+    }
+    assert.equal(appearance.fxVeil.includes(' hidden>'), option.group !== 'effect');
+  }
+  assert.equal(renderEventBackground('unknown').bgClass, 'bg-midnight');
+  assert.equal(renderEventBackground('violet').bgClass, 'bg-violet');
+});
+
 test('new video backgrounds crossfade their end-to-start seam in both live views', () => {
   const seamlessLoop = source('public/js/seamless-video-loop.js');
   const publicClient = source('public/js/public-event.js');
@@ -117,7 +136,7 @@ test('After Hours Saloon remains accepted and renders from its dedicated asset',
   const catalog = require('../public/js/event-backgrounds');
   assert.ok(catalog.effectKeys.includes('saloon'));
   assert.match(source('src/lib/event-editor.js'), /const THEMES = EventBackgrounds\.keys/);
-  assert.match(source('src/routes/public.js'), /const EFFECTS = EventBackgrounds\.effectKeys/);
+  assert.match(source('src/lib/event-background-render.js'), /const EFFECTS = EventBackgrounds\.effectKeys/);
   const standardView = source('src/views/event-public.html');
   assert.match(standardView, /sg-events\/backgrounds\/after-hours-saloon\.png/);
   assert.match(standardView, /\.event-bg\.fx-saloon/);
@@ -128,7 +147,7 @@ test('Golden Tide is selectable with video, poster and isolated readability trea
   const catalog = require('../public/js/event-backgrounds');
   assert.equal(catalog.label('golden-tide'), 'Golden Tide');
   assert.ok(catalog.effectKeys.includes('golden-tide'));
-  for (const file of ['src/routes/public.js', 'public/js/event-owner-editor.js']) {
+  for (const file of ['src/lib/event-background-render.js', 'public/js/event-owner-editor.js']) {
     assert.match(source(file), /'golden-tide': 'sg-events\/effects\/golden-tide'/);
   }
   for (const file of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
@@ -139,7 +158,7 @@ test('Golden Tide is selectable with video, poster and isolated readability trea
   }
   assert.match(source('public/css/brand.css'), /\.sg-swatch\.fx-golden-tide/);
   assert.match(source('public/css/event-owner-editor.css'), /\.owner-theme-golden-tide/);
-  assert.match(source('src/routes/public.js'), /\['golden-tide',[^\]]+\]\.includes\(theme\) \? 'du_20,' : ''/);
+  assert.match(source('src/lib/event-background-render.js'), /\['golden-tide',[^\]]+\]\.includes\(theme\) \? 'du_20,' : ''/);
   assert.match(source('public/js/event-owner-editor.js'), /seamlessVideoEffects\.has\(theme\) && !constrainedAmbientVideo/);
   for (const file of ['src/routes/public-hosts.js', 'src/lib/mailer.js']) {
     assert.match(source(file), /sg-events\/effects\/golden-tide\.jpg/);
@@ -160,7 +179,7 @@ test('six curated videos have versioned assets, mobile playback and still fallba
   for (const [index, key] of seasonalVideos.entries()) {
     assert.equal(catalog.label(key), labels[index]);
     assert.ok(catalog.effectKeys.includes(key));
-    for (const file of ['src/routes/public.js', 'public/js/event-owner-editor.js']) {
+    for (const file of ['src/lib/event-background-render.js', 'public/js/event-owner-editor.js']) {
       assert.ok(source(file).includes(`'${key}': 'sg-events/effects/${key}-v1'`));
     }
     for (const file of ['src/views/event-public.html', 'public/css/event-public-flyer.css']) {
@@ -177,8 +196,8 @@ test('six curated videos have versioned assets, mobile playback and still fallba
       assert.ok(source(file).includes(`sg-events/effects/${key}-v1.jpg`));
     }
   }
-  assert.match(source('src/routes/public.js'), /w_800,c_limit,fl_progressive/);
-  assert.match(source('src/routes/public.js'), /w_1280,c_limit,fl_progressive/);
+  assert.match(source('src/lib/event-background-render.js'), /w_800,c_limit,fl_progressive/);
+  assert.match(source('src/lib/event-background-render.js'), /w_1280,c_limit,fl_progressive/);
   assert.match(source('public/js/event-owner-editor.js'), /compactAmbientVideo && matchMedia\('\(max-width: 900px\)'\)\.matches \? 800 : 1280/);
   assert.match(source('public/js/event-owner-editor.js'), /compactAmbientVideo \? 'du_20,' : ''/);
 });

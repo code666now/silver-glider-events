@@ -7,6 +7,7 @@
 
   let payload = null;
   let confettiTimer = 0;
+  let savingVibe = false;
   const escapeHtml = value => String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -92,6 +93,8 @@
 
   function markPublished() {
     tools.dataset.previewStatus = 'published';
+    document.getElementById('flyer-preview-intro')?.remove();
+    document.getElementById('flyer-preview-looks')?.remove();
     const status = tools.querySelector('.flyer-preview-status p');
     const actions = tools.querySelector('.flyer-preview-actions');
     if (status) status.innerHTML = '<strong>Published</strong><span>Your event is live and ready to share.</span>';
@@ -218,33 +221,319 @@
     }
   }
 
-  async function showLooks(notice = '') {
-    try {
-      const data = await load(true);
-      const options = data.looks.map(option => `<button class="flyer-preview-option${option.key === data.preview.backgroundTheme ? ' is-selected' : ''}" type="button" data-look="${escapeHtml(option.key)}" aria-pressed="${option.key === data.preview.backgroundTheme}"><strong>${escapeHtml(option.label)}</strong><br><small>${option.active === false && option.key === data.preview.backgroundTheme ? 'Current background' : option.group === 'effect' ? 'Effect' : 'Background'}</small></button>`).join('');
-      open(`<h2 id="flyer-preview-dialog-title" tabindex="-1">Change the look</h2><p>Try a background or effect on your real event page. Your flyer and event details stay untouched.</p><div class="flyer-preview-options" role="group" aria-label="Event page looks">${options}</div><p class="flyer-preview-message" id="flyer-preview-message" role="status" aria-live="polite"></p>`);
-      if (notice) message(notice, true);
-      body.querySelectorAll('[data-look]').forEach(button => button.addEventListener('click', async () => {
-        const optionsRoot = body.querySelector('.flyer-preview-options');
-        optionsRoot.setAttribute('aria-busy', 'true');
-        body.querySelectorAll('[data-look]').forEach(option => { option.disabled = true; });
-        message('Applying the look…');
-        try {
-          await request('/api/flyer-preview/look', { method: 'POST', body: { backgroundTheme: button.dataset.look } });
-          sessionStorage.setItem('sge-flyer-preview-scroll-y', String(window.scrollY));
-          dialog.close();
-          window.location.reload();
-        } catch (error) {
-          if (error.code === 'background_unavailable') {
-            await showLooks(error.message);
-            return;
-          }
-          optionsRoot.removeAttribute('aria-busy');
-          body.querySelectorAll('[data-look]').forEach(option => { option.disabled = false; });
-          message(error.message, true);
+  function initVibe() {
+    const picker = document.getElementById('flyer-preview-looks');
+    const track = document.getElementById('flyer-vibe-track');
+    const status = document.getElementById('flyer-vibe-status');
+    const stage = picker?.querySelector('.flyer-vibe-stage');
+    const motionButton = picker?.querySelector('[data-vibe-motion]');
+    if (!picker || !track || !status || !stage || !motionButton) return;
+
+    // The API owns availability and labels; the catalog supplies still art only.
+    // The actual event background owns playback, never the cards on the line.
+    const catalog = new Map((window.SGEventBackgrounds?.options || []).map(option => [option.key, option]));
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const scrollKey = `sge-flyer-vibe-scroll:${window.location.pathname}${window.location.search}`;
+    const retry = document.createElement('button');
+    retry.className = 'flyer-vibe-retry';
+    retry.type = 'button';
+    retry.textContent = 'Try again';
+    retry.hidden = true;
+    status.after(retry);
+
+    let options = [];
+    let currentKey = '';
+    let cards = [];
+    let copies = [];
+    let loading = false;
+    let blockedActions = [];
+    let showAll = false;
+    let heldPointer = null;
+    let releaseTimer = 0;
+
+    function announce(text, error = false) {
+      status.textContent = text;
+      status.classList.toggle('is-error', error);
+    }
+
+    function updateMotion() {
+      const canDrift = !motion.matches && options.length > 1;
+      picker.classList.toggle('is-drifting', canDrift && !showAll);
+      motionButton.hidden = !canDrift;
+      motionButton.textContent = showAll ? 'Resume motion' : 'Show all backgrounds';
+    }
+
+    function changeSelection(key) {
+      currentKey = key;
+      [...cards, ...copies].forEach(card => {
+        const current = (card.dataset.look || card.dataset.vibeCopy) === key;
+        if (card.dataset.look) card.setAttribute('aria-pressed', String(current));
+        card.classList.toggle('is-current', current);
+        card.querySelector('.flyer-vibe-current').hidden = !current;
+      });
+    }
+
+    function render(looks, key) {
+      // Start with photographic choices without reshuffling the line when the
+      // selected look changes. The plain swatches are still in the same strip.
+      options = looks.filter(option => typeof option?.key === 'string' && /^[a-z][a-z0-9-]*$/.test(option.key) &&
+        (option.active === true || option.key === key))
+        .sort((left, right) => Number(Boolean(catalog.get(right.key)?.thumbnail)) -
+          Number(Boolean(catalog.get(left.key)?.thumbnail)));
+      cards = [];
+      copies = [];
+      const fragment = document.createDocumentFragment();
+      function addPrint(option, index, copy) {
+        const item = document.createElement('li');
+        item.className = 'flyer-vibe-item';
+        item.style.setProperty('--vibe-angle', ['-1.2deg', '1.4deg', '-.5deg'][index % 3]);
+        const card = document.createElement(copy ? 'span' : 'button');
+        card.className = 'flyer-vibe-card';
+        if (copy) {
+          item.classList.add('flyer-vibe-copy');
+          item.setAttribute('aria-hidden', 'true');
+          card.dataset.vibeCopy = option.key;
+          copies.push(card);
+        } else {
+          card.type = 'button';
+          card.dataset.look = option.key;
+          card.setAttribute('aria-disabled', String(savingVibe));
+          cards.push(card);
         }
-      }));
-    } catch (error) { open(`<h2 id="flyer-preview-dialog-title" tabindex="-1">Preview unavailable</h2><p>${escapeHtml(error.message)}</p>`); }
+
+        const media = document.createElement('span');
+        media.className = 'flyer-vibe-media';
+        media.dataset.theme = option.key;
+        media.setAttribute('aria-hidden', 'true');
+        const thumbnail = catalog.get(option.key)?.thumbnail;
+        if (thumbnail) {
+          const image = document.createElement('img');
+          image.alt = '';
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          image.addEventListener('error', () => image.remove(), { once: true });
+          image.src = thumbnail;
+          media.append(image);
+        }
+
+        const label = document.createElement('span');
+        label.className = 'flyer-vibe-label';
+        label.textContent = option.label || catalog.get(option.key)?.label || option.key;
+        const badge = document.createElement('span');
+        badge.className = 'flyer-vibe-current';
+        badge.setAttribute('aria-hidden', 'true');
+        badge.textContent = '✓ Current';
+        card.append(media, label, badge);
+        item.append(card);
+        fragment.append(item);
+      }
+
+      // Start at the real buttons and move right by one full set. Additional
+      // visual sets let that same loop fill the panel even for a small catalog.
+      const addCopySet = () => options.forEach((option, index) => addPrint(option, index, true));
+      if (options.length > 1) addCopySet();
+      options.forEach((option, index) => addPrint(option, index, false));
+      // Eight places cover the widest stage even at the minimum print width.
+      for (let count = options.length; options.length > 1 && count < 8; count += options.length) {
+        addCopySet();
+      }
+      track.replaceChildren(fragment);
+      track.style.setProperty('--vibe-count', options.length);
+      track.style.setProperty('--vibe-duration', `${options.length * 4.8}s`);
+      changeSelection(key);
+      updateMotion();
+    }
+
+    function currentLabel() {
+      return options.find(option => option.key === currentKey)?.label || '';
+    }
+
+    function savePositionAndReload(key) {
+      try {
+        window.sessionStorage.setItem(scrollKey, JSON.stringify({
+          top: window.scrollY,
+          showAll,
+          time: Date.now(),
+          focus: !picker.classList.contains('is-drifting') && track.contains(document.activeElement) ? key : null
+        }));
+      } catch (_) {} // The saved choice must still load if storage is blocked.
+      window.location.reload();
+    }
+
+    function restorePosition() {
+      let saved;
+      try {
+        const value = window.sessionStorage.getItem(scrollKey);
+        if (value == null) return;
+        window.sessionStorage.removeItem(scrollKey);
+        saved = JSON.parse(value);
+      } catch (_) { return; }
+      if (!saved || !Number.isFinite(saved.top) || !Number.isFinite(saved.time) ||
+          Math.abs(Date.now() - saved.time) > 60000) return;
+      showAll = saved.showAll === true;
+      updateMotion();
+      requestAnimationFrame(() => {
+        cards.find(card => card.dataset.look === saved.focus)?.focus({ preventScroll: true });
+        window.scrollTo({ top: saved.top, behavior: 'instant' });
+      });
+    }
+
+    async function requestVibe(path, settings = {}) {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 15000);
+      try { return await request(path, { ...settings, signal: controller.signal }); }
+      finally { window.clearTimeout(timer); }
+    }
+
+    async function refreshLooks() {
+      const data = await requestVibe('/api/flyer-preview');
+      const key = data.preview?.backgroundTheme;
+      if (!Array.isArray(data.looks) || !key) throw new Error('We couldn’t load the backgrounds. Try again.');
+      payload = data;
+      return { looks: data.looks, key };
+    }
+
+    async function populate() {
+      if (loading || savingVibe) return;
+      loading = true;
+      const returnFocus = document.activeElement === retry;
+      retry.hidden = true;
+      track.setAttribute('aria-busy', 'true');
+      announce('Loading backgrounds…');
+      try {
+        const { looks, key } = await refreshLooks();
+        render(looks, key);
+        announce(currentLabel() ? `Current background: ${currentLabel()}` : 'Choose an available background.');
+        restorePosition();
+        if (returnFocus) cards[0]?.focus({ preventScroll: true });
+      } catch (error) {
+        announce(error.message, true);
+        retry.hidden = false;
+        if (returnFocus) retry.focus({ preventScroll: true });
+      } finally {
+        loading = false;
+        track.removeAttribute('aria-busy');
+      }
+    }
+
+    function setSaving(saving) {
+      savingVibe = saving;
+      if (saving) {
+        track.setAttribute('aria-busy', 'true');
+        blockedActions = Array.from(tools.querySelectorAll('button[data-preview-action]:not(:disabled)'));
+        blockedActions.forEach(button => { button.disabled = true; });
+      } else {
+        track.removeAttribute('aria-busy');
+        blockedActions.forEach(button => { button.disabled = false; });
+        blockedActions = [];
+      }
+      cards.forEach(card => card.setAttribute('aria-disabled', String(saving)));
+    }
+
+    async function choose(key) {
+      if (savingVibe || loading || key === currentKey || !options.some(option => option.key === key && option.active === true)) return;
+      setSaving(true);
+      announce('Saving background…');
+      let reloading = false;
+      try {
+        const result = await requestVibe('/api/flyer-preview/look', {
+          method: 'POST', body: { backgroundTheme: key }
+        });
+        if (result.ok !== true || result.backgroundTheme !== key) throw new Error('We couldn’t confirm the background was saved. Try again.');
+        let applied = false;
+        try { applied = window.SGFlyerPreviewBackground?.apply(result.appearance) === true; } catch (_) {}
+        if (!applied) {
+          savePositionAndReload(key);
+          reloading = true;
+          return;
+        }
+        if (payload?.preview) payload.preview.backgroundTheme = key;
+        // A previously saved inactive option stops being available after switching away.
+        if (options.some(option => option.active === false && option.key !== key)) {
+          const focusedKey = document.activeElement?.dataset.look;
+          render(options, key);
+          cards.find(card => card.dataset.look === focusedKey)?.focus({ preventScroll: true });
+        } else changeSelection(key);
+        announce(`${currentLabel() || key} saved to your draft.`);
+      } catch (error) {
+        if (error.code === 'background_unavailable') {
+          const focusedIndex = cards.indexOf(document.activeElement);
+          let looks = options.filter(option => option.key !== key);
+          try {
+            const fresh = await refreshLooks();
+            if (fresh.key !== currentKey) {
+              savePositionAndReload(fresh.key);
+              reloading = true;
+              return;
+            }
+            looks = fresh.looks;
+          } catch (_) {}
+          render(looks, currentKey);
+          const replacement = cards[Math.min(focusedIndex, cards.length - 1)];
+          replacement?.focus({ preventScroll: true });
+        } else if (error.status === 0 || error.status >= 500 || !error.status) {
+          // The connection may have dropped after the draft was committed. Read
+          // the saved state before asking the host to try the mutation again.
+          try {
+            const fresh = await refreshLooks();
+            if (fresh.key !== currentKey) {
+              savePositionAndReload(fresh.key);
+              reloading = true;
+              return;
+            }
+          } catch (_) {}
+        }
+        announce(error.message, true);
+      } finally {
+        if (!reloading) setSaving(false);
+      }
+    }
+
+    retry.addEventListener('click', populate);
+    motionButton.addEventListener('click', () => {
+      showAll = !showAll;
+      updateMotion();
+    });
+    motion.addEventListener?.('change', updateMotion);
+    track.addEventListener('click', event => {
+      const card = event.target.closest('[data-look], [data-vibe-copy]');
+      if (!card) return;
+      // Some assistive technology activates a button without moving DOM focus.
+      if (event.detail === 0 && card.dataset.look && picker.classList.contains('is-drifting')) {
+        showAll = true;
+        updateMotion();
+      }
+      choose(card.dataset.look || card.dataset.vibeCopy);
+    });
+    track.addEventListener('focusin', event => {
+      if (!picker.classList.contains('is-drifting') || !event.target.matches('[data-look]:focus-visible')) return;
+      showAll = true;
+      updateMotion();
+      event.target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    });
+    stage.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'mouse') return;
+      heldPointer = event.pointerId;
+      window.clearTimeout(releaseTimer);
+      picker.classList.add('is-vibe-pressed');
+    }, { passive: true });
+    function releasePointer(event) {
+      if (heldPointer !== event.pointerId) return;
+      heldPointer = null;
+      // Let a tap's click land on the same print before the line can move again.
+      releaseTimer = window.setTimeout(() => picker.classList.remove('is-vibe-pressed'), 180);
+    }
+    window.addEventListener('pointerup', releasePointer, { passive: true });
+    window.addEventListener('pointercancel', releasePointer, { passive: true });
+    if ('IntersectionObserver' in window) {
+      picker.classList.add('is-vibe-offscreen');
+      const observer = new IntersectionObserver(([entry]) =>
+        picker.classList.toggle('is-vibe-offscreen', !entry.isIntersecting));
+      observer.observe(stage);
+    }
+
+    updateMotion();
+    populate();
   }
 
   function showFix() {
@@ -315,9 +604,9 @@
   }
 
   tools.addEventListener('click', event => {
+    if (savingVibe) return;
     const trigger = event.target.closest('[data-preview-action]');
     const action = trigger?.dataset.previewAction;
-    if (action === 'look') showLooks();
     if (action === 'fix') showFix();
     if (action === 'approve') showApproval();
     if (action === 'retry') {
@@ -335,13 +624,7 @@
     if (dialog.dataset.dismissible !== 'true' || dialog.dataset.locked === 'true') event.preventDefault();
   });
 
-  const savedScrollValue = sessionStorage.getItem('sge-flyer-preview-scroll-y');
-  const savedScrollY = Number(savedScrollValue);
-  if (savedScrollValue != null && Number.isFinite(savedScrollY)) {
-    sessionStorage.removeItem('sge-flyer-preview-scroll-y');
-    requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: 'auto' }));
-  }
-
+  initVibe();
   if (tools.dataset.previewStatus === 'published') {
     load(true).then(showShare).catch(error => showPublishRetry(error.message));
   } else if (tools.dataset.previewStatus === 'promoter_approved') {

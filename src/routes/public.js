@@ -28,7 +28,7 @@ const { flyerPrimaryAction, formatTicketPrice } = require('../lib/flyer-action')
 const { externalTicketLink } = require('../lib/ticket-links');
 const { loadExternalTicketClickTarget, recordExternalTicketClick, validTicketVisitorKey } = require('../lib/external-ticket-impact');
 const { sameOriginMutation } = require('../middleware/requireOrganizer');
-const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { renderEventBackground } = require('../lib/event-background-render');
 const { isExternalTickets, isFreeRsvp, isSilverGliderTickets } = require('../lib/admission');
 const {
   addressPrivacyEnabled,
@@ -475,8 +475,7 @@ function renderFlyerPreviewTools(preview) {
     ? ''
     : approved
       ? '<button class="is-primary" type="button" data-preview-action="retry">Try publishing again</button>'
-      : `<button type="button" data-preview-action="look">Change the look</button>
-         <button type="button" data-preview-action="fix">Request a fix</button>
+      : `<button type="button" data-preview-action="fix">Request a fix</button>
          <button class="is-primary" type="button" data-preview-action="approve">Approve and publish</button>`;
   return `<aside class="flyer-preview-bar" id="flyer-preview-tools" data-preview-status="${esc(preview.status)}" aria-label="${published ? 'Published event controls' : 'Unpublished preview controls'}">
     <div class="flyer-preview-status"><span class="flyer-preview-mark" aria-hidden="true">SG</span><p>${statusCopy}</p></div>
@@ -486,6 +485,39 @@ function renderFlyerPreviewTools(preview) {
     <button class="flyer-preview-close" type="button" data-preview-close aria-label="Close">×</button>
     <div id="flyer-preview-dialog-body"></div>
   </dialog>`;
+}
+
+function editableFlyerPreview(preview) {
+  return ['preview_sent', 'changes_requested'].includes(preview?.status);
+}
+
+function renderFlyerPreviewIntro(preview) {
+  if (!editableFlyerPreview(preview)) return '';
+  return `
+  <header class="flyer-preview-intro" id="flyer-preview-intro" aria-label="Private preview">
+    <p class="flyer-preview-intro-kicker">Silver Glider Events · Private preview</p>
+    <h2>Your event. Your finishing touch.</h2>
+    <p>We’ve taken care of the details. Make it feel like you. Nothing goes live until you approve it.</p>
+  </header>`;
+}
+
+function renderFlyerPreviewLooks(preview) {
+  if (!editableFlyerPreview(preview)) return '';
+  return `
+    <section class="flyer-vibe" id="flyer-preview-looks" aria-labelledby="flyer-vibe-title">
+      <div class="flyer-vibe-head">
+        <div>
+          <p class="flyer-vibe-kicker">Private preview · Not visible to guests</p>
+          <h2 id="flyer-vibe-title">Add your vibe</h2>
+          <p>Try a different background, or keep the look we picked.</p>
+        </div>
+        <button type="button" data-vibe-motion aria-controls="flyer-vibe-track" hidden>Show all backgrounds</button>
+      </div>
+      <div class="flyer-vibe-stage">
+        <ul class="flyer-vibe-track" id="flyer-vibe-track" role="list" aria-label="Backgrounds"></ul>
+      </div>
+      <p class="flyer-vibe-status" id="flyer-vibe-status" role="status" aria-live="polite">Loading backgrounds…</p>
+    </section>`;
 }
 
 function verifiedSessionAccountId(req, email) {
@@ -976,37 +1008,7 @@ router.get('/e/:slug', async (req, res, next) => {
       ? `<section class="additional-details" aria-labelledby="additional-details-title"><h2 id="additional-details-title">Event details</h2>${detailParts.join('')}</section>`
       : '';
 
-    // Violet and ember are legacy-only: hidden from the MVP picker, but still
-    // rendered for already-published events that selected them.
-    const THEMES = [...EventBackgrounds.backgroundKeys, 'violet', 'ember'];
-    const EFFECTS = EventBackgrounds.effectKeys;
-    const VIDEO_EFFECTS = {
-      halloween: 'sg-events/effects/halloween',
-      'liquid-stardust': 'sg-events/effects/liquid-stardust',
-      'color-static': 'sg-events/effects/color-static',
-      'last-guest': 'sg-events/effects/the-last-guest',
-      'golden-tide': 'sg-events/effects/golden-tide',
-      'rain-on-glass': 'sg-events/effects/rain-on-glass-v1',
-      'gather-and-glow': 'sg-events/effects/gather-and-glow-v1',
-      'candlelit-christmas': 'sg-events/effects/candlelit-christmas-v1',
-      'snow-day': 'sg-events/effects/snow-day-v1',
-      'midnight-toast': 'sg-events/effects/midnight-toast-v1',
-      'starlit-celebration': 'sg-events/effects/starlit-celebration-v1',
-      disco: 'sg-events/effects/disco',
-      fog: 'sg-events/effects/fog'
-    };
-    const chosen = event.background_theme;
-    const isEffect = EFFECTS.includes(chosen);
-    const theme = (THEMES.includes(chosen) || isEffect) ? chosen : 'midnight';
-    const bgClass = isEffect ? `fx-${theme}` : `bg-${theme}`;
-    const videoPublicId = VIDEO_EFFECTS[theme];
-    // Keep the long source clip intact in storage; deliver a compact ambient loop.
-    const videoTrim = ['golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration'].includes(theme) ? 'du_20,' : '';
-    const fxMedia = videoPublicId
-      ? `<video class="fx-video-media" data-effect-theme="${theme}" autoplay muted loop playsinline webkit-playsinline preload="auto" poster="https://res.cloudinary.com/dhvavjgnw/video/upload/so_0,f_jpg,q_auto,w_1600/${videoPublicId}.jpg" aria-hidden="true" tabindex="-1"><source media="(max-width: 900px)" src="https://res.cloudinary.com/dhvavjgnw/video/upload/${videoTrim}f_mp4,vc_h264,q_auto:eco,w_800,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"><source src="https://res.cloudinary.com/dhvavjgnw/video/upload/${videoTrim}f_mp4,vc_h264,q_auto:eco,w_1280,c_limit,fl_progressive/${videoPublicId}.mp4" type="video/mp4"></video>`
-      : '';
-    // Effects sit behind everything and need a darkening veil for legibility
-    const fxVeil = `<div id="event-fx-veil" class="fx-veil${theme === 'paper' ? ' fx-veil-soft' : ''}${theme === 'saloon' ? ' fx-veil-warm' : ''}" aria-hidden="true"${isEffect ? '' : ' hidden'}></div>`;
+    const { theme, isEffect, bgClass, fxMedia, fxVeil, bgEffect } = renderEventBackground(event.background_theme);
     const isFlyerPresentation = event.presentation_mode === 'flyer' && Boolean(event.flyer_image_url);
     const coverFitMode = ['contain', 'cover'].includes(event.cover_fit_mode) ? event.cover_fit_mode : 'auto';
     const flyerImageUrl = isFlyerPresentation ? event.flyer_image_url : null;
@@ -1065,7 +1067,7 @@ router.get('/e/:slug', async (req, res, next) => {
       rsvpEmailSettingsUrl: event.is_past ? null : rsvpEmailSettingsUrl(returningGuest?.rsvp),
       location: locationDisplay,
       calendarUrl: returningCalendarUrl,
-      bgEffect: isEffect ? theme : null
+      bgEffect
     };
     // A published Done For You completion takes precedence while its secure
     // preview cookie is active, including for an organizer already signed in.
@@ -1099,7 +1101,9 @@ router.get('/e/:slug', async (req, res, next) => {
       .replace(/{{BODY_CLASS}}/g, bgClass)
       .replace(/{{FX_MEDIA}}/g, fxMedia)
       .replace(/{{FX_VEIL}}/g, fxVeil)
+      .replace(/{{FLYER_PREVIEW_INTRO}}/g, ownerDraft && !ownerPreview ? renderFlyerPreviewIntro(flyerPreview) : '')
       .replace(/{{HERO}}/g, heroHtml)
+      .replace(/{{FLYER_PREVIEW_LOOKS}}/g, ownerDraft && !ownerPreview ? renderFlyerPreviewLooks(flyerPreview) : '')
       .replace(/{{PHOTO_CREDIT}}/g, creditHtml)
       .replace(/{{FLYER_DESIGN_CREDIT}}/g, flyerDesignCreditHtml)
       .replace(/{{DATE_STR}}/g, esc(dateLabel))

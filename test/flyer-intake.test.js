@@ -97,7 +97,14 @@ test('secure flyer previews expose look, fix, and verified auto-publish controls
   assert.match(getPreviewRoute, /eventUrl/);
   assert.match(route, /presentation_mode='flyer'/);
   assert.match(publicRoute, /readFlyerPreviewAccess/);
-  assert.match(script, /Change the look/);
+  assert.match(publicRoute, /id="flyer-vibe-title">Add your vibe<\/h2>/);
+  assert.match(publicRoute, /ownerDraft && !ownerPreview \? renderFlyerPreviewLooks\(flyerPreview\) : ''/);
+  assert.match(read('src/views/event-public-flyer.html'), /<\/main>\{\{FLYER_PREVIEW_LOOKS\}\}/);
+  assert.match(script, /SGFlyerPreviewBackground\?\.apply\(result\.appearance\)/);
+  assert.match(publicRoute, /data-vibe-motion aria-controls="flyer-vibe-track"/);
+  assert.doesNotMatch(publicRoute, /data-vibe-prev|data-vibe-next/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.doesNotMatch(publicRoute, /data-preview-action="look"/);
   assert.match(script, /Request a fix/);
   assert.match(publicRoute, /data-preview-action="approve"[^>]*>[^<]*publish/i);
   assert.doesNotMatch(publicRoute, /data-preview-action="approve"[^>]*>Looks good</i);

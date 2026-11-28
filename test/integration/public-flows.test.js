@@ -10664,8 +10664,12 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.equal(recipientPage.status, 200);
   const recipientHtml = await recipientPage.text();
   assert.match(recipientHtml, /Your event is ready/);
+  assert.match(recipientHtml, /id="flyer-preview-intro"[\s\S]*Your event\. Your finishing touch\.[\s\S]*<main class="flyer-layout">/);
   assert.match(recipientHtml, /flyer-preview\.js/);
   assert.doesNotMatch(recipientHtml, /event-owner-editor\.js/);
+  assert.match(recipientHtml, /class="flyer-poster">[\s\S]*class="flyer-details"[\s\S]*<\/main>\s*<section[^>]*id="flyer-preview-looks"[\s\S]*>Add your vibe<\/h2>/);
+  assert.match(recipientHtml, /id="flyer-vibe-track"[\s\S]*data-preview-action="approve"/);
+  assert.equal((await fetch(`${baseUrl}${firstExchange.headers.get('location')}`)).status, 404);
 
   const changedLook = await fetch(`${baseUrl}/api/flyer-preview/look`, {
     method: 'POST',
@@ -10673,6 +10677,15 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
     body: JSON.stringify({ backgroundTheme: 'disco', title: 'Must not change' })
   });
   assert.equal(changedLook.status, 200);
+  const { appearance } = await changedLook.json();
+  assert.equal(appearance.bgClass, 'fx-disco');
+  assert.equal(appearance.bgEffect, 'disco');
+  assert.match(appearance.fxMedia, /data-effect-theme="disco"[\s\S]*sg-events\/effects\/disco\.mp4/);
+  assert.match(appearance.fxVeil, /id="event-fx-veil" class="fx-veil" aria-hidden="true"><\/div>/);
+  const refreshedPreview = await fetch(`${baseUrl}${firstExchange.headers.get('location')}`, {
+    headers: { cookie: firstPreviewCookie }
+  });
+  assert.ok((await refreshedPreview.text()).includes(appearance.fxMedia));
   const changedEvent = (await pool.query(
     'SELECT title,background_theme,status FROM events WHERE id=$1', [createdBody.event.id]
   )).rows[0];
@@ -10785,6 +10798,11 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   assert.equal(publishedBody.status, 'published');
   assert.equal(publishedBody.published, true);
   assert.match(publishedBody.event.url, /\/e\//);
+  const publishedPage = await fetch(`${baseUrl}${new URL(publishedBody.event.url).pathname}`);
+  const publishedHtml = await publishedPage.text();
+  assert.equal(publishedPage.status, 200);
+  assert.ok(publishedHtml.includes(appearance.fxMedia));
+  assert.doesNotMatch(publishedHtml, /flyer-preview-intro|flyer-preview-looks|Add your vibe/);
   assert.ok(['pending', 'sending', 'sent'].includes(publishedBody.liveSms.status));
   assert.ok(['pending', 'sending', 'failed'].includes(publishedBody.claimInvitation.status));
   assert.equal(publishedBody.retryNeeded, true);

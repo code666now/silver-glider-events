@@ -10,6 +10,7 @@ const { clientIp, createRateLimiter } = require('../lib/rate-limit');
 const sms = require('../lib/sms');
 const phoneVerification = require('../lib/phone-verification');
 const EventBackgrounds = require('../../public/js/event-backgrounds');
+const { renderEventBackground } = require('../lib/event-background-render');
 const { listBackgroundAvailability, backgroundSelectionAllowed, UNAVAILABLE_MESSAGE } = require('../lib/background-availability');
 const { ImageUploadError, normalizeRequestImages } = require('../lib/image-upload');
 const {
@@ -672,7 +673,8 @@ router.post('/api/flyer-preview/look', async (req, res, next) => {
     await client.query('UPDATE admin_flyer_requests SET updated_at=NOW() WHERE id=$1', [preview.id]);
     await client.query('COMMIT');
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ ok: true, backgroundTheme: updated.background_theme });
+    const { bgClass, fxMedia, fxVeil, bgEffect } = renderEventBackground(updated.background_theme);
+    res.json({ ok: true, backgroundTheme: updated.background_theme, appearance: { bgClass, fxMedia, fxVeil, bgEffect } });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

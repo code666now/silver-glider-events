@@ -161,11 +161,21 @@ document.addEventListener('click', event => {
   poster.innerHTML = template.innerHTML;
 });
 
+let eventBackdropPalette = null;
+
+function paintEventBackdropPalette(background, colors) {
+  background.style.setProperty('--event-bg-a', ArtworkColor.rgba(colors[0], .82));
+  background.style.setProperty('--event-bg-b', ArtworkColor.rgba(colors[1] || colors[0], .68));
+  background.style.setProperty('--event-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
+  background.classList.add('image-palette');
+}
+
 async function applyCoverPalette() {
   if (!EVENT.coverImageUrl) return;
   try {
     const candidates = await ArtworkColor.extractPalette(EVENT.coverImageUrl);
     const colors = ArtworkColor.paletteForBackground(candidates);
+    eventBackdropPalette = colors;
     const hero = $('hero');
     if (hero) {
       hero.style.setProperty('--hero-bg-a', ArtworkColor.rgba(colors[0], .76));
@@ -175,12 +185,7 @@ async function applyCoverPalette() {
     }
     if (EVENT.adaptiveBackground) {
       const background = document.querySelector('.event-bg');
-      if (background) {
-        background.style.setProperty('--event-bg-a', ArtworkColor.rgba(colors[0], .82));
-        background.style.setProperty('--event-bg-b', ArtworkColor.rgba(colors[1] || colors[0], .68));
-        background.style.setProperty('--event-bg-c', ArtworkColor.rgba(colors[2] || colors[0], .52));
-        background.classList.add('image-palette');
-      }
+      if (background) paintEventBackdropPalette(background, colors);
     }
   } catch (_) {
     // Keep the organizer-selected background theme if image sampling is blocked.
@@ -216,10 +221,14 @@ function mountStaticEffect() {
   canvas.className = 'fx-static-canvas';
   canvas.dataset.effectTheme = 'static';
   canvas.width = 220; canvas.height = 140;   // small; CSS stretches it
-  host.appendChild(canvas);
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  host.appendChild(canvas);
   const w = canvas.width, h = canvas.height;
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+  const connection = navigator.connection;
+  let frame = 0;
+  let last = 0;
   function draw() {
     const img = ctx.createImageData(w, h), d = img.data;
     for (let i = 0; i < d.length; i += 4) {
@@ -229,30 +238,67 @@ function mountStaticEffect() {
     ctx.putImageData(img, 0, 0);
   }
   draw();
-  if (!reduce) {
-    let last = 0;
-    (function loop(t) {
-      if (t - last > 66) { draw(); last = t; }
-      requestAnimationFrame(loop);
-    })(0);
+  function loop(time) {
+    if (time - last > 66) { draw(); last = time; }
+    frame = requestAnimationFrame(loop);
   }
+  const stop = () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  function sync() {
+    if (document.hidden || motionPreference.matches || connection?.saveData) stop();
+    else if (!frame) frame = requestAnimationFrame(loop);
+  }
+  document.addEventListener('visibilitychange', sync);
+  motionPreference.addEventListener?.('change', sync);
+  connection?.addEventListener?.('change', sync);
+  sync();
+  return () => {
+    stop();
+    document.removeEventListener('visibilitychange', sync);
+    motionPreference.removeEventListener?.('change', sync);
+    connection?.removeEventListener?.('change', sync);
+    canvas.remove();
+  };
 }
-mountStaticEffect();
+let unmountStaticEffect = mountStaticEffect();
 
 // Cloudinary video effects start only when motion is allowed. The host keeps a
 // poster frame underneath if autoplay is blocked, the video fails, or the user
 // has requested reduced motion.
 function mountVideoEffect() {
+  mountVideoEffect.unmount?.();
   if (!['halloween', 'liquid-stardust', 'color-static', 'last-guest', 'disco', 'fog', 'golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration'].includes(EVENT.bgEffect)) return;
   const video = document.querySelector('.fx-video-media');
   const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
-  const saveData = navigator.connection && navigator.connection.saveData;
+  const connection = navigator.connection;
   if (!video) return;
+  let disposed = false;
+  let seamlessLoop;
+  function releaseMedia() {
+    if (disposed) return;
+    disposed = true;
+    mountVideoEffect.unmount = null;
+    // Capture the standby element before the crossfade controller removes it.
+    const media = [video, ...(video.parentElement?.querySelectorAll('video[data-seamless-clone]') || [])];
+    seamlessLoop?.pause();
+    seamlessLoop?.destroy?.();
+    for (const node of media) {
+      node.pause();
+      node.removeAttribute('src');
+      node.querySelectorAll('source').forEach(source => source.remove());
+      node.load(); // Abort outstanding loads and release decoder state.
+      node.remove();
+    }
+  }
+  mountVideoEffect.unmount = releaseMedia;
   video.muted = true;
   video.defaultMuted = true;
-  if (motionPreference.matches || saveData) {
+  if (motionPreference.matches || connection?.saveData) {
     video.pause();
     video.removeAttribute('autoplay');
+    video.preload = 'none';
     return;
   }
   // The seamless loop uses two simultaneous video decoders during its short
@@ -261,30 +307,47 @@ function mountVideoEffect() {
   const constrainedPlayback = matchMedia('(max-width: 900px), (pointer: coarse)').matches ||
     (Number(navigator.hardwareConcurrency) > 0 && Number(navigator.hardwareConcurrency) <= 4);
   if (constrainedPlayback) video.loop = true;
-  const seamlessLoop = !constrainedPlayback && ['liquid-stardust', 'color-static', 'golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration'].includes(EVENT.bgEffect)
+  seamlessLoop = !constrainedPlayback && ['liquid-stardust', 'color-static', 'golden-tide', 'rain-on-glass', 'gather-and-glow', 'candlelit-christmas', 'snow-day', 'midnight-toast', 'starlit-celebration'].includes(EVENT.bgEffect)
     ? window.SGSeamlessVideoLoop?.attach(video)
     : null;
-  const reveal = () => video.classList.add('is-playing');
+  const canPlay = () => !disposed && !document.hidden && !motionPreference.matches && !connection?.saveData;
+  const reveal = () => { if (canPlay()) video.classList.add('is-playing'); };
+  const onLoadedData = () => { if (!video.paused) reveal(); };
   video.addEventListener('playing', reveal);
-  video.addEventListener('loadeddata', () => { if (!video.paused) reveal(); });
+  video.addEventListener('loadeddata', onLoadedData);
   if (!video.paused && video.readyState >= 2) reveal();
 
   let interactionRetryArmed = false;
-  const retryAfterInteraction = () => {
-    attemptPlay().then(reveal).catch(() => {});
+  const disarmInteractionRetry = () => {
     document.removeEventListener('touchstart', retryAfterInteraction);
     document.removeEventListener('pointerdown', retryAfterInteraction);
     interactionRetryArmed = false;
   };
+  const retryAfterInteraction = () => {
+    disarmInteractionRetry();
+    attemptPlay();
+  };
   const armInteractionRetry = () => {
-    if (interactionRetryArmed) return;
+    if (interactionRetryArmed || !canPlay()) return;
     interactionRetryArmed = true;
     document.addEventListener('touchstart', retryAfterInteraction, { once: true, passive: true });
     document.addEventListener('pointerdown', retryAfterInteraction, { once: true, passive: true });
   };
-  const attemptPlay = () => (seamlessLoop ? seamlessLoop.play() : video.play()).then(reveal).catch(armInteractionRetry);
+  async function attemptPlay() {
+    if (!canPlay()) return;
+    try {
+      await (seamlessLoop ? seamlessLoop.play() : video.play());
+      if (!disposed && !canPlay()) {
+        if (seamlessLoop) seamlessLoop.pause();
+        else video.pause();
+        return;
+      }
+      reveal();
+    } catch { armInteractionRetry(); }
+  }
   const syncPlayback = () => {
-    if (document.hidden || motionPreference.matches) {
+    if (!canPlay()) {
+      disarmInteractionRetry();
       if (seamlessLoop) seamlessLoop.pause();
       else video.pause();
     }
@@ -292,9 +355,114 @@ function mountVideoEffect() {
   };
   document.addEventListener('visibilitychange', syncPlayback);
   motionPreference.addEventListener?.('change', syncPlayback);
+  connection?.addEventListener?.('change', syncPlayback);
+  mountVideoEffect.unmount = () => {
+    document.removeEventListener('visibilitychange', syncPlayback);
+    motionPreference.removeEventListener?.('change', syncPlayback);
+    connection?.removeEventListener?.('change', syncPlayback);
+    disarmInteractionRetry();
+    video.removeEventListener('playing', reveal);
+    video.removeEventListener('loadeddata', onLoadedData);
+    releaseMedia();
+  };
   syncPlayback();
 }
 mountVideoEffect();
+
+// Only the private Done For You preview installs this renderer. Take a new
+// appearance from the shared server renderer, but never inject its HTML into
+// the visible page. Rebuild just the known video/source attributes instead.
+if ($('flyer-preview-looks')) {
+  const catalog = window.SGEventBackgrounds;
+  const knownClasses = new Set([
+    ...(catalog?.backgroundKeys || []).map(key => `bg-${key}`),
+    'bg-violet', 'bg-ember',
+    ...(catalog?.effectKeys || []).map(key => `fx-${key}`)
+  ]);
+
+  function readEffectElement(markup, tag) {
+    if (typeof markup !== 'string' || !markup || markup.length > 3_000) return null;
+    const template = document.createElement('template');
+    template.innerHTML = markup;
+    const children = template.content.children;
+    return children.length === 1 && children[0].localName === tag ? children[0] : null;
+  }
+
+  function readEffectUrl(value, extension) {
+    if (typeof value !== 'string' || value.length > 400 || !value.startsWith('https://res.cloudinary.com/')) return null;
+    try {
+      const url = new URL(value);
+      if (url.href !== value || url.origin !== 'https://res.cloudinary.com' || url.search || url.hash) return null;
+      const match = /^\/dhvavjgnw\/video\/upload\/[a-z0-9_,:-]+\/sg-events\/effects\/([a-z0-9-]+)\.(jpg|mp4)$/.exec(url.pathname);
+      return match?.[2] === extension ? { url: url.href, asset: match[1] } : null;
+    } catch { return null; }
+  }
+
+  function buildEffectVideo(markup, theme) {
+    const expected = readEffectElement(markup, 'video');
+    if (expected?.className !== 'fx-video-media' || expected.dataset.effectTheme !== theme) return null;
+    const poster = readEffectUrl(expected.getAttribute('poster'), 'jpg');
+    const sources = [...expected.children];
+    if (!poster || sources.length !== 2) return null;
+    const urls = sources.map(source => source.localName === 'source' && source.getAttribute('type') === 'video/mp4'
+      ? readEffectUrl(source.getAttribute('src'), 'mp4') : null);
+    if (!urls.every(item => item?.asset === poster.asset) || sources[0].getAttribute('media') !== '(max-width: 900px)' || sources[1].hasAttribute('media')) return null;
+
+    const video = document.createElement('video');
+    video.className = 'fx-video-media';
+    video.dataset.effectTheme = theme;
+    video.muted = video.defaultMuted = true;
+    video.loop = true;
+    video.preload = 'none'; // mountVideoEffect decides whether motion can start.
+    video.poster = poster.url;
+    video.tabIndex = -1;
+    video.setAttribute('aria-hidden', 'true');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    for (let index = 0; index < urls.length; index++) {
+      const source = document.createElement('source');
+      source.src = urls[index].url;
+      source.type = 'video/mp4';
+      if (index === 0) source.media = '(max-width: 900px)';
+      video.appendChild(source);
+    }
+    return video;
+  }
+
+  window.SGFlyerPreviewBackground = Object.freeze({
+    apply(appearance) {
+      if (!$('flyer-preview-looks') || !knownClasses.has(appearance?.bgClass)) return false;
+      const effect = appearance.bgClass.startsWith('fx-');
+      const theme = appearance.bgClass.slice(3);
+      if (appearance.bgEffect !== (effect ? theme : null)) return false;
+      const needsVideo = effect && !['paper', 'static', 'saloon'].includes(theme);
+      const video = needsVideo ? buildEffectVideo(appearance.fxMedia, theme) : null;
+      if (needsVideo ? !video : appearance.fxMedia !== '') return false;
+      const expectedVeil = readEffectElement(appearance.fxVeil, 'div');
+      const veilClass = `fx-veil${theme === 'paper' ? ' fx-veil-soft' : theme === 'saloon' ? ' fx-veil-warm' : ''}`;
+      if (expectedVeil?.id !== 'event-fx-veil' || expectedVeil.className !== veilClass || expectedVeil.hidden === effect) return false;
+
+      const background = document.querySelector('.event-bg');
+      const veil = $('event-fx-veil');
+      if (!background || !veil) return false;
+      unmountStaticEffect?.();
+      mountVideoEffect.unmount?.();
+      background.classList.remove(...[...background.classList].filter(name => knownClasses.has(name)));
+      background.classList.add(appearance.bgClass);
+      background.replaceChildren(...(video ? [video] : []));
+      veil.className = veilClass;
+      veil.hidden = !effect;
+      EVENT.bgEffect = appearance.bgEffect;
+      EVENT.adaptiveBackground = theme === 'adaptive';
+      if (EVENT.adaptiveBackground) {
+        if (eventBackdropPalette) paintEventBackdropPalette(background, eventBackdropPalette);
+      } else background.classList.remove('image-palette');
+      unmountStaticEffect = mountStaticEffect();
+      mountVideoEffect();
+      return true;
+    }
+  });
+}
 
 let activeRsvpState = 'cta-state';
 let lastRsvpTrigger = null;

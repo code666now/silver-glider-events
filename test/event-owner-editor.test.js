@@ -326,11 +326,12 @@ test('appearance editing reuses protected uploads and rate-conscious photo searc
 });
 
 test('appearance previews mount only the selected animated effect', () => {
-  const route = read('src/routes/public.js');
+  const { renderEventBackground } = require('../src/lib/event-background-render');
   const publicClient = read('public/js/public-event.js');
   const ownerClient = read('public/js/event-owner-editor.js');
 
-  assert.match(route, /data-effect-theme="\$\{theme\}"/);
+  assert.match(renderEventBackground('disco').fxMedia, /data-effect-theme="disco"/);
+  assert.equal(renderEventBackground('plaster').fxMedia, '');
   assert.match(publicClient, /canvas\.dataset\.effectTheme = 'static'/);
   assert.match(ownerClient, /const videoEffects = \{[\s\S]*'liquid-stardust': 'sg-events\/effects\/liquid-stardust'[\s\S]*'color-static': 'sg-events\/effects\/color-static'[\s\S]*disco: 'sg-events\/effects\/disco'[\s\S]*fog: 'sg-events\/effects\/fog'/);
   assert.match(ownerClient, /function syncEffectMedia\(theme, background\)/);

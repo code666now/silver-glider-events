@@ -2,6 +2,12 @@
 
 Silver Glider Events uses semantic versioning. `package.json` is the source of truth, and each production release receives a matching Git tag.
 
+## 1.0.237
+
+Released November 27, 2026.
+
+* Add **Add your vibe**, a gently drifting clothesline of available Silver Glider backgrounds below the complete event page in the private Done For You preview. Hosts can apply a look to their real draft or approve the one already chosen. Upload, approval and account access stay the same.
+
 ## 1.0.236
 
 Released November 27, 2026.
