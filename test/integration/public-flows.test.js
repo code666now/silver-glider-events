@@ -10701,6 +10701,13 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   })).status, 404);
   assert.equal((await fetch(`${baseUrl}${firstExchange.headers.get('location')}`)).status, 404);
 
+  const looksResponse = await fetch(`${baseUrl}/api/flyer-preview`, { headers: previewHeaders });
+  assert.match(looksResponse.headers.get('cache-control'), /private, no-store/);
+  const looksForDraft = await looksResponse.json();
+  assert.equal(looksForDraft.preview.appearance.bgClass, 'bg-adaptive');
+  assert.equal(looksForDraft.looks.find(option => option.key === 'midnight').appearance, undefined, 'still choices need no eager video metadata');
+  const discoBeforeSave = looksForDraft.looks.find(option => option.key === 'disco')?.appearance;
+  assert.match(discoBeforeSave?.fxMedia, /w_800[\s\S]*sg-events\/effects\/disco\.mp4/);
   const changedLook = await fetch(`${baseUrl}/api/flyer-preview/look`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie: firstPreviewCookie },
@@ -10708,6 +10715,7 @@ test('a reviewed flyer request auto-publishes after phone approval and retries d
   });
   assert.equal(changedLook.status, 200);
   const { appearance } = await changedLook.json();
+  assert.deepEqual(appearance, discoBeforeSave, 'the authoritative save keeps the video started on tap');
   assert.equal(appearance.bgClass, 'fx-disco');
   assert.equal(appearance.bgEffect, 'disco');
   assert.match(appearance.fxMedia, /data-effect-theme="disco"[\s\S]*sg-events\/effects\/disco\.mp4/);

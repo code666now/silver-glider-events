@@ -2,11 +2,12 @@
 
 **Last updated:** November 18, 2026 (Desktop portrait background composition, v1.0.210)
 
-## Done For You: Add your vibe (v1.0.237–1.0.240)
+## Done For You: Add your vibe (v1.0.237–1.0.241)
 
 - Private recipient previews show the optional rightward-drifting clothesline after the complete, unchanged event-page layout. The existing availability endpoint supplies enabled looks, with a still thumbnail per video and static options. The shared background renderer supplies the real backdrop for both draft selection and published viewing. Only the selected effect plays. There is no separate gallery button: keyboard focus on a choice or Reduce Motion turns the clothesline into a still, fully browsable set of choices.
 - The existing draft-only save updates just the background. No changes to the flyer intake, underlying artwork, event details, RSVP flow, review, verification text, publication, claim, or Home Base. Normal public pages never show the clothesline. Local no-send testing can use a synthetic preview; never publish or text a real promoter for QA.
 - The private preview header is unboxed; the animated clothesline fills the viewport, while the stationary keyboard/reduced-motion list keeps the same choices. The approval dock uses the round logo and light gray tint; the approval/fix dialog stays legible over the chosen background. Standard, Flyer and private previews share the Standard comments styling in `public/css/event-comments.css`. Private recipient drafts render enabled guest-list and comment sections using the public layout and empty states without loading attendee data or accepting RSVPs or comments.
+- Mobile preview taps start only the selected video while the draft save runs. The protected look endpoint supplies the same source metadata as the save; success keeps the loaded video and failed saves restore the prior appearance. The desktop path, reduced motion, and data-saving behavior are unchanged.
 
 ## Flyer landing page (v1.0.236)
 

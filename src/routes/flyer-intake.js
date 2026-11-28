@@ -190,6 +190,11 @@ function previewError(res, status, error, message) {
   return res.status(status).json({ error, message });
 }
 
+function flyerPreviewAppearance(theme) {
+  const { bgClass, fxMedia, fxVeil, bgEffect } = renderEventBackground(theme);
+  return { bgClass, fxMedia, fxVeil, bgEffect };
+}
+
 function maskedPhone(phone) {
   const value = String(phone || '');
   return value.length > 4 ? `••• ••• ${value.slice(-4)}` : 'your phone';
@@ -608,6 +613,7 @@ router.get('/api/flyer-preview', async (req, res, next) => {
     const preview = await readFlyerPreviewAccess(pool, req);
     if (!preview) return previewError(res, 404, 'preview_not_found', 'This preview has expired. Ask Silver Glider for a new link.');
     const { backgrounds } = await listBackgroundAvailability(pool);
+    const editable = preview.event_status === 'draft' && ['preview_sent', 'changes_requested'].includes(preview.status);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({
       preview: {
@@ -616,18 +622,25 @@ router.get('/api/flyer-preview', async (req, res, next) => {
         status: preview.status,
         revision: Number(preview.preview_revision),
         backgroundTheme: preview.background_theme,
+        ...(editable ? { appearance: flyerPreviewAppearance(preview.background_theme) } : {}),
         phone: maskedPhone(preview.phone_e164),
         approved: preview.status === 'promoter_approved' || preview.status === 'published',
         published: preview.status === 'published',
         ...(preview.status === 'published' ? { eventUrl: flyerEventUrl(preview) } : {})
       },
-      looks: backgrounds.filter(option => option.active || option.key === preview.background_theme).map(option => ({
-        key: option.key,
-        label: EventBackgrounds.label(option.key, 'flyer'),
-        group: option.group,
-        active: option.active,
-        alwaysAvailable: option.alwaysAvailable
-      }))
+      looks: backgrounds.filter(option => option.active || option.key === preview.background_theme).map(option => {
+        // Share the source metadata, not the video download. The phone can
+        // start one selected video on the tap without waiting for the save.
+        const appearance = editable && option.active && option.group === 'effect' ? flyerPreviewAppearance(option.key) : null;
+        return {
+          key: option.key,
+          label: EventBackgrounds.label(option.key, 'flyer'),
+          group: option.group,
+          active: option.active,
+          alwaysAvailable: option.alwaysAvailable,
+          ...(appearance?.fxMedia ? { appearance } : {})
+        };
+      })
     });
   } catch (error) { next(error); }
 });
@@ -673,8 +686,7 @@ router.post('/api/flyer-preview/look', async (req, res, next) => {
     await client.query('UPDATE admin_flyer_requests SET updated_at=NOW() WHERE id=$1', [preview.id]);
     await client.query('COMMIT');
     res.setHeader('Cache-Control', 'private, no-store');
-    const { bgClass, fxMedia, fxVeil, bgEffect } = renderEventBackground(updated.background_theme);
-    res.json({ ok: true, backgroundTheme: updated.background_theme, appearance: { bgClass, fxMedia, fxVeil, bgEffect } });
+    res.json({ ok: true, backgroundTheme: updated.background_theme, appearance: flyerPreviewAppearance(updated.background_theme) });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     next(error);

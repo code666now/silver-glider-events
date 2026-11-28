@@ -398,7 +398,7 @@ if ($('flyer-preview-looks')) {
     } catch { return null; }
   }
 
-  function buildEffectVideo(markup, theme) {
+  function buildEffectVideo(markup, theme, eagerVideo) {
     const expected = readEffectElement(markup, 'video');
     if (expected?.className !== 'fx-video-media' || expected.dataset.effectTheme !== theme) return null;
     const poster = readEffectUrl(expected.getAttribute('poster'), 'jpg');
@@ -413,12 +413,19 @@ if ($('flyer-preview-looks')) {
     video.dataset.effectTheme = theme;
     video.muted = video.defaultMuted = true;
     video.loop = true;
-    video.preload = 'none'; // mountVideoEffect decides whether motion can start.
+    video.preload = eagerVideo ? 'auto' : 'none';
     video.poster = poster.url;
     video.tabIndex = -1;
     video.setAttribute('aria-hidden', 'true');
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
+    if (eagerVideo) {
+      // Give mobile the same muted inline autoplay setup as a full load and
+      // select one source directly before trying play() within the tap.
+      video.autoplay = true;
+      video.src = urls[matchMedia('(max-width: 900px)').matches ? 0 : 1].url;
+      return video;
+    }
     for (let index = 0; index < urls.length; index++) {
       const source = document.createElement('source');
       source.src = urls[index].url;
@@ -430,13 +437,13 @@ if ($('flyer-preview-looks')) {
   }
 
   window.SGFlyerPreviewBackground = Object.freeze({
-    apply(appearance) {
+    apply(appearance, { eagerVideo = false } = {}) {
       if (!$('flyer-preview-looks') || !knownClasses.has(appearance?.bgClass)) return false;
       const effect = appearance.bgClass.startsWith('fx-');
       const theme = appearance.bgClass.slice(3);
       if (appearance.bgEffect !== (effect ? theme : null)) return false;
       const needsVideo = effect && !['paper', 'static', 'saloon'].includes(theme);
-      const video = needsVideo ? buildEffectVideo(appearance.fxMedia, theme) : null;
+      const video = needsVideo ? buildEffectVideo(appearance.fxMedia, theme, eagerVideo) : null;
       if (needsVideo ? !video : appearance.fxMedia !== '') return false;
       const expectedVeil = readEffectElement(appearance.fxVeil, 'div');
       const veilClass = `fx-veil${theme === 'paper' ? ' fx-veil-soft' : theme === 'saloon' ? ' fx-veil-warm' : ''}`;

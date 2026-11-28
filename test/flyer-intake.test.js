@@ -100,7 +100,7 @@ test('secure flyer previews expose look, fix, and verified auto-publish controls
   assert.match(publicRoute, /id="flyer-vibe-title">Add your vibe<\/h2>/);
   assert.match(publicRoute, /ownerDraft && !ownerPreview \? renderFlyerPreviewLooks\(flyerPreview\) : ''/);
   assert.match(read('src/views/event-public-flyer.html'), /<\/main>\{\{FLYER_PREVIEW_LOOKS\}\}/);
-  assert.match(script, /SGFlyerPreviewBackground\?\.apply\(result\.appearance\)/);
+  assert.match(script, /SGFlyerPreviewBackground\?\.apply\(appearance, options\)/);
   assert.doesNotMatch(publicRoute, /data-vibe-(?:motion|prev|next)|Show all backgrounds/);
   assert.match(script, /!motion\.matches && options\.length > 1 && !keyboardBrowsing/);
   assert.match(script, /track\.addEventListener\('focusin'[\s\S]*?\[data-look\]:focus-visible[\s\S]*?startKeyboardBrowsing\(\)/);

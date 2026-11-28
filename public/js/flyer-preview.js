@@ -446,24 +446,44 @@
       cards.forEach(card => card.setAttribute('aria-disabled', String(saving)));
     }
 
+    function applyLook(appearance, options) {
+      try { return window.SGFlyerPreviewBackground?.apply(appearance, options) === true; }
+      catch (_) { return false; }
+    }
+
+    function sameLook(first, second) {
+      return Boolean(first && second && ['bgClass', 'bgEffect', 'fxMedia', 'fxVeil'].every(key => first[key] === second[key]));
+    }
+
     async function choose(key) {
-      if (savingVibe || loading || key === currentKey || !options.some(option => option.key === key && option.active === true)) return;
+      if (savingVibe || loading || key === currentKey) return;
+      const option = options.find(candidate => candidate.key === key && candidate.active === true);
+      if (!option) return;
       setSaving(true);
       announce('Saving background…');
+      const priorAppearance = payload?.preview?.appearance;
+      const eagerAppearance = option.appearance;
+      const eagerVideo = priorAppearance && eagerAppearance?.fxMedia && !motion.matches && !navigator.connection?.saveData &&
+        !document.hidden && window.matchMedia('(max-width: 900px), (pointer: coarse)').matches &&
+        applyLook(eagerAppearance, { eagerVideo: true });
       let reloading = false;
       try {
         const result = await requestVibe('/api/flyer-preview/look', {
           method: 'POST', body: { backgroundTheme: key }
         });
         if (result.ok !== true || result.backgroundTheme !== key) throw new Error('We couldn’t confirm the background was saved. Try again.');
-        let applied = false;
-        try { applied = window.SGFlyerPreviewBackground?.apply(result.appearance) === true; } catch (_) {}
+        // Keep the video that already started when the save confirms the same
+        // appearance; rebuilding it here would interrupt the mobile tap.
+        const applied = (eagerVideo && sameLook(eagerAppearance, result.appearance)) || applyLook(result.appearance);
         if (!applied) {
           savePositionAndReload(key);
           reloading = true;
           return;
         }
-        if (payload?.preview) payload.preview.backgroundTheme = key;
+        if (payload?.preview) {
+          payload.preview.backgroundTheme = key;
+          payload.preview.appearance = result.appearance;
+        }
         // A previously saved inactive option stops being available after switching away.
         if (options.some(option => option.active === false && option.key !== key)) {
           const focusedKey = document.activeElement?.dataset.look;
@@ -498,6 +518,11 @@
               return;
             }
           } catch (_) {}
+        }
+        if (eagerVideo && !applyLook(priorAppearance)) {
+          savePositionAndReload(currentKey);
+          reloading = true;
+          return;
         }
         announce(error.message, true);
       } finally {
